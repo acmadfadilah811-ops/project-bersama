@@ -1,0 +1,143 @@
+@import 'tailwindcss';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: #f1f5f9;
+  color: #1e293b;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* Global Thin & Low Contrast Scrollbars */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.15); /* Sangat tipis & transparan */
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.35);
+}
+
+/* Firefox scrollbar support */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.15) transparent;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  /* ── Resi Thermal (existing) ── */
+  .receipt-print-area,
+  .receipt-print-area * {
+    visibility: visible;
+  }
+  .receipt-print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: auto;
+    margin: 0;
+    padding: 0;
+    background: white;
+    color: black;
+  }
+
+  /* ── Invoice & Surat Jalan A4 (baru) ── */
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+
+  /* Sembunyikan tombol & UI saat mencetak */
+  .no-print {
+    display: none !important;
+  }
+
+  /* Page setup untuk A4 */
+  @page {
+    size: A4;
+    margin: 15mm;
+  }
+}
+
+/* ── Drawer slide-in (mis. panel Tipe Pelanggan) ── */
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+.animate-slide-in-right {
+  animation: slide-in-right 0.2s ease-out;
+}
+
+/* ── Interactive Elements Hover System ── */
+button, 
+a, 
+select, 
+input[type="checkbox"], 
+input[type="radio"], 
+[role="button"],
+.cursor-pointer,
+.interactive-text,
+.package-name-link {
+  cursor: pointer !important;
+  transition: all 0.2s ease-in-out !important;
+}
+
+/* Button micro-interactions */
+button:not(:disabled):hover, 
+[role="button"]:not(:disabled):hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+button:not(:disabled):active, 
+[role="button"]:not(:disabled):active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+}
+
+/* Link and interactive text hover */
+a:hover, 
+.interactive-text:hover,
+.package-name-link:hover {
+  opacity: 0.85;
+  text-decoration: underline;
+}
+
+/* Varian list item hover */
+.pi-top-tabs button,
+.pi-top-tabs-full button {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+

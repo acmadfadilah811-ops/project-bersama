@@ -1,0 +1,468 @@
+"""
+Django settings for core project.
+
+Django configuration for Bintang Advertising CRM.
+
+For more information on this file, see
+https://docs.djangoproject.com/en/6.0/topics/settings/
+
+For the full list of settings and their values, see
+https://docs.djangoproject.com/en/6.0/ref/settings/
+"""
+
+from pathlib import Path
+import os
+from datetime import timedelta
+from corsheaders.defaults import default_headers
+from dotenv import load_dotenv
+
+# Load variabel dari file .env
+load_dotenv()
+
+# Build paths inside the project like this: BASE_DIR / 'subdir'.
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+# Quick-start development settings - unsuitable for production
+# See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
+
+# SECURITY WARNING: keep the secret key used in production secret!
+SECRET_KEY = os.getenv('SECRET_KEY')
+
+# SECURITY WARNING: don't run with debug turned on in production!
+DEBUG = os.getenv('DEBUG', 'False') == 'True'
+
+# Baca dari .env: ALLOWED_HOSTS=bintang-adv.duckdns.org,127.0.0.1,localhost
+_allowed = os.getenv('ALLOWED_HOSTS', '')
+if not _allowed and not DEBUG:
+    raise RuntimeError('ALLOWED_HOSTS wajib diisi di production.')
+ALLOWED_HOSTS = [h.strip() for h in _allowed.split(',') if h.strip()]
+if '.trycloudflare.com' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append('.trycloudflare.com')
+if DEBUG and 'testserver' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append('testserver')
+
+
+# Trusted origins untuk CSRF (wajib untuk HTTPS + DRF)
+CSRF_TRUSTED_ORIGINS = [
+    'https://' + h for h in ALLOWED_HOSTS
+    if h not in ('127.0.0.1', 'localhost', '*') and not h.startswith('.')
+] + [
+    'https://*.trycloudflare.com',
+    'http://*.trycloudflare.com',
+    'https://brandy-crm-811.web.app',
+    'https://brandy-crm-811.firebaseapp.com',
+]
+
+
+# Application definition
+
+INSTALLED_APPS = [
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+    
+    # --- Tambahan Paket Pihak Ketiga ---
+    'rest_framework',
+    'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
+    'corsheaders',
+    'channels',
+    'drf_spectacular',
+    
+    # --- Aplikasi Internal Kita ---
+    'api',
+    'users',
+    'hr',
+    'accounting',
+]
+
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware', # WAJIB ditambahkan untuk React
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'users.middleware.ActivityTrackingMiddleware',  # Update last_seen setiap request
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+]
+
+ROOT_URLCONF = 'core.urls'
+
+TEMPLATES = [
+    {
+        'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'DIRS': [],
+        'APP_DIRS': True,
+        'OPTIONS': {
+            'context_processors': [
+                'django.template.context_processors.request',
+                'django.contrib.auth.context_processors.auth',
+                'django.contrib.messages.context_processors.messages',
+            ],
+        },
+    },
+]
+
+WSGI_APPLICATION = 'core.wsgi.application'
+
+
+# Gunakan SQLite jika DB_ENGINE=sqlite diatur di .env
+DB_ENGINE = os.getenv('DB_ENGINE', 'mysql').lower()
+
+if DB_ENGINE == 'sqlite':
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
+elif DB_ENGINE in ('postgresql', 'postgres'):
+    db_ssl = os.getenv('DB_SSL', 'False').lower() in ('true', '1', 'yes')
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv('DB_NAME', 'bintang_adv_db'),
+            'USER': os.getenv('DB_USER', 'postgres'),
+            'PASSWORD': os.getenv('DB_PASSWORD', ''),
+            'HOST': os.getenv('DB_HOST', '127.0.0.1'),
+            'PORT': os.getenv('DB_PORT', '5432'),
+            'CONN_MAX_AGE': int(os.getenv('DB_CONN_MAX_AGE', '60')),
+            'OPTIONS': {'sslmode': 'require'} if db_ssl else {}
+        }
+    }
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.mysql',
+            'NAME': os.getenv('DB_NAME', 'bintang_adv_db'),
+            'USER': os.getenv('DB_USER', 'root'),
+            'PASSWORD': os.getenv('DB_PASSWORD', ''),
+            'HOST': os.getenv('DB_HOST', '127.0.0.1'),
+            'PORT': os.getenv('DB_PORT', '3306'),
+            'CONN_MAX_AGE': int(os.getenv('DB_CONN_MAX_AGE', '60')),
+        }
+    }
+
+
+# Password validation
+# https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
+
+AUTH_PASSWORD_VALIDATORS = [
+    {
+        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+    },
+]
+
+
+# Internationalization
+# https://docs.djangoproject.com/en/6.0/topics/i18n/
+
+LANGUAGE_CODE = 'id' # Diubah ke Bahasa Indonesia
+
+TIME_ZONE = 'Asia/Jakarta' # Diubah ke Waktu Indonesia Barat
+
+USE_I18N = True
+
+USE_TZ = True
+
+
+# Static files (CSS, JavaScript, Images)
+# https://docs.djangoproject.com/en/6.0/howto/static-files/
+
+STATIC_URL = '/static/'
+# Di production, Nginx serve /static/ dari path ini
+STATIC_ROOT = os.getenv('STATIC_ROOT', os.path.join(BASE_DIR, 'static'))
+
+MEDIA_URL = '/media/'
+# Di production, Nginx serve /media/ dari path ini
+MEDIA_ROOT = os.getenv('MEDIA_ROOT', os.path.join(BASE_DIR, 'media'))
+
+# --- KONFIGURASI CLOUDFLARE R2 STORAGE (S3-COMPATIBLE) ---
+AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
+AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
+AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME')
+AWS_S3_ENDPOINT_URL = os.getenv('AWS_S3_ENDPOINT_URL')
+AWS_S3_CUSTOM_DOMAIN = os.getenv('AWS_S3_CUSTOM_DOMAIN')
+
+if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY and AWS_STORAGE_BUCKET_NAME and AWS_S3_ENDPOINT_URL:
+    # Mendaftarkan storages di INSTALLED_APPS secara dinamis
+    if 'storages' not in INSTALLED_APPS:
+        INSTALLED_APPS.append('storages')
+    
+    # Django 4.2+: gunakan STORAGES; DEFAULT_FILE_STORAGE sudah deprecated.
+    STORAGES = {
+        'default': {'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    }
+    
+    # Pengaturan performa & kompatibilitas S3v4 untuk R2
+    AWS_S3_SIGNATURE_VERSION = 's3v4'
+    AWS_S3_FILE_OVERWRITE = False
+    AWS_DEFAULT_ACL = None
+    AWS_QUERYSTRING_AUTH = False  # Agar URL file bersifat publik tanpa kedaluwarsa
+    
+    # Path folder penyimpanan di dalam bucket
+    AWS_LOCATION = 'media'
+    
+    # Jika menggunakan custom domain, gunakan custom domain tersebut untuk media URL
+    if AWS_S3_CUSTOM_DOMAIN:
+        MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/{AWS_LOCATION}/'
+    else:
+        MEDIA_URL = f'{AWS_S3_ENDPOINT_URL}/{AWS_STORAGE_BUCKET_NAME}/{AWS_LOCATION}/'
+
+# Default primary key field type
+# https://docs.djangoproject.com/en/6.0/ref/settings/#default-auto-field
+
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+# --- KONFIGURASI TAMBAHAN ---
+
+# Mengizinkan Frontend React mengakses API kita
+CORS_ALLOW_ALL_ORIGINS = False # Default True untuk dev / backward compatibility, tapi kita batasi jika di production
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://192.168.1.160:5173",  # Akses LAN dari perangkat lain di WiFi yang sama
+    "https://brandy-crm-811.web.app",
+    "https://brandy-crm-811.firebaseapp.com",
+    "https://bintang-adv.duckdns.org",
+    "http://bintang-adv.duckdns.org",
+] + [
+    'https://' + h for h in ALLOWED_HOSTS if not h.startswith('.') and not h.startswith('127.') and h != 'localhost'
+]
+
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.trycloudflare\.com$",
+    r"^http://.*\.trycloudflare\.com$",
+]
+
+# Jika tidak DEBUG (production), matikan CORS_ALLOW_ALL_ORIGINS
+if not DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = False
+
+# Izinkan custom header dari frontend (khususnya untuk bypass ngrok)
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    'ngrok-skip-browser-warning',
+    'baggage',        # Dibutuhkan oleh Sentry tracing
+    'sentry-trace',   # Dibutuhkan oleh Sentry tracing
+]
+
+# Tanpa ini browser blokir JS baca Content-Disposition di response cross-origin
+# (CORS "simple header" default tidak termasuk ini) -- dibutuhkan supaya nama
+# file hasil download (Excel/CSV export) bisa diambil otomatis dari header
+# backend, bukan di-hardcode di frontend (lihat utils/downloadFile.js).
+CORS_EXPOSE_HEADERS = ['Content-Disposition']
+
+# --- Kustomisasi Autentikasi ---
+AUTH_USER_MODEL = 'api.CustomUser'
+
+# --- Konfigurasi Django REST Framework ---
+NUM_PROXIES = int(os.getenv('NUM_PROXIES', '1' if not DEBUG else '0'))
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticated',
+    ),
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    # --- Pagination Kustom (Hanya aktif jika menyertakan param ?page= atau ?page_size=) ---
+    'DEFAULT_PAGINATION_CLASS': 'api.pagination.OptionalPageNumberPagination',
+    'PAGE_SIZE': 50,
+    # --- Rate Limiting / Throttling ---
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '30/minute',
+        'user': '300/minute',
+        'login': '10/minute',
+        'password_reset_request': '5/hour',
+        'password_reset_verify': '5/5minute',
+        'passkey': '5/minute',
+        'export': '10/hour',
+        # Laporan bersifat baca-saja & interaktif: satu layar "Keseluruhan
+        # Penjualan" saja bisa memicu banyak fetch (tiap sub-laporan lazy-load,
+        # ganti tanggal = fetch ulang). 30/jam terlalu ketat dan memunculkan
+        # "Gagal memuat data laporan". Dinaikkan ke batas yang tetap melindungi.
+        'report': '600/hour',
+    },
+}
+
+# --- Konfigurasi DRF Spectacular (OpenAPI 3.0) ---
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Bintang Advertising CRM API',
+    'DESCRIPTION': 'Dokumentasi interaktif API Bintang Advertising CRM & Kasir.',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+}
+
+# --- Konfigurasi Simple JWT ---
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+}
+
+# --- Konfigurasi Cache & Channels (Redis in Production) ---
+REDIS_URL = os.getenv('REDIS_URL')
+
+if REDIS_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": REDIS_URL,
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            }
+        }
+    }
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {
+                "hosts": [REDIS_URL],
+            },
+        },
+    }
+elif not DEBUG:
+    raise RuntimeError('REDIS_URL wajib diisi di production untuk OTP, throttle, dan Channels.')
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "unique-snowflake",
+        }
+    }
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer"
+        }
+    }
+
+# --- KEAMANAN LAYANAN PRODUKSI (AKAN AKTIF JIKA DEBUG = FALSE) ---
+if not DEBUG:
+    # Memberi tahu Django bahwa proxy Nginx sudah menangani HTTPS
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    
+    # Memaksa koneksi HTTPS di production
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    
+    # HTTP Strict Transport Security (HSTS)
+    SECURE_HSTS_SECONDS = 31536000 # 1 tahun
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    
+    # Proteksi browser XSS & content-type sniffing
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
+    X_FRAME_OPTIONS = 'DENY'
+
+
+# ==============================================================================
+# OBSERVABILITAS: STRUCTURED LOGGING
+# ==============================================================================
+LOG_DIR = os.path.join(BASE_DIR, 'logs')
+if not os.path.exists(LOG_DIR):
+    try:
+        os.makedirs(LOG_DIR)
+    except Exception:
+        pass
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+        'file': {
+            'level': 'WARNING',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(LOG_DIR, 'django.log') if os.path.exists(LOG_DIR) else 'django.log',
+            'maxBytes': 1024 * 1024 * 5,  # 5MB
+            'backupCount': 5,
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+    },
+}
+
+
+# ==============================================================================
+# OBSERVABILITAS: ERROR MONITORING (SENTRY)
+# ==============================================================================
+SENTRY_DSN = os.getenv('SENTRY_DSN')
+if SENTRY_DSN:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.django import DjangoIntegration
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            integrations=[DjangoIntegration()],
+            traces_sample_rate=float(os.getenv('SENTRY_TRACES_SAMPLE_RATE', '0.2')),
+            send_default_pii=False
+        )
+        print("[INFO] Sentry error monitoring initialized.")
+    except ImportError:
+        print("[WARNING] Sentry SDK not installed. Skipping initialization.")
+
+
+
+
+# ==============================================================================
+# KOMUNIKASI: EMAIL SETTINGS (SMTP / CONSOLE FALLBACK)
+# ==============================================================================
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND')
+if EMAIL_BACKEND:
+    EMAIL_BACKEND = EMAIL_BACKEND
+elif not DEBUG:
+    raise RuntimeError('EMAIL_BACKEND wajib diisi di production.')
+else:
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'localhost')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').lower() == 'true'
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'Brandy CRM Security <security@elhayyu.co.id>')

@@ -1,0 +1,6 @@
+to_all_store_id,to_store_url_id,product_name,product_variant_name,material_product_name,material_variant_name,qty,uom,uom_conversion
+0,allinolsera2,"salman with variant","0","salman with variant","hijau",1,pcs,1
+0,allinolsera2,"salman with variant OH","s,1","salman with variant OH","s,1",1,pcs,1
+0,allinolsera2,"salman with variant OH","s,1","Salman Prod",,1,pcs,1
+0,allinolsera2,"salman with variant OH","s,2","salman with variant OH","s,2",1,pcs,1
+0,allinolsera2,"Salman Produk With SKU",,"Salman Prod",,1,pcs,1

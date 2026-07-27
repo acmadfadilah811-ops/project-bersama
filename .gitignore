@@ -1,0 +1,8 @@
+# Knowledge graph graphify — regenerable via `graphify update .` (lihat CLAUDE.md), tidak perlu di-commit.
+graphify-out/
+
+# Obsidian: state UI lokal (layout window, tab terakhir dibuka) — bukan konten, beda tiap mesin.
+.obsidian/
+
+# Hook Claude Code ini berisi path absolut khusus mesin lokal (C:/Users/USER/...) — tidak portable ke mesin lain.
+/.claude/settings.json

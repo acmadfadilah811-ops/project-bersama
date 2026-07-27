@@ -1,0 +1,3 @@
+code,customer_type,name,email,phone,address,postal_code,gender,dob,expiry_date,is_frozen,city,subdistrict,company,accept_newsletter,credit_limit,notes,loyalty_points
+CUS0001,Gold,PT Sinar Cemerlang,sinar@cemerlang.com,6282182344432,Jalan Angkasa Pura No. 15,123456,M,1991-01-23,2027-02-11,0,Yogyakarta,Gondokusuman,PT Olsera,1,150000,Pelanggan loyal sekali,0
+CUS0002,,Dika,dika@customer.com,6281234567890,Jalan Angkasa Pura No. 16,123456,M,1992-08-11,,0,Jakarta Pusat,Cempaka Putih,,0,0,,0

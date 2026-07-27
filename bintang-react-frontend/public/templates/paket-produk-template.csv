@@ -1,0 +1,3 @@
+product_combo_name,product_name,product_variant_name,sku,description,purchase_price,market_price,online_selling_price,store_selling_price,commission,minimum_order,maximum_order,selling_prices_stores_are_dynamic,ready_publish_sale,sale_start_date,loyalty_points,uom
+"Contoh Paket A","Contoh Produk 1","",SKU-001,"Deskripsi paket",14500,15500,15000,16000,0,1,0,,1,21/02/2026,0,
+"Contoh Paket A","Contoh Produk 2","",SKU-002,"Deskripsi paket",14500,15500,15000,16000,0,1,0,,1,21/02/2026,0,
