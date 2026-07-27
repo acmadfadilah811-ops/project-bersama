@@ -3,15 +3,6 @@ trigger: always_on
 description: Consult the graphify knowledge graph at graphify-out/ for codebase and architecture questions.
 ---
 
-## Koordinasi multi-agent (WAJIB dibaca dulu)
-
-Pekerjaan project ini dikoordinasikan lewat vault Obsidian, folder `koordinasi/`:
-1. Sebelum mengerjakan apa pun, baca `koordinasi/Agent Board.md` dan klaim task di sana. Jangan kerjakan task `in_progress` milik agent lain.
-2. Ikuti `koordinasi/Protokol Agent.md` (klaim → kerja → tulis Hasil → update board → `graphify update .`).
-3. Patuhi `koordinasi/Aturan Engineering.md` — aturan teknis mengikat (larangan keras L1–L10, aturan uang/akuntansi M1–M8, eskalasi X1–X6).
-4. Peta arsitektur & rambu-rambu: `Project Overview.md` di root vault. Aturan kode: `bintang-advertising-backend/AGENTS.md`.
-5. Peran: agent executor mengerjakan task hingga status `review`; keputusan desain, approval final ke `done`, dan eskalasi diputuskan manager (user + sesi Claude manajer). Jangan menandai task `done` sendiri untuk task berkategori uang/akuntansi — set `review` dan tunggu approval.
-
 ## graphify
 
 This project has a graphify knowledge graph at graphify-out/.

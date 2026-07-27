@@ -77,6 +77,7 @@ class OrderPostingSetupMixin:
             nomor_wa="081234567890",
             nama="Pelanggan Test",
             dp_dibayar=0,
+            metode_pembayaran="tunai" if with_pm else "metode_tidak_dikenal_xyz",
             accounting_payment_method=self.payment_method if with_pm else None,
         )
         return order
@@ -328,7 +329,7 @@ class OrderPostingViaAPITest(OrderPostingSetupMixin, APITestCase):
         self.settings_row.save(update_fields=["is_active"])
 
     def test_bayar_sukses_meskipun_pm_belum_dipetakan(self):
-        """bayar() tetap sukses saat accounting_payment_method belum dikonfigurasi di Order."""
+        """bayar() tetap sukses saat metode_pembayaran belum dipetakan ke accounting.PaymentMethod."""
         order_tanpa_pm = Order.objects.create(
             nomor_wa="081234567891",
             nama="Pelanggan Tanpa PM",
@@ -337,7 +338,7 @@ class OrderPostingViaAPITest(OrderPostingSetupMixin, APITestCase):
         )
         response = self.client.post(
             f"/api/orders/{order_tanpa_pm.id}/bayar/",
-            data={"jumlah_bayar": 30000, "metode_pembayaran": "tunai"},
+            data={"jumlah_bayar": 30000, "metode_pembayaran": "metode_tidak_dikenal_xyz"},
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
@@ -352,3 +353,78 @@ class OrderPostingViaAPITest(OrderPostingSetupMixin, APITestCase):
                 source_id=payment_log.id,
             ).count()
             self.assertEqual(count, 0)
+
+    def test_bayar_auto_resolves_payment_method_without_fixture_preset(self):
+        """
+        Order dibuat TANPA accounting_payment_method (seperti alur biasa).
+        Saat bayar() dipanggil via API dengan string 'tunai', accounting_payment_method
+        ter-resolve otomatis DAN JournalEntry terbuat.
+        """
+        order_biasa = Order.objects.create(
+            nomor_wa="081234567892",
+            nama="Pelanggan Normal",
+            dp_dibayar=0,
+            accounting_payment_method=None,  # TIDAK pre-set di fixture
+        )
+        self.assertIsNone(order_biasa.accounting_payment_method)
+
+        response = self.client.post(
+            f"/api/orders/{order_biasa.id}/bayar/",
+            data={"jumlah_bayar": 150000, "metode_pembayaran": "tunai"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        order_biasa.refresh_from_db()
+        # Assert 1: FK accounting_payment_method ter-resolve otomatis dari string 'tunai'
+        self.assertIsNotNone(order_biasa.accounting_payment_method, "FK accounting_payment_method harus ter-resolve otomatis")
+        self.assertEqual(order_biasa.accounting_payment_method.id, self.payment_method.id)
+
+        # Assert 2: JournalEntry benar-benar terbuat
+        payment_log = OrderActivityLog.objects.filter(
+            order=order_biasa, tindakan="PAYMENT"
+        ).order_by("-id").first()
+        self.assertIsNotNone(payment_log)
+
+        entry = JournalEntry.objects.filter(
+            source_type=JournalEntry.SourceType.ORDER_PAYMENT,
+            source_id=payment_log.id,
+        ).first()
+        self.assertIsNotNone(entry, "JournalEntry harus terbuat setelah resolusi otomatis PM")
+        self.assertEqual(entry.status, JournalEntry.Status.POSTED)
+
+    def test_perform_create_dp_auto_resolves_payment_method(self):
+        """
+        Membuat Order baru via POST /api/orders/ dengan DP > 0 dan metode_pembayaran string.
+        assert FK accounting_payment_method ter-resolve otomatis DAN JournalEntry terbuat.
+        """
+        payload = {
+            "nomor_wa": "081234567893",
+            "nama": "Pelanggan DP Create",
+            "dp_dibayar": 50000,
+            "metode_pembayaran": "tunai",
+            "dilayani_oleh": self.kasir.id,
+        }
+        response = self.client.post("/api/orders/", data=payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+        order_id = response.data["id"]
+        order = Order.objects.get(pk=order_id)
+
+        # Assert FK accounting_payment_method ter-resolve otomatis
+        self.assertIsNotNone(order.accounting_payment_method, "FK accounting_payment_method harus ter-resolve saat create dengan DP")
+        self.assertEqual(order.accounting_payment_method.id, self.payment_method.id)
+
+        # Assert JournalEntry DP terbuat
+        dp_log = OrderActivityLog.objects.filter(
+            order=order, tindakan="PAYMENT"
+        ).first()
+        self.assertIsNotNone(dp_log, "Log activity PAYMENT DP harus terbuat")
+
+        entry = JournalEntry.objects.filter(
+            source_type=JournalEntry.SourceType.ORDER_PAYMENT,
+            source_id=dp_log.id,
+        ).first()
+        self.assertIsNotNone(entry, "JournalEntry DP harus terbuat")
+        self.assertEqual(entry.status, JournalEntry.Status.POSTED)
+

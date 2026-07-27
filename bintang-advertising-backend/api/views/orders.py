@@ -240,30 +240,38 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         # Buku Besar Otomatis jika ada DP awal
         if instance.dp_dibayar > 0:
-            record_payment_to_general_ledger(
-                order=instance,
-                jumlah_bayar=instance.dp_dibayar,
-                metode=getattr(instance, 'metode_pembayaran', 'tunai'),
-                is_dp=True
-            )
+            with transaction.atomic():
+                from accounting.services.order_posting import (
+                    post_order_payment_journal as _post_order_payment,
+                    resolve_and_assign_order_payment_method as _resolve_order_pm,
+                )
+                _resolve_order_pm(instance, getattr(instance, 'metode_pembayaran', 'tunai'))
+                if instance.accounting_payment_method_id:
+                    instance.save(update_fields=['accounting_payment_method'])
 
-            # T-202: Posting DP awal ke accounting.JournalEntry (paralel, lazy import — DB5)
-            # Buat OrderActivityLog PAYMENT terlebih dahulu supaya source_id tersedia (desain §2)
-            from decimal import Decimal as _Decimal
-            from accounting.services.order_posting import post_order_payment_journal as _post_order_payment
-            _dp_log = OrderActivityLog.objects.create(
-                order=instance,
-                user=self.request.user,
-                tindakan='PAYMENT',
-                keterangan=f'DP awal {instance.dp_dibayar} [dp-create]',
-            )
-            _post_order_payment(
-                order=instance,
-                activity_log=_dp_log,
-                actor=self.request.user,
-                jumlah_bayar=_Decimal(str(instance.dp_dibayar)),
-                is_dp=True,
-            )
+                record_payment_to_general_ledger(
+                    order=instance,
+                    jumlah_bayar=instance.dp_dibayar,
+                    metode=getattr(instance, 'metode_pembayaran', 'tunai'),
+                    is_dp=True
+                )
+
+                # T-202: Posting DP awal ke accounting.JournalEntry (paralel, lazy import — DB5)
+                # Buat OrderActivityLog PAYMENT terlebih dahulu supaya source_id tersedia (desain §2)
+                from decimal import Decimal as _Decimal
+                _dp_log = OrderActivityLog.objects.create(
+                    order=instance,
+                    user=self.request.user,
+                    tindakan='PAYMENT',
+                    keterangan=f'DP awal {instance.dp_dibayar} [dp-create]',
+                )
+                _post_order_payment(
+                    order=instance,
+                    activity_log=_dp_log,
+                    actor=self.request.user,
+                    jumlah_bayar=_Decimal(str(instance.dp_dibayar)),
+                    is_dp=True,
+                )
 
     def _ensure_write_role(self):
         if self.request.user.role not in ('owner', 'manager', 'admin', 'kasir'):
@@ -557,6 +565,15 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         order.dp_dibayar += jumlah_bayar
         order.metode_pembayaran = metode
+
+        # T-202: Resolve accounting_payment_method dari metode_pembayaran string
+        from decimal import Decimal as _Decimal
+        from accounting.services.order_posting import (
+            post_order_payment_journal as _post_order_payment,
+            resolve_and_assign_order_payment_method as _resolve_order_pm,
+        )
+        _resolve_order_pm(order, metode)
+
         order._current_user = request.user
         order.save()
         payment_log = OrderActivityLog.objects.create(order=order, user=request.user, tindakan='PAYMENT', keterangan='Pembayaran %s [%s]' % (jumlah_bayar, idem or 'no-key'))
@@ -570,8 +587,6 @@ class OrderViewSet(viewsets.ModelViewSet):
         )
 
         # T-202: Posting ke accounting.JournalEntry (paralel, lazy import — DB5)
-        from decimal import Decimal as _Decimal
-        from accounting.services.order_posting import post_order_payment_journal as _post_order_payment
         _post_order_payment(
             order=order,
             activity_log=payment_log,

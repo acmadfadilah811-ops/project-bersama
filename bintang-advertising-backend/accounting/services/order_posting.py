@@ -67,6 +67,44 @@ def should_post_order_payment(order, jumlah_bayar: Decimal, payment_date=None) -
     return True, "OK"
 
 
+def resolve_and_assign_order_payment_method(order, metode_str: Optional[str] = None):
+    """
+    Resolve dan assign accounting_payment_method (FK ke accounting.PaymentMethod) untuk Order.
+    Meniru pola POS di api/pos_services.py:319-334.
+    Lookup urutan:
+    1. POSPaymentMethod (by nama__iexact / tipe__iexact) yang punya accounting_payment_method
+    2. PaymentMethod (by name__iexact)
+    3. PaymentMethod (by payment_type__iexact)
+    """
+    metode_str = (metode_str or getattr(order, "metode_pembayaran", "") or "").strip()
+    if not metode_str:
+        return order
+
+    if order.accounting_payment_method_id:
+        return order
+
+    from api.models import POSPaymentMethod
+    from ..models import PaymentMethod
+
+    pm_accounting = None
+
+    pos_pm = POSPaymentMethod.objects.filter(nama__iexact=metode_str).first()
+    if not pos_pm:
+        pos_pm = POSPaymentMethod.objects.filter(tipe__iexact=metode_str).first()
+    if pos_pm and pos_pm.accounting_payment_method_id:
+        pm_accounting = pos_pm.accounting_payment_method
+
+    if not pm_accounting:
+        pm_accounting = PaymentMethod.objects.filter(name__iexact=metode_str).first()
+    if not pm_accounting:
+        pm_accounting = PaymentMethod.objects.filter(payment_type__iexact=metode_str).first()
+
+    if pm_accounting:
+        order.accounting_payment_method = pm_accounting
+
+    return order
+
+
 def post_order_payment_journal(
     order,
     activity_log,
@@ -107,6 +145,12 @@ def post_order_payment_journal(
     ).exclude(status=JournalEntry.Status.VOID).first()
     if existing_entry:
         return existing_entry
+
+    # 2b. Auto-resolve payment method jika belum di-set pada instance Order
+    if not order.accounting_payment_method_id:
+        resolve_and_assign_order_payment_method(order)
+        if order.accounting_payment_method_id:
+            order.save(update_fields=["accounting_payment_method"])
 
     # 3. Gating check — skip tanpa error jika kondisi belum terpenuhi
     eligible, reason = should_post_order_payment(order, jumlah_bayar, payment_date)

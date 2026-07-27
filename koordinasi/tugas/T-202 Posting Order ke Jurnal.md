@@ -1,7 +1,7 @@
 ---
 id: T-202
 epik: "[[Integrasi Akuntansi-Orders]]"
-status: in_progress
+status: review
 agent: Antigravity
 prioritas: tinggi
 depends_on: []
@@ -211,3 +211,27 @@ npm run build: sukses (warning chunk size pre-existing)
 - (Rekomendasi, non-blocking) `transaction.atomic()` untuk blok DP-posting di `perform_create`.
 
 Sisanya (struktur kode, gating, idempotency, D=K, help_text, migration) sudah benar dan tidak perlu diulang — fokus perbaikan ke 2 poin di atas saja (U1, scope terkunci).
+
+---
+
+### REVISI IMPLEMENTASI (Resolusi Automatic PaymentMethod & Atomic DP) — siap review manager (2026-07-27)
+
+*(Status: revisi selesai dikerjakan, menunggu verifikasi independen manager)*
+
+#### Perbaikan yang Dilakukan:
+1. **Helper Resolusi PaymentMethod**: Menambahkan `resolve_and_assign_order_payment_method(order, metode_str)` di `accounting/services/order_posting.py` yang meniru persis pola POS di `api/pos_services.py:319-334` (lookup `POSPaymentMethod` nama/tipe -> `PaymentMethod` name/payment_type).
+2. **Integrasi Resolusi**:
+   - `api/views/orders.py:bayar()`: Panggil `_resolve_order_pm(order, metode)` sebelum `order.save()`.
+   - `api/views/orders.py:perform_create()`: Panggil `_resolve_order_pm(instance, metode)` dan update `accounting_payment_method` sebelum posting.
+   - `accounting/services/order_posting.py:post_order_payment_journal()`: Auto-resolve secara defensif jika `order.accounting_payment_method_id` belum ter-set.
+3. **Atomic Transaction DP**: Membungkus blok posting DP di `perform_create()` dengan `with transaction.atomic():` (M5).
+4. **Pengujian Baru**:
+   - `test_bayar_auto_resolves_payment_method_without_fixture_preset`: Membuat Order tanpa FK di fixture, memanggil `/bayar/` via API dengan `"tunai"`, meng-assert FK ter-resolve otomatis DAN `JournalEntry` terbuat dengan status `POSTED`.
+   - `test_perform_create_dp_auto_resolves_payment_method`: Membuat Order dengan DP via API POST `/api/orders/`, meng-assert FK ter-resolve otomatis DAN `JournalEntry` DP terbuat.
+   - Total test suite `accounting.tests_order_posting`: 15/15 passed (100% pass).
+
+#### Hasil Test Run:
+```
+python manage.py test accounting.tests_order_posting: 15 passed, 0 failed
+python manage.py test api accounting: 162 tests (159 passed, 2 failed + 1 error pre-existing, 0 regresi baru)
+```

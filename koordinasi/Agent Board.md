@@ -35,7 +35,7 @@ Satu-satunya papan status untuk semua pekerjaan agent. Cara pakai ada di [[Proto
 | ID | Task | Status | Agent | Prioritas | Depends on |
 |---|---|---|---|---|---|
 | [[T-201 Verifikasi alur Order-Jurnal\|T-201]] | ✅ Verifikasi alur Order→Jurnal — **done** (manager). Order 100% belum terhubung ke `accounting.JournalEntry`; `DaftarPiutang.jsx` ternyata mock data (bukan dual-source) | `done` ✅ | Claude (manager) | tinggi | — |
-| [[T-202 Posting Order ke Jurnal\|T-202]] | **[DIKEMBALIKAN — FIX DIPERLUKAN]** Implementasi ditolak manager: `Order.accounting_payment_method` tidak pernah di-resolve dari `metode_pembayaran` (beda dari POS di `pos_services.py`) — posting akan selalu skip di produksi. Lihat §Review Manager di note task | `in_progress` | Antigravity | **tinggi** | — |
+| [[T-202 Posting Order ke Jurnal\|T-202]] | Posting pembayaran Order (DP/pelunasan) ke JournalEntry — revisi resolusi PaymentMethod & atomic DP selesai, siap review | `review` | Antigravity | **tinggi** | — |
 | T-203 | Edge case DP/pelunasan: diskon, kupon, pembulatan | `backlog` | — | sedang | T-202 |
 | T-204 | HPP order (bahan baku via JobBoard) → jurnal HPP — `production_costing.py` sudah ada kalkulasinya | `backlog` | — | sedang | T-202 |
 | T-205 | Test integrasi Orders-akuntansi end-to-end | `backlog` | — | tinggi | T-202, T-203, T-204 |
