@@ -8,7 +8,7 @@ from .product_models import (
     StockInDocument, StockInDocumentItem, StockOutDocument, StockOutDocumentItem,
     StockProductionDocument, StockProductionDocumentItem,
     StockOpnameDocument, StockOpnameDocumentItem,
-    Purchase, PurchaseItem, PurchasePayment
+    Purchase, PurchaseItem, PurchasePayment, PurchaseAttachment
 )
 
 class ProductCategorySerializer(serializers.ModelSerializer):
@@ -263,9 +263,34 @@ class PurchasePaymentSerializer(serializers.ModelSerializer):
         read_only_fields = ['purchase', 'dibuat_oleh']
 
 
+class PurchaseAttachmentSerializer(serializers.ModelSerializer):
+    nama = serializers.SerializerMethodField()
+    file_url = serializers.SerializerMethodField()
+    ukuran = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PurchaseAttachment
+        fields = ['id', 'nama', 'file', 'file_url', 'ukuran', 'created_at']
+        read_only_fields = fields
+
+    def get_nama(self, obj):
+        return obj.file.name.rsplit('/', 1)[-1] if obj.file else ''
+
+    def get_file_url(self, obj):
+        if not obj.file:
+            return None
+        request = self.context.get('request')
+        url = obj.file.url
+        return request.build_absolute_uri(url) if request else url
+
+    def get_ukuran(self, obj):
+        return obj.file.size if obj.file else 0
+
+
 class PurchaseSerializer(serializers.ModelSerializer):
     items = PurchaseItemSerializer(many=True, read_only=True)
     payments = PurchasePaymentSerializer(many=True, read_only=True)
+    attachments = PurchaseAttachmentSerializer(many=True, read_only=True)
     dibuat_oleh_nama = serializers.ReadOnlyField(source='dibuat_oleh.username')
     dibuat_oleh_email = serializers.SerializerMethodField()
     # Field turunan untuk layar detail & tabel — dihitung dari item & pembayaran.
@@ -279,6 +304,7 @@ class PurchaseSerializer(serializers.ModelSerializer):
     supplier_alamat = serializers.SerializerMethodField()
     # Nomor PO asal untuk dokumen retur.
     retur_ref_nomor = serializers.ReadOnlyField(source='retur_ref.nomor')
+    retur_ref_details = serializers.SerializerMethodField()
 
     class Meta:
         model = Purchase
@@ -305,6 +331,37 @@ class PurchaseSerializer(serializers.ModelSerializer):
 
     def get_supplier_alamat(self, obj):
         return obj.supplier_ref.alamat if obj.supplier_ref else ''
+
+    def get_retur_ref_details(self, obj):
+        if not obj.retur_ref:
+            return None
+        ref = obj.retur_ref
+        items = list(ref.items.select_related('product', 'variant').all())
+        total_qty = sum((it.qty for it in items), start=0)
+        return {
+            'id': ref.id,
+            'nomor': ref.nomor,
+            'tanggal': ref.tanggal,
+            'payment_status': ref.payment_status,
+            'total': ref.total,
+            'total_qty': total_qty,
+            'items': [
+                {
+                    'id': it.id,
+                    'product': it.product_id,
+                    'product_nama': it.product.nama if it.product else '',
+                    'product_sku': it.product.sku if it.product else '',
+                    'product_satuan': it.product.satuan if it.product else '',
+                    'variant': it.variant_id,
+                    'variant_nama': it.variant.nama_varian if it.variant else None,
+                    'qty': it.qty,
+                    'harga_beli': it.harga_beli,
+                    'subtotal': it.subtotal,
+                    'uom_kode': it.uom_kode,
+                }
+                for it in items
+            ]
+        }
 
 
 class StockOutDocumentItemSerializer(serializers.ModelSerializer):

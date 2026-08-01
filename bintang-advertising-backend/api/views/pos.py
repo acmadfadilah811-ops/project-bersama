@@ -1,9 +1,10 @@
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.db import transaction
-from django.db.models import Q, Sum
+from django.db.models import Q
 from decimal import Decimal, InvalidOperation
 from django.utils import timezone
 
@@ -13,6 +14,7 @@ from ..serializers import (
     POSPaymentMethodSerializer,
 )
 from ..permissions import IsOwnerManagerAdminOrReadOnly, IsOwnerManagerAdminOrKasir
+from ..services.shift_summary import calculate_shift_cash_summary
 
 
 class POSPaymentMethodViewSet(viewsets.ModelViewSet):
@@ -32,6 +34,28 @@ class SaldoKasHarianViewSet(viewsets.ModelViewSet):
     serializer_class = SaldoKasHarianSerializer
     permission_classes = [IsAuthenticated, IsOwnerManagerAdminOrKasir]
     http_method_names = ['get', 'post', 'head', 'options']
+
+    def create(self, request, *args, **kwargs):
+        """Satu kasir aktif dalam satu waktu (ganti operator = bergantian,
+        bukan paralel) — mesin kasir fisiknya cuma satu. Dikunci di server
+        (row-lock) supaya dua kasir tidak bisa sama-sama buka shift meski
+        lewat device/tab berbeda; sebelumnya tidak ada penegakan sama sekali.
+        """
+        with transaction.atomic():
+            shift_terbuka = (
+                SaldoKasHarian.objects.select_for_update()
+                .filter(kas_akhir__isnull=True, waktu_tutup__isnull=True)
+                .select_related('kasir')
+                .first()
+            )
+            if shift_terbuka:
+                nama = shift_terbuka.kasir.get_full_name() or shift_terbuka.kasir.username
+                raise ValidationError({
+                    'error': f'Shift masih dibuka oleh {nama}. Tutup shift tersebut dulu '
+                             f'sebelum ganti operator / buka shift baru — satu kasir aktif '
+                             f'dalam satu waktu.'
+                })
+            return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         serializer.save(kasir=self.request.user, waktu_buka=timezone.now())
@@ -66,9 +90,6 @@ class SaldoKasHarianViewSet(viewsets.ModelViewSet):
         Dihitung di server agar angka rekonsiliasi tidak bisa dimanipulasi dari
         browser. `selisih` dihitung otomatis oleh RingkasanShift.save().
         """
-        from ..pos_models import POSSale
-        from ..finance_models import CashTransaction
-
         shift = SaldoKasHarian.objects.select_for_update().get(pk=pk)
         if request.user.role == 'kasir' and shift.kasir_id != request.user.id:
             return Response({'error': 'Anda hanya dapat menutup shift sendiri.'}, status=403)
@@ -83,25 +104,7 @@ class SaldoKasHarianViewSet(viewsets.ModelViewSet):
         sekarang = timezone.now()
         mulai = shift.waktu_buka or sekarang
 
-        # Metode yang dihitung sebagai tunai: yang bertipe 'Tunai' di master
-        # metode pembayaran, plus nama bawaan 'cash'/'tunai'.
-        nama_tunai = {
-            (n or '').lower()
-            for n in POSPaymentMethod.objects.filter(tipe='Tunai').values_list('nama', flat=True)
-        }
-        nama_tunai |= {'cash', 'tunai'}
-
-        tunai = Decimal('0')
-        for s in POSSale.objects.filter(shift=shift, status='paid'):
-            if (s.metode_bayar or '').lower() in nama_tunai:
-                tunai += Decimal(str(s.total or 0))
-
-        tx = CashTransaction.objects.filter(shift=shift)
-        masuk = tx.filter(arah='pendapatan').aggregate(t=Sum('jumlah'))['t'] or Decimal('0')
-        keluar = tx.filter(arah='pengeluaran').aggregate(t=Sum('jumlah'))['t'] or Decimal('0')
-
-        kas_awal = Decimal(str(shift.kas_awal or 0))
-        expected = kas_awal + tunai + masuk - keluar
+        rincian = calculate_shift_cash_summary(shift)
 
         shift.kas_akhir = kas_akhir
         shift.waktu_tutup = sekarang
@@ -111,18 +114,19 @@ class SaldoKasHarianViewSet(viewsets.ModelViewSet):
         ringkasan = RingkasanShift.objects.create(
             tanggal=shift.tanggal, kasir=shift.kasir,
             mulai=mulai, berakhir=sekarang,
-            expected=expected, aktual=kas_akhir,
+            expected=rincian['expected'], aktual=kas_akhir,
+            rincian_tersedia=True,
+            kas_awal=rincian['kas_awal'],
+            penjualan_tunai=rincian['penjualan_tunai'],
+            kas_masuk=rincian['kas_masuk'],
+            kas_keluar=rincian['kas_keluar'],
         )
 
         return Response({
             'shift': SaldoKasHarianSerializer(shift).data,
             'ringkasan': RingkasanShiftSerializer(ringkasan).data,
             'rincian': {
-                'kas_awal': kas_awal,
-                'penjualan_tunai': tunai,
-                'kas_masuk': masuk,
-                'kas_keluar': keluar,
-                'expected': expected,
+                **rincian,
                 'aktual': kas_akhir,
                 'selisih': ringkasan.selisih,
             },

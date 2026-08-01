@@ -523,7 +523,9 @@ export default function HutangJurnalTunggal() {
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <h4 className="text-sm font-bold text-slate-800">Draf Jurnal</h4>
             <button
+              type="button"
               disabled={drafts.length === 0}
+              onClick={() => window.print()}
               className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 border text-[10px] uppercase tracking-wide ${
                 drafts.length > 0
                   ? 'bg-white border-slate-200 text-slate-605 hover:bg-slate-50 cursor-pointer shadow-3xs'

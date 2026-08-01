@@ -1,20 +1,10 @@
 import { X } from 'lucide-react';
 import { useState } from 'react';
-import { notify } from '../../../../utils/notify';
 
 export default function ProduksiStokSettingsDrawer({ isOpen, onClose }) {
   const [noCogs, setNoCogs] = useState(false);
 
   if (!isOpen) return null;
-
-  const handleSave = () => {
-    notify({
-      type: 'success',
-      title: 'Pengaturan Disimpan',
-      message: 'Pengaturan POS Transaksi Stok berhasil disimpan.'
-    });
-    onClose();
-  };
 
   return (
     <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-end z-[999] animate-fade-in text-xs font-semibold text-slate-700">
@@ -36,6 +26,7 @@ export default function ProduksiStokSettingsDrawer({ isOpen, onClose }) {
 
         {/* Scrollable Body */}
         <div className="flex-1 p-5 overflow-y-auto space-y-6">
+          <p className="rounded-lg bg-amber-50 p-3 text-[11px] font-medium text-amber-700">Pengaturan belum terhubung ke backend dan tidak dapat disimpan.</p>
           
           <div className="space-y-4">
             {/* Collapsible header area */}
@@ -79,11 +70,7 @@ export default function ProduksiStokSettingsDrawer({ isOpen, onClose }) {
           >
             Batal
           </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            className="px-6 py-2 bg-[#0088E8] hover:bg-[#0077CC] text-white rounded-lg text-xs font-bold cursor-pointer transition-colors shadow-2xs"
-          >
+          <button type="button" disabled className="cursor-not-allowed rounded-lg bg-slate-200 px-6 py-2 text-xs font-bold text-slate-400 shadow-2xs">
             Simpan
           </button>
         </div>

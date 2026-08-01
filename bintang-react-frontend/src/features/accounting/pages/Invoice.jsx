@@ -22,6 +22,32 @@ const INVOICE_TYPE_OPTIONS = [
   'Jurnal umum',
 ];
 
+// Peta label kategori (Bahasa Indonesia, dari UI Olsera) ke kontrak asli
+// backend (`JournalEntry.source_type` + `reversed_entry`/`description`).
+// Retur = jurnal pembalik (reversed_entry terisi) dari source_type asalnya —
+// sistem ini tidak membedakan "retur barang" vs "pembayaran retur" sebagai
+// source_type terpisah, jadi 2 label itu sengaja dipetakan ke query yang sama.
+// Pemasukan/Pengeluaran dibedakan dari awalan description
+// (`post_cash_transaction_journal()` selalu menulis "Pendapatan "/"Pengeluaran ").
+const TYPE_FILTER_MAP = {
+  'Penjualan': { source_type: 'pos_sale' },
+  'Pembayaran penjualan': { source_type: 'order_payment' },
+  'Retur penjualan': { source_type: 'pos_sale,order_payment', is_reversal: true },
+  'Pembayaran retur penjualan': { source_type: 'pos_sale,order_payment', is_reversal: true },
+  'Pembelian': { source_type: 'purchase' },
+  'Pembayaran pembelian': { source_type: 'purchase_payment' },
+  'Retur pembelian': { source_type: 'purchase,purchase_payment', is_reversal: true },
+  'Pembayaran retur pembelian': { source_type: 'purchase,purchase_payment', is_reversal: true },
+  'Pemasukan': { source_type: 'cash_transaction', description_prefix: 'Pendapatan' },
+  'Pengeluaran': { source_type: 'cash_transaction', description_prefix: 'Pengeluaran' },
+  'Stok opname': { source_type: 'stock_opname' },
+  'Stok masuk': { source_type: 'stock_in' },
+  'Stok keluar': { source_type: 'stock_out' },
+  'Produk inventori': { source_type: 'production' },
+  'Transfer modal': { source_type: 'capital_transfer' },
+  'Jurnal umum': { source_type: 'manual' },
+};
+
 const PRESET_OPTIONS = [
   'Hari ini',
   'Kemarin',
@@ -144,11 +170,11 @@ export default function Invoice() {
     setLoading(true);
     try {
       const params = {
-        type: selectedType,
-        start_date: startDate,
-        end_date: endDate,
+        date_from: startDate,
+        date_to: endDate,
         page: currentPage,
         page_size: pageSize,
+        ...TYPE_FILTER_MAP[selectedType],
       };
       const res = await apiClient.get('/accounting/journal-entries/', { params });
       const results = res.data?.results || res.data || [];
@@ -252,23 +278,27 @@ export default function Invoice() {
                   </td>
                 </tr>
               ) : (
-                data.map((row, idx) => (
-                  <tr key={row.id || idx} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="py-3.5 px-6">
-                      {row.tanggal || row.created_at ? dayjs(row.tanggal || row.created_at).format('DD-MM-YYYY') : '-'}
-                    </td>
-                    <td className="py-3.5 px-6 font-semibold text-slate-800">
-                      {row.no_invoice || row.entry_number || row.invoice_number || '-'}
-                    </td>
-                    <td className="py-3.5 px-6">{row.transaksi || row.description || selectedType}</td>
-                    <td className="py-3.5 px-6 text-right font-medium">
-                      {formatCurrency(row.nilai_debit ?? row.debit ?? 0)}
-                    </td>
-                    <td className="py-3.5 px-6 text-right font-medium">
-                      {formatCurrency(row.nilai_kredit ?? row.kredit ?? 0)}
-                    </td>
-                  </tr>
-                ))
+                data.map((row, idx) => {
+                  const totalDebit = (row.lines || []).reduce((sum, line) => sum + Number(line.debit || 0), 0);
+                  const totalKredit = (row.lines || []).reduce((sum, line) => sum + Number(line.kredit || 0), 0);
+                  return (
+                    <tr key={row.id || idx} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="py-3.5 px-6">
+                        {row.date ? dayjs(row.date).format('DD-MM-YYYY') : '-'}
+                      </td>
+                      <td className="py-3.5 px-6 font-semibold text-slate-800">
+                        {row.entry_number || '-'}
+                      </td>
+                      <td className="py-3.5 px-6">{row.description || row.source_type_label || selectedType}</td>
+                      <td className="py-3.5 px-6 text-right font-medium">
+                        {formatCurrency(totalDebit)}
+                      </td>
+                      <td className="py-3.5 px-6 text-right font-medium">
+                        {formatCurrency(totalKredit)}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

@@ -170,6 +170,38 @@ class OrderStatusActionsTestCase(APITestCase):
         denied_res = self.client.patch(f"/api/pengembalian/{retur.id}/", {"status": "Batal"})
         self.assertEqual(denied_res.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_pengembalian_locked_after_dikonfirmasi(self):
+        """Data return terkunci setelah Dikonfirmasi; hanya toggle balik ke
+        Tunda (aksi Batal Post di daftar) yang tetap diizinkan."""
+        from api.models import PengembalianOrder
+
+        retur = PengembalianOrder.objects.create(
+            order=self.order_selesai, status="Dikonfirmasi",
+            catatan="Sudah oke", nominal_refund=20000, dibuat_oleh=self.kasir_user,
+        )
+
+        edit_catatan = self.client.patch(f"/api/pengembalian/{retur.id}/", {"catatan": "Coba ubah"})
+        self.assertEqual(edit_catatan.status_code, status.HTTP_400_BAD_REQUEST)
+
+        edit_status_lain = self.client.patch(f"/api/pengembalian/{retur.id}/", {"status": "Batal"})
+        self.assertEqual(edit_status_lain.status_code, status.HTTP_400_BAD_REQUEST)
+
+        unconfirm = self.client.patch(f"/api/pengembalian/{retur.id}/", {"status": "Tunda"})
+        self.assertEqual(unconfirm.status_code, status.HTTP_200_OK)
+        retur.refresh_from_db()
+        self.assertEqual(retur.status, "Tunda")
+
+    def test_pengembalian_locked_after_batal(self):
+        from api.models import PengembalianOrder
+
+        retur = PengembalianOrder.objects.create(
+            order=self.order_selesai, status="Batal",
+            catatan="Ditolak", nominal_refund=0, dibuat_oleh=self.kasir_user,
+        )
+
+        response = self.client.patch(f"/api/pengembalian/{retur.id}/", {"status": "Tunda"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
     # ── T-210 Tahap 3: POST /orders/:id/retur/ ────────────────────────────────
 
     def test_retur_endpoint_creates_pengembalian_order(self):

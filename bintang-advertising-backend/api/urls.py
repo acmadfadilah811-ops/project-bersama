@@ -6,9 +6,12 @@ from .export_views import ExportOrdersView, ExportInventoryView, ExportJobsView,
 from . import product_views
 from . import production_views
 from . import marketing_views
+from .marketing_views import PromoPreviewView
 from . import customer_views
 from . import finance_views
 from .report_views import ReportDataView, ReportExportView
+from .views.purchase_workflow import PurchaseWorkflowView
+from .views.purchase_reports import PurchaseReportView
 
 router = DefaultRouter()
 
@@ -83,6 +86,7 @@ router.register(r'pos/sales', pos_views.POSSaleViewSet, basename='pos-sale')
 
 
 urlpatterns = [
+    path('purchases/<int:pk>/workflow/<str:action>/', PurchaseWorkflowView.as_view(), name='purchase-workflow'),
     path('contacts/stats/', ContactStatsView.as_view(), name='contact-stats'),
     # BE-24: endpoint sempit papan produksi (nama + no. WA saja, tanpa finansial).
     path('contacts/production-lite/', ProductionCustomerLiteView.as_view(), name='contact-production-lite'),
@@ -115,6 +119,7 @@ urlpatterns = [
 
     # Reports Endpoints
     path('reports/staff-performance/', StaffPerformanceReportView.as_view(), name='staff-performance-report'),
+    path('reports/purchases/<str:report_id>/', PurchaseReportView.as_view(), name='purchase-report-data'),
     # Laporan generik — HARUS setelah route reports/ yang spesifik di atas,
     # karena <str:report_id> akan menangkap segmen apa pun.
     path('reports/<str:report_id>/export/', ReportExportView.as_view(), name='report-export'),
@@ -148,4 +153,7 @@ urlpatterns = [
 
     # Health check
     path('health/', HealthCheckView.as_view(), name='health-check'),
+
+    # Promo Preview (pratinjau kupon + diskon penjualan tanpa menyimpan)
+    path('promo/preview/', PromoPreviewView.as_view(), name='promo-preview'),
 ]

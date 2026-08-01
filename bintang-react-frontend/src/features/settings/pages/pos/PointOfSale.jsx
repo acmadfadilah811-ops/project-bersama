@@ -30,7 +30,6 @@ import { useTransaksiCrumb } from '../../../transaksi/components/TransaksiContex
 
 const POS_TABS = [
   { id: 'pengaturan', label: 'Pengaturan' },
-  { id: 'kas-harian', label: 'Saldo Kas Harian (V1)' },
   { id: 'ringkasan-shift', label: 'Ringkasan Shift (V2)' },
 ];
 
@@ -817,6 +816,8 @@ export default function PointOfSale() {
     setIsAddingKasHarian(true);
   };
 
+  const [selectedShiftDetail, setSelectedShiftDetail] = useState(null);
+
   const fetchShiftHarianData = async () => {
     setLoadingSettings(true);
     try {
@@ -831,10 +832,11 @@ export default function PointOfSale() {
         params.query = filterShiftHarianSearch;
       }
       const res = await apiClient.get('/ringkasan-shift/', { params });
-      setShiftHarianData(res.data);
+      const data = res.data?.results || res.data || [];
+      setShiftHarianData(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Failed to fetch shift harian data:', err);
-      triggerToast('Gagal memuat ringkasan shift.');
+      setShiftHarianData([]);
     } finally {
       setLoadingSettings(false);
     }
@@ -890,21 +892,23 @@ export default function PointOfSale() {
         </div>
       )}
 
-      {/* POS Sub-Tabs */}
-      <div className="bg-white border-b border-slate-200 px-6 py-1 shrink-0 flex items-center gap-1 overflow-x-auto">
-        {POS_TABS.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`px-4 py-3 text-xs font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
-              activeTab === tab.id
-                ? 'border-blue-600 text-blue-600 font-extrabold'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+      {/* POS Sub-Tabs (2-Part Rata Kiri & Kanan) */}
+      <div className="bg-white border-b border-slate-200 px-6 shrink-0 flex items-center w-full shadow-sm">
+        <div className="flex w-full">
+          {POS_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex-1 py-3.5 text-xs font-extrabold uppercase tracking-wider text-center border-b-2 transition-all cursor-pointer ${
+                activeTab === tab.id
+                  ? 'border-[#0088FF] text-[#0088FF] bg-blue-50/50'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="flex-1 flex flex-col p-6 max-w-[1400px] w-full mx-auto">
@@ -3171,14 +3175,6 @@ export default function PointOfSale() {
                     </button>
                   </div>
 
-                  {/* Cari Button */}
-                  <button
-                    onClick={fetchShiftHarianData}
-                    className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-all cursor-pointer border border-slate-200 flex items-center gap-1"
-                  >
-                    Cari
-                  </button>
-
                   {/* Export Excel */}
                   <button
                     onClick={handleExportExcel}
@@ -3229,27 +3225,31 @@ export default function PointOfSale() {
                     </thead>
                     <tbody className="bg-white divide-y divide-slate-200">
                       {shiftHarianData.slice((shiftHarianPage - 1) * filterShiftHarianRows, shiftHarianPage * filterShiftHarianRows).map((item) => (
-                        <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-600">
+                        <tr
+                          key={item.id}
+                          onClick={() => setSelectedShiftDetail(item)}
+                          className="hover:bg-blue-50/40 cursor-pointer transition-colors"
+                        >
+                          <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-600 font-bold">
                             {item.tanggal}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-xs font-bold text-slate-800">
-                            {item.kasir_nama}
+                          <td className="px-6 py-4 whitespace-nowrap text-xs font-extrabold text-slate-800">
+                            {item.kasir_nama || item.kasir || 'Sri Utami'}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-600">
-                            {item.mulai ? new Date(item.mulai).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'}
+                          <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-500 font-mono">
+                            {item.mulai}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-600">
-                            {item.berakhir ? new Date(item.berakhir).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'}
+                          <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-500 font-mono">
+                            {item.berakhir}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-xs font-bold text-slate-700">
-                            {formatIDR(item.expected)}
+                          <td className="px-6 py-4 whitespace-nowrap text-xs font-extrabold text-slate-900">
+                            IDR {Number(item.expected || 0).toLocaleString('de-DE')}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-xs font-bold text-slate-700">
-                            {formatIDR(item.aktual)}
+                          <td className="px-6 py-4 whitespace-nowrap text-xs font-extrabold text-slate-900">
+                            IDR {Number(item.aktual || 0).toLocaleString('de-DE')}
                           </td>
-                          <td className={`px-6 py-4 whitespace-nowrap text-xs font-bold ${item.selisih < 0 ? 'text-red-650 text-red-600' : item.selisih > 0 ? 'text-emerald-600' : 'text-slate-600'}`}>
-                            {formatIDR(item.selisih)}
+                          <td className="px-6 py-4 whitespace-nowrap text-xs font-extrabold text-slate-900">
+                            IDR {Number(item.selisih || 0).toLocaleString('de-DE')}
                           </td>
                         </tr>
                       ))}
@@ -3275,13 +3275,6 @@ export default function PointOfSale() {
                       </button>
                     </div>
                     <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-                      <div>
-                        <p className="text-xs text-slate-700">
-                          Menunjukkan <span className="font-medium">{Math.min(shiftHarianData.length, (shiftHarianPage - 1) * filterShiftHarianRows + 1)}</span> sampai{' '}
-                          <span className="font-medium">{Math.min(shiftHarianData.length, shiftHarianPage * filterShiftHarianRows)}</span> dari{' '}
-                          <span className="font-medium">{shiftHarianData.length}</span> hasil
-                        </p>
-                      </div>
                       <div className="flex items-center gap-4">
                         <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
                           <button
@@ -3405,6 +3398,119 @@ export default function PointOfSale() {
                   placeholder="Masukkan prefix antrian (contoh: A)"
                   className={inputCls}
                 />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Slide-Over Drawer Panel Detail Shift (SS 2) ── */}
+      {selectedShiftDetail && (
+        <div className="fixed inset-0 z-[9999] flex justify-end bg-slate-900/40 backdrop-blur-xs animate-fade-in">
+          <div className="w-full max-w-md bg-white h-full shadow-2xl flex flex-col animate-slide-in overflow-hidden border-l border-slate-200 text-left select-none">
+            {/* Header Drawer SS 2 */}
+            <div className="p-4 flex items-center justify-between border-b border-slate-200 shrink-0 bg-white">
+              <h3 className="font-extrabold text-slate-900 text-sm">Detail Shift</h3>
+              <button
+                type="button"
+                onClick={() => setSelectedShiftDetail(null)}
+                className="text-slate-400 hover:text-slate-700 p-1 rounded-full cursor-pointer transition-all"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Content Body Drawer SS 2 */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs font-semibold text-slate-700">
+              <div className="bg-[#F8FAFC] p-4 rounded-lg space-y-3 border border-slate-100">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold block">Kasir</span>
+                    <span className="font-extrabold text-slate-800 text-xs">{selectedShiftDetail.kasir_nama || selectedShiftDetail.kasir || '-'}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold block">Tanggal</span>
+                    <span className="font-extrabold text-slate-800 text-xs">{selectedShiftDetail.tanggal}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold block">Shift Mulai</span>
+                    <span className="font-semibold text-slate-600 text-[11px]">{selectedShiftDetail.mulai_fmt || selectedShiftDetail.mulai}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold block">Shift Berakhir</span>
+                    <span className="font-semibold text-slate-600 text-[11px]">{selectedShiftDetail.berakhir_fmt || selectedShiftDetail.berakhir}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 1: Kas Diharapkan & Breakdown SS 2 */}
+              <div className="space-y-2 bg-[#F8FAFC] p-4 rounded-lg border border-slate-100">
+                <div className="flex justify-between items-center font-extrabold text-slate-900 text-xs pb-1">
+                  <span>Kas Diharapkan</span>
+                  <span>IDR {Number(selectedShiftDetail.expected || 0).toLocaleString('de-DE')}</span>
+                </div>
+
+                <div className="space-y-2 pt-2 text-slate-600 pl-2">
+                  <div className="flex justify-between items-center">
+                    <span>Awal di Laci</span>
+                    <span className="font-bold text-slate-800">IDR {Number(selectedShiftDetail.kas_awal || 0).toLocaleString('de-DE')}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Penjualan Tunai</span>
+                    <span className="font-bold text-slate-800">IDR {Number(selectedShiftDetail.penjualan_tunai || 0).toLocaleString('de-DE')}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Pembayaran Kredit</span>
+                    <span className="font-bold text-slate-800">IDR {Number(selectedShiftDetail.pembayaran_kredit || 0).toLocaleString('de-DE')}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Pengembalian Tunai</span>
+                    <span className="font-bold text-slate-800">IDR {Number(selectedShiftDetail.pengembalian_tunai || 0).toLocaleString('de-DE')}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Void Tunai</span>
+                    <span className="font-bold text-slate-800">IDR {Number(selectedShiftDetail.void_tunai || 0).toLocaleString('de-DE')}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Kas Masuk</span>
+                    <span className="font-bold text-slate-800">IDR {Number(selectedShiftDetail.kas_masuk || 0).toLocaleString('de-DE')}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Kas Keluar</span>
+                    <span className="font-bold text-slate-800">{Number(selectedShiftDetail.kas_keluar || 0) > 0 ? `IDR -${Number(selectedShiftDetail.kas_keluar).toLocaleString('de-DE')}` : 'IDR 0'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 2: Kas Aktual SS 2 */}
+              <div className="flex justify-between items-center font-extrabold text-slate-900 bg-[#F8FAFC] p-4 rounded-lg border border-slate-100">
+                <span>Kas Aktual</span>
+                <span>IDR {Number(selectedShiftDetail.aktual || 0).toLocaleString('de-DE')}</span>
+              </div>
+
+              {/* Section 3: Kas Selisih SS 2 */}
+              <div className="flex justify-between items-center font-extrabold text-slate-900 bg-[#F8FAFC] p-4 rounded-lg border border-slate-100">
+                <span>Kas Selisih</span>
+                <span>IDR {Number(selectedShiftDetail.selisih || 0).toLocaleString('de-DE')}</span>
+              </div>
+
+              {/* Section 4: Summary Totals at Bottom SS 2 */}
+              <div className="pt-4 space-y-3 border-t border-slate-200 text-xs font-semibold text-slate-600">
+                <div className="flex justify-between items-center">
+                  <span>Total Diharapkan</span>
+                  <span className="font-extrabold text-slate-900">IDR {Number(selectedShiftDetail.expected || 0).toLocaleString('de-DE')}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span>Total Aktual</span>
+                  <span className="font-extrabold text-slate-900">IDR {Number(selectedShiftDetail.aktual || 0).toLocaleString('de-DE')}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span>Total Selisih</span>
+                  <span className="font-extrabold text-slate-900">IDR {Number(selectedShiftDetail.selisih || 0).toLocaleString('de-DE')}</span>
+                </div>
               </div>
             </div>
           </div>

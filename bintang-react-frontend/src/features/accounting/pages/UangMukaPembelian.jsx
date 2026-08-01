@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronDown, ChevronLeft, ChevronRight, Search, Calendar, Check } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Search, Calendar, Check, Loader2 } from 'lucide-react';
 import { notify } from '../../../utils/notify';
+import { fetchAllPages } from '../../../utils/paginatedApi';
 
 // Helper to format date to DD-MM-YYYY or DD MMM YY
 const formatDateLabel = (dateStr) => {
@@ -13,30 +14,41 @@ const formatDateLabel = (dateStr) => {
   return `${day} ${month} ${year}`;
 };
 
+const toDateStr = (d) => d.toISOString().split('T')[0];
+const getTodayStr = () => toDateStr(new Date());
+const getDaysAgoStr = (days) => {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return toDateStr(d);
+};
+
 export default function UangMukaPembelian() {
+  const now = new Date();
   const [searchQuery, setSearchQuery] = useState('');
   const [dpStatus, setDpStatus] = useState('Digunakan Sebagian'); // 'Tidak Digunakan' | 'Digunakan Sebagian' | 'Digunakan'
-  
+
   // Date Picker states
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [selectedRange, setSelectedRange] = useState('Custom Range'); // Predefined range label
-  const [dateFrom, setDateFrom] = useState('2026-07-20');
-  const [dateTo, setDateTo] = useState('2026-07-26');
-  
+  const [dateFrom, setDateFrom] = useState(getDaysAgoStr(7));
+  const [dateTo, setDateTo] = useState(getTodayStr());
+
   // Calendar month views
-  const [leftMonth, setLeftMonth] = useState(6); // July (0-indexed)
-  const [leftYear, setLeftYear] = useState(2026);
-  const [rightMonth, setRightMonth] = useState(7); // August
-  const [rightYear, setRightYear] = useState(2026);
-  
+  const [leftMonth, setLeftMonth] = useState(now.getMonth());
+  const [leftYear, setLeftYear] = useState(now.getFullYear());
+  const [rightMonth, setRightMonth] = useState((now.getMonth() + 1) % 12);
+  const [rightYear, setRightYear] = useState(now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear());
+
   // Selection temp state for custom range calendar
-  const [tempFrom, setTempFrom] = useState('2026-07-20');
-  const [tempTo, setTempTo] = useState('2026-07-26');
+  const [tempFrom, setTempFrom] = useState(getDaysAgoStr(7));
+  const [tempTo, setTempTo] = useState(getTodayStr());
   const [hoveredDate, setHoveredDate] = useState(null);
 
   // Limit page sizes
   const [pageSize, setPageSize] = useState(15);
   const [isPageSizeOpen, setIsPageSizeOpen] = useState(false);
+  const [advancePayments, setAdvancePayments] = useState([]);
+  const [loading, setLoading] = useState(true);
   
   const datePickerRef = useRef(null);
   const pageSizeRef = useRef(null);
@@ -54,15 +66,70 @@ export default function UangMukaPembelian() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    const loadAdvancePayments = async () => {
+      setLoading(true);
+      try {
+        const purchases = await fetchAllPages('/purchases/');
+        const rows = purchases.flatMap((purchase) => (purchase.payments || []).map((payment) => ({
+          id: `${purchase.id}-${payment.id}`,
+          date: payment.tanggal,
+          transaction: purchase.nomor || `PUR-${purchase.id}`,
+          description: payment.catatan || `Uang muka pembelian - ${purchase.supplier || 'Supplier'}`,
+          supplier: purchase.supplier || 'Supplier',
+          amount: Number(payment.nominal || 0),
+          createdBy: payment.dibuat_oleh_nama || purchase.dibuat_oleh_nama || 'Sistem',
+          status: purchase.payment_status === 'lunas'
+            ? 'Digunakan'
+            : purchase.payment_status === 'sebagian'
+              ? 'Digunakan Sebagian'
+              : 'Tidak Digunakan',
+        })));
+        if (active) setAdvancePayments(rows);
+      } catch (error) {
+        if (active) {
+          setAdvancePayments([]);
+          notify({ type: 'error', title: 'Gagal Memuat Uang Muka', message: 'Data pembayaran pembelian tidak dapat dimuat dari server.' });
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    loadAdvancePayments();
+    return () => { active = false; };
+  }, []);
+
+  const filteredPayments = advancePayments.filter((payment) => {
+    if (dpStatus && payment.status !== dpStatus) return false;
+    if (dateFrom && payment.date < dateFrom) return false;
+    if (dateTo && payment.date > dateTo) return false;
+    const query = searchQuery.trim().toLowerCase();
+    return !query || [payment.transaction, payment.description, payment.supplier]
+      .some((value) => String(value).toLowerCase().includes(query));
+  });
+  const visiblePayments = filteredPayments.slice(0, pageSize);
+  const formatIDR = (value) => `Rp ${(Number(value) || 0).toLocaleString('id-ID')}`;
+
   // Predefined ranges list
+  const monthStart = (monthsAgo) => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - monthsAgo, 1);
+    return toDateStr(d);
+  };
+  const monthEnd = (monthsAgo) => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - monthsAgo + 1, 0);
+    return toDateStr(d);
+  };
   const dateRanges = [
-    { label: 'Today', getValue: () => ({ from: '2026-07-26', to: '2026-07-26' }) },
-    { label: 'Yesterday', getValue: () => ({ from: '2026-07-25', to: '2026-07-25' }) },
-    { label: 'Last 7 Days', getValue: () => ({ from: '2026-07-20', to: '2026-07-26' }) },
-    { label: 'Last 30 Days', getValue: () => ({ from: '2026-06-27', to: '2026-07-26' }) },
-    { label: 'This Month', getValue: () => ({ from: '2026-07-01', to: '2026-07-31' }) },
-    { label: 'Last Month', getValue: () => ({ from: '2026-06-01', to: '2026-06-30' }) },
-    { label: 'All Time', getValue: () => ({ from: '2020-01-01', to: '2026-07-26' }) },
+    { label: 'Today', getValue: () => ({ from: getTodayStr(), to: getTodayStr() }) },
+    { label: 'Yesterday', getValue: () => ({ from: getDaysAgoStr(1), to: getDaysAgoStr(1) }) },
+    { label: 'Last 7 Days', getValue: () => ({ from: getDaysAgoStr(6), to: getTodayStr() }) },
+    { label: 'Last 30 Days', getValue: () => ({ from: getDaysAgoStr(29), to: getTodayStr() }) },
+    { label: 'This Month', getValue: () => ({ from: monthStart(0), to: monthEnd(0) }) },
+    { label: 'Last Month', getValue: () => ({ from: monthStart(1), to: monthEnd(1) }) },
+    { label: 'All Time', getValue: () => ({ from: '2020-01-01', to: getTodayStr() }) },
     { label: 'Custom Range', getValue: () => null }
   ];
 
@@ -150,7 +217,7 @@ export default function UangMukaPembelian() {
           type="button"
           onClick={() => handleDateClick(dateStr)}
           onMouseEnter={() => !tempTo && setHoveredDate(dateStr)}
-          className={`w-8 h-8 rounded-full flex items-center justify-center font-bold transition-all text-[11px] cursor-pointer ${
+            className={`w-7 h-7 rounded-full flex items-center justify-center font-bold transition-all text-[10px] cursor-pointer ${
             isSelectedFrom || isSelectedTo
               ? 'bg-[#0088E8] text-white shadow-3xs scale-105'
               : inRange
@@ -207,7 +274,7 @@ export default function UangMukaPembelian() {
     <div className="space-y-4 animate-fade-in text-xs font-semibold text-slate-700">
       
       {/* Header card matching Olsera Backoffice layout */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs">
+      <div className="bg-white rounded-xl p-4 shadow-2xs">
         <h3 className="text-sm font-bold text-slate-800">
           Uang Muka Pembelian
         </h3>
@@ -260,7 +327,7 @@ export default function UangMukaPembelian() {
         </div>
 
         {/* Right: Date Picker Component */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center rounded-lg border border-slate-205 bg-white shadow-3xs overflow-visible">
           {/* Left Arrow Button */}
           <button
             type="button"
@@ -275,7 +342,7 @@ export default function UangMukaPembelian() {
               setTempFrom(newFrom);
               setTempTo(newTo);
             }}
-            className="p-2 border border-slate-205 bg-white hover:bg-slate-50 rounded-lg text-slate-450 hover:text-slate-700 transition-colors shadow-3xs cursor-pointer"
+            className="p-2 hover:bg-slate-50 text-slate-450 hover:text-slate-700 transition-colors cursor-pointer border-r border-slate-205"
           >
             <ChevronLeft size={13} />
           </button>
@@ -285,7 +352,7 @@ export default function UangMukaPembelian() {
             <button
               type="button"
               onClick={() => setIsDatePickerOpen(!isDatePickerOpen)}
-              className="flex items-center gap-2 px-4 py-2 border border-slate-205 bg-white hover:bg-slate-50 rounded-lg text-slate-700 transition-all shadow-3xs cursor-pointer font-bold"
+              className="flex items-center gap-2 px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 transition-all cursor-pointer font-bold"
             >
               <Calendar size={13} className="text-slate-400" />
               <span>{formatDateLabel(dateFrom)} - {formatDateLabel(dateTo)}</span>
@@ -297,13 +364,13 @@ export default function UangMukaPembelian() {
               <div className="absolute right-0 mt-1.5 bg-white border border-slate-205 rounded-xl shadow-2xl z-[999] flex overflow-hidden animate-fade-in">
                 
                 {/* Left Predefined Options list */}
-                <div className="w-40 border-r border-slate-150 bg-slate-50/50 py-2.5 flex flex-col font-bold">
+                <div className="w-32 border-r border-slate-150 bg-slate-50/50 py-2 flex flex-col font-bold">
                   {dateRanges.map((r) => (
                     <button
                       key={r.label}
                       type="button"
                       onClick={() => handleSelectPredefined(r)}
-                      className={`px-4 py-2 text-left text-[11px] transition-colors cursor-pointer flex items-center justify-between ${
+                      className={`px-3 py-1.5 text-left text-[10px] transition-colors cursor-pointer flex items-center justify-between ${
                         selectedRange === r.label
                           ? 'bg-[#E6F4FF] text-[#0088E8] font-black'
                           : 'text-slate-650 hover:bg-slate-100'
@@ -317,43 +384,33 @@ export default function UangMukaPembelian() {
 
                 {/* Right Dual Calendar View (Rendered when selectedRange is Custom Range) */}
                 {selectedRange === 'Custom Range' && (
-                  <div className="p-5 flex flex-col gap-4 bg-white animate-scale-up">
+                  <div className="p-3 flex flex-col gap-3 bg-white animate-scale-up">
                     
                     {/* Navigation Bar */}
                     <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                      <button
-                        type="button"
-                        onClick={() => shiftMonths('prev')}
-                        className="p-1 border border-slate-200 rounded-md hover:bg-slate-50 transition-colors cursor-pointer"
-                      >
-                        <ChevronLeft size={13} className="text-slate-500" />
-                      </button>
                       <span className="font-extrabold text-slate-700 uppercase tracking-wide text-[10px]">
                         Pilih Rentang Tanggal
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => shiftMonths('next')}
-                        className="p-1 border border-slate-200 rounded-md hover:bg-slate-50 transition-colors cursor-pointer"
-                      >
-                        <ChevronRight size={13} className="text-slate-500" />
-                      </button>
+                      <div className="flex overflow-hidden rounded-md border border-slate-200">
+                        <button type="button" onClick={() => shiftMonths('prev')} className="p-1 hover:bg-slate-50 transition-colors cursor-pointer border-r border-slate-200"><ChevronLeft size={12} className="text-slate-500" /></button>
+                        <button type="button" onClick={() => shiftMonths('next')} className="p-1 hover:bg-slate-50 transition-colors cursor-pointer"><ChevronRight size={12} className="text-slate-500" /></button>
+                      </div>
                     </div>
 
                     {/* Side-by-Side Calendar grids */}
-                    <div className="flex items-start gap-6">
+                    <div className="flex items-start gap-3">
                       
                       {/* Left Calendar (Starting Month) */}
-                      <div className="space-y-3 w-56">
+                      <div className="space-y-2 w-48">
                         <div className="text-center font-black text-slate-800 text-xs">
                           {getMonthName(leftMonth)} {leftYear}
                         </div>
-                        <div className="grid grid-cols-7 gap-1 text-center font-bold text-[10px] text-slate-400 select-none">
+                        <div className="grid grid-cols-7 gap-0.5 text-center font-bold text-[9px] text-slate-400 select-none">
                           {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
-                            <div key={d} className="w-8">{d}</div>
+                            <div key={d} className="w-7">{d}</div>
                           ))}
                         </div>
-                        <div className="grid grid-cols-7 gap-1">
+                        <div className="grid grid-cols-7 gap-0.5">
                           {renderCalendarGrid(leftYear, leftMonth)}
                         </div>
                       </div>
@@ -362,16 +419,16 @@ export default function UangMukaPembelian() {
                       <div className="w-[1px] self-stretch bg-slate-150" />
 
                       {/* Right Calendar (Ending Month) */}
-                      <div className="space-y-3 w-56">
+                      <div className="space-y-2 w-48">
                         <div className="text-center font-black text-slate-800 text-xs">
                           {getMonthName(rightMonth)} {rightYear}
                         </div>
-                        <div className="grid grid-cols-7 gap-1 text-center font-bold text-[10px] text-slate-400 select-none">
+                        <div className="grid grid-cols-7 gap-0.5 text-center font-bold text-[9px] text-slate-400 select-none">
                           {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
-                            <div key={d} className="w-8">{d}</div>
+                            <div key={d} className="w-7">{d}</div>
                           ))}
                         </div>
-                        <div className="grid grid-cols-7 gap-1">
+                        <div className="grid grid-cols-7 gap-0.5">
                           {renderCalendarGrid(rightYear, rightMonth)}
                         </div>
                       </div>
@@ -426,7 +483,7 @@ export default function UangMukaPembelian() {
               setTempFrom(newFrom);
               setTempTo(newTo);
             }}
-            className="p-2 border border-slate-205 bg-white hover:bg-slate-50 rounded-lg text-slate-450 hover:text-slate-700 transition-colors shadow-3xs cursor-pointer"
+            className="p-2 hover:bg-slate-50 text-slate-450 hover:text-slate-700 transition-colors cursor-pointer border-l border-slate-205"
           >
             <ChevronRight size={13} />
           </button>
@@ -435,9 +492,9 @@ export default function UangMukaPembelian() {
       </div>
 
       {/* Main Table Card showing "No Data" as in Screenshot */}
-      <div className="bg-white border border-slate-200 rounded-xl shadow-2xs p-5 space-y-4 min-h-[360px] relative select-none">
+      <div className="bg-white rounded-xl shadow-2xs p-5 space-y-4 min-h-[360px] relative select-none">
         
-        <div className="border border-slate-150 rounded-lg overflow-hidden bg-white">
+        <div className="rounded-lg overflow-hidden bg-white">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-450 uppercase tracking-wider">
@@ -448,12 +505,20 @@ export default function UangMukaPembelian() {
                 <th className="px-5 py-3.5 w-[10%] text-center rounded-tr-lg">Dibuat oleh</th>
               </tr>
             </thead>
-            <tbody>
-              <tr>
-                <td colSpan={5} className="px-5 py-16 text-center text-slate-400 font-bold">
-                  No Data
-                </td>
-              </tr>
+            <tbody className="divide-y divide-slate-100">
+              {loading ? (
+                <tr><td colSpan={5} className="px-5 py-16 text-center text-slate-400"><Loader2 className="mx-auto animate-spin" size={22} /></td></tr>
+              ) : visiblePayments.length === 0 ? (
+                <tr><td colSpan={5} className="px-5 py-16 text-center text-slate-400 font-bold">No Data</td></tr>
+              ) : visiblePayments.map((payment) => (
+                <tr key={payment.id} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="px-5 py-3.5 text-slate-600">{formatDateLabel(payment.date)}</td>
+                  <td className="px-5 py-3.5 font-bold text-[#0088E8]">{payment.transaction}</td>
+                  <td className="px-5 py-3.5"><div className="text-slate-700">{payment.description}</div><div className="text-[10px] text-slate-400">{payment.supplier}</div></td>
+                  <td className="px-5 py-3.5 text-right font-mono font-bold text-slate-800">{formatIDR(payment.amount)}</td>
+                  <td className="px-5 py-3.5 text-center text-slate-600">{payment.createdBy}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -492,7 +557,7 @@ export default function UangMukaPembelian() {
 
           {/* Pagination Controls */}
           <div className="flex items-center gap-4">
-            <span>Total 0</span>
+            <span>Total {filteredPayments.length}</span>
             <div className="flex items-center gap-1.5">
               <button disabled className="w-6 h-6 flex items-center justify-center rounded border border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed select-none">
                 &lt;

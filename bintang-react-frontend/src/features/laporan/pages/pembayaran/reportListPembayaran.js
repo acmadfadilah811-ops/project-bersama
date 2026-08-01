@@ -96,18 +96,44 @@ export const PEMBAYARAN_REPORTS = [
   },
   {
     id: 'piutang-tipe-pelanggan',
-    unavailable: 'Pesanan belum tertaut ke master Pelanggan, sehingga piutang tidak bisa dikelompokkan per tipe pelanggan.',
+    dataSource: 'piutang-tipe-pelanggan',
     label: 'Piutang berdasarkan tipe pelanggan',
     toolbar: { paket: false, cari: false, sync: 'Resi Gabungan' },
-    hideTable: true,
+    summary: {
+      title: 'Ringkasan',
+      columns: [
+        { key: 'jumlah_pesanan', label: 'Jumlah Pesanan', align: 'right' },
+        { key: 'total_piutang', label: 'Total Sisa Tagihan', align: 'right' },
+      ],
+    },
+    columns: [
+      { key: 'tipe_pelanggan', label: 'Tipe Pelanggan' },
+      { key: 'jumlah_pesanan', label: 'Jumlah Pesanan', align: 'right' },
+      { key: 'total_piutang', label: 'Total Sisa Tagihan', align: 'right' },
+    ],
     bottomBar: { label: 'Pilih Pesanan', button: 'Gabung Resi' },
   },
   {
     id: 'penjualan-hutang-jatuh-tempo',
-    unavailable: 'Penjualan belum memiliki tanggal jatuh tempo.',
+    dataSource: 'penjualan-hutang-jatuh-tempo',
     label: 'Penjualan hutang yang jatuh tempo',
     toolbar: TB,
-    hideTable: true,
+    summary: {
+      title: 'Ringkasan',
+      columns: [
+        { key: 'total_penjualan', label: 'Total Penjualan', align: 'right' },
+        { key: 'telah_dibayar', label: 'Telah Dibayar', align: 'right' },
+        { key: 'sisa_tagihan', label: 'Sisa Tagihan', align: 'right' },
+      ],
+    },
+    columns: [
+      { key: 'no_pesanan', label: 'No. Pesanan' },
+      { key: 'pelanggan', label: 'Pelanggan' },
+      { key: 'tanggal_jatuh_tempo', label: 'Tanggal Jatuh Tempo' },
+      { key: 'total_penjualan', label: 'Total Penjualan', align: 'right' },
+      { key: 'telah_dibayar', label: 'Telah Dibayar', align: 'right' },
+      { key: 'sisa_tagihan', label: 'Sisa Tagihan', align: 'right' },
+    ],
   },
 ];
 

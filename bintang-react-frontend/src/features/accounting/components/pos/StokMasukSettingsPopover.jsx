@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { notify } from '../../../../utils/notify';
 
-export default function StokMasukSettingsPopover({ isOpen, onClose }) {
+export default function StokMasukSettingsPopover({ isOpen }) {
   const [stockAsOption, setStockAsOption] = useState('penambahan_modal'); // 'pembelian' | 'penambahan_modal'
   const [defaultPaymentAccount, setDefaultPaymentAccount] = useState('11101 Kas');
 
@@ -57,30 +56,17 @@ export default function StokMasukSettingsPopover({ isOpen, onClose }) {
     '81000 Penyesuaian Barang'
   ];
 
-  const handleSave = (e) => {
-    e.stopPropagation();
-    notify({
-      type: 'success',
-      title: 'Pengaturan Disimpan',
-      message: 'Konfigurasi penyesuaian stok masuk berhasil disimpan.'
-    });
-    onClose();
-  };
-
   return (
     <div className="absolute right-0 top-10 z-[999] bg-white border border-slate-200 rounded-xl shadow-xl p-4 w-[360px] animate-fade-in space-y-4 text-xs font-semibold text-slate-700">
       
       {/* Top Title & Save Button */}
       <div className="flex items-center justify-between border-b border-slate-50 pb-2">
         <span className="font-bold text-slate-800">Penyesuaian Stok Masuk</span>
-        <button
-          type="button"
-          onClick={handleSave}
-          className="px-3.5 py-1 bg-[#0088E8] hover:bg-[#0077CC] text-white text-[11px] font-bold rounded-lg transition-colors cursor-pointer"
-        >
+        <button type="button" disabled className="cursor-not-allowed rounded-lg bg-slate-100 px-3.5 py-1 text-[11px] font-bold text-slate-400">
           Simpan
         </button>
       </div>
+      <p className="rounded-lg bg-amber-50 p-2 text-[11px] font-medium text-amber-700">Pengaturan belum terhubung ke backend dan tidak dapat disimpan.</p>
 
       {/* Stock Category Options */}
       <div className="space-y-2">

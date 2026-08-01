@@ -616,7 +616,13 @@ function AccordionItem({ item, queryString }) {
           ) : state.error ? (
             <div className="py-6 text-center text-xs text-rose-500 font-semibold">{state.error}</div>
           ) : sections ? (
-            <LabaRugiTable sections={sections} />
+            <div className="space-y-2">
+              <p className="text-[11px] text-slate-400 italic">
+                Dihitung dari transaksi penjualan (Order & POS) — bisa berbeda dari Laba Rugi di menu Akuntansi
+                yang dihitung dari jurnal terposting. Keduanya sengaja terpisah untuk tujuan berbeda.
+              </p>
+              <LabaRugiTable sections={sections} />
+            </div>
           ) : (
             <ReportTable
               columns={item.dataSource ? (state.columns || item.summary?.columns) : item.summary?.columns}
@@ -1341,7 +1347,13 @@ function LaporanDetail({ report, collapsed, onExpand }) {
         {report.unavailable ? null : report.linkList ? (
           <AccordionList items={report.linkList} queryString={queryString} />
         ) : (report.labaRugi || fetched.labaRugi) ? (
-          <LabaRugiTable sections={fetched.labaRugi || report.labaRugi} />
+          <div className="space-y-2">
+            <p className="text-[11px] text-slate-400 italic">
+              Dihitung dari transaksi penjualan (Order & POS) — bisa berbeda dari Laba Rugi di menu Akuntansi
+              yang dihitung dari jurnal terposting. Keduanya sengaja terpisah untuk tujuan berbeda.
+            </p>
+            <LabaRugiTable sections={fetched.labaRugi || report.labaRugi} />
+          </div>
         ) : (
           !report.hideTable && (
             <ReportTable

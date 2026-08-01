@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Calendar, ChevronDown, Check } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
+import { formatOrderReference } from './orderReference';
 
 const inputClass =
   'w-full text-sm border border-slate-200 rounded-lg px-3 py-2.5 text-slate-700 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300';
@@ -31,9 +32,12 @@ export default function ReturnOrderForm({ onCancel, onSave }) {
   useEffect(() => {
     const fetchOrders = async () => {
       try {
-        const res = await apiClient.get('/orders/', { params: { page: 1, page_size: 1000 } });
+        const res = await apiClient.get('/orders/', {
+          params: { status_global: 'selesai', page: 1, page_size: 1000 },
+        });
         // Filter only completed orders
-        const completed = (res.data || []).filter((o) => o.status_global === 'selesai');
+        const rows = res.data?.results || res.data || [];
+        const completed = rows.filter((o) => o.status_global === 'selesai');
         setCompletedOrders(completed);
       } catch (err) {
         console.error('Gagal memuat pesanan selesai:', err);
@@ -58,13 +62,14 @@ export default function ReturnOrderForm({ onCancel, onSave }) {
   const filteredOrders = completedOrders.filter(
     (o) =>
       String(o.id).toLowerCase().includes(orderNo.toLowerCase()) ||
+      formatOrderReference(o, 'pengembalian').toLowerCase().includes(orderNo.toLowerCase()) ||
       o.nama?.toLowerCase().includes(orderNo.toLowerCase())
   );
 
   const handleSelectOrder = (order) => {
     setSelectedOrder(order);
-    setOrderNo(`ORD-${order.id}`);
-    setCustomer(`${order.nama} (${order.email || 'sinar@cemerlang.com'})`);
+    setOrderNo(formatOrderReference(order, 'pengembalian'));
+    setCustomer(order.email_pelanggan ? `${order.nama} (${order.email_pelanggan})` : order.nama);
     setDropdownOpen(false);
   };
 
@@ -150,7 +155,7 @@ export default function ReturnOrderForm({ onCancel, onSave }) {
                           className="w-full text-left px-4 py-2.5 hover:bg-slate-50 text-xs text-slate-700 flex justify-between items-center cursor-pointer border-b border-slate-50 last:border-0"
                         >
                           <div>
-                            <span className="font-bold text-slate-800 font-mono">ORD-{o.id}</span>
+                            <span className="font-bold text-slate-800 font-mono">{formatOrderReference(o, 'pengembalian')}</span>
                             <span className="text-slate-400 mx-2">|</span>
                             <span className="font-semibold text-slate-600">{o.nama}</span>
                           </div>

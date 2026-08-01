@@ -19,6 +19,7 @@ export const MENU_FEATURES = [
   { id: 'pricelist', label: 'Daftar Harga (Pricelist)', path: '/pricelist' },
   { id: 'settings', label: 'Pengaturan (Settings)', path: '/settings' },
   { id: 'divisi', label: 'Divisi & Tahap Proses', path: '/divisi' },
+  { id: 'accounting-internal', label: 'Akuntansi Internal', path: '/accounting-internal' },
 ];
 
 export const DEFAULT_PERMISSIONS = {
@@ -41,6 +42,7 @@ export const DEFAULT_PERMISSIONS = {
     'pricelist',
     'divisi',
     'settings',
+    'accounting-internal',
   ],
   manager: [
     'dashboard',
@@ -61,6 +63,7 @@ export const DEFAULT_PERMISSIONS = {
     'pricelist',
     'divisi',
     'settings',
+    'accounting-internal',
   ],
   admin: [
     'dashboard',
@@ -75,6 +78,7 @@ export const DEFAULT_PERMISSIONS = {
     'buku-besar',
     'pricelist',
     'settings',
+    'accounting-internal',
   ],
   staff: ['staff-dashboard', 'jobs'],
   kasir: ['kasir-pos'],

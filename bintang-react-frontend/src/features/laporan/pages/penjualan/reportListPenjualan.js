@@ -272,6 +272,7 @@ export const PENJUALAN_REPORTS = [
   },
   {
     id: 'loyalti-point',
+    dataSource: 'loyalti-point',
     label: 'Rincian Penggunaan Loyalti Point',
     toolbar: TB,
     summary: {
@@ -378,6 +379,7 @@ export const PENJUALAN_REPORTS = [
   },
   {
     id: 'pending-pos',
+    dataSource: 'pending-pos',
     label: 'Rincian Penjualan Pending POS',
     toolbar: TB,
     columns: [
@@ -392,6 +394,7 @@ export const PENJUALAN_REPORTS = [
   },
   {
     id: 'item-pending-pos',
+    dataSource: 'item-pending-pos',
     label: 'Rincian Penjualan Item Pending POS berdasarkan Tanggal',
     toolbar: TB,
     columns: [
@@ -409,6 +412,7 @@ export const PENJUALAN_REPORTS = [
   },
   {
     id: 'berdasarkan-jam',
+    dataSource: 'berdasarkan-jam',
     label: 'Rincian Penjualan berdasarkan Jam',
     dateMode: 'datetime',
     toolbar: TB,
@@ -462,6 +466,7 @@ export const PENJUALAN_REPORTS = [
   },
   {
     id: 'penjualan-tanggal',
+    dataSource: 'penjualan-tanggal',
     label: 'Penjualan berdasarkan Tanggal',
     toolbar: {
       paket: 'select',
@@ -693,6 +698,7 @@ export const PENJUALAN_REPORTS = [
   },
   {
     id: 'penjualan-pelanggan',
+    dataSource: 'penjualan-pelanggan',
     label: 'Penjualan berdasarkan Pelanggan',
     toolbar: {
       paket: 'select',
@@ -862,6 +868,7 @@ export const PENJUALAN_REPORTS = [
   },
   {
     id: 'pengeluaran-tanggal',
+    dataSource: 'pengeluaran-tanggal',
     label: 'Pengeluaran berdasarkan Tanggal',
     toolbar: TB,
     summary: {
@@ -882,6 +889,7 @@ export const PENJUALAN_REPORTS = [
   },
   {
     id: 'penjualan-pendapatan-pengeluaran',
+    dataSource: 'penjualan-pendapatan-pengeluaran',
     label: 'Penjualan + Pendapatan/Pengeluaran',
     toolbar: TB,
     summary: {
@@ -904,6 +912,7 @@ export const PENJUALAN_REPORTS = [
   },
   {
     id: 'penjualan-kredit',
+    dataSource: 'penjualan-kredit',
     label: 'Rincian Penjualan Kredit',
     toolbar: {
       paket: 'select',
@@ -1020,6 +1029,7 @@ export const PENJUALAN_REPORTS = [
   },
   {
     id: 'pembatalan-penjualan',
+    dataSource: 'pembatalan-penjualan',
     label: 'Rincian Pembatalan Penjualan',
     toolbar: {
       paket: 'select',
@@ -1045,6 +1055,7 @@ export const PENJUALAN_REPORTS = [
   },
   {
     id: 'pos-batal-belum-bayar',
+    dataSource: 'pos-batal-belum-bayar',
     label: 'Detail pos yang batal belum dibayar',
     toolbar: TB,
     columns: [
@@ -1063,6 +1074,7 @@ export const PENJUALAN_REPORTS = [
   },
   {
     id: 'rincian-pengembalian',
+    dataSource: 'rincian-pengembalian',
     label: 'Rincian Pengembalian',
     toolbar: TB,
     summary: {
@@ -1085,6 +1097,7 @@ export const PENJUALAN_REPORTS = [
   },
   {
     id: 'pengembalian-tanggal',
+    dataSource: 'pengembalian-tanggal',
     label: 'Pengembalian berdasarkan Tanggal',
     toolbar: TB,
     summary: {
@@ -1101,6 +1114,7 @@ export const PENJUALAN_REPORTS = [
   },
   {
     id: 'pengembalian-pelanggan',
+    dataSource: 'pengembalian-pelanggan',
     label: 'Pengembalian berdasarkan Pelanggan',
     toolbar: TB,
     summary: {
@@ -1118,6 +1132,7 @@ export const PENJUALAN_REPORTS = [
   },
   {
     id: 'item-dibatalkan',
+    dataSource: 'item-dibatalkan',
     label: 'Item Dibatalkan',
     toolbar: {
       paket: 'select',

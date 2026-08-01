@@ -31,11 +31,22 @@ from .product_models import (
     StockOpnameDocument, StockOpnameDocumentItem,
     StockLayerConsumption,
 )
+from .services.sales_report_extensions import EXTENDED_REPORT_REGISTRY
+from .services.payment_report_extensions import PAYMENT_REPORT_REGISTRY
 
 # ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 REPORT_REGISTRY = {}
+
+
+def _report_entry(report_id):
+    """Cari laporan inti lalu ekstensi tanpa menambah handler di modul view ini."""
+    return (
+        REPORT_REGISTRY.get(report_id)
+        or EXTENDED_REPORT_REGISTRY.get(report_id)
+        or PAYMENT_REPORT_REGISTRY.get(report_id)
+    )
 
 
 def report(report_id, label, columns):
@@ -1972,7 +1983,7 @@ class ReportDataView(APIView):
     max_rows = 1000
 
     def get(self, request, report_id):
-        entry = REPORT_REGISTRY.get(report_id)
+        entry = _report_entry(report_id)
         if not entry:
             return Response(
                 {'error': f"Laporan '{report_id}' belum tersedia di backend."},
@@ -2049,7 +2060,7 @@ class ReportExportView(APIView):
     content_negotiation_class = IgnoreFormatContentNegotiation
 
     def get(self, request, report_id):
-        entry = REPORT_REGISTRY.get(report_id)
+        entry = _report_entry(report_id)
         if not entry:
             return Response({'error': f"Laporan '{report_id}' belum tersedia."}, status=404)
 

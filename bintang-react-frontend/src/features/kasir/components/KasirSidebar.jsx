@@ -7,9 +7,7 @@ import {
   PackageCheck,
   MessageCircle,
   History,
-  Wallet,
-  ArrowDownUp,
-  BellRing,
+  Clock,
   Settings,
   LogOut,
   ChevronLeft,
@@ -18,9 +16,9 @@ import {
   ArrowLeftRight,
   ShieldAlert,
   User,
-  Clock,
   Sparkles,
   ExternalLink,
+  RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useKasir } from '../context/KasirContext';
@@ -71,9 +69,7 @@ export default function KasirSidebar({ isCollapsed, setIsCollapsed }) {
     { path: '/kasir/pesanan', label: 'Daftar Pesanan', icon: PackageCheck },
     { path: '/kasir/antrean-wa', label: 'Antrean WA', icon: MessageCircle, badge: waOrderCount },
     { path: '/kasir/riwayat', label: 'Riwayat Transaksi', icon: History },
-    { path: '/kasir/rekap-harian', label: 'Rekap Harian', icon: ArrowDownUp },
-    { path: '/kasir/shift', label: 'Kas & Shift', icon: Wallet },
-    { path: '/kasir/ringkasan-shift-v2', label: 'Ringkasan Shift', icon: BellRing },
+    { path: '/kasir/shift', label: 'Shift', icon: Clock },
     { path: '/kasir/pengaturan-wa', label: 'Pengaturan WA', icon: Settings },
   ];
 
@@ -203,8 +199,29 @@ export default function KasirSidebar({ isCollapsed, setIsCollapsed }) {
         </nav>
       </div>
 
-      {/* ── Bottom Section: Switch App & User Profile ── */}
+      {/* ── Bottom Section: Ganti Operator, Switch App & User Profile ── */}
       <div className="p-3 border-t border-slate-800/80 bg-slate-900/60 space-y-2">
+        {/* Ganti Operator: kasir di sini bergantian pakai satu mesin kasir,
+            bukan paralel. Tutup shift dulu (server juga menegakkan ini —
+            SaldoKasHarianViewSet.create() menolak shift kedua yang masih
+            terbuka), baru operator berikutnya login dengan akunnya sendiri. */}
+        <button
+          onClick={() => {
+            if (shiftAktif) {
+              alert('Tutup shift Anda terlebih dahulu sebelum ganti operator.');
+              navigate('/kasir/shift');
+              return;
+            }
+            logout();
+            navigate('/login');
+          }}
+          title={isCollapsed ? 'Ganti Operator' : undefined}
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800/80 transition-all cursor-pointer border border-slate-800"
+        >
+          <RefreshCw size={16} className="text-amber-400 shrink-0" />
+          {!isCollapsed && <span className="truncate">Ganti Operator</span>}
+        </button>
+
         {/* Switch to Main App (For Admin / Owner) */}
         {isOwnerOrAdmin && (
           <button

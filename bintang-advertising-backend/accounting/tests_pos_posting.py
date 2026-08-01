@@ -6,6 +6,7 @@ from django.contrib.auth import get_user_model
 from api.models import Contact, SaldoKasHarian, POSPaymentMethod
 from api.pos_models import POSSale
 from api.pos_services import create_sale
+from api.product_models import Product
 from accounting.models import (
     Account, AccountClassification, AccountType, AccountingSettings,
     JournalEntry, PaymentMethod
@@ -250,3 +251,135 @@ class POSPostingTestCase(TestCase):
         )
         self.assertEqual(sale.accounting_payment_method, pm_non_cash_named_cash)
         self.assertEqual(sale.settlement_status, "unsettled")
+
+
+class POSHppPostingTestCase(TestCase):
+    """T-107: HPP penjualan POS (D HPP / K Persediaan) untuk produk berlacak inventori."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="kasir2", password="password123", role="kasir"
+        )
+        self.shift = SaldoKasHarian.objects.create(
+            kasir=self.user,
+            tanggal=timezone.localdate(),
+            kas_awal=Decimal("100000"),
+            waktu_buka=timezone.now(),
+        )
+
+        self.asset_cls = AccountClassification.objects.create(
+            name="Aset", account_type=AccountType.ASSET, code_range_start=10000, code_range_end=19999
+        )
+        self.rev_cls = AccountClassification.objects.create(
+            name="Pendapatan", account_type=AccountType.REVENUE, code_range_start=40000, code_range_end=49999
+        )
+        self.exp_cls = AccountClassification.objects.create(
+            name="Beban", account_type=AccountType.EXPENSE, code_range_start=50000, code_range_end=59999
+        )
+
+        self.kas_account = Account.objects.create(
+            code="11101", name="Kas Toko", classification=self.asset_cls
+        )
+        self.revenue_account = Account.objects.create(
+            code="41101", name="Pendapatan POS", classification=self.rev_cls
+        )
+        self.hpp_account = Account.objects.create(
+            code="51101", name="Harga Pokok Penjualan", classification=self.exp_cls
+        )
+        self.persediaan_account = Account.objects.create(
+            code="11301", name="Persediaan Barang Dagang", classification=self.asset_cls
+        )
+
+        self.settings = AccountingSettings.objects.create(
+            accounting_start_date=timezone.localdate() - timezone.timedelta(days=30),
+            is_active=True,
+            initial_setup_completed_at=timezone.now(),
+            pos_sales_revenue_account=self.revenue_account,
+        )
+
+        self.pm_cash = PaymentMethod.objects.create(
+            name="Tunai Fisik", payment_type="Tunai", account=self.kas_account, is_cash=True,
+        )
+        POSPaymentMethod.objects.create(nama="Cash", tipe="Tunai", accounting_payment_method=self.pm_cash)
+
+        self.product = Product.objects.create(
+            nama="Kertas A4 Rim",
+            sku="KA4-001",
+            harga_beli=Decimal("40000"),
+            harga_jual_toko=Decimal("60000"),
+            lacak_inventori=True,
+            qty_stok=Decimal("100"),
+        )
+
+    def test_sale_with_inventory_product_posts_hpp_and_inventory_lines(self):
+        """Produk berlacak inventori terjual: jurnal punya D HPP / K Persediaan tambahan, tetap balance."""
+        self.settings.pos_cogs_expense_account = self.hpp_account
+        self.settings.pos_inventory_account = self.persediaan_account
+        self.settings.save()
+
+        sale = create_sale(
+            user=self.user,
+            data={
+                "status": "paid",
+                "metode_bayar": "Cash",
+                "dibayar": 60000,
+                "items": [{"product_id": self.product.id, "qty": 1}],
+            },
+        )
+
+        entry = JournalEntry.objects.filter(
+            source_type=JournalEntry.SourceType.POS_SALE, source_id=sale.id
+        ).first()
+        self.assertIsNotNone(entry)
+
+        lines = list(entry.lines.all())
+        self.assertEqual(len(lines), 4)
+
+        total_debit = sum(l.debit for l in lines)
+        total_kredit = sum(l.kredit for l in lines)
+        self.assertEqual(total_debit, total_kredit)
+
+        hpp_lines = [l for l in lines if l.account_id == self.hpp_account.id]
+        persediaan_lines = [l for l in lines if l.account_id == self.persediaan_account.id]
+        self.assertEqual(len(hpp_lines), 1)
+        self.assertEqual(len(persediaan_lines), 1)
+        self.assertEqual(hpp_lines[0].debit, Decimal("40000.00"))
+        self.assertEqual(persediaan_lines[0].kredit, Decimal("40000.00"))
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.qty_stok, Decimal("99.00"))
+
+    def test_sale_with_inventory_product_missing_hpp_account_skips_posting(self):
+        """HPP muncul (produk berlacak inventori terjual) tapi akun HPP/Persediaan belum
+        diatur: gating menolak seluruh posting (bukan posting jurnal timpang), sale tetap sukses."""
+        sale = create_sale(
+            user=self.user,
+            data={
+                "status": "paid",
+                "metode_bayar": "Cash",
+                "dibayar": 60000,
+                "items": [{"product_id": self.product.id, "qty": 1}],
+            },
+        )
+        self.assertEqual(sale.status, "paid")
+        entry = JournalEntry.objects.filter(
+            source_type=JournalEntry.SourceType.POS_SALE, source_id=sale.id
+        ).first()
+        self.assertIsNone(entry)
+
+    def test_sale_without_inventory_tracking_has_no_hpp_lines(self):
+        """Item kustom (tanpa product_id) tidak memicu HPP — 2 baris seperti biasa, tanpa akun HPP diatur."""
+        sale = create_sale(
+            user=self.user,
+            data={
+                "status": "paid",
+                "metode_bayar": "Cash",
+                "dibayar": 25000,
+                "items": [{"nama": "Jasa Desain", "harga": 25000, "qty": 1}],
+            },
+        )
+        entry = JournalEntry.objects.filter(
+            source_type=JournalEntry.SourceType.POS_SALE, source_id=sale.id
+        ).first()
+        self.assertIsNotNone(entry)
+        self.assertEqual(len(list(entry.lines.all())), 2)

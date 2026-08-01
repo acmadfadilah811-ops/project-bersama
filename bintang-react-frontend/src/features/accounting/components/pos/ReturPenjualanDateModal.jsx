@@ -2,44 +2,46 @@ import { useState } from 'react';
 import { X } from 'lucide-react';
 
 export default function ReturPenjualanDateModal({ isOpen, onClose, onApply, initialFrom, initialTo }) {
-  const [from, setFrom] = useState(initialFrom || '2026-07-26');
-  const [to, setTo] = useState(initialTo || '2026-07-26');
+  const today = new Date();
+  const todayString = today.toISOString().split('T')[0];
+  const [from, setFrom] = useState(initialFrom || todayString);
+  const [to, setTo] = useState(initialTo || todayString);
   const [activePreset, setActivePreset] = useState('today');
 
   if (!isOpen) return null;
 
   const handleApplyPreset = (presetType) => {
     setActivePreset(presetType);
-    const today = new Date('2026-07-26');
-    let fromDate = new Date('2026-07-26');
+    const currentDate = new Date();
+    let fromDate = new Date(currentDate);
 
     if (presetType === 'today') {
       // stay same
     } else if (presetType === 'yesterday') {
-      fromDate.setDate(today.getDate() - 1);
+      fromDate.setDate(currentDate.getDate() - 1);
     } else if (presetType === '7_days') {
-      fromDate.setDate(today.getDate() - 7);
+      fromDate.setDate(currentDate.getDate() - 7);
     } else if (presetType === '30_days') {
-      fromDate.setDate(today.getDate() - 30);
+      fromDate.setDate(currentDate.getDate() - 30);
     } else if (presetType === 'this_month') {
       fromDate.setDate(1);
     } else if (presetType === 'last_month') {
-      fromDate.setMonth(today.getMonth() - 1);
+      fromDate.setMonth(currentDate.getMonth() - 1);
       fromDate.setDate(1);
       // to date set to end of last month
-      const lastDayLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+      const lastDayLastMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 0);
       setTo(lastDayLastMonth.toISOString().split('T')[0]);
       setFrom(fromDate.toISOString().split('T')[0]);
       return;
     }
 
     setFrom(fromDate.toISOString().split('T')[0]);
-    setTo(today.toISOString().split('T')[0]);
+    setTo(currentDate.toISOString().split('T')[0]);
   };
 
   const handleReset = () => {
-    setFrom('2026-07-26');
-    setTo('2026-07-26');
+    setFrom(todayString);
+    setTo(todayString);
     setActivePreset('today');
   };
 

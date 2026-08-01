@@ -32,6 +32,13 @@ class CashTransactionType(models.Model):
         return f"{self.nama} ({self.tipe})"
 
 
+STATUS_CHOICES = [
+    ('draft', 'Draft'),
+    ('selesai', 'Selesai'),
+    ('batal', 'Batal'),
+]
+
+
 class CashTransaction(models.Model):
     """Entri Pendapatan/Pengeluaran. Arah (pendapatan/pengeluaran) mengikuti tipe."""
     nomor = models.CharField(max_length=50, unique=True, blank=True)
@@ -39,6 +46,15 @@ class CashTransaction(models.Model):
     jumlah = models.DecimalField(max_digits=15, decimal_places=2)
     tipe_transaksi = models.ForeignKey(
         CashTransactionType, on_delete=models.PROTECT, related_name='transactions',
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft', db_index=True)
+    akun_debit = models.ForeignKey(
+        'accounting.Account', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='cash_transactions_debit', help_text='Wajib diisi sebelum posting ke jurnal.',
+    )
+    akun_kredit = models.ForeignKey(
+        'accounting.Account', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='cash_transactions_kredit', help_text='Wajib diisi sebelum posting ke jurnal.',
     )
     staff = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,

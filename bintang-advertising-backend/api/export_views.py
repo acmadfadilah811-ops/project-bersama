@@ -1244,18 +1244,19 @@ class ExportSalesDetailsView(APIView):
             ws.title = "Sales Details"
 
             headers = [
-                'Waktu', 'No. Penjualan', 'Metode Penjualan', 'Metode Pembayaran', 
-                'Total Pembayaran', 'Penerimaan Pembayaran', 'Kembalian Pembayaran', 
-                'Penjualan Kotor', 'Penjualan Bersih', 'Diskon Produk', 'Diskon Penjualan', 
-                'Voucher', 'Biaya Pengiriman', 'Service Charge', 'Laba Kotor', 
-                'Kasir', 'Pelanggan', 'Grup Pelanggan', 'Biaya Pembayaran', 'Status', 
-                'Catatan Pembatalan', 'Alasan Pembatalan', 'Tanggal Pengiriman', 'Status Pengiriman', 
-                'Nomor Resi', 'Kurir', 'Kota', 'Provinsi', 'Kode Pos', 'Alamat', 
-                'Nama Penerima', 'No. Telepon Penerima', 'Catatan Penjualan', 'Komisi Karyawan', 
-                'Merek', 'Cabang', 'Penerimaan Point', 'Point Terpakai', 'Penerimaan Komisi Pelanggan', 
-                'Pengembalian Bersih', 'Penjualan Setelah Pengembalian', 'Pengembalian Kotor', 
-                'Pengembalian Diskon Produk', 'Pengembalian Diskon Penjualan', 'PPN', 'Tarif PPN (%)', 
-                'Penjualan Sebelum PPN', 'Pengembalian PPN'
+                'Waktu', 'No. Penjualan', 'Metode Penjualan', 'Metode Pembayaran',
+                'Total Pembayaran', 'Penerimaan Pembayaran', 'Kembalian Pembayaran',
+                'Penjualan Kotor', 'Penjualan Bersih', 'Diskon Produk', 'Diskon Penjualan',
+                'Voucher', 'Biaya Pengiriman', 'Service Charge', 'Laba Kotor',
+                'Kasir', 'Pelanggan', 'Grup Pelanggan', 'Biaya Pembayaran', 'Status',
+                'Catatan Pembatalan', 'Alasan Pembatalan', 'Tanggal Pengiriman', 'Status Pengiriman',
+                'Nomor Resi', 'Kurir', 'Kota', 'Provinsi', 'Kode Pos', 'Alamat',
+                'Nama Penerima', 'No. Telepon Penerima', 'Catatan Penjualan', 'Komisi Karyawan',
+                'Merek', 'Cabang', 'Penerimaan Point', 'Point Terpakai', 'Penerimaan Komisi Pelanggan',
+                'Pengembalian Bersih', 'Penjualan Setelah Pengembalian', 'Pengembalian Kotor',
+                'Pengembalian Diskon Produk', 'Pengembalian Diskon Penjualan', 'PPN', 'Tarif PPN (%)',
+                'Penjualan Sebelum PPN', 'Pengembalian PPN',
+                'Email Pelanggan',
             ]
             ws.append(headers)
 
@@ -1263,7 +1264,7 @@ class ExportSalesDetailsView(APIView):
             pos_sales = POSSale.objects.filter(
                 created_at__date__gte=start_date,
                 created_at__date__lte=end_date
-            ).select_related('kasir', 'pelanggan')
+            ).select_related('kasir', 'pelanggan__customer')
 
             for s in pos_sales:
                 waktu_str = s.created_at.strftime('%Y-%m-%d %H:%M:%S') if s.created_at else ''
@@ -1272,6 +1273,13 @@ class ExportSalesDetailsView(APIView):
                 kembali = float(s.kembalian or 0)
                 kasir_name = s.kasir.get_full_name() or s.kasir.username if s.kasir else 'Kasir POS'
                 customer_name = s.pelanggan.nama if s.pelanggan else 'Pelanggan Umum'
+                # Email cuma tersedia kalau kontak POS tertaut ke akun member
+                # (Customer) — Contact sendiri tidak punya field email sama
+                # sekali (lihat T-401/T-618: model dipisah sengaja).
+                customer_email = (
+                    s.pelanggan.customer.email
+                    if s.pelanggan and s.pelanggan.customer else ''
+                )
 
                 ws.append([
                     waktu_str, s.nomor, 'POS Direct', s.metode_bayar or 'Cash',
@@ -1285,7 +1293,8 @@ class ExportSalesDetailsView(APIView):
                     'Bintang', 'Bintang Advertising', 0, 0, 0,
                     0, total_harga, 0,
                     0, 0, float(s.pajak or 0), 0,
-                    total_harga, 0
+                    total_harga, 0,
+                    customer_email,
                 ])
 
             # 2. Fetch Production Orders
@@ -1299,14 +1308,28 @@ class ExportSalesDetailsView(APIView):
                 total_harga = float(o.total_harga or 0)
                 dp = float(o.dp_dibayar or 0)
                 sisa = float(o.sisa_tagihan or 0)
-                kasir_name = o.kasir.get_full_name() or o.kasir.username if o.kasir else 'Admin CS'
+                # Bug: Order TIDAK punya field `kasir` sama sekali (cuma
+                # SaldoKasHarian yang punya) — `o.kasir` selalu AttributeError
+                # dan bikin export ini crash 500 setiap ada Order di rentang
+                # tanggal. Diperbaiki ke `dilayani_oleh` (field asli Order,
+                # staf yang melayani pelanggan saat order dibuat).
+                kasir_name = (
+                    o.dilayani_oleh.get_full_name() or o.dilayani_oleh.username
+                    if o.dilayani_oleh else 'Admin CS'
+                )
                 customer_name = o.nama or 'Pelanggan Order'
                 status_str = 'LUNAS' if sisa <= 0 else f'DP (Sisa {sisa:,.0f})'
+                # Order tidak punya FK langsung ke Contact/Customer — cari
+                # Contact via nomor_wa, email hanya ada kalau tertaut member
+                # (sama pola dengan _resolve_pelanggan_supplier di
+                # accounting/services/ledger.py).
+                contact = Contact.objects.filter(nomor_wa=o.nomor_wa).select_related('customer').first()
+                customer_email = contact.customer.email if contact and contact.customer else ''
 
                 ws.append([
                     waktu_str, str(o.id), 'Order Produksi', o.metode_pembayaran or 'Transfer/Cash',
                     total_harga, dp, 0,
-                    total_harga, total_harga, 0, float(o.diskon or 0),
+                    total_harga, total_harga, 0, float(o.diskon_persen or 0),
                     0, 0, 0, total_harga * 0.35,
                     kasir_name, customer_name, 'Pelanggan Produksi', 0, status_str,
                     '', '', '', '',
@@ -1315,7 +1338,8 @@ class ExportSalesDetailsView(APIView):
                     'Bintang', 'Bintang Advertising', 0, 0, 0,
                     0, total_harga, 0,
                     0, 0, 0, 0,
-                    total_harga, 0
+                    total_harga, 0,
+                    customer_email,
                 ])
 
             wb.save(response)

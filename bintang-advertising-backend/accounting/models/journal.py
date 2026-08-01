@@ -8,6 +8,13 @@ from .lookups import Department, JournalTemplate
 from .period import AccountingPeriod
 
 
+class SettlementStatus(models.TextChoices):
+    NOT_APPLICABLE = "not_applicable", "Tidak berlaku"
+    UNSETTLED = "unsettled", "Belum settle"
+    SETTLED = "settled", "Sudah settle"
+    VOID = "void", "Dibatalkan"
+
+
 class JournalEntry(models.Model):
     """Header jurnal (Jurnal Umum) — satu transaksi akuntansi, terdiri dari beberapa baris (lines)."""
 
@@ -17,14 +24,18 @@ class JournalEntry(models.Model):
         POS_SALE = "pos_sale", "Penjualan POS"
         ORDER_PAYMENT = "order_payment", "Pembayaran Order"
         PURCHASE = "purchase", "Pembelian"
+        PURCHASE_PAYMENT = "purchase_payment", "Pembayaran Pembelian"
         STOCK_IN = "stock_in", "Stok Masuk"
         STOCK_OUT = "stock_out", "Stok Keluar"
+        STOCK_OPNAME = "stock_opname", "Opname Stok"
         PRODUCTION = "production", "Produksi"
         PAYROLL = "payroll", "Penggajian"
         CASH_TRANSACTION = "cash_transaction", "Transaksi Kas"
         CASH_TRANSFER = "cash_transfer", "Transfer Kas"
         CAPITAL_TRANSFER = "capital_transfer", "Transfer Modal"
         SETTLEMENT = "settlement", "Konfirmasi Settlement"
+        ASSET_ACQUISITION = "asset_acquisition", "Perolehan Aset"
+        ORDER_MATERIAL_HPP = "order_material_hpp", "HPP Bahan Baku Order (T-204)"
 
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"
@@ -81,6 +92,12 @@ class JournalEntry(models.Model):
             models.Index(fields=["date"], name="idx_je_date"),
             models.Index(fields=["source_type", "source_id"], name="idx_je_source"),
         ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source_type", "source_id", "date"],
+                name="uniq_je_source_date",
+            )
+        ]
         verbose_name = "Jurnal"
         verbose_name_plural = "Jurnal Umum"
 
@@ -106,10 +123,18 @@ class JournalEntryLine(models.Model):
     customer = models.ForeignKey(
         Customer, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
     )
+    settlement_status = models.CharField(
+        max_length=20,
+        choices=SettlementStatus.choices,
+        default=SettlementStatus.NOT_APPLICABLE,
+    )
 
     class Meta:
         db_table = "accounting_journal_entry_line"
-        indexes = [models.Index(fields=["account"], name="idx_jel_account")]
+        indexes = [
+            models.Index(fields=["account"], name="idx_jel_account"),
+            models.Index(fields=["account", "settlement_status"], name="idx_jel_settlement"),
+        ]
         verbose_name = "Baris Jurnal"
         verbose_name_plural = "Baris Jurnal"
 
@@ -125,6 +150,7 @@ class JournalAuditLog(models.Model):
         POSTED = "posted", "Diposting"
         VOIDED = "voided", "Dibatalkan"
         REVERSED = "reversed", "Dijurnal-balik"
+        DELETED = "deleted", "Dihapus"
 
     journal_entry = models.ForeignKey(JournalEntry, on_delete=models.CASCADE, related_name="audit_logs")
     action = models.CharField(max_length=10, choices=Action.choices)

@@ -157,12 +157,7 @@ def create_sale(*, user, data):
         sales_discount_rule = None
         kupon_kode = data.get('kupon_kode') or (data.get('kupon', {}).get('kode') if isinstance(data.get('kupon'), dict) else (data.get('kupon') if isinstance(data.get('kupon'), str) else None))
 
-        # Pilihan EKSPLISIT kasir dari selector diskon di frontend — 'kupon'
-        # atau 'otomatis' saling eksklusif (kasir pilih salah satu, tidak lagi
-        # dibandingkan diam-diam). `metode_diskon` tidak dikirim sama sekali
-        # (klien lama) jatuh ke fallback best-of di bawah demi kompatibilitas.
         metode_diskon = data.get('metode_diskon')
-
         if metode_diskon == 'kupon':
             if not kupon_kode:
                 raise ValidationError({'error': 'Kode kupon wajib diisi untuk metode diskon Kupon.'})
@@ -174,8 +169,6 @@ def create_sale(*, user, data):
         elif metode_diskon == 'otomatis':
             sales_discount_amount, sales_discount_rule = evaluate_sales_discount(konteks)
         elif metode_diskon in (None, ''):
-            # Fallback lama (klien belum kirim metode_diskon): bandingkan kupon
-            # (bila ada) dengan Diskon Penjualan, pakai yang lebih besar.
             if kupon_kode:
                 hasil = evaluate_coupon_code(kupon_kode, konteks)
                 if not hasil.ok:
@@ -262,15 +255,13 @@ def create_sale(*, user, data):
                 owner.save(update_fields=['qty_stok'])
                 movement = ProductStockMovement.objects.create(
                     product=product, variant=variant, user=user, tipe='penjualan', qty=qty_base,
-                    stok_awal=start, stok_akhir=owner.qty_stok,
+                    stok_awal=start, stok_akhir=owner.qty_stok, pos_sale=sale,
                     catatan=f'Penjualan POS {sale.nomor}', tanggal=now,
                 )
                 stock_fifo.consume_layers(product, variant, qty_base, movement=movement)
 
-        # ── Mutasi poin loyalty (setelah nota & item terbentuk) ──
         if status_val == 'paid':
             from . import loyalty as loyalty_svc
-            # Member = akun Customer tertaut ke Contact pelanggan (kalau ada).
             if loyalty_customer is None and customer is not None and getattr(customer, 'customer_id', None):
                 from .customer_models import Customer
                 loyalty_customer = Customer.objects.select_for_update().filter(pk=customer.customer_id).first()
@@ -350,6 +341,8 @@ def void_sale(*, sale_id, user):
         sale = POSSale.objects.select_for_update().prefetch_related('items').get(pk=sale_id)
         if sale.status == 'void':
             raise ValidationError({'error': 'Transaksi sudah dibatalkan sebelumnya.'})
+        if sale.settlement_status == 'settled':
+            raise ValidationError({'error': 'Transaksi POS yang sudah ter-settle tidak dapat di-void secara langsung.'})
         if sale.status == 'paid' and pos_settings.pos_mengurangi_stok():
             for item in sale.items.select_related('product', 'variant'):
                 if not item.product or not item.product.lacak_inventori:
@@ -384,8 +377,6 @@ def void_sale(*, sale_id, user):
             sale.kupon.penggunaan_count = CouponUsage.objects.filter(kupon=sale.kupon).count()
             sale.kupon.save(update_fields=['penggunaan_count'])
 
-        # Balikkan mutasi poin loyalty: poin yang ditebus dikembalikan, poin yang
-        # sempat didapat dari transaksi ini ditarik lagi.
         if sale.status == 'paid' and (sale.poin_ditebus or sale.poin_didapat):
             member = sale.pelanggan.customer if (sale.pelanggan and sale.pelanggan.customer_id) else None
             if member is not None:
@@ -395,5 +386,11 @@ def void_sale(*, sale_id, user):
                 member.save(update_fields=['loyalty_points'])
 
         sale.status = 'void'
-        sale.save(update_fields=['status'])
+        sale.settlement_status = 'void'
+        sale.save(update_fields=['status', 'settlement_status'])
+
+        from accounting.services.pos_posting import post_pos_void_journal
+        post_pos_void_journal(sale, actor=user)
+
         return sale
+

@@ -1,20 +1,37 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Plus, ShoppingBag, RotateCcw, Trash2 } from 'lucide-react';
+import { ArrowLeft, Plus, ShoppingBag, RotateCcw, Printer } from 'lucide-react';
 import TambahProdukModal from './TambahProdukModal';
 import PembelianInfoCards from './PembelianInfoCards';
 import PembelianItemsTable from './PembelianItemsTable';
 import PembelianPembayaranModal from './PembelianPembayaranModal';
+import PembelianDiskonModal from './PembelianDiskonModal';
+import PembelianPajakModal from './PembelianPajakModal';
+import PembelianPengirimanModal from './PembelianPengirimanModal';
+import PurchaseWorkflowLog from './PurchaseWorkflowLog';
+import PurchaseAttachmentCard from './PurchaseAttachmentCard';
+import ReturPembelianDetailView from './return/ReturPembelianDetailView';
 import apiClient from '../../../api/apiClient';
 
-const fmtRp = (n) => `Rp ${Number(n || 0).toLocaleString('id-ID')}`;
-const fmtDate = (d) =>
-  d ? new Date(d).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }) : '-';
-
-export default function PembelianDetail({ docId, onBack, onSaved }) {
+export default function PembelianDetail({ docId, detailMode = 'butuh-diproses', onBack, onSaved }) {
   const [doc, setDoc] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
   const [isPayOpen, setIsPayOpen] = useState(false);
+  const [logs, setLogs] = useState([]);
+  const [togglingPayment, setTogglingPayment] = useState(false);
+  const [removingPaymentId, setRemovingPaymentId] = useState(null);
+
+  // Modals for Diskon, Pajak, Pengiriman (Presisi SS No 1-4)
+  const [showDiskonModal, setShowDiskonModal] = useState(false);
+  const [showPajakModal, setShowPajakModal] = useState(false);
+  const [showPengirimanModal, setShowPengirimanModal] = useState(false);
+
+  // Values for Diskon, Pajak, Pengiriman
+  const [diskonVal, setDiskonVal] = useState(0);
+  const [diskonType, setDiskonType] = useState('persen');
+  const [pajakVal, setPajakVal] = useState(0);
+  const [pajakType, setPajakType] = useState('persen');
+  const [pengirimanVal, setPengirimanVal] = useState(0);
 
   const fetchDetail = useCallback(async () => {
     try {
@@ -22,9 +39,20 @@ export default function PembelianDetail({ docId, onBack, onSaved }) {
       setDoc(res.data);
     } catch (err) {
       console.error(err);
-      alert('Gagal memuat detail pembelian.');
+      const message = err.response?.data?.error || err.response?.data?.detail || 'Gagal memuat detail pembelian.';
+      alert(message);
     } finally {
       setLoading(false);
+    }
+
+    // Riwayat workflow adalah informasi tambahan. Detail pembelian tetap harus
+    // bisa dibuka jika tabel log belum termigrasi atau dokumen merupakan retur.
+    try {
+      const logRes = await apiClient.get(`/purchases/${docId}/workflow/logs/`);
+      setLogs(logRes.data || []);
+    } catch (err) {
+      console.warn('Gagal memuat riwayat workflow pembelian.', err);
+      setLogs([]);
     }
   }, [docId]);
 
@@ -42,6 +70,53 @@ export default function PembelianDetail({ docId, onBack, onSaved }) {
     }
   };
 
+  const handleAddPayment = async (payload) => {
+    try {
+      await apiClient.post(`/purchases/${docId}/add-payment/`, payload);
+      await refreshAll();
+      setIsPayOpen(false);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Gagal mencatat pembayaran.');
+      throw err;
+    }
+  };
+
+  const handleRemovePayment = async (paymentId) => {
+    setRemovingPaymentId(paymentId);
+    try {
+      await apiClient.post(`/purchases/${docId}/remove-payment/`, { payment_id: paymentId });
+      await refreshAll();
+    } catch (err) {
+      alert(err.response?.data?.error || err.response?.data?.detail || 'Gagal membatalkan pembayaran.');
+    } finally {
+      setRemovingPaymentId(null);
+    }
+  };
+
+  const handleUploadAttachment = async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      await apiClient.post(`/purchases/${docId}/upload-attachment/`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      await refreshAll();
+    } catch (err) {
+      alert(err.response?.data?.error || err.response?.data?.detail || 'Gagal mengunggah lampiran.');
+      throw err;
+    }
+  };
+
+  const handlePostRetur = async () => {
+    if (!window.confirm('Post sekarang dokumen retur ini?')) return;
+    try {
+      await apiClient.post(`/purchases/${docId}/workflow/update-status/`, { status_pembelian: 'Selesai' });
+      await refreshAll();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Gagal memposting retur.');
+    }
+  };
+
   const refreshAll = async () => {
     await fetchDetail();
     onSaved?.();
@@ -50,91 +125,84 @@ export default function PembelianDetail({ docId, onBack, onSaved }) {
   if (loading) {
     return <div className="p-8 text-center text-xs font-bold text-slate-400 animate-pulse">Memuat detail...</div>;
   }
-  if (!doc) {
-    return <div className="p-8 text-center text-xs font-bold text-rose-500">Data tidak ditemukan.</div>;
+  if (doc?.is_retur) {
+    return <ReturPembelianDetailView docId={docId} onBack={onBack} onSaved={onSaved} />;
   }
 
   const isDraft = doc.status === 'draft';
   const isRetur = !!doc.is_retur;
-  const totalHarga = Number(doc.total || 0);
-  const sisa = Number(doc.sisa || 0);
+  const isCancelled = doc.status === 'batal' || detailMode === 'dibatalkan';
 
-  // --- aksi status penerimaan (PO non-retur) ---
-  const handleMarkDiterima = async () => {
-    if (!window.confirm('Tandai barang Diterima? Bila "lanjut tambah stok" aktif, stok akan bertambah dan data tidak dapat diubah lagi.')) return;
+  const subtotal = (doc.items || []).reduce(
+    (acc, it) => acc + Number(it.qty || 1) * Number(it.harga_beli || 0),
+    0
+  );
+  const diskonAmount = diskonType === 'persen' ? Math.round(subtotal * (diskonVal / 100)) : diskonVal;
+  const subtotalAfterDiskon = Math.max(0, subtotal - diskonAmount);
+  const pajakAmount = pajakType === 'persen' ? Math.round(subtotalAfterDiskon * (pajakVal / 100)) : pajakVal;
+  const pengirimanAmount = Number(pengirimanVal) || 0;
+  const totalDitagihkan = Math.max(0, subtotalAfterDiskon + pajakAmount + pengirimanAmount);
+  const jumlahTerbayar = Number(doc.total_dibayar || 0);
+  const sisa = Math.max(0, totalDitagihkan - jumlahTerbayar);
+
+  const hasProducts = Boolean(doc?.items && doc.items.length > 0);
+  const hasReception = Boolean((doc?.no_terima && doc?.tanggal_diterima) || doc?.receive_status === 'diterima');
+  const canTogglePayment = hasProducts && hasReception && isDraft;
+  const isLunas = doc?.payment_status === 'lunas';
+
+  const handleTogglePayment = async () => {
+    if (!canTogglePayment || togglingPayment) return;
+    setTogglingPayment(true);
     try {
-      await apiClient.post(`/purchases/${docId}/receive/`, {
-        tanggal_diterima: doc.tanggal_diterima || new Date().toISOString().slice(0, 10),
-        no_terima: doc.no_terima || '',
-        lanjut_tambah_stok: doc.lanjut_tambah_stok,
-      });
+      const targetStatus = isLunas ? 'belum' : 'lunas';
+      await apiClient.post(`/purchases/${docId}/workflow/toggle-payment/`, { target_status: targetStatus });
       await refreshAll();
     } catch (err) {
-      alert(err.response?.data?.error || 'Gagal memproses penerimaan.');
+      alert(err.response?.data?.error || err.response?.data?.detail || 'Gagal mengubah status pembayaran.');
+    } finally {
+      setTogglingPayment(false);
     }
   };
 
-  // --- aksi post retur ---
-  const handlePostRetur = async () => {
-    if (!window.confirm('Post retur sekarang? Stok akan berkurang dan data tidak dapat diubah lagi.')) return;
+  const handleStatusSelect = async (newStatus) => {
     try {
-      await apiClient.post(`/purchases/${docId}/post-retur/`, { exchange_new: doc.exchange_new });
+      await apiClient.post(`/purchases/${docId}/workflow/update-status/`, { status_pembelian: newStatus });
       await refreshAll();
     } catch (err) {
-      alert(err.response?.data?.error || 'Gagal memposting retur.');
+      alert(err.response?.data?.error || 'Gagal memperbarui status pembelian.');
     }
   };
 
-  const handleCancel = async () => {
-    if (!window.confirm('Batalkan dokumen ini?')) return;
-    try {
-      await apiClient.post(`/purchases/${docId}/cancel/`);
-      await refreshAll();
-    } catch (err) {
-      alert(err.response?.data?.error || 'Gagal membatalkan dokumen.');
-    }
+  const getDropdownStatusValue = () => {
+    if (doc.status === 'batal') return 'Batal';
+    if (doc.status === 'selesai') return 'Selesai';
+    if (doc.receive_status === 'diterima') return 'Diterima';
+    return 'Tunda';
   };
 
-  const handleDateChange = async (newDate) => {
+  const handleDateChange = async (newDateIso) => {
     try {
-      await apiClient.patch(`/purchases/${docId}/`, { tanggal: newDate });
+      await apiClient.patch(`/purchases/${docId}/`, { tanggal: newDateIso });
       await refreshAll();
     } catch (err) {
       alert(err.response?.data?.error || 'Gagal mengubah tanggal.');
     }
   };
 
-  // --- pembayaran ---
-  const handleAddPayment = async ({ tanggal, nominal }) => {
-    try {
-      await apiClient.post(`/purchases/${docId}/add-payment/`, { tanggal, nominal });
-      setIsPayOpen(false);
-      await refreshAll();
-    } catch (err) {
-      alert(err.response?.data?.error || 'Gagal menyimpan pembayaran.');
-    }
-  };
-
-  const handleRemovePayment = async (paymentId) => {
-    if (!window.confirm('Hapus pembayaran ini?')) return;
-    try {
-      await apiClient.post(`/purchases/${docId}/remove-payment/`, { payment_id: paymentId });
-      await refreshAll();
-    } catch (err) {
-      alert(err.response?.data?.error || 'Gagal menghapus pembayaran.');
-    }
-  };
-
-  // --- banner ---
-  const paymentBanner = {
-    belum: ['❌ Belum bayar', 'bg-rose-600'],
-    sebagian: ['◐ Bayar sebagian', 'bg-amber-500'],
-    lunas: ['✔️ Sudah bayar', 'bg-emerald-600'],
-  }[doc.payment_status] || ['❌ Belum bayar', 'bg-rose-600'];
-
   return (
     <div className="p-6 w-full mx-auto space-y-5 animate-fade-in text-slate-700">
-      {/* Banner status: pembayaran (PO) atau info retur */}
+      {/* Breadcrumb Paling Atas */}
+      <div className="flex items-center justify-between text-xs font-semibold text-slate-500 pb-1">
+        <div className="flex items-center gap-1.5">
+          <span className="cursor-pointer hover:text-blue-600 transition-colors" onClick={onBack}>
+            Daftar Pembelian
+          </span>
+          <span>/</span>
+          <span className="font-bold text-slate-800">Open Purchase Detail</span>
+        </div>
+      </div>
+
+      {/* Banner status warna merah/hijau (Minimalis) */}
       {isRetur ? (
         <div className="flex items-center px-5 py-3 rounded-xl text-white shadow-2xs bg-indigo-600">
           <div className="flex items-center gap-2 font-bold text-xs">
@@ -142,28 +210,61 @@ export default function PembelianDetail({ docId, onBack, onSaved }) {
             <span>Retur Pembelian{doc.retur_ref_nomor ? ` — Ref: ${doc.retur_ref_nomor}` : ''}</span>
           </div>
         </div>
-      ) : (
-        <div className={`flex items-center justify-between px-5 py-3 rounded-xl text-white shadow-2xs transition-colors duration-300 ${paymentBanner[1]}`}>
+      ) : isCancelled ? (
+        <div className="flex items-center justify-between px-5 py-3 rounded-xl text-white shadow-2xs bg-rose-600">
           <div className="flex items-center gap-2 font-bold text-xs">
-            <span>{paymentBanner[0]}</span>
+            <span>❌ Pembelian Dibatalkan</span>
           </div>
-          <div className="text-[11px] font-semibold opacity-90">
-            {fmtRp(doc.total_dibayar)} / {fmtRp(totalHarga)}
+          <span className="text-[11px] font-semibold opacity-90">Dokumen read-only</span>
+        </div>
+      ) : (
+        <div className={`flex items-center justify-between px-5 py-3 rounded-xl text-white shadow-2xs transition-colors duration-300 ${
+          isLunas ? 'bg-emerald-600' : doc.payment_status === 'sebagian' ? 'bg-amber-500' : 'bg-rose-600'
+        }`}>
+          <div className="flex items-center gap-2 font-bold text-xs">
+            <span>{isLunas ? '✔️ Sudah Dibayar' : doc.payment_status === 'sebagian' ? '◐ Bayar Sebagian' : '❌ Belum Dibayar'}</span>
+          </div>
+
+          {/* Toggle Switch di sebelah kanan (posisi bekas nominal) */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={togglingPayment}
+              onClick={() => {
+                if (!canTogglePayment) {
+                  alert('Toggle pembayaran aktif setelah produk dan informasi penerimaan terisi.');
+                  return;
+                }
+                handleTogglePayment();
+              }}
+              title={!canTogglePayment ? 'Toggle aktif setelah produk & info penerimaan terisi' : 'Ubah status pembayaran'}
+              className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 focus:outline-none border border-white/30 ${
+                isLunas ? 'bg-emerald-500' : 'bg-rose-500'
+              } ${!canTogglePayment ? 'opacity-50 cursor-pointer' : 'cursor-pointer hover:opacity-90'}`}
+            >
+              <span
+                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition duration-200 shadow-xs ${
+                  isLunas ? 'translate-x-4.5' : 'translate-x-0.5'
+                }`}
+              />
+            </button>
           </div>
         </div>
       )}
 
-      {/* Header */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs flex flex-wrap items-center justify-between gap-4">
+      {/* Header Utama Dokumen */}
+      <div className="flex items-center justify-between flex-wrap gap-4 border-b border-slate-200 pb-4">
         <div className="flex items-center gap-3">
           <button
+            type="button"
             onClick={onBack}
-            className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full cursor-pointer transition-colors text-slate-600"
+            className="p-2 hover:bg-slate-100 rounded-lg text-slate-500 cursor-pointer transition-colors"
+            title="Kembali"
           >
-            <ArrowLeft size={16} />
+            <ArrowLeft size={18} />
           </button>
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white ${isRetur ? 'bg-indigo-500' : 'bg-blue-500'}`}>
-            {isRetur ? <RotateCcw size={15} /> : <ShoppingBag size={15} />}
+          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 shadow-2xs">
+            <ShoppingBag size={20} />
           </div>
           <div>
             <span className="text-sm font-bold text-slate-800 font-mono block leading-none mb-1">{doc.nomor}</span>
@@ -173,17 +274,8 @@ export default function PembelianDetail({ docId, onBack, onSaved }) {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {/* Aksi utama sesuai jenis dokumen */}
-          {!isRetur && isDraft && (
-            <button
-              type="button"
-              onClick={handleMarkDiterima}
-              className="text-xs font-bold bg-emerald-600 text-white rounded-lg px-3 py-2 hover:bg-emerald-700 cursor-pointer shadow-sm"
-            >
-              Tandai Diterima
-            </button>
-          )}
           {isRetur && isDraft && (
             <button
               type="button"
@@ -193,28 +285,31 @@ export default function PembelianDetail({ docId, onBack, onSaved }) {
               Post Sekarang
             </button>
           )}
-          {isDraft && (
-            <button
-              type="button"
-              onClick={handleCancel}
-              className="text-xs font-bold bg-white text-rose-600 border border-rose-200 rounded-lg px-3 py-2 hover:bg-rose-50 cursor-pointer"
-            >
-              Batalkan
-            </button>
-          )}
+          {/* Tombol Cetak */}
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="inline-flex items-center gap-1 text-xs font-bold bg-white text-slate-700 border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 cursor-pointer shadow-2xs transition-colors"
+          >
+            <Printer size={14} className="text-slate-500" /> Cetak
+          </button>
 
-          {/* Status penerimaan (tampilan) */}
-          <span className={`text-xs font-semibold rounded-lg px-3 py-2 border ${
-            doc.status === 'batal'
-              ? 'bg-rose-50 text-rose-600 border-rose-100'
-              : doc.receive_status === 'diterima'
-                ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
-                : 'bg-orange-50 text-orange-600 border-orange-100'
-          }`}>
-            {doc.status === 'batal' ? 'Batal' : doc.receive_status === 'diterima' ? 'Diterima' : 'Tunda'}
-          </span>
+          {/* Dropdown Status Pembelian */}
+          <select
+            value={getDropdownStatusValue()}
+            onChange={(e) => handleStatusSelect(e.target.value)}
+            disabled={!isDraft && doc.status !== 'selesai'}
+            className="text-xs font-bold text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none cursor-pointer hover:bg-slate-50"
+          >
+            <option value="Tunda">Tunda</option>
+            <option value="Terkirim">Terkirim</option>
+            <option value="Dikirim">Dikirim</option>
+            <option value="Diterima">Diterima</option>
+            <option value="Selesai">Selesai</option>
+            <option value="Batal">Batal</option>
+          </select>
 
-          {/* Date Picker */}
+          {/* Date Picker (Kalender) */}
           <input
             type="date"
             disabled={!isDraft}
@@ -232,123 +327,94 @@ export default function PembelianDetail({ docId, onBack, onSaved }) {
 
       {/* Produk Pesanan */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-4">
-        <div className="border-b border-slate-100 pb-2 flex justify-between items-center">
+        <div className="border-b border-slate-100 pb-2.5 flex justify-between items-center">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-slate-800">Produk {isRetur ? 'Diretur' : 'Pesanan'}</span>
-            {doc.items && doc.items.length > 0 && (
-              <span className="text-[10px] font-bold text-slate-400 font-mono">(Total: {fmtRp(totalHarga)})</span>
-            )}
           </div>
           {isDraft && (
-            <button
-              onClick={() => setIsAddProductOpen(true)}
-              className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-800 cursor-pointer"
-            >
-              <Plus size={14} /> Produk
-            </button>
-          )}
-        </div>
-
-        {doc.items && doc.items.length > 0 ? (
-          <PembelianItemsTable docId={docId} items={doc.items} isDraft={isDraft} onRemoved={fetchDetail} />
-        ) : (
-          <div className="flex flex-col items-center justify-center py-10 space-y-3">
-            <div className="w-20 h-20 rounded-full bg-slate-50 flex items-center justify-center text-2xl border border-slate-100 shadow-2xs">
-              🐻‍❄️
-            </div>
-            <span className="text-xs font-bold text-slate-400">Tidak ada produk</span>
-          </div>
-        )}
-      </div>
-
-      {/* Pembayaran (hanya PO, bukan retur) */}
-      {!isRetur && (
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-4">
-          <div className="border-b border-slate-100 pb-2 flex justify-between items-center">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-800">Pembayaran</span>
-              <span className="text-[10px] font-bold text-slate-400 font-mono">
-                (Sisa: {fmtRp(sisa)})
-              </span>
-            </div>
-            {doc.status !== 'batal' && sisa > 0 && (
               <button
-                onClick={() => setIsPayOpen(true)}
-                className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 hover:text-emerald-800 cursor-pointer"
+                type="button"
+                onClick={() => setIsAddProductOpen(true)}
+                className="flex items-center gap-1 text-[11px] font-bold text-slate-600 hover:bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 cursor-pointer transition-colors"
               >
-                <Plus size={14} /> Pembayaran
+                <Plus size={12} /> Produk
               </button>
-            )}
-          </div>
-
-          {doc.payments && doc.payments.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-100 text-slate-400 font-semibold">
-                    <th className="py-2">Tanggal</th>
-                    <th className="py-2 text-right">Nominal</th>
-                    <th className="py-2 text-center">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {doc.payments.map((p) => (
-                    <tr key={p.id} className="hover:bg-slate-50/50">
-                      <td className="py-2.5 font-semibold text-slate-700">{fmtDate(p.tanggal)}</td>
-                      <td className="py-2.5 text-right font-mono font-bold text-slate-800">{fmtRp(p.nominal)}</td>
-                      <td className="py-2.5 text-center">
-                        {doc.status !== 'batal' && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemovePayment(p.id)}
-                            className="p-1 text-rose-500 hover:bg-rose-50 rounded-full cursor-pointer transition-colors"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
             </div>
-          ) : (
-            <div className="text-center py-6 text-slate-400 text-xs font-semibold">Belum ada pembayaran</div>
           )}
         </div>
-      )}
 
-      {/* Log */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-4 text-xs">
-        <div className="border-b border-slate-100 pb-2">
-          <span className="font-bold text-slate-800">Log</span>
-        </div>
-        <div className="space-y-2 text-slate-600">
-          <div>
-            <span className="text-[10px] font-bold text-slate-400 block">Waktu Pembuatan</span>
-            <span className="font-semibold text-slate-700">
-              {doc.dibuat_oleh_email || doc.dibuat_oleh_nama || 'Tidak diketahui'}, {new Date(doc.created_at).toLocaleString('id-ID')}
-            </span>
-          </div>
-          <div>
-            <span className="text-[10px] font-bold text-slate-400 block">Terakhir Diperbarui</span>
-            <span className="font-semibold text-slate-700">
-              {doc.dibuat_oleh_email || doc.dibuat_oleh_nama || 'Tidak diketahui'}, {new Date(doc.updated_at).toLocaleString('id-ID')}
-            </span>
-          </div>
-        </div>
+        {/* Tabel Items + Ringkasan (Presisi SS No. 1 Olsera) */}
+        <PembelianItemsTable
+          items={doc.items}
+          diskonAmount={diskonAmount}
+          pajakAmount={pajakAmount}
+          pengirimanAmount={pengirimanAmount}
+          jumlahTerbayar={jumlahTerbayar}
+          payments={doc.payments || []}
+          onOpenDiskon={() => setShowDiskonModal(true)}
+          onOpenPajak={() => setShowPajakModal(true)}
+          onOpenPengiriman={() => setShowPengirimanModal(true)}
+          onOpenPembayaran={() => setIsPayOpen(true)}
+          onRemovePayment={handleRemovePayment}
+          removingPaymentId={removingPaymentId}
+        />
       </div>
+
+      {/* File lampiran tetap berada sebelum riwayat aktivitas pembelian. */}
+      <PurchaseAttachmentCard
+        attachments={doc.attachments || []}
+        canUpload={!isCancelled}
+        onUpload={handleUploadAttachment}
+      />
+
+      {/* Log Workflow */}
+      <PurchaseWorkflowLog doc={doc} logs={logs} />
 
       <TambahProdukModal
         isOpen={isAddProductOpen}
         onClose={() => setIsAddProductOpen(false)}
         onAdd={handleAddProduct}
       />
+
       {isPayOpen && (
         <PembelianPembayaranModal
           sisa={sisa}
           onClose={() => setIsPayOpen(false)}
           onSave={handleAddPayment}
+        />
+      )}
+
+      {/* Pop-up Modals Presisi SS No 2, 3, 4 */}
+      {showDiskonModal && (
+        <PembelianDiskonModal
+          currentVal={diskonVal}
+          currentType={diskonType}
+          onClose={() => setShowDiskonModal(false)}
+          onSave={({ val, type }) => {
+            setDiskonVal(val);
+            setDiskonType(type);
+          }}
+        />
+      )}
+
+      {showPajakModal && (
+        <PembelianPajakModal
+          currentVal={pajakVal}
+          currentType={pajakType}
+          onClose={() => setShowPajakModal(false)}
+          onSave={({ val, type }) => {
+            setPajakVal(val);
+            setPajakType(type);
+          }}
+        />
+      )}
+
+      {showPengirimanModal && (
+        <PembelianPengirimanModal
+          currentVal={pengirimanVal}
+          onClose={() => setShowPengirimanModal(false)}
+          onSave={(val) => setPengirimanVal(val)}
         />
       )}
     </div>

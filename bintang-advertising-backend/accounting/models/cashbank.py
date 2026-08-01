@@ -94,6 +94,9 @@ class PaymentMethodAuditLog(models.Model):
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     account_code = models.CharField(max_length=20, blank=True, default="")
     account_name = models.CharField(max_length=150, blank=True, default="")
+    previous_account_code = models.CharField(max_length=20, blank=True, default="")
+    previous_account_name = models.CharField(max_length=150, blank=True, default="")
+    detail = models.CharField(max_length=500, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

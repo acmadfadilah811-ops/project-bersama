@@ -11,12 +11,8 @@ export default function PasanganJurnalModal({ isOpen, onClose, entryNumber }) {
     if (!isOpen || !entryNumber) return;
     setLoading(true);
     apiClient
-      .get(`/accounting/journal-entries/`, { params: { search: entryNumber } })
-      .then((res) => {
-        const list = res.data || [];
-        const found = list.find((e) => e.entry_number === entryNumber);
-        setEntry(found || null);
-      })
+      .get(`/accounting/journal-entries/${encodeURIComponent(entryNumber)}/`)
+      .then((res) => setEntry(res.data || null))
       .catch((err) => notifyApiError(err, 'Gagal memuat pasangan jurnal'))
       .finally(() => setLoading(false));
   }, [isOpen, entryNumber]);
@@ -34,6 +30,19 @@ export default function PasanganJurnalModal({ isOpen, onClose, entryNumber }) {
     return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
+  const transactionName = (journal) => {
+    const labels = {
+      pos_sale: 'Pembayaran penjualan',
+      order_payment: 'Pembayaran penjualan',
+      purchase: 'Pembelian',
+      purchase_payment: 'Pembayaran pembelian',
+      cash_transaction: 'Transaksi kas',
+      cash_transfer: 'Transfer kas',
+      capital_transfer: 'Transfer modal',
+    };
+    return labels[journal?.source_type] || journal?.source_type_label || 'Jurnal umum';
+  };
+
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
       <div className="bg-white rounded-xl shadow-2xl border border-slate-100 max-w-5xl w-full flex flex-col p-6 relative max-h-[85vh]">
@@ -41,7 +50,7 @@ export default function PasanganJurnalModal({ isOpen, onClose, entryNumber }) {
         {/* Header Section */}
         <div className="flex items-center justify-between pb-4 border-b border-slate-150 mb-4">
           <h3 className="text-sm font-bold text-slate-800">
-            {entryNumber} - {entry?.description || 'Pembayaran penjualan'}
+            {entryNumber} - {transactionName(entry)}
           </h3>
           <button
             type="button"
@@ -81,7 +90,7 @@ export default function PasanganJurnalModal({ isOpen, onClose, entryNumber }) {
                   <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-4 py-3 whitespace-nowrap">{formatDate(entry.date)}</td>
                     <td className="px-4 py-3 font-semibold text-slate-800">{line.account_code} - {line.account_name}</td>
-                    <td className="px-4 py-3 text-slate-500">{entry.description || 'Pembayaran penjualan'}</td>
+                    <td className="px-4 py-3 text-slate-600 font-semibold">{transactionName(entry)}</td>
                     <td className="px-4 py-3 text-slate-500">{line.description || entry.description}</td>
                     <td className="px-4 py-3 text-right font-bold text-slate-800">
                       {line.debit > 0 ? formatIDR(line.debit) : 'IDR 0'}
@@ -89,7 +98,7 @@ export default function PasanganJurnalModal({ isOpen, onClose, entryNumber }) {
                     <td className="px-4 py-3 text-right font-bold text-slate-800">
                       {line.kredit > 0 ? formatIDR(line.kredit) : 'IDR 0'}
                     </td>
-                    <td className="px-4 py-3 text-center text-slate-500">{entry.created_by_name || 'Brandy'}</td>
+                    <td className="px-4 py-3 text-center text-slate-600">{entry.processed_by_name || 'Sistem'}</td>
                   </tr>
                 ))}
               </tbody>

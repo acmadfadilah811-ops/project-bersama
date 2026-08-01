@@ -169,6 +169,7 @@ const menuAdmin = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, isGroup: false },
   { path: '/kasir/terminal', label: 'Kasir (POS)', icon: CreditCard, isGroup: false },
   { path: '/produksi', label: 'Papan Kerja (SPK)', icon: Kanban, isGroup: false },
+  { path: '/accounting-internal', label: 'Akuntansi Internal', icon: BookOpen, isGroup: false },
   { path: '/profile', label: 'Profil', icon: User, isGroup: false },
   PENGATURAN_GROUP,
 ];
@@ -240,6 +241,7 @@ export default function Sidebar() {
     if (path === '/pricelist') return 'pricelist';
     if (path === '/divisi') return 'divisi';
     if (path === '/settings' || path.startsWith('/settings/')) return 'settings';
+    if (path.startsWith('/accounting-internal')) return 'accounting-internal';
     return null;
   };
 

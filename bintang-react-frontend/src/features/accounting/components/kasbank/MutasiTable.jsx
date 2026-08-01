@@ -3,10 +3,8 @@ import { Loader2, MoreHorizontal, X, Trash2, ArrowRightLeft } from 'lucide-react
 export default function MutasiTable({
   loading,
   filteredRows,
-  saldoAwal,
   formatIDR,
   formatDateLabel,
-  account,
   activeActionRowId,
   setActiveActionRowId,
   actionDropdownRef,
@@ -42,26 +40,13 @@ export default function MutasiTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
-              {/* Mutation lines */}
+              {/* Mutation lines — saldo berjalan (running_balance) dihitung server-side
+                  berdasarkan account.normal_balance yang sebenarnya, bukan ditebak di sini. */}
               {(() => {
-                let running = saldoAwal;
-                const isDebitNormal = account?.classification?.account_type === 'asset' ||
-                                     account?.classification?.account_type === 'expense' ||
-                                     (account?.classification?.name && (
-                                       account.classification.name === 'Kas & Bank' ||
-                                       account.classification.name === 'Piutang' ||
-                                       account.classification.name === 'Persediaan'
-                                     ));
-
                 return filteredRows.map((row, idx) => {
                   const dVal = Number(row.debit) || 0;
                   const kVal = Number(row.kredit) || 0;
-                  
-                  if (isDebitNormal) {
-                    running = running + dVal - kVal;
-                  } else {
-                    running = running + kVal - dVal;
-                  }
+                  const running = Number(row.running_balance) || 0;
 
                   return (
                     <tr
@@ -77,7 +62,14 @@ export default function MutasiTable({
                         {row.entry_number}
                       </td>
                       <td className="px-5 py-3">
-                        {row.pelanggan_supplier || '-'}
+                        <div className="space-y-0.5">
+                          <p>{row.pelanggan_supplier || '-'}</p>
+                          {row.email && (
+                            <p className="text-[10px] text-slate-450 font-semibold">
+                              {row.email}
+                            </p>
+                          )}
+                        </div>
                       </td>
                       <td className="px-5 py-3">
                         <div className="space-y-0.5">

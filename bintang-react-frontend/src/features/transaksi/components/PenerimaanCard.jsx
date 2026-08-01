@@ -12,21 +12,25 @@ export default function PenerimaanCard({ doc, isDraft, onSaved }) {
   const [editTanggalDiterima, setEditTanggalDiterima] = useState('');
   const [editNoTerima, setEditNoTerima] = useState('');
   const [editLanjutStok, setEditLanjutStok] = useState(true);
-
-  // Penerima otomatis dari pembuat PO.
-  const penerimaDariPembuat = doc.dibuat_oleh_nama || '';
+  const [penerimaOptions, setPenerimaOptions] = useState([]);
+  const [editPenerimaId, setEditPenerimaId] = useState('');
+  const [penerimaError, setPenerimaError] = useState('');
 
   const handleSave = async () => {
-    if (!window.confirm('Tandai barang Diterima? Bila "lanjut tambah stok" aktif, stok akan bertambah dan data tidak dapat diubah lagi.')) return;
     setSaving(true);
     try {
-      await apiClient.post(`/purchases/${doc.id}/receive/`, {
+      const fallbackNoTerima = editNoTerima.trim() || doc.no_terima || `TRM-${doc.nomor ? doc.nomor.replace(/[^0-9]/g, '') : Date.now().toString().slice(-4)}`;
+      const res = await apiClient.post(`/purchases/${doc.id}/workflow/siapkan-stok-masuk/`, {
         tanggal_diterima: editTanggalDiterima || new Date().toISOString().slice(0, 10),
-        no_terima: editNoTerima || '',
+        no_terima: fallbackNoTerima,
         lanjut_tambah_stok: editLanjutStok,
+        penerima_id: editPenerimaId || null,
       });
       setIsEditing(false);
       onSaved();
+      if (res.data?.stock_document?.id) {
+        window.location.assign(`/product-inventory/inventory/stock-in?stockInId=${res.data.stock_document.id}`);
+      }
     } catch (err) {
       alert(err.response?.data?.error || 'Gagal memproses penerimaan.');
     } finally {
@@ -43,6 +47,26 @@ export default function PenerimaanCard({ doc, isDraft, onSaved }) {
     }
   };
 
+  const bukaFormPenerimaan = async () => {
+    const autoNoTerima = doc.no_terima || `TRM-${doc.nomor ? doc.nomor.replace(/[^0-9]/g, '') : Date.now().toString().slice(-4)}`;
+    setEditTanggalDiterima(doc.tanggal_diterima || new Date().toISOString().slice(0, 10));
+    setEditNoTerima(autoNoTerima);
+    setEditLanjutStok(doc.lanjut_tambah_stok !== false);
+    setPenerimaError('');
+    setIsEditing(true);
+
+    try {
+      const { data } = await apiClient.get('/pos/sales/staff-list/');
+      const options = Array.isArray(data) ? data : [];
+      setPenerimaOptions(options);
+      const current = options.find((item) => item.nama === doc.penerima_nama || item.nama === doc.dibuat_oleh_nama);
+      setEditPenerimaId(current ? String(current.id) : '');
+    } catch (err) {
+      setPenerimaOptions([]);
+      setPenerimaError(err.response?.data?.detail || 'Daftar akun penerima tidak dapat dimuat.');
+    }
+  };
+
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs space-y-4 flex flex-col justify-between">
       <div>
@@ -50,12 +74,7 @@ export default function PenerimaanCard({ doc, isDraft, onSaved }) {
           <span className="text-xs font-bold text-slate-800">Info Penerimaan</span>
           {isDraft && !isEditing && (
             <button
-              onClick={() => {
-                setEditTanggalDiterima(doc.tanggal_diterima || '');
-                setEditNoTerima(doc.no_terima || '');
-                setEditLanjutStok(doc.lanjut_tambah_stok !== false);
-                setIsEditing(true);
-              }}
+              onClick={bukaFormPenerimaan}
               className="text-xs font-bold text-blue-600 hover:text-blue-800 cursor-pointer"
             >
               Terima
@@ -103,15 +122,17 @@ export default function PenerimaanCard({ doc, isDraft, onSaved }) {
             </div>
             <div>
               <label className="text-[10px] font-bold text-slate-400 block mb-1">Penerima</label>
-              <input
-                type="text"
-                value={penerimaDariPembuat}
-                readOnly
-                disabled
-                placeholder={penerimaDariPembuat ? '' : 'Data pembuat tidak tersedia'}
-                className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 bg-slate-100 text-slate-500 cursor-not-allowed focus:outline-none"
-              />
-              <span className="text-[10px] text-slate-400 block mt-1">Otomatis dari pembuat pembelian</span>
+              <select
+                value={editPenerimaId}
+                onChange={(e) => setEditPenerimaId(e.target.value)}
+                className="w-full text-xs border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none"
+              >
+                <option value="">Pilih akun penerima</option>
+                {penerimaOptions.map((item) => (
+                  <option key={item.id} value={item.id}>{item.nama} ({item.role})</option>
+                ))}
+              </select>
+              {penerimaError && <span className="text-[10px] text-rose-500 block mt-1">{penerimaError}</span>}
             </div>
             <div className="flex items-center justify-between pt-2">
               <span className="text-xs font-semibold text-slate-600">Lanjut tambah stok masuk</span>
@@ -142,7 +163,7 @@ export default function PenerimaanCard({ doc, isDraft, onSaved }) {
             </div>
             <div>
               <span className="text-[10px] font-bold text-slate-400 block">Penerima</span>
-              <span className="font-semibold text-slate-800">{doc.receive_status === 'diterima' ? (penerimaDariPembuat || '-') : '-'}</span>
+              <span className="font-semibold text-slate-800">{doc.receive_status === 'diterima' ? (doc.penerima_nama || '-') : '-'}</span>
             </div>
             {doc.lanjut_tambah_stok && (
               <div className="pt-2">

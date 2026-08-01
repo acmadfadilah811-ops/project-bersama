@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { X, Calendar } from 'lucide-react';
 
+const getTodayStr = () => new Date().toISOString().split('T')[0];
+
 export default function PiutangFilterModal({ isOpen, onClose, onApply }) {
   const [dateMode, setDateMode] = useState('Satu hari'); // 'Satu hari' | 'Batas tanggal'
-  const [selectedDate, setSelectedDate] = useState('2026-07-26');
+  const [selectedDate, setSelectedDate] = useState(getTodayStr());
   const [amountVal, setAmountVal] = useState('0');
   const [piutangMode, setPiutangMode] = useState('Semua Piutang'); // 'Jatuh Tempo' | 'Semua Piutang'
-  const [dueDateVal, setDueDateVal] = useState('2026-07-24');
+  const [dueDateVal, setDueDateVal] = useState(getTodayStr());
   const [sortColumn, setSortColumn] = useState('Tgl Transaksi');
   const [sortDirection, setSortDirection] = useState('Descending');
 

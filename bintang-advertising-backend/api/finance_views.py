@@ -6,7 +6,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.permissions import IsAuthenticated
-from .permissions import IsStrictOwnerOrManager
+from .permissions import IsStrictOwnerOrManager, IsOwnerManagerAdminOrKasir
 from rest_framework.response import Response
 
 from .finance_models import CashTransactionType, CashTransaction, CashTransactionAttachment
@@ -41,10 +41,20 @@ def _norm_direction(raw):
 
 
 class CashTransactionTypeViewSet(viewsets.ModelViewSet):
-    """Tipe Transaksi (master) untuk Pendapatan/Pengeluaran."""
+    """Tipe Transaksi (master) untuk Pendapatan/Pengeluaran.
+
+    Kasir boleh membaca (perlu daftar tipe untuk form Kas Masuk/Keluar di
+    layar shift). Menambah tipe baru punya gerbang tersendiri di create()
+    (setelan POS `blokir_tambah_tipe_kas`); ubah/hapus tipe master tetap
+    Owner/Manager saja — bukan hal yang kasir perlu lakukan sehari-hari.
+    """
     queryset = CashTransactionType.objects.all()
     serializer_class = CashTransactionTypeSerializer
-    permission_classes = [IsStrictOwnerOrManager]
+
+    def get_permissions(self):
+        if self.action in ('update', 'partial_update', 'destroy'):
+            return [IsStrictOwnerOrManager()]
+        return [IsOwnerManagerAdminOrKasir()]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -115,18 +125,31 @@ class CashTransactionTypeViewSet(viewsets.ModelViewSet):
 
 
 class CashTransactionViewSet(viewsets.ModelViewSet):
-    """Transaksi Pendapatan/Pengeluaran (Kas Masuk/Keluar) + lampiran bukti."""
+    """Transaksi Pendapatan/Pengeluaran (Kas Masuk/Keluar) + lampiran bukti.
+
+    Kasir boleh mencatat Kas Masuk/Keluar shift-nya sendiri (kebutuhan layar
+    Shift POS) — dibatasi ke transaksi miliknya sendiri lewat get_queryset()
+    (sama pola dengan SaldoKasHarianViewSet). Posting/pembatalan ke jurnal
+    akuntansi (`post`/`cancel`) tetap Owner/Manager saja — beda kelas
+    sensitivitas dari sekadar mencatat draft kas masuk/keluar.
+    """
     queryset = (
         CashTransaction.objects.all()
         .select_related('tipe_transaksi', 'staff', 'dibuat_oleh')
         .prefetch_related('lampiran')
     )
     serializer_class = CashTransactionSerializer
-    permission_classes = [IsStrictOwnerOrManager]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_permissions(self):
+        if self.action in ('post_journal', 'cancel_journal'):
+            return [IsStrictOwnerOrManager()]
+        return [IsOwnerManagerAdminOrKasir()]
 
     def get_queryset(self):
         qs = super().get_queryset()
+        if self.request.user.role == 'kasir':
+            qs = qs.filter(staff=self.request.user)
         arah = self.request.query_params.get('arah')
         if arah in ('pendapatan', 'pengeluaran'):
             qs = qs.filter(arah=arah)
@@ -141,6 +164,12 @@ class CashTransactionViewSet(viewsets.ModelViewSet):
         obj = serializer.save(nomor=nomor, arah=tipe.tipe, staff=staff, shift=shift, dibuat_oleh=self.request.user)
         for f in self.request.FILES.getlist('lampiran'):
             CashTransactionAttachment.objects.create(transaction=obj, file=f)
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.status != 'draft':
+            return Response({'error': 'Transaksi yang sudah diposting/dibatalkan tidak bisa diubah.'}, status=status.HTTP_400_BAD_REQUEST)
+        return super().update(request, *args, **kwargs)
 
     def perform_update(self, serializer):
         tipe = serializer.validated_data.get('tipe_transaksi')
@@ -158,4 +187,35 @@ class CashTransactionViewSet(viewsets.ModelViewSet):
         deleted, _ = CashTransactionAttachment.objects.filter(transaction=tx, id=att_id).delete()
         if not deleted:
             return Response({'error': 'Lampiran tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(CashTransactionSerializer(tx, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='post')
+    def post_journal(self, request, pk=None):
+        tx = self.get_object()
+        if tx.status != 'draft':
+            return Response({'error': 'Transaksi sudah diposting/dibatalkan.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        from rest_framework.exceptions import ValidationError
+        from accounting.services.cash_transaction_posting import post_cash_transaction_journal
+
+        try:
+            post_cash_transaction_journal(tx, request.user)
+        except DjangoValidationError as exc:
+            raise ValidationError(getattr(exc, 'messages', [str(exc)])) from exc
+        tx.status = 'selesai'
+        tx.save(update_fields=['status', 'updated_at'])
+        return Response(CashTransactionSerializer(tx, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='cancel')
+    def cancel_journal(self, request, pk=None):
+        tx = self.get_object()
+        if tx.status != 'selesai':
+            return Response({'error': 'Hanya transaksi Terposting yang bisa dibatalkan.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from accounting.services.cash_transaction_posting import reverse_cash_transaction_journal
+
+        reverse_cash_transaction_journal(tx, request.user)
+        tx.status = 'batal'
+        tx.save(update_fields=['status', 'updated_at'])
         return Response(CashTransactionSerializer(tx, context={'request': request}).data)

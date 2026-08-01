@@ -46,6 +46,18 @@ class AccountingSettings(models.Model):
         "'Sesuaikan Saldo Awal'). Default: akun 'Saldo Awal' bawaan — ganti di sini kalau mau "
         "diarahkan ke akun lain, tidak perlu ubah kode.",
     )
+    closing_account = models.ForeignKey(
+        Account,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+        help_text="Akun Closing (Laba Ditahan) — akun ekuitas tujuan laba/rugi periode berjalan. "
+        "Dipakai untuk memberi label akun nyata pada baris 'Pendapatan periode ini' di laporan "
+        "Neraca. Tidak membuat jurnal penutup baru — laporan tetap dihitung langsung dari jurnal "
+        "posted per rentang tanggal (lihat get_balance_sheet), supaya laporan periode lama tidak "
+        "berubah setelah tutup buku.",
+    )
     pos_sales_revenue_account = models.ForeignKey(
         Account,
         on_delete=models.PROTECT,
@@ -61,6 +73,96 @@ class AccountingSettings(models.Model):
         blank=True,
         related_name="+",
         help_text="Akun PPN Keluaran default untuk penjualan POS.",
+    )
+    pos_cogs_expense_account = models.ForeignKey(
+        Account,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+        help_text="Akun Harga Pokok Penjualan (HPP) untuk penjualan POS produk berlacak inventori (T-107).",
+    )
+    pos_inventory_account = models.ForeignKey(
+        Account,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+        help_text="Akun Persediaan yang dikurangi (kredit) saat HPP penjualan POS diposting (T-107).",
+    )
+    order_hpp_expense_account = models.ForeignKey(
+        Account,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+        help_text="Akun HPP untuk bahan baku Order yang terpakai via JobBoard, diposting saat Order "
+        "diselesaikan (T-204). Boleh diarahkan ke akun sama dengan pos_cogs_expense_account "
+        "kalau COA tidak membedakan HPP produk jadi vs bahan baku produksi.",
+    )
+    order_material_inventory_account = models.ForeignKey(
+        Account,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+        help_text="Akun Persediaan Bahan Baku yang dikurangi (kredit) saat HPP Order diposting (T-204).",
+    )
+    pos_auto_post_enabled = models.BooleanField(
+        default=True,
+        help_text="Posting otomatis transaksi POS lunas ke jurnal.",
+    )
+    default_pos_payment_method = models.ForeignKey(
+        "PaymentMethod",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+        help_text="Metode pembayaran fallback untuk POS yang belum dipetakan; sebaiknya menuju akun transit.",
+    )
+    pos_post_discount_line_enabled = models.BooleanField(
+        default=True,
+        help_text="Tampilkan dan posting baris diskon POS secara terpisah.",
+    )
+    pos_marketplace_admin_fee_account = models.ForeignKey(
+        Account, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+        help_text="Akun biaya admin marketplace default untuk POS.",
+    )
+    pos_deposit_income_difference_account = models.ForeignKey(
+        Account, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+        help_text="Akun pendapatan selisih deposit POS.",
+    )
+    pos_deposit_expense_difference_account = models.ForeignKey(
+        Account, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+        help_text="Akun biaya selisih deposit POS.",
+    )
+    pos_purchase_tax_account = models.ForeignKey(
+        Account, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+        help_text="Akun pajak pembelian default dari pengaturan POS.",
+    )
+    pos_sales_total_minus_account = models.ForeignKey(
+        Account, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+        help_text="Akun penyesuaian total penjualan minus POS.",
+    )
+    pos_sales_delivery_account = models.ForeignKey(
+        Account, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+        help_text="Akun pengiriman penjualan POS.",
+    )
+    pos_sales_rounding_account = models.ForeignKey(
+        Account, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+        help_text="Akun pembulatan penjualan POS.",
+    )
+    pos_sales_unique_payment_account = models.ForeignKey(
+        Account, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+        help_text="Akun pembayaran unik penjualan POS.",
+    )
+    komisi_penjualan_debit_account = models.ForeignKey(
+        Account, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+        help_text="Akun debit default untuk posting komisi penjualan (mis. Beban Komisi).",
+    )
+    komisi_penjualan_kredit_account = models.ForeignKey(
+        Account, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+        help_text="Akun kredit default untuk posting komisi penjualan (mis. Hutang ke Brand).",
     )
     order_sales_revenue_account = models.ForeignKey(
         Account,
@@ -133,3 +235,28 @@ class AccountingLifecycleLog(models.Model):
 
     def __str__(self):
         return f"{self.get_action_display()} oleh {self.actor} — {self.created_at:%Y-%m-%d %H:%M}"
+
+
+class POSPostingSettingsAuditLog(models.Model):
+    """Jejak audit khusus perubahan sakelar auto-post transaksi POS."""
+
+    class Action(models.TextChoices):
+        ENABLE = "enable", "Aktifkan"
+        DISABLE = "disable", "Nonaktifkan"
+
+    action = models.CharField(max_length=10, choices=Action.choices)
+    actor = models.ForeignKey(
+        django_settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+    )
+    previous_value = models.BooleanField()
+    new_value = models.BooleanField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "accounting_pos_posting_settings_audit_log"
+        ordering = ["-created_at"]
+        verbose_name = "Log Pengaturan Posting POS"
+        verbose_name_plural = "Log Pengaturan Posting POS"
+
+    def __str__(self):
+        return f"{self.get_action_display()} auto-post POS oleh {self.actor}"

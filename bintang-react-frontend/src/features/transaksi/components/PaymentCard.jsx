@@ -119,7 +119,22 @@ export default function PaymentCard({
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {/* 1. Jatuh Tempo Pembayaran */}
+      {/* 1. Pelayan POS */}
+      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs">
+        {renderCardHeader('Pelayan POS', 'pelayan')}
+        {editingCard === 'pelayan' ? (
+          <input
+            type="text"
+            value={tempData.pelayan}
+            onChange={(e) => setTempData({ ...tempData, pelayan: e.target.value })}
+            className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white outline-none focus:border-blue-300"
+          />
+        ) : (
+          <p className="text-xs text-slate-700 font-semibold">{metadata.posStaff || '-'}</p>
+        )}
+      </div>
+
+      {/* 2. Jatuh Tempo Pembayaran */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs">
         {renderCardHeader('Jatuh Tempo Pembayaran', 'due')}
         {editingCard === 'due' ? (
@@ -134,7 +149,7 @@ export default function PaymentCard({
         )}
       </div>
 
-      {/* 2. Catatan */}
+      {/* 3. Catatan */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs">
         {renderCardHeader('Catatan', 'catatan', true)}
         {editingCard === 'catatan' ? (
@@ -164,7 +179,7 @@ export default function PaymentCard({
         )}
       </div>
 
-      {/* 3. Invoice Footer */}
+      {/* 4. Invoice Footer */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs flex flex-col justify-between">
         <div>
           {renderCardHeader('Invoice Footer', 'footer')}
@@ -195,21 +210,6 @@ export default function PaymentCard({
           )}
         </div>
         <p className="text-[10px] text-slate-400 mt-2">Catatan di bagian bawah cetakan invoice.</p>
-      </div>
-
-      {/* 4. Pelayan POS */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs">
-        {renderCardHeader('Pelayan POS', 'pelayan')}
-        {editingCard === 'pelayan' ? (
-          <input
-            type="text"
-            value={tempData.pelayan}
-            onChange={(e) => setTempData({ ...tempData, pelayan: e.target.value })}
-            className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white outline-none focus:border-blue-300"
-          />
-        ) : (
-          <p className="text-xs text-slate-700 font-semibold">{metadata.posStaff || '-'}</p>
-        )}
       </div>
     </div>
   );

@@ -1,17 +1,23 @@
 import { useState } from 'react';
 import { X, Calendar } from 'lucide-react';
 
+const getDaysAgoDate = (days) => {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString().split('T')[0];
+};
+
 export default function PembelianDateModal({ isOpen, onClose, initialFrom, initialTo, onApply }) {
-  const [from, setFrom] = useState(initialFrom || '2026-06-26');
-  const [to, setTo] = useState(initialTo || '2026-07-26');
+  const [from, setFrom] = useState(initialFrom || getDaysAgoDate(30));
+  const [to, setTo] = useState(initialTo || getDaysAgoDate(0));
   const [activePreset, setActivePreset] = useState('30_days');
 
   if (!isOpen) return null;
 
   const handleApplyPreset = (presetType) => {
     setActivePreset(presetType);
-    const today = new Date('2026-07-26');
-    let fromDate = new Date('2026-07-26');
+    const today = new Date();
+    let fromDate = new Date();
 
     if (presetType === 'today') {
       // today

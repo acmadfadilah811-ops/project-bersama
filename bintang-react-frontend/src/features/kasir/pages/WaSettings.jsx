@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { MessageSquare, Settings, ShieldCheck, Database, RefreshCw, Key, Link2, Copy, Send } from 'lucide-react';
+import PosHeaderBar from '../components/PosHeaderBar';
 
-export default function WaSettings() {
+export default function WaSettings({ onToggleSidebar }) {
   // Connection states
   const [apiType, setApiType] = useState('fonnte');
   const [apiKey, setApiKey] = useState('');
@@ -94,12 +95,15 @@ export default function WaSettings() {
   };
 
   return (
-    <div className="flex-1 p-6 overflow-y-auto w-full max-w-5xl mx-auto space-y-8">
-      {/* Header */}
-      <div>
-        <h4 className="font-extrabold text-slate-800 text-lg">Pengaturan Integrasi WhatsApp</h4>
-        <p className="text-xs text-slate-500 font-semibold">Hubungkan nomor toko Anda dengan gateway Fonnte / Evolution API dan kelola template pesan otomatis.</p>
-      </div>
+    <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#F4F7FE] select-none">
+      <PosHeaderBar onToggleSidebar={onToggleSidebar} />
+
+      <div className="flex-1 p-6 overflow-y-auto w-full max-w-5xl mx-auto space-y-8">
+        {/* Header */}
+        <div>
+          <h4 className="font-extrabold text-slate-800 text-lg">Pengaturan Integrasi WhatsApp</h4>
+          <p className="text-xs text-slate-500 font-semibold">Hubungkan nomor toko Anda dengan gateway Fonnte / Evolution API dan kelola template pesan otomatis.</p>
+        </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Kolom Kiri: Konfigurasi API Gateway */}
@@ -342,5 +346,6 @@ export default function WaSettings() {
         </div>
       </div>
     </div>
-  );
+  </div>
+);
 }

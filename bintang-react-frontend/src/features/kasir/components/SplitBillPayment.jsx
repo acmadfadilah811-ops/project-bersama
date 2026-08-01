@@ -7,6 +7,7 @@ export default function SplitBillPayment({
   discountPercent,
   taxPercent,
   isSubmitting,
+  isCheckingAutoDiscount,
   onBack,
   onSubmit,
   formatCurrency,
@@ -14,6 +15,7 @@ export default function SplitBillPayment({
   getDiscountAmount,
   getTaxAmount,
   getTotal,
+  getUnitPrice,
 }) {
   const [paymentMethod, setPaymentMethod] = useState('Cash');
   const [amountPaid, setAmountPaid] = useState(() => getTotal(billB));
@@ -45,9 +47,9 @@ export default function SplitBillPayment({
               <div key={item.key} className="flex justify-between items-center bg-white p-2 rounded-lg border border-slate-100">
                 <div>
                   <p className="text-slate-800 font-bold truncate max-w-[200px]">{item.nama}</p>
-                  <span className="text-[10px] text-slate-400">{item.qty} x {formatCurrency(item.harga)}</span>
+                  <span className="text-[10px] text-slate-400">{item.qty} x {formatCurrency(getUnitPrice(item))}</span>
                 </div>
-                <span className="font-extrabold text-slate-900">{formatCurrency(item.harga * item.qty)}</span>
+                <span className="font-extrabold text-slate-900">{formatCurrency(getUnitPrice(item) * item.qty)}</span>
               </div>
             ))}
           </div>
@@ -151,10 +153,10 @@ export default function SplitBillPayment({
           </button>
           <button
             type="submit"
-            disabled={isSubmitting || paidVal < totalVal}
+            disabled={isSubmitting || isCheckingAutoDiscount || paidVal < totalVal}
             className="py-2.5 px-5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer flex items-center gap-1.5"
           >
-            {isSubmitting ? (
+            {isSubmitting || isCheckingAutoDiscount ? (
               <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></div>
             ) : (
               <>

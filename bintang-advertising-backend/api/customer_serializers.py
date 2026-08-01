@@ -120,7 +120,13 @@ class CustomerReviewSerializer(serializers.ModelSerializer):
 
 
 class SupplierSerializer(serializers.ModelSerializer):
+    akun_hutang_display = serializers.SerializerMethodField()
+
     class Meta:
         model = Supplier
         fields = '__all__'
         read_only_fields = ['dibuat_oleh']
+
+    def get_akun_hutang_display(self, obj):
+        akun = obj.akun_hutang
+        return f"{akun.code} - {akun.name}" if akun else ''

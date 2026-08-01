@@ -1,26 +1,37 @@
-import { useState } from 'react';
-import { Search, FileText, FileSpreadsheet, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Search, FileText, FileSpreadsheet, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { fetchAllPages } from '../../../utils/paginatedApi';
 import { notify } from '../../../utils/notify';
+import { exportRowsToXlsx } from '../../../utils/exportXlsx';
 
 export default function SimpananPelanggan() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [deposits, setDeposits] = useState([]); // Empty dataset matching screenshot ("No Data")
+  const [deposits, setDeposits] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const handleExportPDF = () => {
-    notify({
-      type: 'success',
-      title: 'Export PDF',
-      message: 'Simpanan Pelanggan berhasil diexport ke PDF.'
-    });
-  };
-
-  const handleExportExcel = () => {
-    notify({
-      type: 'success',
-      title: 'Export Excel',
-      message: 'Simpanan Pelanggan berhasil diexport ke Excel.'
-    });
-  };
+  useEffect(() => {
+    const loadDeposits = async () => {
+      setLoading(true);
+      try {
+        const customers = await fetchAllPages('/customers/');
+        const rows = customers
+          .filter((c) => Number(c.deposit || 0) !== 0)
+          .map((c) => ({
+            id: c.id,
+            code: c.kode_pelanggan || '-',
+            customer: c.nama,
+            amount: Number(c.deposit || 0),
+          }));
+        setDeposits(rows);
+      } catch (error) {
+        setDeposits([]);
+        notify({ type: 'error', title: 'Gagal Memuat Simpanan', message: 'Data simpanan pelanggan tidak dapat dimuat dari server.' });
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadDeposits();
+  }, []);
 
   const filtered = deposits.filter(
     (d) =>
@@ -29,13 +40,21 @@ export default function SimpananPelanggan() {
   );
 
   const totalSum = filtered.reduce((acc, curr) => acc + (curr.amount || 0), 0);
+  const formatIDR = (value) => (Number(value) || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const handleExportPDF = () => window.print();
+
+  const handleExportExcel = () => {
+    const rows = filtered.map((d) => [d.code, d.customer, d.amount]);
+    exportRowsToXlsx('simpanan-pelanggan.xlsx', ['Kode Pelanggan', 'Pelanggan', 'Simpanan'], rows);
+  };
 
   return (
     <div className="space-y-4 animate-fade-in text-xs font-semibold text-slate-700">
-      
+
       {/* Main Single Card Container */}
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-xs p-6 space-y-6">
-        
+      <div className="bg-white rounded-2xl shadow-xs p-6 space-y-6">
+
         {/* Card Header Title */}
         <div className="border-b border-slate-100 pb-4 select-none">
           <h3 className="text-base font-bold text-slate-800 tracking-wide">
@@ -79,7 +98,7 @@ export default function SimpananPelanggan() {
         </div>
 
         {/* Table grid */}
-        <div className="border border-slate-150 rounded-xl overflow-hidden bg-white shadow-3xs">
+        <div className="rounded-xl overflow-hidden bg-white shadow-3xs">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-150 text-[10px] font-bold text-slate-450 uppercase tracking-wider select-none">
@@ -89,7 +108,13 @@ export default function SimpananPelanggan() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filtered.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={3} className="px-6 py-16 text-center text-slate-400">
+                    <Loader2 className="mx-auto animate-spin" size={22} />
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
                 <tr>
                   <td colSpan={3} className="px-6 py-16 text-center text-slate-400 font-semibold select-none">
                     No Data
@@ -101,7 +126,7 @@ export default function SimpananPelanggan() {
                     <td className="px-6 py-4 text-slate-700 font-semibold">{item.code}</td>
                     <td className="px-6 py-4 text-slate-800 font-bold">{item.customer}</td>
                     <td className="px-6 py-4 text-right font-mono font-bold text-slate-900">
-                      IDR {item.amount.toLocaleString('id-ID', { minimumFractionDigits: 2 })}
+                      IDR {formatIDR(item.amount)}
                     </td>
                   </tr>
                 ))
@@ -113,7 +138,7 @@ export default function SimpananPelanggan() {
                   Total
                 </td>
                 <td className="px-6 py-4 text-right font-mono text-slate-900 font-extrabold text-xs">
-                  IDR {totalSum}
+                  IDR {formatIDR(totalSum)}
                 </td>
               </tr>
             </tbody>
@@ -123,7 +148,7 @@ export default function SimpananPelanggan() {
         {/* Pagination Footer */}
         <div className="pt-2 flex items-center justify-end gap-5 text-xs font-semibold text-slate-500 select-none">
           <span>Total {filtered.length}</span>
-          
+
           <div className="flex items-center gap-1.5">
             <button
               type="button"

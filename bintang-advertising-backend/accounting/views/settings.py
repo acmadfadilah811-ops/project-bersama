@@ -7,8 +7,12 @@ from rest_framework.views import APIView
 
 from api.permissions import IsOwnerOrManager
 
-from ..models import Account, AccountingSettings, AccountingLifecycleLog
-from ..serializers.settings import AccountingSettingsSerializer, AccountingLifecycleLogSerializer
+from ..models import Account, AccountingSettings, AccountingLifecycleLog, POSPostingSettingsAuditLog
+from ..serializers.settings import (
+    AccountingSettingsSerializer,
+    AccountingLifecycleLogSerializer,
+    POSPostingSettingsAuditLogSerializer,
+)
 
 
 def _get_or_create_settings():
@@ -35,6 +39,7 @@ def _get_or_create_settings():
 
 def _update_settings(instance, data, partial, user):
     old_is_active = instance.is_active
+    old_pos_auto_post_enabled = instance.pos_auto_post_enabled
 
     data_dict = data.copy() if hasattr(data, 'copy') else dict(data)
     delete_data = data_dict.pop('delete_data', False)
@@ -42,6 +47,21 @@ def _update_settings(instance, data, partial, user):
     serializer = AccountingSettingsSerializer(instance, data=data_dict, partial=partial)
     serializer.is_valid(raise_exception=True)
     updated_instance = serializer.save()
+
+    if (
+        "pos_auto_post_enabled" in data_dict
+        and old_pos_auto_post_enabled != updated_instance.pos_auto_post_enabled
+    ):
+        POSPostingSettingsAuditLog.objects.create(
+            action=(
+                POSPostingSettingsAuditLog.Action.ENABLE
+                if updated_instance.pos_auto_post_enabled
+                else POSPostingSettingsAuditLog.Action.DISABLE
+            ),
+            actor=user,
+            previous_value=old_pos_auto_post_enabled,
+            new_value=updated_instance.pos_auto_post_enabled,
+        )
 
     # Cek perubahan status untuk mencatat lifecycle log
     if old_is_active != updated_instance.is_active:
@@ -130,3 +150,10 @@ class AccountingLifecycleLogListView(generics.ListAPIView):
     permission_classes = [IsOwnerOrManager]
     serializer_class = AccountingLifecycleLogSerializer
     queryset = AccountingLifecycleLog.objects.all().select_related("actor")
+
+
+class POSPostingSettingsAuditLogListView(generics.ListAPIView):
+    """Riwayat siapa yang mengaktifkan atau menonaktifkan auto-post POS."""
+    permission_classes = [IsOwnerOrManager]
+    serializer_class = POSPostingSettingsAuditLogSerializer
+    queryset = POSPostingSettingsAuditLog.objects.all().select_related("actor")

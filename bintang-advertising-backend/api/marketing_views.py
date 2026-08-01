@@ -2,6 +2,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from api.permissions import IsOwnerManagerAdminOrReadOnly, IsOwnerManagerAdminOrKasir
 
 from .marketing_models import (
@@ -73,10 +74,12 @@ class SalesDiscountViewSet(viewsets.ModelViewSet):
         )
         nilai, aturan = evaluate_sales_discount(konteks)
         return Response({
-            'diskon': float(nilai),
+            # Nilai uang dikirim sebagai string agar Decimal tidak berubah
+            # menjadi float biner saat melewati JSON.
+            'diskon': str(nilai),
             'aturan': ({
                 'id': aturan.id, 'tipe_diskon': aturan.tipe_diskon,
-                'jumlah_diskon': float(aturan.jumlah_diskon),
+                'jumlah_diskon': str(aturan.jumlah_diskon),
             } if aturan else None),
         })
 
@@ -152,11 +155,11 @@ class DiscountCouponViewSet(viewsets.ModelViewSet):
                 'kode': hasil.kupon.kode,
                 'judul': hasil.kupon.judul,
                 'tipe_diskon': hasil.kupon.tipe_diskon,
-                'jumlah_diskon': float(hasil.kupon.jumlah_diskon),
-                'maksimal_jumlah_diskon': float(hasil.kupon.maksimal_jumlah_diskon),
-                'min_total_pesanan': float(hasil.kupon.min_total_pesanan),
+                'jumlah_diskon': str(hasil.kupon.jumlah_diskon),
+                'maksimal_jumlah_diskon': str(hasil.kupon.maksimal_jumlah_diskon),
+                'min_total_pesanan': str(hasil.kupon.min_total_pesanan),
             },
-            'diskon': float(hasil.diskon),
+            'diskon': str(hasil.diskon),
             'alasan': hasil.alasan,
         })
 
@@ -210,3 +213,60 @@ class LoyaltyPointRedemptionViewSet(viewsets.ModelViewSet):
     serializer_class = LoyaltyPointRedemptionSerializer
     permission_classes = [IsOwnerManagerAdminOrReadOnly]
 
+
+class PromoPreviewView(APIView):
+    """Pratinjau promo (kupon + diskon penjualan) tanpa menyimpan apa pun.
+
+    Dipakai kasir di POS/SPK untuk menampilkan estimasi potongan sebelum
+    transaksi benar-benar dibuat. Endpoint ini murni baca — tidak membuat
+    CouponUsage, POSSale, atau record lainnya.
+    """
+    permission_classes = [IsOwnerManagerAdminOrKasir]
+
+    def post(self, request):
+        from decimal import Decimal
+        from .models import Contact
+        from .product_models import Product
+        from .promo_engine import (
+            BarisKeranjang, KonteksPromo,
+            evaluate_coupon_code, evaluate_sales_discount,
+        )
+
+        kanal = request.data.get('kanal', 'pos')
+        kupon_kode = request.data.get('kupon_kode', '')
+        subtotal = request.data.get('subtotal', 0)
+        pelanggan_id = request.data.get('pelanggan')
+        pelanggan = Contact.objects.filter(pk=pelanggan_id).first() if pelanggan_id else None
+
+        raw_items = request.data.get('items') or []
+        baris = []
+        for item in raw_items:
+            pid = item.get('product_id') or item.get('product')
+            prod = Product.objects.filter(pk=pid).first() if pid else None
+            qty = Decimal(str(item.get('qty', 1) or 1))
+            harga = Decimal(str(item.get('harga', 0) or 0))
+            if harga <= 0 and prod:
+                harga = Decimal(str(prod.harga_jual_toko or 0))
+            baris.append(BarisKeranjang(product=prod, qty=qty, harga=harga,
+                                       subtotal=harga * qty))
+
+        ctx_subtotal = Decimal(str(subtotal or 0))
+        if not ctx_subtotal:
+            ctx_subtotal = sum((b.subtotal for b in baris), Decimal('0'))
+        konteks = KonteksPromo(
+            baris=baris, subtotal=ctx_subtotal, pelanggan=pelanggan, kanal=kanal,
+        )
+
+        diskon_kupon = Decimal('0')
+        if kupon_kode:
+            hasil = evaluate_coupon_code(kupon_kode, konteks)
+            if hasil.ok:
+                diskon_kupon = hasil.diskon
+
+        diskon_penjualan, _ = evaluate_sales_discount(konteks)
+
+        return Response({
+            # Kirim sebagai string agar tidak kehilangan presisi Decimal di JSON.
+            'diskon_kupon': str(diskon_kupon),
+            'diskon_penjualan': str(diskon_penjualan),
+        })

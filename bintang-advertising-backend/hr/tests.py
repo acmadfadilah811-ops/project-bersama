@@ -9,7 +9,7 @@ from rest_framework import status
 from django.contrib.auth import get_user_model
 
 from api.models import Divisi
-from hr.models import SlipGaji
+from hr.models import Akun, SlipGaji, TransaksiBukuBesar
 
 User = get_user_model()
 
@@ -72,3 +72,45 @@ class HrPermissionTests(APITestCase):
         resp = self.client.get("/api/hr/slip-gaji/?bulan=7&tahun=2026")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertEqual(len(self._rows(resp)), 2)
+
+
+class LegacyLedgerFrozenTests(APITestCase):
+    """
+    T-206 (verifikasi manager 2026-08-01): ledger legacy `hr.TransaksiBukuBesar`
+    DIBEKUKAN sesuai M3/L3 — dilarang penulis/pemakai baru. Sebelumnya
+    `/api/finance/transaksi/` masih bisa POST/PATCH/DELETE lewat
+    `BukuBesar.jsx`, berjalan paralel dengan `accounting.JournalEntry`.
+    Test ini membuktikan jalur tulis benar-benar tertutup (405), sementara
+    baca (arsip/riwayat data lama) tetap berfungsi.
+    """
+
+    def setUp(self):
+        self.owner = User.objects.create_user(username="owner_ledger", password="password123", role="owner")
+        self.akun = Akun.objects.create(kode_akun="1-100", nama_akun="Kas Besar", kategori="Aset")
+        self.transaksi = TransaksiBukuBesar.objects.create(
+            akun=self.akun, tanggal="2026-01-15", keterangan="Transaksi lama (arsip)",
+            debit=100000, kredit=0,
+        )
+        self.client.force_authenticate(user=self.owner)
+
+    def test_read_still_works(self):
+        resp = self.client.get("/api/finance/transaksi/")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        resp = self.client.get(f"/api/finance/transaksi/{self.transaksi.id}/")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+
+    def test_create_rejected(self):
+        resp = self.client.post("/api/finance/transaksi/", {
+            "akun": self.akun.id, "tanggal": "2026-08-01", "keterangan": "Coba tulis baru", "debit": 50000, "kredit": 0,
+        })
+        self.assertEqual(resp.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        self.assertEqual(TransaksiBukuBesar.objects.count(), 1, "Tidak boleh ada baris baru — ledger legacy dibekukan.")
+
+    def test_update_rejected(self):
+        resp = self.client.patch(f"/api/finance/transaksi/{self.transaksi.id}/", {"keterangan": "Diubah"})
+        self.assertEqual(resp.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    def test_delete_rejected(self):
+        resp = self.client.delete(f"/api/finance/transaksi/{self.transaksi.id}/")
+        self.assertEqual(resp.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        self.assertTrue(TransaksiBukuBesar.objects.filter(id=self.transaksi.id).exists(), "Jurnal lama tidak boleh terhapus (L7 diperluas ke ledger legacy).")

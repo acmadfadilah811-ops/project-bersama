@@ -20,7 +20,9 @@ def _get_or_create_period(entry_date):
     period, _ = AccountingPeriod.objects.get_or_create(
         start_date=start, end_date=end, defaults={"fiscal_year": entry_date.year},
     )
-    return period
+    # Lock the period while creating a journal so close-period cannot race a
+    # posting request and allow a journal into a just-closed period.
+    return AccountingPeriod.objects.select_for_update().get(pk=period.pk)
 
 
 def _generate_entry_number(entry_date):
@@ -128,6 +130,7 @@ def create_journal_entry(
             external_document_no=line.get("external_document_no", ""),
             supplier=line.get("supplier"),
             customer=line.get("customer"),
+            settlement_status=line.get("settlement_status") or "not_applicable",
         )
         for line in lines
     ])

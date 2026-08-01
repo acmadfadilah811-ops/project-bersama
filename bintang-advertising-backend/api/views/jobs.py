@@ -4,6 +4,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from django.utils import timezone
 from django.db import transaction
 from django.db.models import Q
@@ -57,6 +58,10 @@ def deduct_job_materials_if_needed(job, user):
                     
                 if qty_needed <= 0:
                     continue
+                if qty_needed > item.stok:
+                    raise ValidationError(
+                        {'error': f"Stok bahan '{item.nama}' tidak mencukupi untuk Job #{job.id}."}
+                    )
                     
                 stok_awal = item.stok
                 stok_akhir = max(0.0, round(item.stok - qty_needed, 4))
@@ -111,6 +116,10 @@ def deduct_job_materials_if_needed(job, user):
                 continue
                 
             stok_awal = item.stok
+            if qty > stok_awal:
+                raise ValidationError(
+                    {'error': f"Stok bahan '{item.nama}' tidak mencukupi untuk Job #{job.id}."}
+                )
             stok_akhir = max(0.0, round(item.stok - qty, 4))
             catatan_mat = mat.get('catatan', '')
             
@@ -173,6 +182,10 @@ class JobMaterialDeductView(APIView):
                     errors.append(f"Item '{item_id}' tidak ditemukan di inventori.")
                     continue
 
+                if qty > item.stok:
+                    errors.append(f"Stok item '{item.nama}' tidak mencukupi (tersedia {item.stok}).")
+                    continue
+
                 stok_awal  = item.stok
                 stok_akhir = max(0.0, round(item.stok - qty, 4))
 
@@ -187,6 +200,10 @@ class JobMaterialDeductView(APIView):
 
                 item.stok = stok_akhir
                 item.save()
+
+                # Konsumsi manual harus mengikuti jalur jurnal yang sama
+                # dengan pemakaian BoM; jangan biarkan stok berubah tanpa HPP.
+                record_material_consumption_to_general_ledger(item, qty, job)
 
                 deducted.append({
                     'item_id':  item.id,
@@ -208,9 +225,10 @@ class JobBoardViewSet(viewsets.ModelViewSet):
     serializer_class = JobBoardSerializer
     permission_classes = [IsAuthenticated, IsClockedIn]
 
+    @transaction.atomic
     def perform_update(self, serializer):
         # Ambil status sebelum update
-        old_instance = self.get_object()
+        old_instance = self.get_queryset().select_for_update().get(pk=serializer.instance.pk)
         old_status = old_instance.status_pekerjaan
         new_status = serializer.validated_data.get('status_pekerjaan', old_status)
 
@@ -501,4 +519,3 @@ class TahapProsesViewSet(viewsets.ModelViewSet):
     queryset = TahapProses.objects.all()
     serializer_class = TahapProsesSerializer
     permission_classes = [IsOwnerManagerAdminOrReadOnly]
-

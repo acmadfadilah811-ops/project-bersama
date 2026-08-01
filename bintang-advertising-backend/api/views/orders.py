@@ -24,64 +24,11 @@ from ..serializers import (
     OrderSerializer, OrderItemSerializer, JobBoardSerializer, PengembalianOrderSerializer
 )
 from ..permissions import IsOwnerOrManager, IsOwnerManagerAdminOrKasir, IsClockedIn
-from hr.models import Akun, TransaksiBukuBesar
 from users.models import SecurityAuditLog
 
 from .jobs import deduct_job_materials_if_needed
 
 logger = logging.getLogger(__name__)
-
-
-def record_payment_to_general_ledger(order, jumlah_bayar, metode, is_dp=False):
-    """
-    Mencatat pembayaran (DP / Pelunasan) secara otomatis ke Buku Besar (Double-Entry Bookkeeping).
-    """
-    try:
-        metode_clean = (metode or 'tunai').lower()
-        if metode_clean == 'transfer':
-            kode_aset = '1-1001'
-            nama_aset = 'Bank Transfer'
-        elif metode_clean == 'qris':
-            kode_aset = '1-1002'
-            nama_aset = 'QRIS / E-Wallet'
-        else:
-            kode_aset = '1-1000'
-            nama_aset = 'Kas Tunai'
-            
-        akun_aset, _ = Akun.objects.get_or_create(
-            kode_akun=kode_aset,
-            defaults={'nama_akun': nama_aset, 'kategori': 'Aset'}
-        )
-        akun_pendapatan, _ = Akun.objects.get_or_create(
-            kode_akun='4-1000',
-            defaults={'nama_akun': 'Pendapatan Jasa Cetak', 'kategori': 'Pendapatan'}
-        )
-        
-        ref_no = f"Order #{order.id}"
-        tipe_bayar = "DP" if is_dp else "Pelunasan"
-        ket_tx = f"Pembayaran {tipe_bayar} {metode_clean.upper()} - Pelanggan: {order.nama} ({ref_no})"
-        
-        # DEBIT ke akun Aset (Kas/Bank bertambah)
-        TransaksiBukuBesar.objects.create(
-            akun=akun_aset,
-            tanggal=timezone.localdate(),
-            no_referensi=ref_no,
-            keterangan=ket_tx,
-            debit=jumlah_bayar,
-            kredit=0
-        )
-        
-        # KREDIT ke akun Pendapatan (Pendapatan bertambah)
-        TransaksiBukuBesar.objects.create(
-            akun=akun_pendapatan,
-            tanggal=timezone.localdate(),
-            no_referensi=ref_no,
-            keterangan=ket_tx,
-            debit=0,
-            kredit=jumlah_bayar
-        )
-    except Exception as e:
-        logger.error(f"Gagal mencatat jurnal Buku Besar otomatis untuk Order #{getattr(order, 'id', '?')}: {e}", exc_info=True)
 
 
 class OrderViewSet(viewsets.ModelViewSet):
@@ -161,6 +108,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         ).values_list('order_item__order_id', flat=True)
         return base_qs.filter(id__in=my_order_ids)
 
+    @transaction.atomic
     def perform_create(self, serializer):
         # ── Validasi data pelanggan & pelayan WAJIB sebelum order tersimpan ──
         # Sebelumnya order bisa dibuat dengan nomor asal-asalan (mis. bukan
@@ -199,6 +147,8 @@ class OrderViewSet(viewsets.ModelViewSet):
                 from api.marketing_models import DiscountCoupon, CouponUsage
                 from api.models import Contact
                 kupon_obj = DiscountCoupon.objects.filter(kode__iexact=kupon_kode.strip()).first()
+                if not kupon_obj:
+                    raise ValidationError({'kupon_kode': 'Kupon tidak ditemukan atau sudah tidak aktif.'})
                 if kupon_obj:
                     # Hubungkan kupon dan nilai diskon ke order.
                     # PENTING: save() TANPA update_fields — Order.save() menghitung
@@ -208,6 +158,8 @@ class OrderViewSet(viewsets.ModelViewSet):
                     # sudah dihitung ulang di memori TIDAK PERNAH tersimpan (bug lama).
                     instance.kupon = kupon_obj
                     instance.diskon_kupon = int(diskon_kupon or 0)
+                    if instance.diskon_kupon < 0:
+                        raise ValidationError({'diskon_kupon': 'Nilai diskon tidak boleh negatif.'})
                     instance.save()
 
                     customer = Contact.objects.filter(nomor_wa=instance.nomor_wa).first()
@@ -221,8 +173,9 @@ class OrderViewSet(viewsets.ModelViewSet):
                     )
                     kupon_obj.penggunaan_count = CouponUsage.objects.filter(kupon=kupon_obj).count()
                     kupon_obj.save(update_fields=['penggunaan_count'])
-            except Exception as e:
-                logger.error(f"Failed to record CouponUsage for order {order_id}: {e}")
+            except Exception:
+                logger.exception("Failed to record CouponUsage for order %s", order_id)
+                raise
 
         # Catatan: Diskon Penjualan otomatis TIDAK dievaluasi di sini — order baru
         # dibuat TANPA item (frontend mengirim item lewat POST /order-items/
@@ -238,17 +191,8 @@ class OrderViewSet(viewsets.ModelViewSet):
             keterangan=f"Pesanan baru '{instance.id}' berhasil dibuat."
         )
 
-        # Buku Besar Otomatis jika ada DP awal
+        # T-202: satu-satunya writer jurnal pembayaran Order.
         if instance.dp_dibayar > 0:
-            record_payment_to_general_ledger(
-                order=instance,
-                jumlah_bayar=instance.dp_dibayar,
-                metode=getattr(instance, 'metode_pembayaran', 'tunai'),
-                is_dp=True
-            )
-
-            # T-202: Posting DP awal ke accounting.JournalEntry (paralel, lazy import — DB5)
-            # Buat OrderActivityLog PAYMENT terlebih dahulu supaya source_id tersedia (desain §2)
             from decimal import Decimal as _Decimal
             from accounting.services.order_posting import post_order_payment_journal as _post_order_payment
             _dp_log = OrderActivityLog.objects.create(
@@ -546,6 +490,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             return Response(OrderSerializer(order).data)
         jumlah_bayar = request.data.get('jumlah_bayar')
         metode = request.data.get('metode_pembayaran', 'tunai')
+        referensi = str(request.data.get('referensi_pembayaran') or '').strip()
 
         if jumlah_bayar is None:
             return Response({'error': 'jumlah_bayar wajib diisi.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -555,23 +500,41 @@ class OrderViewSet(viewsets.ModelViewSet):
         except (ValueError, TypeError):
             return Response({'error': 'jumlah_bayar harus berupa angka bulat.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        if jumlah_bayar <= 0:
+            return Response({'error': 'jumlah_bayar harus lebih dari nol.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # T-203: cegah overpayment — sisa_tagihan sudah mencerminkan
+        # total_harga (setelah diskon/kupon/pembulatan, lihat Order.save()).
+        # Tanpa guard ini, jumlah_bayar berlebih tetap ter-posting penuh ke
+        # jurnal (over-recognized revenue) sementara sisa_tagihan cuma
+        # floor ke 0 secara diam-diam (M6: hitung ulang server-side, jangan
+        # percaya input mentah).
+        if jumlah_bayar > order.sisa_tagihan:
+            return Response({
+                'error': f'Jumlah bayar (Rp{jumlah_bayar:,}) melebihi sisa tagihan (Rp{order.sisa_tagihan:,}).',
+            }, status=status.HTTP_400_BAD_REQUEST)
+
         order.dp_dibayar += jumlah_bayar
         order.metode_pembayaran = metode
+        if referensi:
+            order.referensi_pembayaran = referensi
         order._current_user = request.user
         order.save()
         payment_log = OrderActivityLog.objects.create(order=order, user=request.user, tindakan='PAYMENT', keterangan='Pembayaran %s [%s]' % (jumlah_bayar, idem or 'no-key'))
 
-        # Buku Besar Otomatis untuk Pelunasan / Cicilan (legacy — tetap sampai T-206)
-        record_payment_to_general_ledger(
-            order=order,
-            jumlah_bayar=jumlah_bayar,
-            metode=metode,
-            is_dp=False
-        )
-
-        # T-202: Posting ke accounting.JournalEntry (paralel, lazy import — DB5)
+        # T-202: satu-satunya writer jurnal pembayaran Order.
         from decimal import Decimal as _Decimal
-        from accounting.services.order_posting import post_order_payment_journal as _post_order_payment
+        from accounting.services.order_posting import (
+            post_order_payment_journal as _post_order_payment,
+            resolve_and_assign_order_payment_method,
+        )
+        # Setiap pembayaran membawa metode pembayaran aktual. Jangan
+        # mempertahankan mapping lama (mis. Tunai) ketika user membayar
+        # cicilan berikutnya via QRIS/Transfer, karena itu akan memposting ke
+        # akun yang salah dan menghilangkan order dari batch settlement yang
+        # benar.
+        resolve_and_assign_order_payment_method(order, metode)
+        order.save(update_fields=["accounting_payment_method", "settlement_status"])
         _post_order_payment(
             order=order,
             activity_log=payment_log,
@@ -618,12 +581,18 @@ class OrderViewSet(viewsets.ModelViewSet):
         order._current_user = request.user
         order.save()
 
-        OrderActivityLog.objects.create(
+        complete_log = OrderActivityLog.objects.create(
             order=order,
             user=request.user,
             tindakan='COMPLETE',
             keterangan=f'Status pesanan diubah dari [{old_status}] menjadi [selesai]'
         )
+
+        # T-204: HPP bahan baku (JobBoard) diposting saat order selesai. Gating
+        # internal (akun belum diatur/HPP nol) mengembalikan None dengan aman,
+        # tidak melempar — konsisten pola fail-open task lain di file ini.
+        from accounting.services.order_posting import post_order_material_hpp_journal
+        post_order_material_hpp_journal(order=order, actor=request.user, activity_log=complete_log)
 
         return Response(OrderSerializer(order, context={'request': request}).data, status=status.HTTP_200_OK)
 
@@ -661,6 +630,12 @@ class OrderViewSet(viewsets.ModelViewSet):
             tindakan='CANCEL',
             keterangan=keterangan_log
         )
+
+        # M5: jangan tangkap exception di sini — seluruh aksi ini @transaction.atomic,
+        # kalau posting jurnal pembalik gagal, status Order & activity log di atas
+        # harus ikut rollback juga, bukan cuma jurnalnya yang diam-diam tidak terposting.
+        from accounting.services.order_posting import post_order_reversal_journal
+        post_order_reversal_journal(order=order, actor=request.user, description_prefix="Pembatalan Order")
 
         return Response(OrderSerializer(order, context={'request': request}).data, status=status.HTTP_200_OK)
 
@@ -721,6 +696,12 @@ class OrderViewSet(viewsets.ModelViewSet):
             tindakan='RETURN',
             keterangan=f'Pengembalian pesanan diajukan (Status: {retur_obj.status}, Catatan: {retur_obj.catatan})'
         )
+
+        # M5: sama seperti batalkan() — jangan tangkap exception, biarkan
+        # @transaction.atomic rollback PengembalianOrder & activity log kalau
+        # jurnal pembalik gagal terposting.
+        from accounting.services.order_posting import post_order_reversal_journal
+        post_order_reversal_journal(order=order, actor=request.user, description_prefix="Retur Order")
 
         return Response(OrderSerializer(order, context={'request': request}).data, status=status.HTTP_201_CREATED)
 
@@ -1063,20 +1044,27 @@ class OrderItemViewSet(viewsets.ModelViewSet):
             if order.diskon_otomatis != nilai_otomatis:
                 order.diskon_otomatis = nilai_otomatis
                 order.save()  # full save (bukan update_fields) — recompute total_harga ikut tersimpan
-        except Exception as e:
-            logger.error(f"Failed evaluating sales discount for order {order.pk}: {e}")
+        except Exception:
+            # Jangan menyimpan item dengan diskon lama ketika evaluasi promo
+            # gagal. Pemanggil dibungkus atomic agar perubahan item ikut
+            # di-rollback dan kasir mendapat error yang dapat ditindaklanjuti.
+            logger.exception("Failed evaluating sales discount for order %s", order.pk)
+            raise
 
+    @transaction.atomic
     def perform_create(self, serializer):
         self._ensure_write_role()
         instance = serializer.save(_current_user=self.request.user)
         self._terapkan_diskon_penjualan_otomatis(instance.order)
 
+    @transaction.atomic
     def perform_update(self, serializer):
         self._ensure_write_role()
         serializer.instance._current_user = self.request.user
         instance = serializer.save()
         self._terapkan_diskon_penjualan_otomatis(instance.order)
 
+    @transaction.atomic
     def perform_destroy(self, instance):
         self._ensure_write_role()
         instance._current_user = self.request.user
@@ -1252,5 +1240,19 @@ class PengembalianOrderViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         self._ensure_write_role()
+        instance = serializer.instance
+        if instance.status in ('Dikonfirmasi', 'Batal'):
+            # Data terkunci setelah Dikonfirmasi/Batal. Satu-satunya perubahan
+            # yang tetap diizinkan: toggle "Batal Post" (Dikonfirmasi -> Tunda)
+            # dari daftar Return Penjualan — bukan edit tanggal/catatan/dsb.
+            payload_fields = set(self.request.data.keys())
+            is_unconfirm_toggle = (
+                instance.status == 'Dikonfirmasi'
+                and payload_fields == {'status'}
+                and serializer.validated_data.get('status') == 'Tunda'
+            )
+            if not is_unconfirm_toggle:
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError('Return yang sudah Dikonfirmasi/Batal terkunci dan tidak dapat diubah.')
         serializer.save()
 

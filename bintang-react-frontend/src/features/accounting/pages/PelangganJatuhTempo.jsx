@@ -1,17 +1,17 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Loader2 } from 'lucide-react';
 import UbahJatuhTempoModal from '../components/pos/UbahJatuhTempoModal';
+import apiClient from '../../../api/apiClient';
+import { fetchAllPages } from '../../../utils/paginatedApi';
+import { notify } from '../../../utils/notify';
+
+const formatDate = (value) => value
+  ? new Date(`${value}T00:00:00`).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
+  : '-';
 
 export default function PelangganJatuhTempo() {
-  const [dueCustomers, setDueCustomers] = useState([
-    { id: 1, name: 'KEVIN', address: '-', due: '-' },
-    { id: 2, name: 'AGUS', address: '-', due: '-' },
-    { id: 3, name: 'BAYU', address: '-', due: '-' },
-    { id: 4, name: 'Bella', address: 'Jalan Angkasa Pura No. 17', due: '-' },
-    { id: 5, name: 'Dika', address: 'Jalan Angkasa Pura No. 16', due: '-' },
-    { id: 6, name: 'PT Sinar Cemerlang', address: 'Jalan Angkasa Pura No. 15', due: '-' },
-    { id: 7, name: 'Gm h', address: '-', due: '-' }
-  ]);
+  const [dueCustomers, setDueCustomers] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const [selectedDueCustomer, setSelectedDueCustomer] = useState(null);
   const [isUbahDueOpen, setIsUbahDueOpen] = useState(false);
@@ -29,11 +29,53 @@ export default function PelangganJatuhTempo() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const loadDueCustomers = async () => {
+    setLoading(true);
+    try {
+      const orders = await fetchAllPages('/orders/');
+      const rows = orders
+        .filter((order) => Number(order.sisa_tagihan || 0) > 0)
+        .map((order) => ({
+          id: order.id,
+          name: order.nama || order.nomor_wa || 'Pelanggan',
+          address: order.alamat_pelanggan || '-',
+          dueDate: order.jatuh_tempo || '',
+          due: formatDate(order.jatuh_tempo),
+        }))
+        .sort((a, b) => (a.dueDate || '9999-12-31').localeCompare(b.dueDate || '9999-12-31'));
+      setDueCustomers(rows);
+    } catch (error) {
+      setDueCustomers([]);
+      notify({ type: 'error', title: 'Gagal Memuat Jatuh Tempo', message: 'Data piutang tidak dapat dimuat dari server.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadDueCustomers(); }, []);
+
+  const handleUpdateDueDate = async (orderId, days) => {
+    const amountOfDays = Number(days);
+    if (!Number.isInteger(amountOfDays) || amountOfDays < 0) {
+      throw new Error('Jumlah hari jatuh tempo harus berupa angka nol atau lebih.');
+    }
+    const date = new Date();
+    date.setDate(date.getDate() + amountOfDays);
+    const dueDate = date.toISOString().slice(0, 10);
+    await apiClient.patch(`/orders/${orderId}/`, { jatuh_tempo: dueDate });
+    setDueCustomers((current) => current.map((customer) => customer.id === orderId
+      ? { ...customer, dueDate, due: formatDate(dueDate) }
+      : customer));
+    notify({ type: 'success', title: 'Jatuh Tempo Diperbarui', message: 'Jatuh tempo Order berhasil disimpan ke server.' });
+  };
+
+  const visibleCustomers = dueCustomers.slice(0, duePageSize);
+
   return (
     <div className="space-y-4 animate-fade-in text-xs font-semibold text-slate-700">
       
       {/* Header Title Panel matching Screenshot 1 */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-2xs select-none">
+      <div className="bg-white rounded-xl p-4 flex items-center justify-between shadow-2xs select-none">
         <h3 className="text-sm font-bold text-slate-800">
           Pelanggan Jatuh Tempo
         </h3>
@@ -69,9 +111,9 @@ export default function PelangganJatuhTempo() {
       </div>
 
       {/* Main Content Area / Table */}
-      <div className="bg-white border border-slate-200 rounded-xl shadow-2xs p-5 space-y-4 min-h-[360px] relative">
+      <div className="bg-white rounded-xl shadow-2xs p-5 space-y-4 min-h-[360px] relative">
         
-        <div className="border border-slate-150 rounded-lg overflow-hidden bg-white">
+        <div className="rounded-lg overflow-hidden bg-white">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-450 uppercase tracking-wider select-none">
@@ -82,7 +124,11 @@ export default function PelangganJatuhTempo() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {dueCustomers.map((cust) => (
+              {loading ? (
+                <tr><td colSpan={4} className="px-5 py-16 text-center text-slate-400"><Loader2 className="mx-auto animate-spin" size={22} /></td></tr>
+              ) : visibleCustomers.length === 0 ? (
+                <tr><td colSpan={4} className="px-5 py-16 text-center text-slate-400 font-bold">Tidak ada piutang terbuka.</td></tr>
+              ) : visibleCustomers.map((cust) => (
                 <tr key={cust.id} className="hover:bg-slate-50/50 transition-colors">
                   <td className="px-5 py-3.5 text-slate-800 font-bold">
                     {cust.name}
@@ -150,11 +196,7 @@ export default function PelangganJatuhTempo() {
           setSelectedDueCustomer(null);
         }}
         customer={selectedDueCustomer}
-        onUpdate={(id, days) => {
-          setDueCustomers((prev) =>
-            prev.map((c) => (c.id === id ? { ...c, due: `${days} Hari` } : c))
-          );
-        }}
+        onUpdate={handleUpdateDueDate}
       />
 
     </div>

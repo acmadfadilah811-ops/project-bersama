@@ -2,6 +2,10 @@ import { useState, useRef, useEffect } from 'react';
 import { Trash2, ChevronDown, Plus, HelpCircle, X, ChevronUp, FileText, Calendar } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { notify } from '../../../utils/notify';
+import { fetchAllPages } from '../../../utils/paginatedApi';
+import apiClient from '../../../api/apiClient';
+
+const parseAmount = (value) => Number(String(value || '').replace(/\./g, '').replace(',', '.')) || 0;
 
 export default function JurnalTunggal() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -38,6 +42,8 @@ export default function JurnalTunggal() {
 
   // Right drafts list state
   const [drafts, setDrafts] = useState([]);
+  const [accounts, setAccounts] = useState([]);
+  const [accountsLoading, setAccountsLoading] = useState(true);
 
   // Client suggestions data
   const clientsList = isHutang
@@ -91,6 +97,10 @@ export default function JurnalTunggal() {
     '80000 Pengeluaran lain lain',
     '81000 Penyesuaian Barang'
   ];
+  const accountOptions = accounts.length > 0
+    ? accounts.map((account) => ({ id: account.id, label: `${account.code} ${account.name}` }))
+    : accountsList.map((label) => ({ id: null, label }));
+  const findAccountId = (label) => accountOptions.find((account) => account.label === label)?.id;
 
   // Close custom select dropdown on click outside
   useEffect(() => {
@@ -101,6 +111,24 @@ export default function JurnalTunggal() {
     }
     document.addEventListener('mousedown', clickOutside);
     return () => document.removeEventListener('mousedown', clickOutside);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const loadAccounts = async () => {
+      try {
+        const result = await fetchAllPages('/accounting/accounts/');
+        if (active) setAccounts(result);
+      } catch (error) {
+        if (active) {
+          notify({ type: 'error', title: 'Akun Tidak Tersedia', message: 'Daftar akun gagal dimuat dari server.' });
+        }
+      } finally {
+        if (active) setAccountsLoading(false);
+      }
+    };
+    loadAccounts();
+    return () => { active = false; };
   }, []);
 
   const handleAddCustomJournalName = () => {
@@ -169,17 +197,45 @@ export default function JurnalTunggal() {
     );
   };
 
-  const handleSaveAll = () => {
-    notify({
-      type: 'success',
-      title: 'Jurnal Disimpan',
-      message: 'Seluruh data jurnal dalam draf berhasil disimpan ke pembukuan.'
-    });
-    if (isHutang) {
-      setSearchParams({ active: 'payable', subMenu: 'hutang-semua' });
-    } else {
-      setSearchParams({ active: 'receivable', subMenu: 'piutang-semua' });
+  const handleSaveAll = async () => {
+    if (drafts.length === 0) {
+      notify({ type: 'warning', title: 'Draf Kosong', message: 'Tambahkan minimal satu draf jurnal sebelum menyimpan.' });
+      return;
     }
+
+    const postedIds = [];
+    try {
+      for (const draft of drafts) {
+        const debitAccount = findAccountId(draft.debitAcc);
+        const kreditAccount = findAccountId(draft.creditAcc);
+        const numericAmount = parseAmount(draft.amount);
+        if (!draft.txDate || !debitAccount || !kreditAccount || debitAccount === kreditAccount || numericAmount <= 0 || !draft.notes.trim()) {
+          throw new Error('Pastikan setiap draf memiliki tanggal, akun debit/kredit berbeda, catatan, dan jumlah valid.');
+        }
+        await apiClient.post('/accounting/journal-entries/', {
+          date: draft.txDate,
+          source_type: 'manual',
+          description: `${draft.notes}${draft.client ? ` — ${isHutang ? 'Supplier' : 'Pelanggan'}: ${draft.client}` : ''}`,
+          external_document_no: draft.docNo || '',
+          amount: numericAmount,
+          debit_account: debitAccount,
+          kredit_account: kreditAccount,
+        });
+        postedIds.push(draft.id);
+      }
+    } catch (error) {
+      if (postedIds.length > 0) setDrafts((current) => current.filter((draft) => !postedIds.includes(draft.id)));
+      notify({
+        type: 'error',
+        title: 'Jurnal Belum Tersimpan Semua',
+        message: error.response?.data?.detail || error.message || 'Periksa kembali data draf dan coba lagi.',
+      });
+      return;
+    }
+
+    setDrafts([]);
+    notify({ type: 'success', title: 'Jurnal Disimpan', message: `${postedIds.length} jurnal berhasil diposting ke pembukuan.` });
+    setSearchParams(isHutang ? { active: 'payable', subMenu: 'hutang-semua' } : { active: 'receivable', subMenu: 'piutang-semua' });
   };
 
   const handleCancelAll = () => {
@@ -407,13 +463,14 @@ export default function JurnalTunggal() {
             <select
               value={debitAcc}
               onChange={(e) => setDebitAcc(e.target.value)}
+              disabled={accountsLoading}
               className={`w-full px-3 py-2 border border-slate-205 rounded-lg bg-white outline-none focus:border-[#0088E8] shadow-3xs cursor-pointer ${
                 debitAcc ? 'text-slate-700 font-bold' : 'text-slate-400 font-semibold'
               }`}
             >
               <option value="" disabled hidden>Pilih Akun Debit</option>
-              {accountsList.map((acc) => (
-                <option key={acc} value={acc}>{acc}</option>
+              {accountOptions.map((account) => (
+                <option key={account.label} value={account.label}>{account.label}</option>
               ))}
             </select>
           </div>
@@ -426,13 +483,14 @@ export default function JurnalTunggal() {
             <select
               value={creditAcc}
               onChange={(e) => setCreditAcc(e.target.value)}
+              disabled={accountsLoading}
               className={`w-full px-3 py-2 border border-slate-205 rounded-lg bg-white outline-none focus:border-[#0088E8] shadow-3xs cursor-pointer ${
                 creditAcc ? 'text-slate-700 font-bold' : 'text-slate-400 font-semibold'
               }`}
             >
               <option value="" disabled hidden>Pilih Akun Kredit</option>
-              {accountsList.map((acc) => (
-                <option key={acc} value={acc}>{acc}</option>
+              {accountOptions.map((account) => (
+                <option key={account.label} value={account.label}>{account.label}</option>
               ))}
             </select>
           </div>
@@ -523,7 +581,9 @@ export default function JurnalTunggal() {
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <h4 className="text-sm font-bold text-slate-800">Draf Jurnal</h4>
             <button
+              type="button"
               disabled={drafts.length === 0}
+              onClick={() => window.print()}
               className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 border text-[10px] uppercase tracking-wide ${
                 drafts.length > 0
                   ? 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 cursor-pointer shadow-3xs'
@@ -620,8 +680,8 @@ export default function JurnalTunggal() {
                           onChange={(e) => handleDraftChange(draft.id, 'debitAcc', e.target.value)}
                           className="w-full px-2 py-1.5 border border-slate-200 rounded-md bg-white text-xs font-semibold cursor-pointer outline-none focus:border-[#0088E8]"
                         >
-                          {accountsList.map((acc) => (
-                            <option key={acc} value={acc}>{acc}</option>
+                          {accountOptions.map((account) => (
+                            <option key={account.label} value={account.label}>{account.label}</option>
                           ))}
                         </select>
                       </div>
@@ -636,8 +696,8 @@ export default function JurnalTunggal() {
                           onChange={(e) => handleDraftChange(draft.id, 'creditAcc', e.target.value)}
                           className="w-full px-2 py-1.5 border border-slate-200 rounded-md bg-white text-xs font-semibold cursor-pointer outline-none focus:border-[#0088E8]"
                         >
-                          {accountsList.map((acc) => (
-                            <option key={acc} value={acc}>{acc}</option>
+                          {accountOptions.map((account) => (
+                            <option key={account.label} value={account.label}>{account.label}</option>
                           ))}
                         </select>
                       </div>

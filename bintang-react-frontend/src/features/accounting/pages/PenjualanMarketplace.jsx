@@ -2,10 +2,15 @@ import { useState } from 'react';
 import { Filter, Settings, AlertTriangle, ChevronDown } from 'lucide-react';
 import PosSettingsModal from '../components/pos/PosSettingsModal';
 
+const formatDateLabel = (dStr) => {
+  const d = new Date(`${dStr}T00:00:00`);
+  return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
 export default function PenjualanMarketplace() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [dateFrom, setDateFrom] = useState('2026-07-26');
-  const [dateTo, setDateTo] = useState('2026-07-26');
+  const [dateFrom, setDateFrom] = useState(new Date().toISOString().split('T')[0]);
+  const [dateTo, setDateTo] = useState(new Date().toISOString().split('T')[0]);
   const [semuaStatus, setSemuaStatus] = useState(false);
 
   return (
@@ -45,7 +50,7 @@ export default function PenjualanMarketplace() {
             type="button"
             className="px-3 py-1.5 border border-slate-205 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-lg shadow-2xs transition-colors cursor-pointer"
           >
-            Hari ini 26 Jul 2026 - 26 Jul 2026
+            {dateFrom === dateTo ? formatDateLabel(dateFrom) : `${formatDateLabel(dateFrom)} - ${formatDateLabel(dateTo)}`}
           </button>
 
           {/* Semua Status Button/Checkbox styled matching Screenshot 3 */}

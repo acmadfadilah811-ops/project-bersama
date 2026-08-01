@@ -157,6 +157,16 @@ export function KasirProvider({ children }) {
     );
   };
 
+  // Simpan hasil kalkulator Detail Item (meteran/finishing/diskon per-item)
+  // ke baris cart yang sesuai. Dipakai PosItemDetailPanel — sebelumnya hasil
+  // kalkulator ini dihitung di layar tapi tidak pernah tersimpan ke cart sama
+  // sekali (hanya qty & catatan yang persist).
+  const updateCartItem = (key, patch) => {
+    setCart((prev) =>
+      prev.map((item) => (item.key === key ? { ...item, ...patch } : item))
+    );
+  };
+
   const clearCart = () => {
     setCart([]);
     setCartNotes('');
@@ -188,8 +198,17 @@ export function KasirProvider({ children }) {
     });
   };
 
+  // Baris yang sudah dihitung PosItemDetailPanel (meteran/finishing/diskon
+  // per-item) punya `hargaTotal` final — dipakai kalau ada, supaya subtotal
+  // tidak diam-diam mengabaikan hasil kalkulator (harga*qty saja tidak
+  // memperhitungkan finishing/diskon per-item).
   const getSubtotal = () => {
-    return Math.round(cart.reduce((sum, item) => sum + Number(item.harga) * Number(item.qty), 0));
+    return Math.round(
+      cart.reduce(
+        (sum, item) => sum + (item.hargaTotal != null ? Number(item.hargaTotal) : Number(item.harga) * Number(item.qty)),
+        0
+      )
+    );
   };
 
   const getDiscountAmount = () => {
@@ -303,6 +322,7 @@ export function KasirProvider({ children }) {
         removeItemsFromCart,
         updateCartQty,
         updateCartItemNote,
+        updateCartItem,
         clearCart,
         selectedContact,
         setSelectedContact,

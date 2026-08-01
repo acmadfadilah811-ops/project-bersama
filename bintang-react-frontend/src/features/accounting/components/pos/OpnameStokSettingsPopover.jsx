@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { Trash2 } from 'lucide-react';
-import { notify } from '../../../../utils/notify';
 
-export default function OpnameStokSettingsPopover({ isOpen, onClose }) {
+export default function OpnameStokSettingsPopover({ isOpen }) {
   const [hppAccount, setHppAccount] = useState('51000 Harga pokok penjualan');
 
   if (!isOpen) return null;
@@ -55,16 +54,6 @@ export default function OpnameStokSettingsPopover({ isOpen, onClose }) {
     '81000 Penyesuaian Barang'
   ];
 
-  const handleSave = (e) => {
-    e.stopPropagation();
-    notify({
-      type: 'success',
-      title: 'Pengaturan Disimpan',
-      message: 'Konfigurasi penyesuaian opname stok berhasil disimpan.'
-    });
-    onClose();
-  };
-
   const handleClear = () => {
     setHppAccount('');
   };
@@ -75,14 +64,11 @@ export default function OpnameStokSettingsPopover({ isOpen, onClose }) {
       {/* Top Title & Save Button */}
       <div className="flex items-center justify-between border-b border-slate-100 pb-3">
         <span className="font-bold text-slate-800 text-xs">Penyesuaian Opname Stok</span>
-        <button
-          type="button"
-          onClick={handleSave}
-          className="px-4 py-1.5 bg-[#0088E8] hover:bg-[#0077CC] text-white text-[10px] font-extrabold rounded-md transition-all cursor-pointer shadow-3xs"
-        >
+        <button type="button" disabled className="cursor-not-allowed rounded-md bg-slate-100 px-4 py-1.5 text-[10px] font-extrabold text-slate-400 shadow-3xs">
           Simpan
         </button>
       </div>
+      <p className="rounded-lg bg-amber-50 p-2 text-[11px] font-medium text-amber-700">Pengaturan belum terhubung ke backend dan tidak dapat disimpan.</p>
 
       {/* Account HPP Stock Opname */}
       <div className="space-y-2">

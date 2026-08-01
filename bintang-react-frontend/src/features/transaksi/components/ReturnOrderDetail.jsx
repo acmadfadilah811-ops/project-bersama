@@ -1,54 +1,41 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronDown, Check, Mail, Phone, MessageSquare, Printer, Calendar } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
+import { useTransaksiCrumb } from './TransaksiContext';
+import { formatOrderReference } from './orderReference';
+import TambahPengembalianPesananModal from './return_order/TambahPengembalianPesananModal';
+import PengaturanTambahanModal from './return_order/PengaturanTambahanModal';
+import ReturnOrderItemsTable from './return_order/ReturnOrderItemsTable';
 
 export default function ReturnOrderDetail({ orderId, onBack, onSaved }) {
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
+  const { setSubtitle } = useTransaksiCrumb();
 
-  // Return data parsed from notes
+  useEffect(() => {
+    setSubtitle('Detail Pengembalian');
+    return () => setSubtitle('');
+  }, [setSubtitle]);
+
+  // Return data states
   const [returnDate, setReturnDate] = useState('');
   const [returnStatus, setReturnStatus] = useState('Tunda');
   const [returnCatatan, setReturnCatatan] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
+  const [returnItems, setReturnItems] = useState([]);
+  const [tambahan, setTambahan] = useState({ deskripsi: '', jumlah: 0 });
 
-  // Edit states for cards
-  const [editingCard, setEditingCard] = useState(null);
-  const [tempCatatan, setTempCatatan] = useState('');
-  const [tempOrderNo, setTempOrderNo] = useState('');
+  // Modals state
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isTambahanModalOpen, setIsTambahanModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
 
-  // Dropdowns
+  // Card & Header dropdowns
   const [statusOpen, setStatusOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
-
   const [pengembalianDbId, setPengembalianDbId] = useState(null);
 
-  const getReturnInfo = (catatanPelanggan) => {
-    if (!catatanPelanggan) return null;
-    const match = catatanPelanggan.match(
-      /\[PENGEMBALIAN - Tanggal:\s*([^\s,]*),\s*Status:\s*([^,]*),\s*Catatan:\s*([^\]]*)\]/
-    ) || catatanPelanggan.match(
-      /\[PENGEMBALIAN - Tanggal:\s*([^\s,]+),\s*Catatan:\s*([^\]]*)\]/
-    );
-    
-    if (match) {
-      if (match.length === 4) {
-        return {
-          tanggal: match[1],
-          status: match[2] || 'Tunda',
-          catatan: match[3],
-        };
-      }
-      return {
-        tanggal: match[1],
-        status: 'Tunda',
-        catatan: match[2],
-      };
-    }
-    return null;
-  };
-
-  const fetchOrderDetail = async () => {
+  const fetchOrderDetail = useCallback(async () => {
     try {
       const res = await apiClient.get(`/orders/${orderId}/`);
       const data = res.data;
@@ -59,22 +46,36 @@ export default function ReturnOrderDetail({ orderId, onBack, onSaved }) {
         setReturnDate(data.pengembalian_aktif.tanggal_pengembalian || '');
         setReturnStatus(data.pengembalian_aktif.status || 'Tunda');
         setReturnCatatan(data.pengembalian_aktif.catatan || '');
+        if (data.pengembalian_aktif.items_json) {
+          try {
+            setReturnItems(JSON.parse(data.pengembalian_aktif.items_json));
+          } catch {
+            setReturnItems([]);
+          }
+        }
+        if (data.pengembalian_aktif.tambahan_json) {
+          try {
+            setTambahan(JSON.parse(data.pengembalian_aktif.tambahan_json));
+          } catch {
+            setTambahan({ deskripsi: '', jumlah: 0 });
+          }
+        }
       } else {
-        const info = getReturnInfo(data.catatan_pelanggan);
-        if (info) {
-          setReturnDate(info.tanggal || '');
-          setReturnStatus(info.status || 'Tunda');
-          setReturnCatatan(info.catatan || '');
+        // Parse from catatan_pelanggan if legacy
+        if (data.catatan_pelanggan && data.catatan_pelanggan.includes('[PENGEMBALIAN_ITEMS:')) {
+          const match = data.catatan_pelanggan.match(/\[PENGEMBALIAN_ITEMS:(.*?)\]/);
+          if (match) {
+            try {
+              setReturnItems(JSON.parse(match[1]));
+            } catch {
+              setReturnItems([]);
+            }
+          }
         }
       }
 
       if (data.email_pelanggan) {
         setCustomerEmail(data.email_pelanggan);
-      } else if (data.catatan_pelanggan && data.catatan_pelanggan.includes('(')) {
-        const emailMatch = data.catatan_pelanggan.match(/\(([^)]+)\)/);
-        if (emailMatch) {
-          setCustomerEmail(emailMatch[1]);
-        }
       }
     } catch (err) {
       console.error(err);
@@ -82,42 +83,72 @@ export default function ReturnOrderDetail({ orderId, onBack, onSaved }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [orderId]);
 
   useEffect(() => {
     fetchOrderDetail();
-  }, [orderId]);
+  }, [fetchOrderDetail]);
 
-  const handleUpdateReturn = async (newDate, newStatus, newCatatan) => {
-    if (!order) return;
+  const handleSaveReturnData = async (newItems, newTambahan, newStatus, newCatatan, newDate) => {
+    const itemsToSave = newItems !== undefined ? newItems : returnItems;
+    const tambahanToSave = newTambahan !== undefined ? newTambahan : tambahan;
+    const statusToSave = newStatus !== undefined ? newStatus : returnStatus;
+    const catatanToSave = newCatatan !== undefined ? newCatatan : returnCatatan;
+    const dateToSave = newDate !== undefined ? newDate : returnDate;
+
     try {
       if (pengembalianDbId) {
-        // Updated native API call (T-208 Revisi 2)
-        const payload = {};
-        if (newStatus !== undefined) payload.status = newStatus;
-        if (newCatatan !== undefined) payload.catatan = newCatatan;
-        if (newDate !== undefined) payload.tanggal_pengembalian = newDate;
-
-        await apiClient.patch(`/pengembalian/${pengembalianDbId}/`, payload);
+        await apiClient.patch(`/pengembalian/${pengembalianDbId}/`, {
+          status: statusToSave,
+          catatan: catatanToSave,
+          tanggal_pengembalian: dateToSave,
+          items_json: JSON.stringify(itemsToSave),
+          tambahan_json: JSON.stringify(tambahanToSave),
+        });
       } else {
-        // Fallback legacy note patch
-        const cleanNotes = order.catatan_pelanggan
-          ? order.catatan_pelanggan.replace(/\[PENGEMBALIAN[^\]]*\]\n?/, '').trim()
-          : '';
-        const newTag = `[PENGEMBALIAN - Tanggal: ${newDate || returnDate}, Status: ${newStatus || returnStatus}, Catatan: ${newCatatan !== undefined ? newCatatan : returnCatatan}]`;
-        const updatedNotes = `${newTag}\n${cleanNotes}`.trim();
-
-        await apiClient.patch(`/orders/${orderId}/`, {
-          catatan_pelanggan: updatedNotes,
+        // Call retur endpoint or patch order
+        await apiClient.post(`/orders/${orderId}/retur/`, {
+          catatan: catatanToSave,
+          tanggal_pengembalian: dateToSave,
+          items_json: JSON.stringify(itemsToSave),
+          tambahan_json: JSON.stringify(tambahanToSave),
         });
       }
-
       await fetchOrderDetail();
       onSaved?.();
     } catch (err) {
       console.error(err);
-      alert('Gagal memperbarui pengembalian.');
+      alert(err.response?.data?.error || 'Gagal menyimpan pengembalian pesanan.');
     }
+  };
+
+  const handleSaveAddModal = async ({ items }) => {
+    let updatedItems = [...returnItems];
+    items.forEach((newItem) => {
+      const existingIdx = updatedItems.findIndex((it) => it.order_item_id === newItem.order_item_id);
+      if (existingIdx >= 0) {
+        updatedItems[existingIdx] = newItem;
+      } else {
+        updatedItems.push(newItem);
+      }
+    });
+
+    setReturnItems(updatedItems);
+    setIsAddModalOpen(false);
+    setEditingItem(null);
+    await handleSaveReturnData(updatedItems);
+  };
+
+  const handleRemoveReturnItem = async (indexOrId) => {
+    const updated = returnItems.filter((it, idx) => it.id !== indexOrId && idx !== indexOrId);
+    setReturnItems(updated);
+    await handleSaveReturnData(updated);
+  };
+
+  const handleSaveTambahanModal = async (payload) => {
+    setTambahan(payload);
+    setIsTambahanModalOpen(false);
+    await handleSaveReturnData(undefined, payload);
   };
 
   const formatLogDateTime = (isoString) => {
@@ -134,50 +165,19 @@ export default function ReturnOrderDetail({ orderId, onBack, onSaved }) {
   };
 
   if (loading) {
-    return (
-      <div className="p-8 text-center text-xs font-bold text-slate-400">
-        Memuat detail pengembalian...
-      </div>
-    );
+    return <div className="p-8 text-center text-xs font-bold text-slate-400">Memuat detail pengembalian...</div>;
   }
-
   if (!order) {
-    return (
-      <div className="p-8 text-center text-xs font-bold text-rose-500">
-        Data pengembalian tidak ditemukan.
-      </div>
-    );
+    return <div className="p-8 text-center text-xs font-bold text-rose-500">Data pengembalian tidak ditemukan.</div>;
   }
 
-  const getCreatorName = () => {
-    if (!order?.activity_logs || order.activity_logs.length === 0) {
-      return 'System';
-    }
-    // Log pertama adalah CREATE_ORDER
-    const createLog = order.activity_logs.find((log) => log.tindakan === 'CREATE_ORDER');
-    return createLog?.user_nama || 'System';
-  };
-
-  const getLastUpdatedLog = () => {
-    if (!order?.activity_logs || order.activity_logs.length === 0) {
-      return null;
-    }
-    // Log paling baru (atau yang terakhir diubah)
-    return order.activity_logs[0]; // Assume sorted by waktu desc
-  };
-
-  const returnId = `SR${new Date(order.waktu).getFullYear().toString().slice(-2)}${String(
-    new Date(order.waktu).getMonth() + 1
-  ).padStart(2, '0')}${String(new Date(order.waktu).getDate()).padStart(2, '0')}0000000${order.id}`;
-
-  const creatorName = getCreatorName();
-  const lastLog = getLastUpdatedLog();
+  const returnId = formatOrderReference(order, 'pengembalian');
+  const creatorName = order.dibuat_oleh_nama || 'System';
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-5 animate-fade-in text-slate-700">
-      {/* Detail Pengembalian Header Panel */}
+      {/* Header Panel */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        {/* Left Side: ID & Creator */}
         <div className="flex items-center gap-4">
           <button
             type="button"
@@ -192,7 +192,6 @@ export default function ReturnOrderDetail({ orderId, onBack, onSaved }) {
           </div>
         </div>
 
-        {/* Right Side: Status, Notif, Print, Date */}
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Status Dropdown */}
           <div className="relative">
@@ -212,7 +211,8 @@ export default function ReturnOrderDetail({ orderId, onBack, onSaved }) {
                     type="button"
                     onClick={() => {
                       setStatusOpen(false);
-                      handleUpdateReturn(returnDate, st, returnCatatan);
+                      setReturnStatus(st);
+                      handleSaveReturnData(undefined, undefined, st);
                     }}
                     className="w-full text-left px-4 py-2 hover:bg-slate-50 text-xs text-slate-700 font-semibold cursor-pointer flex items-center justify-between"
                   >
@@ -224,7 +224,7 @@ export default function ReturnOrderDetail({ orderId, onBack, onSaved }) {
             )}
           </div>
 
-          {/* Notifikasi Dropdown */}
+          {/* Email / Contact Dropdown */}
           <div className="relative">
             <button
               type="button"
@@ -242,12 +242,6 @@ export default function ReturnOrderDetail({ orderId, onBack, onSaved }) {
                   <Mail size={13} className="text-slate-400" /> Kirim Email
                 </a>
                 <a
-                  href={`sms:${order.nomor_wa}`}
-                  className="px-4 py-2 hover:bg-slate-50 text-xs font-semibold text-slate-700 flex items-center gap-2 cursor-pointer"
-                >
-                  <Phone size={13} className="text-slate-400" /> Kirim SMS
-                </a>
-                <a
                   href={`https://wa.me/${order.nomor_wa}`}
                   target="_blank"
                   rel="noreferrer"
@@ -262,202 +256,126 @@ export default function ReturnOrderDetail({ orderId, onBack, onSaved }) {
           {/* Print Button */}
           <button
             type="button"
-            onClick={async () => {
-              try {
-                const res = await apiClient.get(`/orders/${orderId}/print-return/`);
-                const blob = new Blob([res.data], { type: 'text/html;charset=utf-8' });
-                const url = window.URL.createObjectURL(blob);
-                const win = window.open(url, '_blank');
-                if (win) {
-                  setTimeout(() => win.print(), 500);
-                }
-              } catch (err) {
-                alert('Gagal membuka laporan pengembalian.');
-                console.error(err);
-              }
-            }}
+            onClick={() => window.print()}
             className="p-2 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-500 bg-white cursor-pointer"
           >
             <Printer size={15} />
           </button>
 
-          {/* Return Date Picker */}
+          {/* Date Picker */}
           <div className="relative flex items-center">
             <Calendar size={14} className="absolute left-3 text-slate-400 pointer-events-none" />
             <input
               type="date"
               value={returnDate}
-              onChange={(e) => handleUpdateReturn(e.target.value, returnStatus, returnCatatan)}
+              onChange={(e) => {
+                setReturnDate(e.target.value);
+                handleSaveReturnData(undefined, undefined, undefined, undefined, e.target.value);
+              }}
               className="pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:border-blue-300 bg-white cursor-pointer"
             />
           </div>
         </div>
       </div>
 
-      {/* 3 Main Cards */}
+      {/* 3 Main Cards: Pelanggan, Pesanan, Catatan */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Card 1: Pelanggan */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs relative">
-          <div className="border-b border-slate-100 pb-2.5 mb-3">
-            <span className="text-xs font-bold text-slate-800">Pelanggan</span>
+        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs">
+          <div className="border-b border-slate-100 pb-2.5 mb-3 font-bold text-slate-800 text-xs">
+            Pelanggan
           </div>
-          <div className="space-y-3.5 text-xs">
+          <div className="space-y-3 text-xs">
             <div>
               <span className="text-slate-400 block font-medium mb-0.5">Nama</span>
-              <span className="text-slate-700 font-semibold">{order.nama || '-'}</span>
+              <span className="text-slate-800 font-bold">{order.nama || '-'}</span>
             </div>
             <div>
               <span className="text-slate-400 block font-medium mb-0.5">Email</span>
-              <span className="text-slate-700 font-semibold">{customerEmail}</span>
+              <span className="text-slate-700 font-semibold">{customerEmail || '-'}</span>
             </div>
           </div>
         </div>
 
         {/* Card 2: Pesanan */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs relative">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3">
-            <span className="text-xs font-bold text-slate-800">Pesanan</span>
-            {editingCard === 'pesanan' ? (
-              <div className="flex gap-1">
-                <button
-                  onClick={() => {
-                    handleUpdateReturn(returnDate, returnStatus, returnCatatan);
-                    setEditingCard(null);
-                  }}
-                  className="text-xs font-bold text-emerald-600 hover:text-emerald-700 cursor-pointer"
-                >
-                  Save
-                </button>
-                <button
-                  onClick={() => setEditingCard(null)}
-                  className="text-xs font-bold text-slate-400 hover:text-slate-600 ml-1.5 cursor-pointer"
-                >
-                  X
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => {
-                  setEditingCard('pesanan');
-                  setTempOrderNo(`ORD-${order.id}`);
-                }}
-                className="text-[11px] font-bold text-blue-600 hover:text-blue-700 cursor-pointer"
-              >
-                ✏️
-              </button>
-            )}
+        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs">
+          <div className="border-b border-slate-100 pb-2.5 mb-3 font-bold text-slate-800 text-xs">
+            Pesanan
           </div>
-          {editingCard === 'pesanan' ? (
-            <div className="space-y-2">
-              <input
-                type="text"
-                value={tempOrderNo}
-                onChange={(e) => setTempOrderNo(e.target.value)}
-                className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white outline-none focus:border-blue-300"
-              />
+          <div className="space-y-3 text-xs">
+            <div>
+              <span className="text-slate-400 block font-medium mb-0.5">Pelanggan</span>
+              <span className="text-slate-800 font-bold">{order.nama || '-'}</span>
             </div>
-          ) : (
-            <div className="space-y-3.5 text-xs">
-              <div>
-                <span className="text-slate-400 block font-medium mb-0.5">Pelanggan</span>
-                <span className="text-slate-700 font-semibold">{order.nama || '-'}</span>
-              </div>
-              <div>
-                <span className="text-slate-400 block font-medium mb-0.5">No. Pesanan</span>
-                <span className="text-slate-700 font-semibold font-mono">ORD-{order.id}</span>
-              </div>
+            <div>
+              <span className="text-slate-400 block font-medium mb-0.5">No. Pesanan</span>
+              <span className="text-slate-800 font-bold font-mono">{formatOrderReference(order, 'pengembalian')}</span>
             </div>
-          )}
+          </div>
         </div>
 
         {/* Card 3: Catatan */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs relative">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3">
-            <span className="text-xs font-bold text-slate-800">Catatan</span>
-            {editingCard === 'catatan' ? (
-              <div className="flex gap-1">
-                <button
-                  onClick={() => {
-                    handleUpdateReturn(returnDate, returnStatus, tempCatatan);
-                    setEditingCard(null);
-                  }}
-                  className="text-xs font-bold text-emerald-600 hover:text-emerald-700 cursor-pointer"
-                >
-                  Save
-                </button>
-                <button
-                  onClick={() => setEditingCard(null)}
-                  className="text-xs font-bold text-slate-400 hover:text-slate-600 ml-1.5 cursor-pointer"
-                >
-                  X
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => {
-                  setEditingCard('catatan');
-                  setTempCatatan(returnCatatan);
-                }}
-                className="text-[11px] font-bold text-blue-600 hover:text-blue-700 cursor-pointer"
-              >
-                ✏️
-              </button>
-            )}
+        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs">
+          <div className="border-b border-slate-100 pb-2.5 mb-3 font-bold text-slate-800 text-xs">
+            Catatan
           </div>
-          {editingCard === 'catatan' ? (
-            <textarea
-              value={tempCatatan}
-              onChange={(e) => setTempCatatan(e.target.value)}
-              className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white outline-none focus:border-blue-300 resize-none"
-              rows={2}
-            />
-          ) : (
-            <p className="text-xs text-slate-700 font-semibold min-h-[40px] whitespace-pre-line leading-relaxed">
-              {returnCatatan || '-'}
-            </p>
-          )}
+          <div className="text-xs font-medium text-slate-500 min-h-[40px] whitespace-pre-line leading-relaxed">
+            {returnCatatan || 'Tidak ada Catatan'}
+          </div>
         </div>
       </div>
 
-      {/* Produk Pesanan Card */}
-      <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-2xs">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3">
-          <span className="text-xs font-bold text-slate-800">Produk Pesanan</span>
-          <button
-            type="button"
-            className="flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-2.5 py-1 cursor-pointer transition-colors"
-          >
-            + Pengembalian Pesanan
-          </button>
-        </div>
-        <div className="flex flex-col items-center justify-center min-h-[220px] text-center">
-          <div className="mb-4 text-slate-300">
-            <span className="text-6xl select-none">🐻‍❄️</span>
-          </div>
-          <span className="text-xs font-bold text-slate-700 block">Tidak ada pesanan</span>
-        </div>
-      </div>
+      {/* Section Produk Pesanan Table (SS No 2) */}
+      <ReturnOrderItemsTable
+        returnItems={returnItems}
+        tambahanNominal={tambahan.jumlah || 0}
+        onOpenAddReturnModal={() => {
+          setEditingItem(null);
+          setIsAddModalOpen(true);
+        }}
+        onEditReturnItem={(item) => {
+          setEditingItem(item);
+          setIsAddModalOpen(true);
+        }}
+        onRemoveReturnItem={handleRemoveReturnItem}
+        onOpenTambahanModal={() => setIsTambahanModalOpen(true)}
+      />
 
       {/* Log Card */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs">
-        <div className="border-b border-slate-100 pb-2.5 mb-3">
-          <span className="text-xs font-bold text-slate-800">Log</span>
+        <div className="border-b border-slate-100 pb-2.5 mb-3 font-bold text-slate-800 text-xs">
+          Log
         </div>
-        <div className="space-y-3.5 text-xs">
+        <div className="space-y-3 text-xs">
           <div className="flex justify-between items-start py-0.5">
             <span className="text-slate-400 font-medium">Waktu Pembuatan</span>
             <span className="text-slate-700 font-semibold text-right">
-              {creatorName}, {formatLogDateTime(order.waktu)}
-            </span>
-          </div>
-          <div className="flex justify-between items-start py-0.5">
-            <span className="text-slate-400 font-medium">Terakhir Diperbarui</span>
-            <span className="text-slate-700 font-semibold text-right">
-              {lastLog?.user_nama || creatorName}, {formatLogDateTime(lastLog?.waktu || order.waktu)}
+              {customerEmail || creatorName}, {formatLogDateTime(order.waktu)}
             </span>
           </div>
         </div>
       </div>
+
+      {/* Modal Pop-Up Pengembalian Pesanan (SS No 1) */}
+      <TambahPengembalianPesananModal
+        isOpen={isAddModalOpen}
+        onClose={() => {
+          setIsAddModalOpen(false);
+          setEditingItem(null);
+        }}
+        onSave={handleSaveAddModal}
+        orderItems={order.items || []}
+        editingReturnItem={editingItem}
+      />
+
+      {/* Modal Pop-Up Tambahan (SS No 3) */}
+      <PengaturanTambahanModal
+        isOpen={isTambahanModalOpen}
+        onClose={() => setIsTambahanModalOpen(false)}
+        onSave={handleSaveTambahanModal}
+        currentTambahan={tambahan.jumlah || 0}
+        currentDeskripsi={tambahan.deskripsi || ''}
+      />
     </div>
   );
 }

@@ -30,6 +30,18 @@ export function StockInPage({ onToggleCreate, viewState: propViewState }) {
     }
   }, [propViewState]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const stockInId = params.get('stockInId');
+    if (stockInId) {
+      fetchDocumentDetail(stockInId).then(() => {
+        setViewState('detail');
+      }).catch((err) => {
+        console.error('[StockInPage] Gagal memuat detail stok masuk dari URL param:', err);
+      });
+    }
+  }, []);
+
   const [showTambahDropdown, setShowTambahDropdown] = useState(false);
   const [showPembelianModal, setShowPembelianModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);

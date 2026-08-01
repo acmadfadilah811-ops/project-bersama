@@ -38,7 +38,7 @@ export default function HutangMultiJurnal() {
   const [newDeptName, setNewDeptName] = useState('');
 
   // Date and currency
-  const [txDate, setTxDate] = useState('2026-07-26');
+  const [txDate, setTxDate] = useState(new Date().toISOString().split('T')[0]);
   const [currency] = useState('IDR');
 
   // Account selector list
@@ -221,8 +221,14 @@ export default function HutangMultiJurnal() {
       <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 bg-[#F8FAFC]">
         <h3 className="text-sm font-bold text-slate-800 tracking-wide">Form Multi Jurnal (Hutang)</h3>
         <button
-          disabled
-          className="px-3.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-350 font-extrabold text-[10px] flex items-center gap-1.5 cursor-not-allowed shadow-3xs"
+          type="button"
+          disabled={rows.length === 0}
+          onClick={() => window.print()}
+          className={`px-3.5 py-1.5 rounded-lg border font-extrabold text-[10px] flex items-center gap-1.5 shadow-3xs ${
+            rows.length > 0
+              ? 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 cursor-pointer'
+              : 'border-slate-200 bg-slate-50 text-slate-350 cursor-not-allowed'
+          }`}
         >
           <FileText size={12} />
           <span>Cetak jurnal ({rows.length})</span>

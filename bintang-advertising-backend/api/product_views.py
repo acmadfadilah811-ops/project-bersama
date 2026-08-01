@@ -1,16 +1,20 @@
 import csv
 import io
+import logging
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q
 from django.db.models.functions import Lower
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.exceptions import ValidationError
@@ -23,7 +27,7 @@ from .product_models import (
     ProductStockMovement, ProductImage, StockInDocument, StockInDocumentItem,
     StockOutDocument, StockOutDocumentItem, StockProductionDocument, StockProductionDocumentItem,
     StockOpnameDocument, StockOpnameDocumentItem, ProductActivityLog,
-    Purchase, PurchaseItem, PurchasePayment,
+    Purchase, PurchaseItem, PurchasePayment, PurchaseAttachment,
     StockLayer, StockLayerConsumption
 )
 from .product_serializers import (
@@ -35,13 +39,204 @@ from .product_serializers import (
     StockOutDocumentSerializer, StockOutDocumentItemSerializer,
     StockProductionDocumentSerializer, StockProductionDocumentItemSerializer,
     StockOpnameDocumentSerializer, StockOpnameDocumentItemSerializer,
-    PurchaseSerializer, PurchaseItemSerializer, PurchasePaymentSerializer
+    PurchaseSerializer, PurchaseItemSerializer, PurchasePaymentSerializer, PurchaseAttachmentSerializer
 )
 from .models import BillOfMaterials, BoMItem
 from .customer_models import Supplier
 from . import production_costing
 from . import stock_fifo
 from . import uom
+
+logger = logging.getLogger(__name__)
+
+
+def _post_stock_journal(document, actor, *, direction='in'):
+    """Post nilai stok masuk/keluar ke ledger dan fail-closed bila COA belum siap."""
+    from accounting.models import Account, JournalEntry
+    from accounting.services.journal import create_journal_entry
+
+    amount = sum(
+        (Decimal(str(item.qty or 0)) * Decimal(str(item.harga_beli or 0))
+         for item in document.items.all()),
+        Decimal('0'),
+    ).quantize(Decimal('1'))
+    if amount <= 0:
+        return None
+
+    existing = JournalEntry.objects.filter(
+        source_type=(JournalEntry.SourceType.STOCK_IN if direction == 'in' else JournalEntry.SourceType.STOCK_OUT),
+        source_id=document.id,
+    ).exclude(status=JournalEntry.Status.VOID).first()
+    if existing:
+        return existing
+
+    inventory = Account.objects.filter(code='11400', is_active=True).first()
+    payable = Account.objects.filter(code='21000', is_active=True).first()
+    if not inventory or not payable:
+        raise ValidationError('COA 11400 (Persediaan) dan 21000 (Hutang Dagang) wajib tersedia.')
+
+    if direction == 'in':
+        lines = [
+            {'account': inventory, 'debit': amount, 'kredit': 0, 'description': f'Stok masuk {document.nomor}', 'external_document_no': document.nomor},
+            {'account': payable, 'debit': 0, 'kredit': amount, 'description': f'Stok masuk {document.nomor}', 'external_document_no': document.nomor},
+        ]
+        source_type = JournalEntry.SourceType.STOCK_IN
+    else:
+        lines = [
+            {'account': payable, 'debit': amount, 'kredit': 0, 'description': f'Retur stok {document.nomor}', 'external_document_no': document.nomor},
+            {'account': inventory, 'debit': 0, 'kredit': amount, 'description': f'Retur stok {document.nomor}', 'external_document_no': document.nomor},
+        ]
+        source_type = JournalEntry.SourceType.STOCK_OUT
+
+    try:
+        return create_journal_entry(
+            date=document.tanggal,
+            lines=lines,
+            description=f"{'Stok masuk' if direction == 'in' else 'Retur stok'} {document.nomor}",
+            source_type=source_type,
+            source_id=document.id,
+            created_by=actor,
+        )
+    except DjangoValidationError as exc:
+        raise ValidationError(getattr(exc, 'messages', [str(exc)])) from exc
+
+
+def post_stock_in_document(document, actor):
+    """Posting dokumen Stok Masuk draft: tambah qty_stok, catat movement + lapisan
+    FIFO, lalu posting jurnal. Satu-satunya jalur; dipakai StockInDocumentViewSet
+    dan alur "Selesai" pembelian (PurchaseWorkflowView) supaya tidak ada logic
+    posting stok masuk yang terpisah/berbeda perilaku (lihat AGENTS.md #1)."""
+    if document.status != 'draft':
+        return document
+    if not document.items.exists():
+        raise ValidationError('Tambahkan minimal satu produk sebelum posting.')
+
+    for item in document.items.select_related('product', 'variant'):
+        product = Product.objects.select_for_update().get(pk=item.product_id)
+        variant = (ProductVariant.objects.select_for_update().get(pk=item.variant_id)
+                   if item.variant_id else None)
+        owner = variant or product
+        stok_awal = owner.qty_stok
+        stok_akhir = stok_awal + item.qty
+        if item.harga_beli and stok_akhir > 0:
+            old_value = stok_awal * (owner.harga_beli or 0)
+            owner.harga_beli = (old_value + item.qty * item.harga_beli) / stok_akhir
+        owner.qty_stok = stok_akhir
+        owner.save(update_fields=['qty_stok', 'harga_beli'])
+
+        ProductStockMovement.objects.create(
+            product=product,
+            variant=variant,
+            user=actor,
+            tipe='masuk',
+            qty=item.qty,
+            harga_beli=item.harga_beli,
+            stok_awal=stok_awal,
+            stok_akhir=stok_akhir,
+            catatan=document.catatan,
+            tanggal=document.tanggal,
+            stock_in_document=document,
+        )
+
+        stock_fifo.create_layer(
+            product, item.variant, item.qty, item.harga_beli, document.tanggal,
+            sumber_tipe='stock_in', sumber_nomor=document.nomor,
+            rak=item.rak, tanggal_kadaluwarsa=item.tanggal_kadaluwarsa,
+        )
+
+    document.status = 'selesai'
+    document.save()
+    _post_stock_journal(document, actor, direction='in')
+    return document
+
+
+def post_stock_adjustment_journal(document, actor, amount, *, direction, source_type):
+    """Jurnal penyesuaian nilai stok (Stok Keluar non-transfer) ke akun 81000
+    Penyesuaian Barang. direction='out' = Persediaan berkurang (kerugian)."""
+    from accounting.models import Account, JournalEntry
+    from accounting.services.journal import create_journal_entry
+
+    amount = Decimal(str(amount)).quantize(Decimal('1'))
+    if amount <= 0:
+        return None
+
+    existing = JournalEntry.objects.filter(
+        source_type=source_type, source_id=document.id,
+    ).exclude(status=JournalEntry.Status.VOID).first()
+    if existing:
+        return existing
+
+    inventory = Account.objects.filter(code='11400', is_active=True).first()
+    adjustment = Account.objects.filter(code='81000', is_active=True).first()
+    if not inventory or not adjustment:
+        raise ValidationError('COA 11400 (Persediaan) dan 81000 (Penyesuaian Barang) wajib tersedia.')
+
+    description = f'Penyesuaian stok {document.nomor}'
+    if direction == 'in':
+        lines = [
+            {'account': inventory, 'debit': amount, 'kredit': 0, 'description': description, 'external_document_no': document.nomor},
+            {'account': adjustment, 'debit': 0, 'kredit': amount, 'description': description, 'external_document_no': document.nomor},
+        ]
+    else:
+        lines = [
+            {'account': adjustment, 'debit': amount, 'kredit': 0, 'description': description, 'external_document_no': document.nomor},
+            {'account': inventory, 'debit': 0, 'kredit': amount, 'description': description, 'external_document_no': document.nomor},
+        ]
+
+    try:
+        return create_journal_entry(
+            date=document.tanggal, lines=lines, description=description,
+            source_type=source_type, source_id=document.id, created_by=actor,
+        )
+    except DjangoValidationError as exc:
+        raise ValidationError(getattr(exc, 'messages', [str(exc)])) from exc
+
+
+def post_stock_opname_journal(document, actor, surplus_amount, defisit_amount):
+    """Jurnal opname: surplus & defisit bisa terjadi bersamaan dalam satu
+    dokumen (produk berbeda) — diposting sebagai satu entri gabungan supaya
+    idempotency (source_type+source_id) tetap satu jurnal per dokumen."""
+    from accounting.models import Account, JournalEntry
+    from accounting.services.journal import create_journal_entry
+
+    surplus_amount = Decimal(str(surplus_amount)).quantize(Decimal('1'))
+    defisit_amount = Decimal(str(defisit_amount)).quantize(Decimal('1'))
+    if surplus_amount <= 0 and defisit_amount <= 0:
+        return None
+
+    existing = JournalEntry.objects.filter(
+        source_type=JournalEntry.SourceType.STOCK_OPNAME, source_id=document.id,
+    ).exclude(status=JournalEntry.Status.VOID).first()
+    if existing:
+        return existing
+
+    inventory = Account.objects.filter(code='11400', is_active=True).first()
+    adjustment = Account.objects.filter(code='81000', is_active=True).first()
+    if not inventory or not adjustment:
+        raise ValidationError('COA 11400 (Persediaan) dan 81000 (Penyesuaian Barang) wajib tersedia.')
+
+    description = f'Opname stok {document.nomor}'
+    lines = []
+    if surplus_amount > 0:
+        lines += [
+            {'account': inventory, 'debit': surplus_amount, 'kredit': 0, 'description': description, 'external_document_no': document.nomor},
+            {'account': adjustment, 'debit': 0, 'kredit': surplus_amount, 'description': description, 'external_document_no': document.nomor},
+        ]
+    if defisit_amount > 0:
+        lines += [
+            {'account': adjustment, 'debit': defisit_amount, 'kredit': 0, 'description': description, 'external_document_no': document.nomor},
+            {'account': inventory, 'debit': 0, 'kredit': defisit_amount, 'description': description, 'external_document_no': document.nomor},
+        ]
+
+    try:
+        return create_journal_entry(
+            date=document.tanggal, lines=lines, description=description,
+            source_type=JournalEntry.SourceType.STOCK_OPNAME, source_id=document.id, created_by=actor,
+        )
+    except DjangoValidationError as exc:
+        raise ValidationError(getattr(exc, 'messages', [str(exc)])) from exc
+
+
 from . import pos_settings
 
 # Batas baris per import CSV. Tanpa batas, satu file besar diproses dalam satu
@@ -1486,49 +1681,10 @@ class StockInDocumentViewSet(viewsets.ModelViewSet):
         document = StockInDocument.objects.select_for_update().get(pk=pk)
         if document.status != 'draft':
             return Response({'error': 'Dokumen sudah diposting/dibatalkan.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Catatan/Nama Penerima/Supplier bersifat opsional (sesuai alur Olsera asli);
-        # hanya tanggal (wajib sejak dokumen dibuat) dan minimal 1 item yang diperlukan untuk posting.
-        if not document.items.exists():
-            return Response({'error': 'Tambahkan minimal satu produk sebelum posting.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        with transaction.atomic():
-            for item in document.items.select_related('product', 'variant'):
-                product = Product.objects.select_for_update().get(pk=item.product_id)
-                variant = (ProductVariant.objects.select_for_update().get(pk=item.variant_id)
-                           if item.variant_id else None)
-                owner = variant or product
-                stok_awal = owner.qty_stok
-                stok_akhir = stok_awal + item.qty
-                if item.harga_beli and stok_akhir > 0:
-                    old_value = stok_awal * (owner.harga_beli or 0)
-                    owner.harga_beli = (old_value + item.qty * item.harga_beli) / stok_akhir
-                owner.qty_stok = stok_akhir
-                owner.save(update_fields=['qty_stok', 'harga_beli'])
-
-                ProductStockMovement.objects.create(
-                    product=product,
-                    variant=variant,
-                    user=request.user,
-                    tipe='masuk',
-                    qty=item.qty,
-                    harga_beli=item.harga_beli,
-                    stok_awal=stok_awal,
-                    stok_akhir=stok_akhir,
-                    catatan=document.catatan,
-                    tanggal=document.tanggal,
-                    stock_in_document=document,
-                )
-
-                stock_fifo.create_layer(
-                    product, item.variant, item.qty, item.harga_beli, document.tanggal,
-                    sumber_tipe='stock_in', sumber_nomor=document.nomor,
-                    rak=item.rak, tanggal_kadaluwarsa=item.tanggal_kadaluwarsa,
-                )
-
-            document.status = 'selesai'
-            document.save()
-
+        try:
+            post_stock_in_document(document, request.user)
+        except ValidationError as exc:
+            return Response({'error': exc.detail[0] if isinstance(exc.detail, list) else str(exc.detail)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(StockInDocumentSerializer(document).data)
 
     @action(detail=True, methods=['post'], url_path='cancel')
@@ -1558,11 +1714,25 @@ class PurchaseViewSet(viewsets.ModelViewSet):
     queryset = (
         Purchase.objects
         .all()
-        .prefetch_related('items__product', 'items__variant', 'payments')
+        .prefetch_related('items__product', 'items__variant', 'payments', 'attachments')
         .select_related('dibuat_oleh', 'supplier_ref', 'retur_ref')
     )
     serializer_class = PurchaseSerializer
     permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        date_from = parse_date(self.request.query_params.get('date_from') or '')
+        date_to = parse_date(self.request.query_params.get('date_to') or '')
+        search = (self.request.query_params.get('search') or '').strip()
+        if date_from:
+            queryset = queryset.filter(tanggal__gte=date_from)
+        if date_to:
+            queryset = queryset.filter(tanggal__lte=date_to)
+        if search:
+            queryset = queryset.filter(Q(nomor__icontains=search) | Q(supplier__icontains=search))
+        return queryset
 
     def perform_create(self, serializer):
         today = timezone.now().date()
@@ -1601,7 +1771,36 @@ class PurchaseViewSet(viewsets.ModelViewSet):
         total_dibayar, sisa) tidak basi akibat cache prefetch pada instance yang
         baru saja dimutasi (mis. setelah menambah item/pembayaran)."""
         obj = self.get_queryset().get(pk=pk)
-        return Response(PurchaseSerializer(obj).data, status=status_code)
+        return Response(PurchaseSerializer(obj, context={'request': self.request}).data, status=status_code)
+
+    @action(detail=True, methods=['post'], url_path='upload-attachment')
+    def upload_attachment(self, request, pk=None):
+        """Simpan bukti pembelian; dibatasi tipe dokumen umum dan 10 MB."""
+        purchase = self.get_object()
+        if purchase.status == 'batal':
+            return Response({'error': 'Dokumen batal tidak dapat diberi lampiran.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        uploaded_file = request.FILES.get('file')
+        if not uploaded_file:
+            return Response({'error': 'File lampiran wajib dipilih.'}, status=status.HTTP_400_BAD_REQUEST)
+        if uploaded_file.size > 10 * 1024 * 1024:
+            return Response({'error': 'Ukuran file lampiran maksimal 10 MB.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        filename = uploaded_file.name or ''
+        extension = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+        allowed_extensions = {'pdf', 'png', 'jpg', 'jpeg', 'webp', 'xlsx', 'xls', 'csv', 'doc', 'docx'}
+        if extension not in allowed_extensions:
+            return Response({'error': 'Format lampiran tidak didukung.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        attachment = PurchaseAttachment.objects.create(
+            purchase=purchase,
+            file=uploaded_file,
+            dibuat_oleh=request.user,
+        )
+        return Response(
+            PurchaseAttachmentSerializer(attachment, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
 
     # ---- kelola item (draft saja) ----
     @action(detail=True, methods=['post'], url_path='add-item')
@@ -1635,8 +1834,35 @@ class PurchaseViewSet(viewsets.ModelViewSet):
             qty=u['qty_dasar'],
             tanggal_kadaluwarsa=request.data.get('tanggal_kadaluwarsa') or None,
             uom_kode=u['uom_kode'], uom_konverter=u['uom_konverter'], uom_qty=u['uom_qty'],
+            alasan_retur=(request.data.get('alasan_retur') or '').strip(),
+            catatan_retur=(request.data.get('catatan_retur') or '').strip(),
+            jadikan_stok_keluar=_parse_bool_flag(request.data.get('jadikan_stok_keluar')) if 'jadikan_stok_keluar' in request.data else True,
         )
-        return Response(PurchaseItemSerializer(item).data, status=status.HTTP_201_CREATED)
+        return self._detail_response(purchase.pk, status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='update-item')
+    def update_item(self, request, pk=None):
+        purchase = self.get_object()
+        if purchase.status != 'draft':
+            return Response({'error': 'Dokumen tidak dalam status draft.'}, status=status.HTTP_400_BAD_REQUEST)
+        item_id = request.data.get('item_id')
+        item = PurchaseItem.objects.filter(purchase=purchase, id=item_id).first()
+        if not item:
+            return Response({'error': 'Item tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if 'qty' in request.data:
+            try:
+                item.qty = _to_decimal(request.data.get('qty'), 'qty')
+            except ValueError as e:
+                return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        if 'alasan_retur' in request.data:
+            item.alasan_retur = (request.data.get('alasan_retur') or '').strip()
+        if 'catatan_retur' in request.data:
+            item.catatan_retur = (request.data.get('catatan_retur') or '').strip()
+        if 'jadikan_stok_keluar' in request.data:
+            item.jadikan_stok_keluar = _parse_bool_flag(request.data.get('jadikan_stok_keluar'))
+        item.save()
+        return self._detail_response(purchase.pk)
 
     @action(detail=True, methods=['post'], url_path='remove-item')
     def remove_item(self, request, pk=None):
@@ -1765,27 +1991,64 @@ class PurchaseViewSet(viewsets.ModelViewSet):
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         if nominal <= 0:
             return Response({'error': 'Nominal pembayaran harus lebih besar dari 0.'}, status=status.HTTP_400_BAD_REQUEST)
+        if nominal != nominal.quantize(Decimal('1')):
+            return Response({'error': 'Nominal pembayaran harus berupa rupiah utuh.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        tanggal = request.data.get('tanggal') or timezone.now().date()
-        PurchasePayment.objects.create(
-            purchase=purchase,
-            tanggal=tanggal,
-            nominal=nominal,
-            metode=(request.data.get('metode') or '').strip(),
-            catatan=(request.data.get('catatan') or '').strip(),
-            dibuat_oleh=request.user,
-        )
-        purchase.recompute_payment_status()
+        raw_tanggal = request.data.get('tanggal')
+        tanggal = parse_date(raw_tanggal) if raw_tanggal else timezone.now().date()
+        if not tanggal:
+            return Response({'error': 'Format tanggal harus YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
+        with transaction.atomic():
+            # Lock PO agar dua pembayaran bersamaan tidak melewati status yang
+            # sama dan menghasilkan saldo/jurnal yang tidak konsisten.
+            purchase = self.get_queryset().select_for_update().get(pk=pk)
+            if purchase.is_retur:
+                return Response({'error': 'Dokumen retur tidak menerima pembayaran.'}, status=status.HTTP_400_BAD_REQUEST)
+            if purchase.status == 'batal':
+                return Response({'error': 'Dokumen batal tidak bisa menerima pembayaran.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            from accounting.models import Account
+            from accounting.services.purchase_posting import post_purchase_payment_journal
+
+            account_id = request.data.get('payment_account_id')
+            if account_id:
+                acc_kas = Account.objects.filter(pk=account_id, is_active=True).first()
+            else:
+                acc_kas = Account.objects.filter(code='11101', is_active=True).first()
+            if not acc_kas:
+                return Response({'error': 'Pilih akun Kas/Bank aktif untuk pembayaran.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            payment = PurchasePayment.objects.create(
+                purchase=purchase,
+                tanggal=tanggal,
+                nominal=nominal,
+                metode=(request.data.get('payment_jurnal') or request.data.get('metode') or f'{acc_kas.code} {acc_kas.name}').strip(),
+                catatan=(request.data.get('referensi_pembayaran') or request.data.get('catatan') or '').strip(),
+                dibuat_oleh=request.user,
+            )
+            try:
+                post_purchase_payment_journal(payment, acc_kas, actor=request.user)
+            except DjangoValidationError as exc:
+                raise ValidationError(getattr(exc, 'messages', [str(exc)])) from exc
+            purchase.recompute_payment_status()
+
         return self._detail_response(purchase.pk, status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='remove-payment')
     def remove_payment(self, request, pk=None):
-        purchase = self.get_object()
         payment_id = request.data.get('payment_id')
-        deleted, _ = PurchasePayment.objects.filter(purchase=purchase, id=payment_id).delete()
-        if not deleted:
-            return Response({'error': 'Pembayaran tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
-        purchase.recompute_payment_status()
+        with transaction.atomic():
+            purchase = self.get_queryset().select_for_update().get(pk=pk)
+            payment = PurchasePayment.objects.filter(purchase=purchase, id=payment_id).first()
+            if not payment:
+                return Response({'error': 'Pembayaran tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
+            from accounting.services.purchase_posting import reverse_purchase_payment_journal
+            try:
+                reverse_purchase_payment_journal(payment, actor=request.user)
+            except DjangoValidationError as exc:
+                raise ValidationError(getattr(exc, 'messages', [str(exc)])) from exc
+            payment.delete()
+            purchase.recompute_payment_status()
         return self._detail_response(purchase.pk)
 
     # ---- penerimaan barang (menambah stok) ----
@@ -1839,8 +2102,6 @@ class PurchaseViewSet(viewsets.ModelViewSet):
                 status='draft',
                 dibuat_oleh=request.user,
             )
-            for it in source.items.all():
-                PurchaseItem.objects.create(purchase=retur, product=it.product, variant=it.variant, qty=it.qty, harga_beli=it.harga_beli)
         return self._detail_response(retur.pk, status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='post-retur')
@@ -1892,6 +2153,8 @@ class PurchaseViewSet(viewsets.ModelViewSet):
                 status='selesai', dibuat_oleh=request.user, purchase=purchase,
             )
             for it in purchase.items.select_related('product', 'variant'):
+                if not getattr(it, 'jadikan_stok_keluar', True):
+                    continue
                 if it.variant_id:
                     owner = ProductVariant.objects.select_for_update().get(pk=it.variant_id)
                 else:
@@ -1912,6 +2175,7 @@ class PurchaseViewSet(viewsets.ModelViewSet):
                     sumber_tipe='purchase', sumber_nomor=purchase.nomor,
                     tanggal_kadaluwarsa=it.tanggal_kadaluwarsa,
                 )
+            _post_stock_journal(doc, request.user, direction='in')
             return None
 
         # direction == 'out'
@@ -1921,6 +2185,8 @@ class PurchaseViewSet(viewsets.ModelViewSet):
             status='selesai', dibuat_oleh=request.user, purchase=purchase,
         )
         for it in purchase.items.select_related('product', 'variant'):
+            if not getattr(it, 'jadikan_stok_keluar', True):
+                continue
             if it.variant_id:
                 owner = ProductVariant.objects.select_for_update().get(pk=it.variant_id)
             else:
@@ -1928,9 +2194,8 @@ class PurchaseViewSet(viewsets.ModelViewSet):
             stok_awal = owner.qty_stok
             stok_akhir = stok_awal - it.qty
             if stok_akhir < 0:
-                return Response(
-                    {'error': f"Stok '{owner}' tidak cukup untuk retur. Stok saat ini {stok_awal}, diminta {it.qty}."},
-                    status=status.HTTP_400_BAD_REQUEST,
+                raise ValidationError(
+                    {'error': f"Stok '{owner}' tidak cukup untuk retur. Stok saat ini {stok_awal}, diminta {it.qty}."}
                 )
             owner.qty_stok = stok_akhir
             owner.save()
@@ -1940,6 +2205,7 @@ class PurchaseViewSet(viewsets.ModelViewSet):
                 catatan=purchase.catatan, tanggal=tanggal, stock_out_document=doc,
             )
             stock_fifo.consume_layers(it.product, it.variant, it.qty, movement=mv)
+        _post_stock_journal(doc, request.user, direction='out')
         return None
 
 
@@ -2104,6 +2370,7 @@ class StockOutDocumentViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Tambahkan minimal satu produk sebelum posting.'}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
+            total_hpp = Decimal('0')
             for item in document.items.select_related('product', 'variant'):
                 if item.variant:
                     owner = ProductVariant.objects.select_for_update().get(pk=item.variant.id)
@@ -2130,10 +2397,18 @@ class StockOutDocumentViewSet(viewsets.ModelViewSet):
                     tanggal=document.tanggal,
                     stock_out_document=document,
                 )
-                stock_fifo.consume_layers(item.product, item.variant, item.qty, movement=mv)
+                hpp, _ = stock_fifo.consume_layers(item.product, item.variant, item.qty, movement=mv)
+                total_hpp += hpp
 
             document.status = 'selesai'
             document.save()
+            # Transfer antar toko bukan kerugian nilai — stok cuma berpindah lokasi.
+            if document.alasan != 'transfer':
+                from accounting.models import JournalEntry
+                post_stock_adjustment_journal(
+                    document, request.user, total_hpp,
+                    direction='out', source_type=JournalEntry.SourceType.STOCK_OUT,
+                )
 
         return Response(StockOutDocumentSerializer(document).data)
 
@@ -2637,6 +2912,8 @@ class StockOpnameDocumentViewSet(viewsets.ModelViewSet):
             groups[key]['total'] += item.stok_aktual
 
         with transaction.atomic():
+            surplus_total = Decimal('0')
+            defisit_total = Decimal('0')
             for group in groups.values():
                 if group['variant']:
                     owner = ProductVariant.objects.select_for_update().get(pk=group['variant'].id)
@@ -2660,13 +2937,19 @@ class StockOpnameDocumentViewSet(viewsets.ModelViewSet):
                     tanggal=document.tanggal,
                     stock_opname_document=document,
                 )
-                stock_fifo.recalibrate_layers(
+                hpp, rincian = stock_fifo.recalibrate_layers(
                     group['product'], group['variant'], stok_akhir, document.tanggal,
                     sumber_nomor=document.nomor,
                 )
+                if stok_akhir < stok_awal:
+                    defisit_total += hpp
+                elif stok_akhir > stok_awal and rincian:
+                    layer = rincian[0]
+                    surplus_total += layer.qty_masuk * layer.harga_beli
 
             document.status = 'selesai'
             document.save()
+            post_stock_opname_journal(document, request.user, surplus_total, defisit_total)
 
         return Response(StockOpnameDocumentSerializer(document).data)
 

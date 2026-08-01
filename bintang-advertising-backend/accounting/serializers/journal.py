@@ -3,7 +3,7 @@ from rest_framework import serializers
 
 from api.customer_models import Customer, Supplier
 
-from ..models import Account, Department, JournalEntry, JournalEntryLine, JournalTemplate
+from ..models import Account, Department, JournalAuditLog, JournalEntry, JournalEntryLine, JournalTemplate
 from ..services.journal import build_pair_lines, create_journal_entry
 
 
@@ -39,14 +39,40 @@ class JournalEntryListSerializer(serializers.ModelSerializer):
     lines = JournalEntryLineReadSerializer(many=True, read_only=True)
     journal_template_name = serializers.CharField(source="journal_template.name", default=None, read_only=True)
     department_name = serializers.CharField(source="department.name", default=None, read_only=True)
+    source_type_label = serializers.CharField(source="get_source_type_display", read_only=True)
+    processed_by_name = serializers.SerializerMethodField()
+
+    def get_processed_by_name(self, obj) -> str:
+        """Nama akun yang memposting jurnal; fallback ke pembuat bila masih draft."""
+        user = obj.posted_by or obj.created_by
+        if not user:
+            return "Sistem"
+        return user.get_full_name() or user.username
 
     class Meta:
         model = JournalEntry
         fields = [
-            "id", "entry_number", "date", "description", "status", "source_type",
+            "id", "entry_number", "date", "description", "status", "source_type", "source_type_label",
             "journal_template", "journal_template_name", "department", "department_name",
-            "created_by", "lines",
+            "created_by", "processed_by_name", "lines",
         ]
+
+
+class JournalAuditLogSerializer(serializers.ModelSerializer):
+    """Log Jurnal — satu baris per aksi (Dibuat/Diposting/Dibatalkan/Dijurnal-balik/Dihapus)."""
+
+    entry_number = serializers.CharField(source="journal_entry.entry_number", read_only=True)
+    action_label = serializers.CharField(source="get_action_display", read_only=True)
+    actor_name = serializers.SerializerMethodField()
+
+    def get_actor_name(self, obj) -> str:
+        if not obj.actor:
+            return "Sistem"
+        return obj.actor.get_full_name() or obj.actor.username
+
+    class Meta:
+        model = JournalAuditLog
+        fields = ["id", "created_at", "entry_number", "action", "action_label", "actor_name", "note"]
 
 
 class JournalEntryCreateSerializer(serializers.Serializer):

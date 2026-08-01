@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Plus, UploadCloud, Settings, ShoppingCart } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import TransactionScaffold, { TButton } from '../components/TransactionScaffold';
 import ImportPembelianModal from '../components/ImportPembelianModal';
 import PembelianBaruModal from '../components/PembelianBaruModal';
@@ -9,9 +10,10 @@ import PembelianDetail from '../components/PembelianDetail';
 import { getPembelianColumns, getReturColumns, getCancelColumns } from '../components/pembelianColumns';
 import apiClient from '../../../api/apiClient';
 
-export default function Pembelian() {
-  const [view, setView] = useState('list');
-  const [selectedDocId, setSelectedDocId] = useState(null);
+export default function Pembelian({ initialTab = 'butuh-diproses' }) {
+  const location = useLocation();
+  const [view, setView] = useState(() => location.state?.openPurchaseId ? 'detail' : 'list');
+  const [selectedDocId, setSelectedDocId] = useState(() => location.state?.openPurchaseId || null);
   const [purchases, setPurchases] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -19,7 +21,7 @@ export default function Pembelian() {
   const [showCreate, setShowCreate] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showRetur, setShowRetur] = useState(false);
-  const [activeTab, setActiveTab] = useState('butuh-diproses');
+  const [activeTab, setActiveTab] = useState(() => location.state?.tab || initialTab);
 
   const fetchPurchases = useCallback(async () => {
     setLoading(true);
@@ -36,6 +38,13 @@ export default function Pembelian() {
   useEffect(() => {
     fetchPurchases();
   }, [fetchPurchases]);
+
+  useEffect(() => {
+    if (!location.state?.openPurchaseId) return;
+    setActiveTab(location.state.tab || 'butuh-diproses');
+    setSelectedDocId(location.state.openPurchaseId);
+    setView('detail');
+  }, [location.state]);
 
   const handleSelectDoc = useCallback((id) => {
     setSelectedDocId(id);
@@ -168,6 +177,7 @@ export default function Pembelian() {
     return (
       <PembelianDetail
         docId={selectedDocId}
+        detailMode={activeTab}
         onBack={() => { setView('list'); setSelectedDocId(null); }}
         onSaved={fetchPurchases}
       />

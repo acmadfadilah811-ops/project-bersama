@@ -13,6 +13,7 @@ import {
   Printer
 } from 'lucide-react';
 import PrintPdfModal from './PrintPdfModal';
+import { formatOrderReference } from './orderReference';
 
 const statusMap = {
   review: { label: 'Tunda', color: 'text-amber-600 bg-amber-50 border-amber-200' },
@@ -59,9 +60,7 @@ export default function OrderHeader({
   const isPaid = order.total_harga > 0 ? order.sisa_tagihan === 0 : order.dp_dibayar > 0;
 
   const getFormattedOrderId = () => {
-    if (!order) return '';
-    if (typeof order.id === 'string' && order.id.startsWith('ORD-')) return order.id;
-    return `ORD-${order.id}`;
+    return formatOrderReference(order, order?.status_global);
   };
 
   const getDisplayDate = () => {

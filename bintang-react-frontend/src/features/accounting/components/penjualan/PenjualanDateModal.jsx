@@ -2,19 +2,49 @@ import { useState } from 'react';
 import { X } from 'lucide-react';
 
 export default function PenjualanDateModal({ isOpen, onClose, onApply, initialFrom, initialTo }) {
+  const getTodayStr = () => new Date().toISOString().split('T')[0];
+  const getDaysAgoStr = (days) => {
+    const d = new Date();
+    d.setDate(d.getDate() - days);
+    return d.toISOString().split('T')[0];
+  };
+  const getStartOfMonthStr = () => {
+    const d = new Date();
+    d.setDate(1);
+    return d.toISOString().split('T')[0];
+  };
+  const getEndOfMonthStr = () => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 1, 0);
+    return d.toISOString().split('T')[0];
+  };
+  const getStartOfLastMonthStr = () => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 1, 1);
+    return d.toISOString().split('T')[0];
+  };
+  const getEndOfLastMonthStr = () => {
+    const d = new Date();
+    d.setDate(0);
+    return d.toISOString().split('T')[0];
+  };
+
+  const defaultFrom = initialFrom || getDaysAgoStr(30);
+  const defaultTo = initialTo || getTodayStr();
+
   const [selectedRange, setSelectedRange] = useState('30 Hari yang lalu');
-  const [dateFrom, setDateFrom] = useState(initialFrom || '2026-06-26');
-  const [dateTo, setDateTo] = useState(initialTo || '2026-07-26');
+  const [dateFrom, setDateFrom] = useState(defaultFrom);
+  const [dateTo, setDateTo] = useState(defaultTo);
 
   if (!isOpen) return null;
 
   const quickRanges = [
-    { label: 'Hari ini', getDates: () => ({ from: '2026-07-26', to: '2026-07-26' }) },
-    { label: 'Kemarin', getDates: () => ({ from: '2026-07-25', to: '2026-07-25' }) },
-    { label: '7 Hari yang lalu', getDates: () => ({ from: '2026-07-19', to: '2026-07-26' }) },
-    { label: '30 Hari yang lalu', getDates: () => ({ from: '2026-06-26', to: '2026-07-26' }) },
-    { label: 'Bulan ini', getDates: () => ({ from: '2026-07-01', to: '2026-07-31' }) },
-    { label: 'Bulan lalu', getDates: () => ({ from: '2026-06-01', to: '2026-06-30' }) },
+    { label: 'Hari ini', getDates: () => ({ from: getTodayStr(), to: getTodayStr() }) },
+    { label: 'Kemarin', getDates: () => ({ from: getDaysAgoStr(1), to: getDaysAgoStr(1) }) },
+    { label: '7 Hari yang lalu', getDates: () => ({ from: getDaysAgoStr(7), to: getTodayStr() }) },
+    { label: '30 Hari yang lalu', getDates: () => ({ from: getDaysAgoStr(30), to: getTodayStr() }) },
+    { label: 'Bulan ini', getDates: () => ({ from: getStartOfMonthStr(), to: getEndOfMonthStr() }) },
+    { label: 'Bulan lalu', getDates: () => ({ from: getStartOfLastMonthStr(), to: getEndOfLastMonthStr() }) },
     { label: 'Sesuaikan', getDates: () => ({ from: dateFrom, to: dateTo }) },
   ];
 
@@ -95,24 +125,29 @@ export default function PenjualanDateModal({ isOpen, onClose, onApply, initialFr
             <button
               type="button"
               onClick={() => {
-                setDateFrom('2026-06-26');
-                setDateTo('2026-07-26');
+                const f = getDaysAgoStr(30);
+                const t = getTodayStr();
+                setDateFrom(f);
+                setDateTo(t);
                 setSelectedRange('30 Hari yang lalu');
               }}
-              className="px-4 py-1.5 bg-rose-50 text-rose-650 hover:bg-rose-100 rounded-lg font-bold transition-all cursor-pointer"
+              className="px-3 py-1.5 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-lg text-xs font-bold transition-colors cursor-pointer"
             >
               Reset
             </button>
             <button
               type="button"
-              onClick={() => onApply({ from: dateFrom, to: dateTo, label: selectedRange })}
-              className="px-5 py-1.5 bg-[#0088E8] text-white hover:bg-[#0077CC] rounded-lg font-bold transition-all cursor-pointer shadow-2xs"
+              onClick={() => {
+                if (onApply) {
+                  onApply({ from: dateFrom, to: dateTo, label: selectedRange });
+                }
+              }}
+              className="px-4 py-1.5 bg-[#0088E8] hover:bg-[#0077CC] text-white rounded-lg text-xs font-bold transition-colors cursor-pointer shadow-2xs"
             >
               Terapkan
             </button>
           </div>
         </div>
-
       </div>
     </div>
   );

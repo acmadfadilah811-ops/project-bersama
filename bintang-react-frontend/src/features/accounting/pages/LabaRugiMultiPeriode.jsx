@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Calendar, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import dayjs from 'dayjs';
 import apiClient from '../../../api/apiClient';
+import { notifyApiError } from '../../../utils/notify';
 
 export default function LabaRugiMultiPeriode() {
   // --- STATE TANGGAL & QUARTER ---
@@ -16,6 +17,7 @@ export default function LabaRugiMultiPeriode() {
 
   // --- STATE DATA & LOADING ---
   const [loading, setLoading] = useState(false);
+  const [reportData, setReportData] = useState(null); // [dataBulan1, dataBulan2, dataBulan3]
 
   // Format rupiah desimal ,00
   const formatRupiah = (val) => {
@@ -52,26 +54,60 @@ export default function LabaRugiMultiPeriode() {
 
   const quarterMonths = getQuarterMonths();
 
-  // Fetch Report Data dari API
+  // Rentang tanggal 3 bulan pada quarter terpilih (tahun `startYear` — sama
+  // dengan yang dipakai label kolom `quarterMonths` di atas).
+  const getQuarterMonthRanges = () => {
+    const yr = parseInt(startYear, 10) || dayjs().year();
+    const quarterStartMonth = { Q1: 0, Q2: 3, Q3: 6, Q4: 9 }[selectedQuarter];
+    return [0, 1, 2].map((offset) => {
+      const d = dayjs(new Date(yr, quarterStartMonth + offset, 1));
+      return { from: d.startOf('month').format('YYYY-MM-DD'), to: d.endOf('month').format('YYYY-MM-DD') };
+    });
+  };
+
+  // Fetch Report Data dari API — Laba Rugi per bulan, sama seperti Satu
+  // Periode, dipanggil 3x (1x per kolom bulan quarter).
   const fetchReportData = useCallback(async () => {
     setLoading(true);
     try {
-      const params = {
-        start_year: startYear,
-        end_year: endYear,
-        quarter: selectedQuarter,
-      };
-      await apiClient.get('/accounting/ledger/', { params });
+      const ranges = getQuarterMonthRanges();
+      const results = await Promise.all(
+        ranges.map((r) => apiClient.get('/accounting/reports/income-statement/', {
+          params: { date_from: r.from, date_to: r.to },
+        })),
+      );
+      setReportData(results.map((res) => res.data));
     } catch (err) {
-      console.error('Gagal memuat data Laba Rugi Multi Periode:', err);
+      setReportData(null);
+      notifyApiError(err, 'Gagal memuat data Laba Rugi Multi Periode');
     } finally {
       setLoading(false);
     }
-  }, [startYear, endYear, selectedQuarter]);
+  }, [startYear, selectedQuarter]);
 
   useEffect(() => {
     fetchReportData();
   }, [fetchReportData]);
+
+  // Gabungkan baris akun dari 3 bulan (union kode akun, default 0 kalau akun
+  // itu tidak muncul di bulan tertentu).
+  const mergeSection = (key) => {
+    const map = new Map();
+    (reportData || []).forEach((monthData, idx) => {
+      (monthData?.[key] || []).forEach((row) => {
+        if (!map.has(row.code)) map.set(row.code, { code: row.code, name: row.name, m1: 0, m2: 0, m3: 0 });
+        map.get(row.code)[`m${idx + 1}`] = Number(row.amount);
+      });
+    });
+    return Array.from(map.values());
+  };
+
+  // Total per bulan — dari perhitungan server (M6), bukan dijumlah ulang di sini.
+  const getTotal = (key) => ({
+    m1: Number(reportData?.[0]?.[key] || 0),
+    m2: Number(reportData?.[1]?.[key] || 0),
+    m3: Number(reportData?.[2]?.[key] || 0),
+  });
 
   // Handler Pilih Tahun dari Popover Kalender
   const handleSelectYear = (yr) => {
@@ -86,65 +122,18 @@ export default function LabaRugiMultiPeriode() {
   // Generate Array 12 Tahun untuk Grid Picker
   const yearGrid = Array.from({ length: 12 }, (_, i) => pickerDecade + i);
 
-  // DATA MOCK AKUN DENGAN 3 COLON PERIODE
-  const rawPendapatan = [
-    { code: '40000', name: 'Penjualan', m1: 367500, m2: 0, m3: 0, isLink: true },
-    { code: '41000', name: 'Penjualan antar cabang', m1: 0, m2: 0, m3: 0 },
-    { code: '42000', name: 'Layanan biaya penjualan', m1: 0, m2: 0, m3: 0 },
-    { code: '44000', name: 'Pengiriman penjualan', m1: 0, m2: 0, m3: 0 },
-    { code: '46100', name: 'Potongan penjualan', m1: 0, m2: 0, m3: 0 },
-    { code: '46200', name: 'Loyalitas penjualan', m1: 0, m2: 0, m3: 0 },
-    { code: '46300', name: 'Return penjualan', m1: 0, m2: 0, m3: 0 },
-  ];
+  // Baris akun per section, digabung dari 3 bulan (data asli, bukan mock).
+  const rawPendapatan = mergeSection('pendapatan');
+  const rawHpp = mergeSection('hpp');
+  const rawOverhead = mergeSection('biaya_operasional');
+  const rawBiayaLainnya = mergeSection('biaya_non_operasional');
+  const rawPendapatanLain = mergeSection('pendapatan_non_operasional');
 
-  const rawHpp = [
-    { code: '', name: 'Persediaan awal', m1: 0, m2: 0, m3: 0 },
-    { code: '50000', name: 'Pembelian', m1: 0, m2: 0, m3: 0 },
-    { code: '50100', name: 'Pembelian antar cabang', m1: 0, m2: 0, m3: 0 },
-    { code: '50300', name: 'Biaya pengiriman', m1: 0, m2: 0, m3: 0 },
-    { code: '50400', name: 'Return pembelian', m1: 0, m2: 0, m3: 0 },
-    { code: '50500', name: 'Potongan pembelian', m1: 0, m2: 0, m3: 0 },
-    { code: '', name: 'Persediaan akhir', m1: 0, m2: 0, m3: 0 },
-  ];
-
-  const rawOverhead = [
-    { code: '60100', name: 'Biaya gaji', m1: 0, m2: 0, m3: 0 },
-    { code: '60200', name: 'Biaya air listrik telephone', m1: 0, m2: 0, m3: 0 },
-    { code: '60300', name: 'Biaya perlengkapan', m1: 0, m2: 0, m3: 0 },
-    { code: '60400', name: 'Biaya penyusutan', m1: 0, m2: 0, m3: 0 },
-    { code: '60500', name: 'Biaya transfer', m1: 0, m2: 0, m3: 0 },
-  ];
-
-  const rawBiayaLainnya = [
-    { code: '80000', name: 'Pengeluaran lain lain', m1: 0, m2: 0, m3: 0 },
-    { code: '81000', name: 'Penyesuaian Barang', m1: 0, m2: 0, m3: 0 },
-  ];
-
-  const rawPendapatanLain = [
-    { code: '70000', name: 'Pendapatan lain lain', m1: 0, m2: 0, m3: 0 },
-    { code: '70001', name: 'Pembulatan', m1: 0, m2: 0, m3: 0 },
-    { code: '70002', name: 'Code Uniq Penjualan', m1: 0, m2: 0, m3: 0 },
-    { code: '70003', name: 'Layanan Penjualan', m1: 0, m2: 0, m3: 0 },
-    { code: '70009', name: 'Bank Example', m1: 0, m2: 0, m3: 0 },
-  ];
-
-  // Kalkulasi 3 bulan
-  const calcSubTotal = (list) => {
-    const m1 = list.reduce((a, b) => a + b.m1, 0);
-    const m2 = list.reduce((a, b) => a + b.m2, 0);
-    const m3 = list.reduce((a, b) => a + b.m3, 0);
-    return { m1, m2, m3 };
-  };
-
-  const subTotalPendapatan = calcSubTotal(rawPendapatan);
-  const subTotalHpp = calcSubTotal(rawHpp);
-  const subTotalLabaKotor = {
-    m1: subTotalPendapatan.m1 - subTotalHpp.m1,
-    m2: subTotalPendapatan.m2 - subTotalHpp.m2,
-    m3: subTotalPendapatan.m3 - subTotalHpp.m3,
-  };
-
-  const subTotalOverhead = calcSubTotal(rawOverhead);
+  // Total per bulan — dari perhitungan server (M6), bukan dijumlah ulang di sini.
+  const subTotalPendapatan = getTotal('subtotal_pendapatan');
+  const subTotalHpp = getTotal('subtotal_hpp');
+  const subTotalLabaKotor = getTotal('total_laba_kotor');
+  const subTotalOverhead = getTotal('total_biaya_operasional');
   const subTotalBiayaOp = subTotalOverhead;
 
   const totalPendapatanOp = {
@@ -153,23 +142,14 @@ export default function LabaRugiMultiPeriode() {
     m3: subTotalLabaKotor.m3 - subTotalBiayaOp.m3,
   };
 
-  const subTotalBiayaLainnya = calcSubTotal(rawBiayaLainnya);
+  const subTotalBiayaLainnya = getTotal('subtotal_biaya_non_operasional');
   const subTotalBiayaNonOp = subTotalBiayaLainnya;
 
-  const subTotalPendapatanLain = calcSubTotal(rawPendapatanLain);
+  const subTotalPendapatanLain = getTotal('subtotal_pendapatan_non_operasional');
   const subTotalPendapatanNonOp = subTotalPendapatanLain;
 
-  const totalPendapatanNonOp = {
-    m1: subTotalPendapatanNonOp.m1 - subTotalBiayaNonOp.m1,
-    m2: subTotalPendapatanNonOp.m2 - subTotalBiayaNonOp.m2,
-    m3: subTotalPendapatanNonOp.m3 - subTotalBiayaNonOp.m3,
-  };
-
-  const totalLabaBersih = {
-    m1: totalPendapatanOp.m1 + totalPendapatanNonOp.m1,
-    m2: totalPendapatanOp.m2 + totalPendapatanNonOp.m2,
-    m3: totalPendapatanOp.m3 + totalPendapatanNonOp.m3,
-  };
+  const totalPendapatanNonOp = getTotal('total_pendapatan_non_operasional');
+  const totalLabaBersih = getTotal('laba_bersih');
 
   return (
     <div className="space-y-4 font-sans text-slate-800">
@@ -271,6 +251,11 @@ export default function LabaRugiMultiPeriode() {
         </div>
       </div>
 
+      <p className="text-[11px] text-slate-400 italic px-1">
+        Dihitung dari jurnal terposting (Akuntansi) — bisa berbeda dari Laba Rugi di Laporan Penjualan yang
+        dihitung dari transaksi penjualan. Keduanya sengaja terpisah untuk tujuan berbeda.
+      </p>
+
       {/* CARD TABEL LAPORAN LABA RUGI MULTI PERIODE */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden relative min-h-[500px]">
         {loading && (
@@ -310,9 +295,9 @@ export default function LabaRugiMultiPeriode() {
                 </td>
               </tr>
               {rawPendapatan.map((item) => (
-                <tr key={item.name} className="hover:bg-slate-50/60 transition-colors">
+                <tr key={item.code} className="hover:bg-slate-50/60 transition-colors">
                   <td className="py-2 px-8">
-                    <span className={item.isLink ? 'text-[#0088E8] font-semibold hover:underline cursor-pointer' : 'text-slate-700'}>
+                    <span className="text-slate-700">
                       {item.code ? `${item.code} ${item.name}` : item.name}
                     </span>
                   </td>

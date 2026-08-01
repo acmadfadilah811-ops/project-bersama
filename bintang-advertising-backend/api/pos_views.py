@@ -1,6 +1,8 @@
 import random
 from django.db import transaction
 from django.utils import timezone
+from django.utils.dateparse import parse_date
+from django.db.models import Q
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -29,6 +31,9 @@ class POSSaleViewSet(viewsets.ModelViewSet):
         shift_id = self.request.query_params.get('shift')
         kasir_id = self.request.query_params.get('kasir')
         status_val = self.request.query_params.get('status')
+        date_from = parse_date(self.request.query_params.get('date_from') or '')
+        date_to = parse_date(self.request.query_params.get('date_to') or '')
+        search = (self.request.query_params.get('search') or '').strip()
 
         if shift_id:
             qs = qs.filter(shift_id=shift_id)
@@ -36,6 +41,12 @@ class POSSaleViewSet(viewsets.ModelViewSet):
             qs = qs.filter(kasir_id=kasir_id)
         if status_val:
             qs = qs.filter(status=status_val)
+        if date_from:
+            qs = qs.filter(created_at__date__gte=date_from)
+        if date_to:
+            qs = qs.filter(created_at__date__lte=date_to)
+        if search:
+            qs = qs.filter(Q(nomor__icontains=search) | Q(catatan__icontains=search))
 
         # Pembatasan visibilitas dari Pengaturan POS. Diterapkan di server agar
         # tidak bisa dilewati; pemilik/manajer tetap melihat semuanya.
@@ -259,6 +270,55 @@ class POSSaleViewSet(viewsets.ModelViewSet):
     def void(self, request, pk=None):
         sale = void_sale(sale_id=pk, user=request.user)
         return Response(self.get_serializer(sale).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='email-resi',
+            permission_classes=[IsOwnerManagerAdminOrKasir])
+    def email_resi(self, request, pk=None):
+        """POST /api/pos/sales/{id}/email-resi/ {"email": "..."}
+
+        Pakai SMTP yang sama dengan fitur keamanan (OTP login/reset password
+        di users/views.py, django.core.mail.send_mail) — bukan integrasi
+        baru. Alamat tujuan diambil dari input kasir langsung (bukan
+        Contact.email — model Contact tidak punya field itu sama sekali,
+        hanya Customer yang tertaut opsional yang punya).
+        """
+        from django.core.mail import send_mail
+        from django.core.validators import validate_email
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        sale = self.get_object()
+        email = str(request.data.get('email') or '').strip()
+        try:
+            validate_email(email)
+        except DjangoValidationError:
+            return Response({'error': 'Alamat email tidak valid.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        subject = f"Resi Transaksi {sale.nomor}"
+        baris_item = '\n'.join(
+            f"- {it.nama_snapshot} x{it.qty} = Rp {it.subtotal:,.0f}"
+            for it in sale.items.all()
+        )
+        message = (
+            f"Terima kasih telah berbelanja.\n\n"
+            f"Nomor: {sale.nomor}\n"
+            f"Tanggal: {sale.created_at.strftime('%d-%m-%Y %H:%M')}\n\n"
+            f"{baris_item}\n\n"
+            f"Subtotal: Rp {sale.subtotal:,.0f}\n"
+            f"Diskon: Rp {sale.diskon:,.0f}\n"
+            f"Pajak: Rp {sale.pajak:,.0f}\n"
+            f"Total: Rp {sale.total:,.0f}\n"
+            f"Metode Bayar: {sale.metode_bayar}\n"
+            f"Dibayar: Rp {sale.dibayar:,.0f}\n"
+            f"Kembalian: Rp {sale.kembalian:,.0f}\n"
+        )
+        try:
+            send_mail(subject, message, None, [email], fail_silently=False)
+        except Exception:
+            return Response(
+                {'error': 'Layanan email sedang tidak tersedia. Coba lagi nanti.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        return Response({'ok': True, 'message': f'Resi dikirim ke {email}.'})
 
     @action(detail=True, methods=['post'], url_path='terbitkan-spk',
             permission_classes=[IsOwnerManagerAdminOrKasir])

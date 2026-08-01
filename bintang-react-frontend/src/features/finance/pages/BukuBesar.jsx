@@ -6,13 +6,10 @@ import {
   Filter,
   FileText,
   Download,
-  Plus,
-  Trash2,
-  X,
   Info,
+  Archive,
 } from 'lucide-react';
 import dayjs from 'dayjs';
-import { useAuth } from '../../../context/AuthContext';
 
 export default function BukuBesar() {
   const [akunList, setAkunList] = useState([]);
@@ -27,23 +24,8 @@ export default function BukuBesar() {
     end_date: dayjs().endOf('month').format('YYYY-MM-DD'),
   });
 
-  // Auth & Permissions
-  const { user } = useAuth();
-  const isManagerOrOwner = ['owner', 'manager', 'admin'].includes(user?.role?.toLowerCase());
-
   // Saldo awal dari backend
   const [saldoAwal, setSaldoAwal] = useState(0);
-
-  // State Modal Form
-  const [showModal, setShowModal] = useState(false);
-  const [formLoading, setFormLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    tanggal: dayjs().format('YYYY-MM-DD'),
-    no_referensi: '',
-    keterangan: '',
-    jenis: 'debit',
-    nominal: '',
-  });
 
   const fetchDaftarAkun = async () => {
     try {
@@ -87,51 +69,6 @@ export default function BukuBesar() {
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
     setFilter((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleFormChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const submitTransaksi = async (e) => {
-    e.preventDefault();
-    if (formLoading) return; // Mencegah double submit transaksi
-    if (!filter.akun_id)
-      return alert('Pilih akun di filter terlebih dahulu sebelum menambah transaksi!');
-    if (!formData.nominal || formData.nominal <= 0) return alert('Nominal harus lebih dari 0!');
-
-    try {
-      setFormLoading(true);
-      const payload = {
-        akun: filter.akun_id,
-        tanggal: formData.tanggal,
-        no_referensi: formData.no_referensi,
-        keterangan: formData.keterangan,
-        debit: formData.jenis === 'debit' ? formData.nominal : 0,
-        kredit: formData.jenis === 'kredit' ? formData.nominal : 0,
-      };
-      await apiClient.post('/finance/transaksi/', payload);
-      setShowModal(false);
-      setFormData((prev) => ({ ...prev, no_referensi: '', keterangan: '', nominal: '' }));
-      fetchBukuBesar();
-    } catch (err) {
-      console.error('Gagal menambah transaksi:', err);
-      alert('Gagal menambah transaksi.');
-    } finally {
-      setFormLoading(false);
-    }
-  };
-
-  const hapusTransaksi = async (id) => {
-    if (!window.confirm('Yakin ingin menghapus transaksi ini?')) return;
-    try {
-      await apiClient.delete(`/finance/transaksi/${id}/`);
-      fetchBukuBesar();
-    } catch (err) {
-      console.error('Gagal menghapus:', err);
-      alert('Gagal menghapus transaksi.');
-    }
   };
 
   // Identifikasi kategori akun terpilih & aturan normal balance
@@ -262,18 +199,18 @@ export default function BukuBesar() {
           >
             <Download size={14} /> Export CSV
           </button>
-          {isManagerOrOwner && (
-            <button
-              onClick={() => {
-                if (!filter.akun_id) return alert('Pilih Akun terlebih dahulu!');
-                setShowModal(true);
-              }}
-              className="flex-1 md:flex-none bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-sm cursor-pointer"
-            >
-              <Plus size={14} /> Transaksi Baru
-            </button>
-          )}
         </div>
+      </div>
+
+      {/* T-206: ledger legacy ini dibekukan (M3) — arsip saja, transaksi baru
+          harus lewat Akuntansi Internal (accounting.JournalEntry). */}
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex items-start gap-3">
+        <Archive className="text-amber-500 shrink-0 mt-0.5" size={16} />
+        <p className="text-[11px] text-amber-800 leading-relaxed">
+          Buku Besar ini adalah <span className="font-bold">arsip data lama</span> dan sudah tidak
+          menerima transaksi baru. Untuk pencatatan jurnal saat ini, gunakan menu{' '}
+          <span className="font-bold">Akuntansi Internal</span>.
+        </p>
       </div>
 
       {/* Panduan Kategori Akun */}
@@ -537,7 +474,6 @@ export default function BukuBesar() {
                 <th className="px-4 py-3.5 text-right w-40">Debit</th>
                 <th className="px-4 py-3.5 text-right w-40">Kredit</th>
                 <th className="px-5 py-3.5 text-right w-44">Saldo Akhir</th>
-                {isManagerOrOwner && <th className="px-5 py-3.5 text-center w-20">Aksi</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-600">
@@ -553,7 +489,6 @@ export default function BukuBesar() {
                 <td className="px-5 py-3 text-right font-black text-blue-700 bg-blue-50/20">
                   {formatRupiah(saldoAwal)}
                 </td>
-                {isManagerOrOwner && <td className="px-5 py-3"></td>}
               </tr>
 
               {rowsWithSaldo.length > 0 ? (
@@ -578,24 +513,13 @@ export default function BukuBesar() {
                       <td className="px-5 py-3.5 text-right font-extrabold text-slate-850">
                         {formatRupiah(currentSaldo)}
                       </td>
-                      {isManagerOrOwner && (
-                        <td className="px-5 py-3.5 text-center">
-                          <button
-                            onClick={() => hapusTransaksi(trx.id)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer inline-flex items-center justify-center border border-transparent hover:border-rose-100"
-                            title="Hapus Transaksi"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </td>
-                      )}
                     </tr>
                   );
                 })
               ) : (
                 <tr>
                   <td
-                    colSpan={isManagerOrOwner ? 7 : 6}
+                    colSpan={6}
                     className="px-5 py-12 text-center text-slate-400"
                   >
                     <FileText className="mx-auto mb-2 opacity-30" size={32} />
@@ -610,119 +534,6 @@ export default function BukuBesar() {
         </div>
       </div>
 
-      {/* Modal Tambah Transaksi */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-slate-100">
-            <div className="flex justify-between items-center p-5 border-b border-slate-100 bg-slate-50">
-              <h3 className="font-extrabold text-slate-800 text-sm flex items-center gap-2">
-                <Plus className="text-blue-600" size={16} /> Input Transaksi Manual
-              </h3>
-              <button
-                onClick={() => setShowModal(false)}
-                className="text-slate-400 hover:text-rose-500 transition-colors cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <form onSubmit={submitTransaksi} className="p-5 space-y-4 text-xs font-semibold">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-slate-500 font-bold uppercase tracking-wider">
-                    Tanggal
-                  </label>
-                  <input
-                    required
-                    type="date"
-                    name="tanggal"
-                    value={formData.tanggal}
-                    onChange={handleFormChange}
-                    className="w-full border border-slate-200 rounded-xl p-2.5 text-xs outline-none bg-slate-50 focus:bg-white focus:border-blue-500 transition-all font-bold"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-slate-500 font-bold uppercase tracking-wider">
-                    No Referensi (Ref)
-                  </label>
-                  <input
-                    type="text"
-                    name="no_referensi"
-                    value={formData.no_referensi}
-                    onChange={handleFormChange}
-                    placeholder="Misal: JU-001"
-                    className="w-full border border-slate-200 rounded-xl p-2.5 text-xs outline-none bg-slate-50 focus:bg-white focus:border-blue-500 transition-all font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-slate-500 font-bold uppercase tracking-wider">
-                  Keterangan Transaksi
-                </label>
-                <input
-                  required
-                  type="text"
-                  name="keterangan"
-                  value={formData.keterangan}
-                  onChange={handleFormChange}
-                  placeholder="Misal: Pembelian 10 Rim Kertas Art Carton"
-                  className="w-full border border-slate-200 rounded-xl p-2.5 text-xs outline-none bg-slate-50 focus:bg-white focus:border-blue-500 transition-all"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-slate-500 font-bold uppercase tracking-wider">
-                    Jenis Transaksi
-                  </label>
-                  <select
-                    name="jenis"
-                    value={formData.jenis}
-                    onChange={handleFormChange}
-                    className="w-full border border-slate-200 rounded-xl p-2.5 text-xs outline-none bg-slate-50 focus:bg-white focus:border-blue-500 transition-all cursor-pointer font-bold"
-                  >
-                    <option value="debit">Debit (+)</option>
-                    <option value="kredit">Kredit (-)</option>
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-slate-500 font-bold uppercase tracking-wider">
-                    Nominal Transaksi (Rp)
-                  </label>
-                  <input
-                    required
-                    type="number"
-                    min="1"
-                    name="nominal"
-                    value={formData.nominal}
-                    onChange={handleFormChange}
-                    placeholder="0"
-                    className="w-full border border-slate-200 rounded-xl p-2.5 text-xs outline-none bg-slate-50 focus:bg-white focus:border-blue-500 transition-all font-mono font-bold"
-                  />
-                </div>
-              </div>
-
-              <div className="pt-3.5 flex justify-end gap-2 border-t border-slate-100 mt-5">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="px-4 py-2 text-slate-500 text-xs font-bold bg-slate-100 hover:bg-slate-250 rounded-xl transition-all cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={formLoading}
-                  className="px-4 py-2 text-white text-xs font-bold bg-blue-600 hover:bg-blue-700 rounded-xl transition-all cursor-pointer shadow-sm disabled:opacity-50"
-                >
-                  {formLoading ? 'Menyimpan...' : 'Simpan Transaksi'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

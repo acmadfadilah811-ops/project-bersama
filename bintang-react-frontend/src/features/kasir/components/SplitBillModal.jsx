@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
-import { X, ArrowRight, ArrowLeft, CreditCard, Check, Printer } from 'lucide-react';
+import { X, CreditCard, Check, Factory, Printer } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import ReceiptPrint from './ReceiptPrint';
+import SpkPublishModal from './SpkPublishModal';
 import SplitBillPayment from './SplitBillPayment';
 import SplitBillSelection from './SplitBillSelection';
+import useSplitBillPricing from '../hooks/useSplitBillPricing';
+import { notifySuccess } from '../../../utils/notify';
 
 export default function SplitBillModal({
   isOpen,
@@ -13,6 +16,10 @@ export default function SplitBillModal({
   discountPercent,
   taxPercent,
   cartNotes,
+  selectedCoupon,
+  metodeDiskon,
+  selectedRedemption,
+  selectedPelayanId,
   onSplitSuccess,
   settings,
 }) {
@@ -22,6 +29,7 @@ export default function SplitBillModal({
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [lastReceipt, setLastReceipt] = useState(null);
+  const [isSpkModalOpen, setIsSpkModalOpen] = useState(false);
 
   // FE-12: inisialisasi hanya saat modal DIBUKA. Sebelumnya efek ini juga
   // bergantung pada `cart`; ketika pembayaran split memicu penghapusan item
@@ -30,13 +38,41 @@ export default function SplitBillModal({
   useEffect(() => {
     if (isOpen) {
       // Clone original cart items
-      setBillA(cart.map(item => ({ ...item })));
+      setBillA(cart.map((item) => {
+        const qty = Number(item.qty) || 1;
+        const total = item.hargaTotal != null
+          ? Number(item.hargaTotal)
+          : Number(item.harga) * qty;
+        return {
+          ...item,
+          // Nilai ini tetap per unit meski qty dipindahkan antar Bill A/B.
+          splitUnitPrice: item.isCustomPriced ? total / qty : Number(item.harga),
+        };
+      }));
       setBillB([]);
       setStep(1);
       setLastReceipt(null);
+      setIsSpkModalOpen(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
+
+  const {
+    getUnitPrice,
+    getSubtotal,
+    getDiscountAmount,
+    getTaxAmount,
+    getTotal,
+    isCheckingAutoDiscount,
+  } = useSplitBillPricing({
+    billItems: billB,
+    discountPercent,
+    taxPercent,
+    selectedContact,
+    selectedCoupon,
+    metodeDiskon,
+    selectedRedemption,
+  });
 
   if (!isOpen) return null;
 
@@ -48,17 +84,6 @@ export default function SplitBillModal({
       minimumFractionDigits: 0,
     }).format(val);
   };
-
-  // Calculations
-  // FE-13: bulatkan semua nilai uang agar konsisten dengan KasirContext dan
-  // menghindari galat presisi float saat dikirim ke server.
-  const getSubtotal = (items) => Math.round(items.reduce((sum, item) => sum + Number(item.harga) * Number(item.qty), 0));
-  const getDiscountAmount = (items) => Math.round((getSubtotal(items) * Number(discountPercent || 0)) / 100);
-  const getTaxAmount = (items) => {
-    const afterDiscount = getSubtotal(items) - getDiscountAmount(items);
-    return Math.round((afterDiscount * Number(taxPercent || 0)) / 100);
-  };
-  const getTotal = (items) => Math.round(getSubtotal(items) - getDiscountAmount(items) + getTaxAmount(items));
 
   // Move items from A to B
   const moveToB = (itemKey, qtyToMove = 1) => {
@@ -129,7 +154,7 @@ export default function SplitBillModal({
     setIsSubmitting(true);
     try {
       const payload = {
-        // PK Contact adalah nomor_wa
+        // PK Contact adalah nomor_wa.
         pelanggan: selectedContact ? selectedContact.nomor_wa : null,
         subtotal: getSubtotal(billB),
         diskon: getDiscountAmount(billB),
@@ -142,11 +167,18 @@ export default function SplitBillModal({
         kembalian: paidAmount - totalVal,
         catatan: cartNotes ? `[Split Bill] ${cartNotes}` : '[Split Bill]',
         status: 'paid',
+        dilayani_oleh_id: selectedPelayanId || null,
+        metode_diskon: metodeDiskon,
+        kupon_kode: metodeDiskon === 'kupon' ? selectedCoupon?.kode : undefined,
+        loyalty_redemption_id: selectedRedemption?.id || undefined,
         items: billB.map((item) => ({
-          product_id: item.product ? item.product.id : null,
+          // Harga hasil meteran/finishing/diskon harus menjadi item kustom.
+          // Bila product_id tetap dikirim, backend mengganti harganya dengan
+          // harga katalog dan menolak total Split Bill sebagai tidak cocok.
+          product_id: item.isCustomPriced ? null : item.product?.id || null,
           variant_id: item.variant ? item.variant.id : null,
           nama: item.nama,
-          harga: item.harga,
+          harga: getUnitPrice(item),
           qty: item.qty,
           catatan: item.catatan,
           uom_kode: item.uomKode || null,
@@ -170,6 +202,15 @@ export default function SplitBillModal({
     // split selesai sepenuhnya, lalu tutup modal.
     onSplitSuccess(billB);
     onClose();
+  };
+
+  const handleTerbitkanSpk = async (payload) => {
+    const response = await apiClient.post(
+      `/pos/sales/${lastReceipt.id}/terbitkan-spk/`,
+      payload,
+    );
+    notifySuccess('SPK diterbitkan', response.data?.message || 'SPK berhasil dikirim ke antrean produksi.');
+    setIsSpkModalOpen(false);
   };
 
   return (
@@ -211,6 +252,7 @@ export default function SplitBillModal({
               moveToA={moveToA}
               formatCurrency={formatCurrency}
               getTotal={getTotal}
+              getUnitPrice={getUnitPrice}
             />
           )}
 
@@ -221,6 +263,7 @@ export default function SplitBillModal({
               discountPercent={discountPercent}
               taxPercent={taxPercent}
               isSubmitting={isSubmitting}
+              isCheckingAutoDiscount={isCheckingAutoDiscount}
               onBack={() => setStep(1)}
               onSubmit={submitSplitTransaction}
               formatCurrency={formatCurrency}
@@ -228,6 +271,7 @@ export default function SplitBillModal({
               getDiscountAmount={getDiscountAmount}
               getTaxAmount={getTaxAmount}
               getTotal={getTotal}
+              getUnitPrice={getUnitPrice}
             />
           )}
 
@@ -293,6 +337,14 @@ export default function SplitBillModal({
           {step === 3 && (
             <>
               <button
+                type="button"
+                onClick={() => setIsSpkModalOpen(true)}
+                className="py-2.5 px-4 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <Factory size={14} />
+                <span>Kirim SPK</span>
+              </button>
+              <button
                 onClick={() => {
                   // Custom print logic or trigger window print for the active receipt
                   // We'll pass lastReceipt up to the printing layout
@@ -316,6 +368,14 @@ export default function SplitBillModal({
 
       </div>
       <ReceiptPrint receipt={lastReceipt} settings={settings} />
+      {isSpkModalOpen && lastReceipt && (
+        <SpkPublishModal
+          judul={`Terbitkan SPK — ${lastReceipt.nomor}`}
+          keterangan="Pilih divisi dan tahap agar Bill B langsung masuk ke antrean pengerjaan produksi."
+          onClose={() => setIsSpkModalOpen(false)}
+          onTerbitkan={handleTerbitkanSpk}
+        />
+      )}
     </div>
   );
 }

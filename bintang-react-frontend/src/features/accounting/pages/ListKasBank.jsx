@@ -36,7 +36,7 @@ export default function ListKasBank({ onToggleSidebar, initialViewState = 'list'
   const [appliedAmount, setAppliedAmount] = useState('');
 
   // Transfer Form States (Left Side)
-  const [txDate, setTxDate] = useState('2026-07-26');
+  const [txDate, setTxDate] = useState(new Date().toISOString().split('T')[0]);
   const [debitAccId, setDebitAccId] = useState('');
   const [creditAccId, setCreditAccId] = useState('');
   const [catatan, setCatatan] = useState('');

@@ -186,7 +186,9 @@ export default function AccountingSecondarySidebar({ activeSubMenu, onSelectMenu
           }
 
           const isOpen = openDropdowns[item.id];
-          const hasActiveSub = item.subItems.some((s) => s.id === activeSubMenu);
+          const hasActiveSub = item.subItems.some((s) => (
+            s.id === activeSubMenu || s.flyoutItems?.some((fly) => fly.id === activeSubMenu)
+          ));
 
           return (
             <div key={item.id} className="space-y-0.5">

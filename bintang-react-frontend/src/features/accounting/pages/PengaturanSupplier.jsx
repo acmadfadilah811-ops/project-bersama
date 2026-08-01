@@ -1,13 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
-import { notify } from '../../../utils/notify';
+import { ChevronDown, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import apiClient from '../../../api/apiClient';
+import { fetchAllPages } from '../../../utils/paginatedApi';
+import { notify, notifyApiError } from '../../../utils/notify';
+import EditSupplierModal from '../components/settings/EditSupplierModal';
 
 export default function PengaturanSupplier() {
-  const [suppliers, setSuppliers] = useState([
-    { id: 1, name: 'Jaya Sentosa, CV', payableAccount: '', dueDate: '' },
-    { id: 2, name: 'Jaya Makmur, CV', payableAccount: '', dueDate: '' },
-    { id: 3, name: 'Sinar Cemerlang, PT', payableAccount: '', dueDate: '' }
-  ]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [payableAccounts, setPayableAccounts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   // Items limit size dropdown
   const [pageSize, setPageSize] = useState(15);
@@ -20,6 +22,35 @@ export default function PengaturanSupplier() {
   const [editDueDate, setEditDueDate] = useState('');
   const [editPayableAccount, setEditPayableAccount] = useState('');
 
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [supplierRows, accountRows] = await Promise.all([
+        fetchAllPages('/suppliers/'),
+        apiClient.get('/accounting/accounts/').then((res) => res.data),
+      ]);
+      setSuppliers(
+        supplierRows.map((s) => ({
+          id: s.id,
+          name: s.nama,
+          payableAccount: s.akun_hutang ?? '',
+          payableAccountLabel: s.akun_hutang_display || '',
+          dueDate: s.jatuh_tempo_hari ?? '',
+        }))
+      );
+      setPayableAccounts(
+        (accountRows || [])
+          .filter((a) => a.account_type === 'liability')
+          .map((a) => ({ id: a.id, label: `${a.code} - ${a.name}` }))
+      );
+    } catch (error) {
+      setSuppliers([]);
+      notify({ type: 'error', title: 'Gagal Memuat Supplier', message: 'Data supplier tidak dapat dimuat dari server.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     function handleClickOutside(event) {
       if (pageSizeRef.current && !pageSizeRef.current.contains(event.target)) {
@@ -30,46 +61,60 @@ export default function PengaturanSupplier() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    loadData();
+  }, []);
+
   const handleOpenEditModal = (supplier) => {
     setEditingSupplier(supplier);
-    setEditDueDate(supplier.dueDate || '');
-    setEditPayableAccount(supplier.payableAccount || '');
+    setEditDueDate(supplier.dueDate ?? '');
+    setEditPayableAccount(supplier.payableAccount ?? '');
     setIsModalOpen(true);
   };
 
-  const handleSaveUpdate = () => {
+  const handleSaveUpdate = async () => {
     if (!editingSupplier) return;
+    setSaving(true);
+    try {
+      const res = await apiClient.patch(`/suppliers/${editingSupplier.id}/`, {
+        akun_hutang: editPayableAccount || null,
+        jatuh_tempo_hari: editDueDate === '' ? null : Number(editDueDate),
+      });
 
-    setSuppliers((prev) =>
-      prev.map((s) =>
-        s.id === editingSupplier.id
-          ? { ...s, dueDate: editDueDate, payableAccount: editPayableAccount }
-          : s
-      )
-    );
+      setSuppliers((prev) =>
+        prev.map((s) =>
+          s.id === editingSupplier.id
+            ? {
+                ...s,
+                dueDate: res.data.jatuh_tempo_hari ?? '',
+                payableAccount: res.data.akun_hutang ?? '',
+                payableAccountLabel: res.data.akun_hutang_display || '',
+              }
+            : s
+        )
+      );
 
-    notify({
-      type: 'success',
-      title: 'Supplier Diperbarui',
-      message: `Pengaturan supplier ${editingSupplier.name} berhasil diperbarui.`
-    });
+      notify({
+        type: 'success',
+        title: 'Supplier Diperbarui',
+        message: `Pengaturan supplier ${editingSupplier.name} berhasil diperbarui.`
+      });
 
-    setIsModalOpen(false);
-    setEditingSupplier(null);
+      setIsModalOpen(false);
+      setEditingSupplier(null);
+    } catch (error) {
+      notifyApiError(error, 'Pengaturan supplier tidak dapat disimpan.');
+    } finally {
+      setSaving(false);
+    }
   };
-
-  const payableAccountOptions = [
-    '21000 - Hutang dagang',
-    '21002 - Cash Example',
-    '22000 - Hutang bank'
-  ];
 
   return (
     <div className="space-y-4 animate-fade-in text-xs font-semibold text-slate-700">
-      
+
       {/* Main Single Card Panel */}
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-xs p-6 space-y-6">
-        
+      <div className="bg-white rounded-2xl shadow-xs p-6 space-y-6">
+
         {/* Header inside Card: Title on Left, Items per Page on Right */}
         <div className="flex items-center justify-between select-none border-b border-slate-100 pb-4">
           <h3 className="text-base font-bold text-slate-800 tracking-wide">
@@ -106,7 +151,7 @@ export default function PengaturanSupplier() {
         </div>
 
         {/* Table grid */}
-        <div className="border border-slate-150 rounded-xl overflow-hidden bg-white shadow-3xs">
+        <div className="rounded-xl overflow-hidden bg-white shadow-3xs">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-150 text-[10px] font-bold text-slate-450 uppercase tracking-wider select-none">
@@ -117,14 +162,18 @@ export default function PengaturanSupplier() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {suppliers.map((s) => (
+              {loading ? (
+                <tr><td colSpan={4} className="px-6 py-16 text-center text-slate-400"><Loader2 className="mx-auto animate-spin" size={22} /></td></tr>
+              ) : suppliers.length === 0 ? (
+                <tr><td colSpan={4} className="px-6 py-16 text-center text-slate-400 font-semibold select-none">No Data</td></tr>
+              ) : suppliers.slice(0, pageSize).map((s) => (
                 <tr key={s.id} className="hover:bg-slate-50/50 transition-colors">
                   <td className="px-6 py-4 text-slate-700 font-semibold">{s.name}</td>
                   <td className="px-6 py-4 text-slate-600 font-medium">
-                    {s.payableAccount || '-'}
+                    {s.payableAccountLabel || '-'}
                   </td>
                   <td className="px-6 py-4 text-slate-600 font-medium">
-                    {s.dueDate ? `${s.dueDate} Hari` : '-'}
+                    {s.dueDate !== '' ? `${s.dueDate} Hari` : '-'}
                   </td>
                   <td className="px-6 py-4 text-right">
                     <button
@@ -144,7 +193,7 @@ export default function PengaturanSupplier() {
         {/* Pagination Footer */}
         <div className="pt-2 flex items-center justify-end gap-5 text-xs font-semibold text-slate-500 select-none">
           <span>Total {suppliers.length}</span>
-          
+
           <div className="flex items-center gap-1.5">
             <button
               type="button"
@@ -180,79 +229,17 @@ export default function PengaturanSupplier() {
 
       {/* Ubah Supplier Modal (Screenshot 2) */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-[9999] animate-fade-in">
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-[560px] overflow-hidden text-xs font-semibold text-slate-700 animate-scale-up">
-            
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-150 bg-[#F8FAFC]">
-              <h4 className="text-sm font-bold text-slate-800">
-                {editingSupplier?.name} Tanggal Bayar
-              </h4>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-1.5 border border-slate-200 bg-[#F4F5F7] hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs cursor-pointer transition-colors"
-                >
-                  Batal
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveUpdate}
-                  className="px-5 py-1.5 bg-[#51a351] hover:bg-[#419241] text-white font-bold rounded-lg text-xs cursor-pointer shadow-2xs transition-colors"
-                >
-                  Perbarui
-                </button>
-              </div>
-            </div>
-
-            {/* Modal Body Form */}
-            <div className="p-6 space-y-5">
-              
-              {/* Jatuh Tempo */}
-              <div className="space-y-1.5">
-                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                  Jatuh Tempo
-                </label>
-                <div className="flex border border-slate-205 rounded-xl overflow-hidden bg-white shadow-3xs focus-within:border-[#0088E8] transition-all">
-                  <input
-                    type="number"
-                    value={editDueDate}
-                    onChange={(e) => setEditDueDate(e.target.value)}
-                    placeholder=""
-                    className="flex-1 px-3.5 py-2.5 outline-none text-xs font-semibold text-slate-800"
-                  />
-                  <span className="px-4 py-2.5 bg-slate-50 text-slate-400 font-bold border-l border-slate-205 select-none text-xs flex items-center justify-center">
-                    Hari
-                  </span>
-                </div>
-              </div>
-
-              {/* Akun Hutang */}
-              <div className="space-y-1.5">
-                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                  Akun Hutang
-                </label>
-                <select
-                  value={editPayableAccount}
-                  onChange={(e) => setEditPayableAccount(e.target.value)}
-                  className={`w-full px-3.5 py-2.5 border border-slate-205 rounded-xl bg-white outline-none focus:border-[#0088E8] shadow-3xs cursor-pointer text-xs ${
-                    editPayableAccount ? 'text-slate-800 font-bold' : 'text-slate-400 font-semibold'
-                  }`}
-                >
-                  <option value="" disabled hidden>Pilih Akun (Autocomplete)</option>
-                  {payableAccountOptions.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-            </div>
-
-          </div>
-        </div>
+        <EditSupplierModal
+          supplier={editingSupplier}
+          dueDate={editDueDate}
+          onDueDateChange={setEditDueDate}
+          payableAccount={editPayableAccount}
+          onPayableAccountChange={setEditPayableAccount}
+          payableAccounts={payableAccounts}
+          saving={saving}
+          onClose={() => setIsModalOpen(false)}
+          onSave={handleSaveUpdate}
+        />
       )}
 
     </div>

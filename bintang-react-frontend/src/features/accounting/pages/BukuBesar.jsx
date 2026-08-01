@@ -31,10 +31,13 @@ export default function BukuBesar({ onToggleSidebar }) {
 
   // Period / Date Mode state: 'Sesuaikan', 'Bulan', 'Tahun' (Screenshot 1)
   const [dateMode, setDateMode] = useState('Bulan');
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 6, 1)); // Default July 2026
-  const [currentYear, setCurrentYear] = useState(2026);
-  const [customDateFrom, setCustomDateFrom] = useState('2026-07-01');
-  const [customDateTo, setCustomDateTo] = useState('2026-07-31');
+  const [currentDate, setCurrentDate] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const [currentYear, setCurrentYear] = useState(() => new Date().getFullYear());
+  const [customDateFrom, setCustomDateFrom] = useState('');
+  const [customDateTo, setCustomDateTo] = useState('');
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -67,17 +70,7 @@ export default function BukuBesar({ onToggleSidebar }) {
     apiClient
       .get('/accounting/accounts/', { params: { semua_akun: 'true' } })
       .then((res) => {
-        let list = res.data || [];
-        if (!list.some((a) => String(a.code) === '81000' || String(a.code) === '8100')) {
-          list.push({
-            id: 99999,
-            code: '81000',
-            name: 'Penyesuaian barang',
-            classification: { name: 'Beban Operasional' },
-            is_active: true
-          });
-        }
-        setAllCoaAccounts(list);
+        setAllCoaAccounts((res.data || []).filter((account) => account.is_active !== false));
       })
       .catch(() => {});
   }, []);
@@ -110,8 +103,8 @@ export default function BukuBesar({ onToggleSidebar }) {
       fromStr = `${currentYear}-01-01`;
       toStr = `${currentYear}-12-31`;
     } else {
-      fromStr = customDateFrom || '2026-07-01';
-      toStr = customDateTo || '2026-07-31';
+      fromStr = customDateFrom;
+      toStr = customDateTo;
     }
     return { date_from: fromStr, date_to: toStr };
   };

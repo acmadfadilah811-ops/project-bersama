@@ -1,155 +1,113 @@
-import { X } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { Plus, Trash2, X } from 'lucide-react';
+import apiClient from '../../../../api/apiClient';
+import { notifyApiError } from '../../../../utils/notify';
 
-import { notify } from '../../../../utils/notify';
+// Kelola CashTransactionType (master Tipe Transaksi) per arah — real CRUD ke
+// /cash-transaction-types/, dipakai bersama layar Pendapatan & Pengeluaran.
+export default function TipeTransaksiModal({ isOpen, onClose, direction }) {
+  const [types, setTypes] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [saving, setSaving] = useState(false);
 
-export default function TipeTransaksiModal({ isOpen, onClose }) {
-  const [originalAccount, setOriginalAccount] = useState('');
-  const [selectedAccount, setSelectedAccount] = useState('');
+  const reload = async () => {
+    setLoading(true);
+    try {
+      const res = await apiClient.get('/cash-transaction-types/', { params: { tipe: direction } });
+      setTypes(res.data.results || res.data || []);
+    } catch (err) {
+      notifyApiError(err, 'Gagal memuat tipe transaksi.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { if (isOpen) reload(); }, [isOpen, direction]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!isOpen) return null;
 
-  const isDirty = selectedAccount !== originalAccount;
-
-  const handleCancel = () => {
-    setSelectedAccount(originalAccount);
+  const handleAdd = async () => {
+    const nama = newName.trim();
+    if (!nama) return;
+    setSaving(true);
+    try {
+      await apiClient.post('/cash-transaction-types/', { nama, tipe: direction });
+      setNewName('');
+      await reload();
+    } catch (err) {
+      notifyApiError(err, 'Gagal menambahkan tipe transaksi.');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleSave = () => {
-    setOriginalAccount(selectedAccount);
-    notify({
-      type: 'success',
-      title: 'Tipe Transaksi Disimpan',
-      message: 'Pemetaan tipe transaksi pendapatan berhasil disimpan.'
-    });
+  const handleDelete = async (id) => {
+    if (!window.confirm('Hapus tipe transaksi ini?')) return;
+    try {
+      await apiClient.delete(`/cash-transaction-types/${id}/`);
+      await reload();
+    } catch (err) {
+      notifyApiError(err, 'Tipe tidak bisa dihapus (mungkin sudah dipakai transaksi).');
+    }
   };
 
-  const accountsList = [
-    '40000 Penjualan',
-    '41000 Penjualan antar cabang',
-    '42000 Layanan biaya penjualan',
-    '44000 Pengiriman penjualan',
-    '46100 Potongan penjualan',
-    '46200 Loyalitas penjualan',
-    '46300 Return penjualan',
-    '50000 Pembelian',
-    '50100 Pembelian antar cabang',
-    '50300 Biaya pengiriman',
-    '50400 Return pembelian',
-    '50500 Potongan pembelian',
-    '51000 Harga pokok penjualan',
-    '60100 Biaya gaji',
-    '60200 Biaya air listrik telephone',
-    '60300 Biaya perlengkapan',
-    '60400 Biaya penyusutan',
-    '60500 Biaya transfer',
-    '70000 Pendapatan lain lain',
-    '70001 Pembulatan',
-    '70002 Code Uniq Penjualan',
-    '70003 Layanan Penjualan',
-    '70009 Bank Example',
-    '80000 Pengeluaran lain lain',
-    '81000 Penyesuaian Barang'
-  ];
+  const title = direction === 'pendapatan' ? 'Tipe Transaksi Pendapatan' : 'Tipe Transaksi Pengeluaran';
 
   return (
     <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-[9999] animate-fade-in text-xs font-semibold text-slate-700">
-      <div className="bg-white rounded-xl border border-slate-205 shadow-2xl w-[720px] overflow-hidden animate-scale-up">
-        
-        {/* Header */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-2xl w-[520px] overflow-hidden animate-scale-up">
         <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-[#F8FAFC]">
-          <h3 className="text-xs font-bold text-slate-800">Tipe Transaksi Pendapatan</h3>
-          
-          {isDirty ? (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleCancel}
-                className="px-3.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-md font-extrabold text-[10px] cursor-pointer transition-colors"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md font-extrabold text-[10px] cursor-pointer transition-colors shadow-3xs"
-              >
-                Simpan
-              </button>
-            </div>
+          <h3 className="text-xs font-bold text-slate-800">{title}</h3>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+            <X size={15} />
+          </button>
+        </div>
+
+        <div className="p-4 flex items-center gap-2 border-b border-slate-100">
+          <input
+            type="text"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Nama tipe baru..."
+            className="flex-1 px-3 py-2 border border-slate-200 rounded-lg outline-none focus:border-[#0088E8]"
+          />
+          <button
+            type="button"
+            onClick={handleAdd}
+            disabled={saving || !newName.trim()}
+            className="px-3 py-2 bg-[#0088E8] hover:bg-[#0077CC] text-white rounded-lg font-bold cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
+          >
+            <Plus size={14} /> Tambah
+          </button>
+        </div>
+
+        <div className="p-4 max-h-80 overflow-y-auto">
+          {loading ? (
+            <p className="text-center text-slate-400 py-6">Memuat...</p>
+          ) : types.length === 0 ? (
+            <p className="text-center text-slate-400 py-6">Belum ada tipe transaksi.</p>
           ) : (
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-md font-bold transition-colors cursor-pointer"
-            >
-              Tutup
-            </button>
+            <table className="w-full text-left border-collapse">
+              <tbody>
+                {types.map((t) => (
+                  <tr key={t.id} className="border-b border-slate-50">
+                    <td className="py-2.5 font-medium text-slate-700">{t.nama}</td>
+                    <td className="py-2.5 text-right w-10">
+                      <button type="button" onClick={() => handleDelete(t.id)} className="p-1 text-rose-500 hover:bg-rose-50 rounded-full cursor-pointer">
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </div>
 
-        {/* Table list */}
-        <div className="p-4 overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead className="text-slate-400 font-bold border-b border-slate-100">
-              <tr>
-                <th className="py-2.5 w-[50%]">Nama</th>
-                <th className="py-2.5 w-[50%]">Nama Akun</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="border-b border-slate-50">
-                <td className="py-3 font-medium text-slate-700">Dhitch</td>
-                <td className="py-3">
-                  <select
-                    value={selectedAccount}
-                    onChange={(e) => setSelectedAccount(e.target.value)}
-                    className="w-full px-2.5 py-1.5 border border-slate-200 rounded-md bg-white outline-none focus:border-[#0088E8] font-medium text-slate-650 cursor-pointer shadow-3xs"
-                  >
-                    <option value="" disabled>Pilih</option>
-                    {accountsList.map((opt) => (
-                      <option key={opt} value={opt}>{opt}</option>
-                    ))}
-                  </select>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div className="p-4 border-t border-slate-50 bg-slate-50/30 text-[11px] text-slate-500 font-bold">
+          Total {types.length} tipe
         </div>
-
-        {/* Footer info & pagination */}
-        <div className="p-4 border-t border-slate-50 flex items-center justify-between text-[10px] font-bold text-slate-500 bg-slate-50/20">
-          <div className="flex items-center gap-1.5">
-            <span className="text-slate-400">15 item</span>
-            <span className="text-slate-300">▼</span>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <span>Total 1</span>
-            <div className="flex items-center gap-1">
-              <button disabled className="w-5 h-5 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-400 cursor-not-allowed">
-                &lt;
-              </button>
-              <span className="w-5 h-5 flex items-center justify-center rounded bg-[#0088E8] text-white">
-                1
-              </span>
-              <button disabled className="w-5 h-5 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-400 cursor-not-allowed">
-                &gt;
-              </button>
-            </div>
-            
-            <div className="flex items-center gap-1">
-              <span>Go to</span>
-              <input
-                type="text"
-                defaultValue="1"
-                disabled
-                className="w-6 py-0.5 text-center border border-slate-200 rounded bg-slate-50 text-slate-400 outline-none"
-              />
-            </div>
-          </div>
-        </div>
-
       </div>
     </div>
   );

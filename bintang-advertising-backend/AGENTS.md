@@ -14,10 +14,11 @@ that grew to thousands of lines. Your job when continuing development is to
 - **Never add new code to an already-oversized file.** If the right place to put
   code is a file that is already too big, you must **split that file first**,
   then add your code to the correct new module.
-- **File length limits** (lines of code, excluding blank/comments):
-  - Python module: **soft 300 / hard 400**.
-  - React component (`.jsx`): **soft 200 / hard 300**.
-  - Any other module: soft 300 / hard 400.
+- **File length limits** (lines of code, excluding blank/comments) — updated
+  2026-08-01 by user, hard limit raised from 400/300 to 1000 for both:
+  - Python module: **soft 300 / hard 1000**.
+  - React component (`.jsx`): **soft 200 / hard 1000**.
+  - Any other module: soft 300 / hard 1000.
 - Before finishing a task, if any file you touched **exceeds the hard limit**,
   you MUST refactor it into smaller units as part of the same task — or, if that
   is out of scope, stop and explicitly flag it to the user instead of shipping a

@@ -128,31 +128,16 @@ export default function JurnalUmum({ onToggleSidebar }) {
         .get('/accounting/accounts/', { params: { semua_akun: 'true' } })
         .then((res) => {
           let coa = res.data || [];
-          // Ensure "81000 - Penyesuaian barang" exists in list for demonstration/usage
-          if (!coa.some((a) => String(a.code) === '81000')) {
-            coa.push({
-              id: 99999,
-              code: '81000',
-              name: 'Penyesuaian barang',
-              normal_balance: 'debit',
-              is_active: true
-            });
-          }
           setAccounts(coa);
         })
         .catch(() => {});
 
-      setNamaJurnalList([
-        { id: 1, name: 'Akumulasi penyusutan' },
-        { id: 2, name: 'Kas Masuk' },
-        { id: 3, name: 'Kas Keluar' },
-        { id: 4, name: 'Penyesuaian Akhir Bulan' },
-      ]);
-      setDepartemenList([
-        { id: 1, name: 'Divisi Offset' },
-        { id: 2, name: 'Divisi Digital Printing' },
-        { id: 3, name: 'Divisi Desain' },
-      ]);
+      apiClient.get('/accounting/journal-templates/')
+        .then((res) => setNamaJurnalList(res.data || []))
+        .catch(() => setNamaJurnalList([]));
+      apiClient.get('/accounting/departments/')
+        .then((res) => setDepartemenList(res.data || []))
+        .catch(() => setDepartemenList([]));
     }
   }, [viewState]);
 
@@ -292,7 +277,7 @@ export default function JurnalUmum({ onToggleSidebar }) {
           const body = {
             date: item.tanggal,
             description: item.catatan.trim(),
-            external_no: item.noDokumen.trim() || undefined,
+            external_document_no: item.noDokumen.trim() || undefined,
             lines: [],
           };
 
@@ -303,10 +288,12 @@ export default function JurnalUmum({ onToggleSidebar }) {
               { account: parseInt(item.akunKredit, 10), debit: 0, kredit: item.jumlah }
             );
           } else {
-            body.lines.push(
-              { account: accounts[0]?.id || 1, debit: item.jumlah, kredit: 0 },
-              { account: accounts[1]?.id || 2, debit: 0, kredit: item.jumlah }
-            );
+            const template = namaJurnalList.find((j) => j.name === item.namaJurnal);
+            if (!template || !template.default_debit_account || !template.default_kredit_account) {
+              throw new Error(`Template jurnal "${item.namaJurnal || 'Basic'}" belum memiliki akun default.`);
+            }
+            body.amount = item.jumlah;
+            body.journal_template = template.id;
           }
           await apiClient.post('/accounting/journal-entries/', body);
         }

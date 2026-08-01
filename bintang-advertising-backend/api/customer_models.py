@@ -147,6 +147,14 @@ class Supplier(models.Model):
     kode_pos = models.CharField(max_length=20, blank=True, default='')
     alamat = models.TextField(blank=True, default='')
     is_active = models.BooleanField(default=True)
+    akun_hutang = models.ForeignKey(
+        'accounting.Account', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='suppliers_akun_hutang',
+        help_text='Akun hutang default supplier ini (Pengaturan Supplier).',
+    )
+    jatuh_tempo_hari = models.PositiveIntegerField(
+        null=True, blank=True, help_text='Jatuh tempo pembayaran hutang ke supplier ini, dalam hari.',
+    )
     dibuat_oleh = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='suppliers')
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)

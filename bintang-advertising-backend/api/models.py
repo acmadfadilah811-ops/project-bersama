@@ -212,6 +212,7 @@ class Order(models.Model):
     telepon_dropship = models.CharField(max_length=50, null=True, blank=True, help_text="Nomor telepon pengirim dropship")
     jatuh_tempo = models.DateField(null=True, blank=True, help_text="Tanggal jatuh tempo pembayaran invoice")
     catatan_footer = models.TextField(null=True, blank=True, default="Terima kasih atas pesanan Anda", help_text="Catatan di bagian bawah cetakan invoice")
+    referensi_pembayaran = models.CharField(max_length=255, blank=True, default="", help_text="Referensi pembayaran dari Paypal/Bank (opsional, diisi manual saat mencatat pembayaran)")
 
     def update_totals(self):
         """Method bantuan untuk menghitung ulang total dan sisa tagihan dari item-itemnya."""
@@ -974,62 +975,11 @@ class SaldoKasHarian(models.Model):
         return f"{self.tanggal} - {self.kasir.username} - {self.shift} (Awal: {self.kas_awal}, Akhir: {self.kas_akhir})"
 
 # ---------------------------------------------------------
-# 17. Ringkasan Shift (V2)
-# ---------------------------------------------------------
-class RingkasanShift(models.Model):
-    # Lihat catatan di SaldoKasHarian.tanggal — DateField butuh date, bukan datetime.
-    tanggal = models.DateField(default=timezone.localdate)
-    kasir = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='ringkasan_shift')
-    mulai = models.DateTimeField(default=timezone.now)
-    berakhir = models.DateTimeField(null=True, blank=True)
-    expected = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-    aktual = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-    selisih = models.DecimalField(max_digits=15, decimal_places=2, default=0)
-
-    def save(self, *args, **kwargs):
-        self.selisih = self.aktual - self.expected
-        super().save(*args, **kwargs)
-
-    def __str__(self):
-        return f"{self.tanggal} - {self.kasir.username} (Selisih: {self.selisih})"
-
-
-# ---------------------------------------------------------
 # 18. Metode Pembayaran POS (Pengaturan POS > Pembayaran)
 # ---------------------------------------------------------
-class POSPaymentMethod(models.Model):
-    """Cara pembayaran yang tersedia di POS, mis. 'CASH' (Tunai) atau
-    'QRIS GPN' (QRIS) dengan biaya MDR 0.7%."""
-    TIPE_CHOICES = [
-        ('Tunai', 'Tunai (Cash)'),
-        ('QRIS', 'QRIS'),
-        ('Debit', 'Kartu Debit'),
-        ('Kredit', 'Kartu Kredit'),
-        ('Transfer', 'Transfer Bank'),
-        ('E-Wallet', 'E-Wallet'),
-    ]
-
-    tipe = models.CharField(max_length=30, choices=TIPE_CHOICES, default='Tunai')
-    nama = models.CharField(max_length=100, help_text="Nama yang tampil di POS, mis. 'CASH'")
-    nama_biaya = models.CharField(max_length=100, blank=True, default='', help_text="Mis. 'MDR'")
-    nilai_biaya = models.DecimalField(max_digits=6, decimal_places=2, default=0, help_text="Persen biaya layanan")
-    is_active = models.BooleanField(default=True)
-    accounting_payment_method = models.ForeignKey(
-        'accounting.PaymentMethod', on_delete=models.SET_NULL, null=True, blank=True,
-        related_name='pos_payment_methods',
-        help_text="Pemetaan ke Cara Pembayaran di modul Akuntansi Internal.",
-    )
-    urutan = models.IntegerField(default=0)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ['urutan', 'id']
-
-    def __str__(self):
-        return f"{self.nama} ({self.tipe})"
-
 # Import new models from product_models
 from .product_models import *
+from .purchase_workflow_models import PurchaseActivityLog
 
 # Import new models from marketing_models
 from .marketing_models import *

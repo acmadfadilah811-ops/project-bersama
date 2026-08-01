@@ -2,25 +2,25 @@ import { useState, useEffect } from 'react';
 import { notify } from '../../../../utils/notify';
 
 export default function UbahJatuhTempoModal({ isOpen, onClose, customer, onUpdate }) {
-  if (!isOpen || !customer) return null;
-
   const [days, setDays] = useState('30');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    // Reset to default or set existing
-    setDays('30');
+    if (customer) setDays('30');
   }, [customer]);
 
-  const handleUpdate = () => {
-    if (onUpdate) {
-      onUpdate(customer.id, days);
+  if (!isOpen || !customer) return null;
+
+  const handleUpdate = async () => {
+    setSaving(true);
+    try {
+      await onUpdate?.(customer.id, days);
+      onClose();
+    } catch (error) {
+      notify({ type: 'error', title: 'Gagal Memperbarui', message: error.response?.data?.detail || error.message || 'Jatuh tempo tidak dapat disimpan.' });
+    } finally {
+      setSaving(false);
     }
-    notify({
-      type: 'success',
-      title: 'Jatuh Tempo Diperbarui',
-      message: `Jatuh tempo pelanggan ${customer.name} berhasil diubah menjadi ${days} Hari.`
-    });
-    onClose();
   };
 
   return (
@@ -43,9 +43,10 @@ export default function UbahJatuhTempoModal({ isOpen, onClose, customer, onUpdat
             <button
               type="button"
               onClick={handleUpdate}
+              disabled={saving}
               className="px-3.5 py-1.5 bg-[#51a351] hover:bg-[#419241] text-white rounded-lg font-bold text-[10px] cursor-pointer"
             >
-              Perbarui
+              {saving ? 'Menyimpan...' : 'Perbarui'}
             </button>
           </div>
         </div>

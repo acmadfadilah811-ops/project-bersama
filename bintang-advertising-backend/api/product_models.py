@@ -254,6 +254,10 @@ class ProductStockMovement(models.Model):
     stock_out_document = models.ForeignKey('StockOutDocument', on_delete=models.SET_NULL, null=True, blank=True, related_name='movements')
     stock_production_document = models.ForeignKey('StockProductionDocument', on_delete=models.SET_NULL, null=True, blank=True, related_name='movements')
     stock_opname_document = models.ForeignKey('StockOpnameDocument', on_delete=models.SET_NULL, null=True, blank=True, related_name='movements')
+    pos_sale = models.ForeignKey(
+        'POSSale', on_delete=models.SET_NULL, null=True, blank=True, related_name='stock_movements',
+        help_text="Transaksi POS sumber mutasi ini (tipe='penjualan'/'pengembalian') — dipakai T-107 untuk agregasi HPP per sale.",
+    )
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
@@ -499,6 +503,7 @@ class Purchase(models.Model):
     receive_status = models.CharField(max_length=20, choices=RECEIVE_CHOICES, default='tunda')
     tanggal_diterima = models.DateField(null=True, blank=True)
     no_terima = models.CharField(max_length=100, blank=True, default='')
+    penerima_nama = models.CharField(max_length=255, blank=True, default='', help_text='Nama akun pengguna yang menerima barang')
     lanjut_tambah_stok = models.BooleanField(default=True, help_text="Bila True, penerimaan menambah stok (buat Stok Masuk)")
 
     # Dimensi 2: pembayaran (diturunkan dari PurchasePayment)
@@ -559,6 +564,11 @@ class PurchaseItem(models.Model):
     uom_kode = models.CharField(max_length=10, blank=True, default='')
     uom_konverter = models.DecimalField(max_digits=12, decimal_places=4, default=1)
     uom_qty = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, help_text="Qty sesuai satuan yang dipilih")
+
+    # Field retur
+    alasan_retur = models.CharField(max_length=255, blank=True, default='')
+    catatan_retur = models.TextField(blank=True, default='')
+    jadikan_stok_keluar = models.BooleanField(default=True)
 
     def __str__(self):
         return f"{self.purchase.nomor} - {self.product.nama} x{self.qty}"
@@ -650,3 +660,23 @@ class PurchasePayment(models.Model):
 
     def __str__(self):
         return f"{self.purchase.nomor} - {self.nominal} ({self.tanggal})"
+
+
+class PurchaseAttachment(models.Model):
+    """Bukti dokumen yang melekat pada satu pembelian."""
+    purchase = models.ForeignKey(Purchase, on_delete=models.CASCADE, related_name='attachments')
+    file = models.FileField(upload_to='purchase_attachments/%Y/%m/')
+    dibuat_oleh = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='purchase_attachments',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Lampiran {self.purchase.nomor}"

@@ -1,18 +1,23 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { MoreHorizontal, Eye, CheckCircle2, ArrowLeftRight, Trash2 } from 'lucide-react';
 import { notify } from '../../../../utils/notify';
 
-export default function PiutangActionDropdown({ txNo, onDetailClick, isLunas }) {
+export default function PiutangActionDropdown({ txNo, orderId, onDetailClick, onJournalClick, isLunas }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [openUpward, setOpenUpward] = useState(false);
+  const [menuPosition, setMenuPosition] = useState(null);
   const dropdownRef = useRef(null);
   const buttonRef = useRef(null);
+  const menuRef = useRef(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     function handleClickOutside(event) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+      if (
+        dropdownRef.current && !dropdownRef.current.contains(event.target) &&
+        menuRef.current && !menuRef.current.contains(event.target)
+      ) {
         setIsOpen(false);
       }
     }
@@ -24,8 +29,11 @@ export default function PiutangActionDropdown({ txNo, onDetailClick, isLunas }) 
     if (!isOpen && buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom;
-      // If less than 190px space below, open upward
-      setOpenUpward(spaceBelow < 190);
+      const menuHeight = 190;
+      setMenuPosition({
+        top: spaceBelow < menuHeight ? Math.max(8, rect.top - menuHeight - 4) : rect.bottom + 4,
+        right: Math.max(8, window.innerWidth - rect.right),
+      });
     }
     setIsOpen(!isOpen);
   };
@@ -57,10 +65,8 @@ export default function PiutangActionDropdown({ txNo, onDetailClick, isLunas }) 
         <MoreHorizontal size={14} />
       </button>
 
-      {isOpen && (
-        <div className={`absolute right-0 bg-white border border-slate-200 rounded-lg shadow-xl py-1 z-40 w-52 font-semibold text-slate-700 animate-fade-in text-left ${
-          openUpward ? 'bottom-full mb-1' : 'top-full mt-1'
-        }`}>
+      {isOpen && menuPosition && createPortal(
+        <div ref={menuRef} style={menuPosition} className="fixed bg-white border border-slate-200 rounded-lg shadow-xl py-1 z-[10000] w-52 font-semibold text-slate-700 animate-fade-in text-left">
           {/* Detail */}
           <button
             type="button"
@@ -86,7 +92,9 @@ export default function PiutangActionDropdown({ txNo, onDetailClick, isLunas }) 
               type="button"
               onClick={() => {
                 setIsOpen(false);
-                navigate('/transaksi/penjualan?tab=selesai');
+                navigate('/transaksi/penjualan?tab=butuh-diproses', {
+                  state: { tab: 'butuh-diproses', openOrderId: orderId },
+                });
               }}
               className="w-full text-left px-3.5 py-2 text-[11px] hover:bg-slate-50 transition-colors cursor-pointer flex items-center gap-2"
             >
@@ -98,7 +106,10 @@ export default function PiutangActionDropdown({ txNo, onDetailClick, isLunas }) 
           {/* Pasangan Jurnal */}
           <button
             type="button"
-            onClick={() => handleAction('Pasangan Jurnal')}
+            onClick={() => {
+              setIsOpen(false);
+              onJournalClick?.();
+            }}
             className="w-full text-left px-3.5 py-2 text-[11px] hover:bg-slate-50 transition-colors cursor-pointer flex items-center gap-2"
           >
             <ArrowLeftRight size={13} className="text-slate-400 shrink-0" />
@@ -116,7 +127,7 @@ export default function PiutangActionDropdown({ txNo, onDetailClick, isLunas }) 
             <span>Hapus</span>
           </button>
         </div>
-      )}
+      , document.body)}
     </div>
   );
 }

@@ -9,7 +9,6 @@ const TABS = [
   { id: 'produk', label: 'Laporan Produk' },
   { id: 'pembelian', label: 'Laporan Pembelian' },
   { id: 'penjualan', label: 'Laporan Penjualan' },
-  { id: 'shift', label: 'Laporan Penjualan Per Shift' },
   { id: 'pembayaran', label: 'Laporan Pembayaran' },
   { id: 'outlet', label: 'Laporan Multi Outlet' },
 ];

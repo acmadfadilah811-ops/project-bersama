@@ -1,147 +1,123 @@
-import { useState } from 'react';
-import { AlertTriangle, ChevronDown } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { AlertTriangle, Loader2 } from 'lucide-react';
+import apiClient from '../../../api/apiClient';
+import { notifyApiError } from '../../../utils/notify';
 import ReturPenjualanDateModal from '../components/pos/ReturPenjualanDateModal';
 
+const today = () => new Date().toISOString().slice(0, 10);
+const ago = (days) => {
+  const value = new Date();
+  value.setDate(value.getDate() - days);
+  return value.toISOString().slice(0, 10);
+};
+const fmtRp = (value) => `Rp ${Number(value || 0).toLocaleString('id-ID')}`;
+
+// Biaya MDR sudah diposting nyata saat Settlement (accounting/services/settlement.py,
+// akun PaymentMethod.mdr_debit_account). Layar ini membaca ulang baris jurnal
+// yang kena akun MDR tsb — bukan menghitung ulang, satu sumber kebenaran.
 export default function BiayaMdr() {
-  const [isDateOpen, setIsDateOpen] = useState(false);
-  
-  const [dateFrom, setDateFrom] = useState('2026-07-26');
-  const [dateTo, setDateTo] = useState('2026-07-26');
-  const [dateLabel, setDateLabel] = useState('Hari ini');
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [dateFrom, setDateFrom] = useState(ago(30));
+  const [dateTo, setDateTo] = useState(today());
+  const [dateLabel, setDateLabel] = useState('30 Hari yang lalu');
+  const [dateOpen, setDateOpen] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    Promise.all([
+      apiClient.get('/accounting/payment-methods/'),
+      apiClient.get('/accounting/journal-entries/', { params: { date_from: dateFrom, date_to: dateTo, source_type: 'settlement' } }),
+    ]).then(([pmRes, jeRes]) => {
+      if (!active) return;
+      const methods = pmRes.data.results || pmRes.data || [];
+      const mdrAccountIds = new Set(methods.filter((m) => m.mdr_percent > 0 && m.mdr_debit_account).map((m) => m.mdr_debit_account));
+      const methodByAccount = new Map(methods.map((m) => [m.mdr_debit_account, m]));
+      const entries = jeRes.data.results || jeRes.data || [];
+      const mdrRows = [];
+      entries.forEach((entry) => {
+        (entry.lines || []).forEach((line) => {
+          if (mdrAccountIds.has(line.account) && Number(line.debit) > 0) {
+            const method = methodByAccount.get(line.account);
+            mdrRows.push({
+              id: line.id, tanggal: entry.date, transaksi: entry.entry_number,
+              metode: method?.name || line.account_name, persen: method?.mdr_percent || 0,
+              nominal: line.debit,
+            });
+          }
+        });
+      });
+      setRows(mdrRows);
+    }).catch((err) => { if (active) { notifyApiError(err, 'Gagal memuat data biaya MDR.'); setRows([]); } })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [dateFrom, dateTo]);
+
+  const totalMdr = rows.reduce((sum, row) => sum + Number(row.nominal || 0), 0);
 
   return (
     <div className="space-y-4 animate-fade-in text-xs font-semibold text-slate-700">
-      
-      {/* Warning banner */}
-      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3.5 flex items-start gap-3 shadow-2xs">
-        <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={16} />
+      <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3.5 flex items-start gap-3 shadow-2xs">
+        <AlertTriangle className="text-emerald-600 shrink-0 mt-0.5" size={16} />
         <div className="space-y-1">
-          <p className="font-bold text-amber-900 text-xs">
-            Sistem Belum Terhubung ke POS Biaya MDR
-          </p>
-          <p className="text-amber-700 text-[11px] font-medium leading-relaxed">
-            Koneksi data transaksi Merchant Discount Rate (MDR) kasir POS belum terintegrasi. 
-            Tampilan di bawah ini memprioritaskan kesesuaian tata letak UI (fokus antarmuka).
+          <p className="font-bold text-emerald-900 text-xs">Data Biaya MDR dari Settlement</p>
+          <p className="text-emerald-700 text-[11px] font-medium leading-relaxed">
+            Biaya MDR diposting otomatis saat batch Settlement diproses. Layar ini tampilan saja (read-only).
           </p>
         </div>
       </div>
 
-      {/* Title */}
       <h2 className="text-base font-bold text-slate-900">Biaya MDR (Merchant Discount Rate)</h2>
 
-      {/* Action Row */}
       <div className="flex flex-wrap gap-4 items-center justify-between">
-        
-        {/* Left Filters */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => setIsDateOpen(true)}
-            className="px-3 py-1.5 border border-slate-205 bg-slate-50 hover:bg-slate-105 text-slate-600 rounded-lg shadow-2xs transition-colors cursor-pointer"
-          >
-            {dateLabel} {dateFrom.split('-').reverse().join('-')} - {dateTo.split('-').reverse().join('-')}
-          </button>
-        </div>
-
-        {/* Right Actions */}
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            disabled
-            className="px-4 py-1.5 font-bold rounded-lg text-[10px] bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed transition-all shadow-2xs"
-          >
-            Batal Post
-          </button>
-
-          <button
-            type="button"
-            disabled
-            className="px-4 py-1.5 font-bold rounded-lg text-[10px] bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed transition-all shadow-2xs"
-          >
-            Post
-          </button>
-        </div>
-
+        <button type="button" onClick={() => setDateOpen(true)} className="px-3 py-1.5 border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-lg shadow-2xs transition-colors cursor-pointer">
+          {dateLabel} {dateFrom} - {dateTo}
+        </button>
       </div>
 
-      {/* Table Section */}
       <div className="bg-white border border-slate-100 rounded-xl shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead className="bg-slate-50/50 border-b border-slate-100 text-slate-500 font-bold">
               <tr>
-                <th className="px-5 py-3.5 w-10 text-center">
-                  <div className="w-3.5 h-3.5 rounded border border-slate-200 bg-white" />
-                </th>
                 <th className="px-5 py-3.5">Tanggal</th>
-                <th className="px-5 py-3.5">Pembayaran</th>
-                <th className="px-5 py-3.5">No. Transaksi</th>
-                <th className="px-5 py-3.5">Jumlah</th>
-                <th className="px-5 py-3.5">Total Penjualan</th>
-                <th className="px-5 py-3.5">Status</th>
+                <th className="px-5 py-3.5">Transaksi</th>
+                <th className="px-5 py-3.5">Metode Pembayaran</th>
+                <th className="px-5 py-3.5 text-right">Rate MDR</th>
+                <th className="px-5 py-3.5 text-right">Nominal</th>
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td colSpan={7} className="px-5 py-12 text-center text-slate-400 font-bold">
-                  No Data
-                </td>
-              </tr>
+              {loading ? (
+                <tr><td colSpan={5} className="px-5 py-12 text-center text-slate-400"><Loader2 className="inline animate-spin" size={16} /> Memuat data...</td></tr>
+              ) : rows.length === 0 ? (
+                <tr><td colSpan={5} className="px-5 py-12 text-center text-slate-400 font-bold">No Data</td></tr>
+              ) : rows.map((row) => (
+                <tr key={row.id} className="border-b border-slate-50 hover:bg-slate-50/60">
+                  <td className="px-5 py-3">{row.tanggal}</td>
+                  <td className="px-5 py-3 font-mono">{row.transaksi}</td>
+                  <td className="px-5 py-3">{row.metode}</td>
+                  <td className="px-5 py-3 text-right font-mono">{Number(row.persen).toLocaleString('id-ID')}%</td>
+                  <td className="px-5 py-3 text-right font-mono font-bold text-rose-700">{fmtRp(row.nominal)}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
-
-        {/* Footer info & pagination */}
         <div className="p-4 border-t border-slate-50 flex items-center justify-between text-[11px] font-bold text-slate-500 bg-slate-50/30">
-          
-          <div className="flex items-center gap-2">
-            <button className="flex items-center gap-1 px-2.5 py-1 border border-slate-200 bg-white hover:bg-slate-50 rounded-md transition-colors shadow-2xs">
-              <span>15 item</span>
-              <ChevronDown size={11} className="text-slate-400" />
-            </button>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1.5">
-              <button disabled className="w-6 h-6 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-400 cursor-not-allowed">
-                &lt;
-              </button>
-              <span className="w-6 h-6 flex items-center justify-center rounded bg-[#0088E8] text-white">
-                1
-              </span>
-              <button disabled className="w-6 h-6 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-400 cursor-not-allowed">
-                &gt;
-              </button>
-            </div>
-            
-            <div className="flex items-center gap-1.5">
-              <span>Go to</span>
-              <input
-                type="text"
-                defaultValue="1"
-                disabled
-                className="w-8 py-0.5 text-center border border-slate-200 rounded bg-slate-50 text-slate-400 outline-none"
-              />
-            </div>
-          </div>
-
+          <span>Total {rows.length} baris</span>
+          <span className="text-rose-700">Total Biaya MDR {fmtRp(totalMdr)}</span>
         </div>
-
       </div>
 
-      {/* Date Modal */}
       <ReturPenjualanDateModal
-        isOpen={isDateOpen}
-        onClose={() => setIsDateOpen(false)}
+        isOpen={dateOpen}
+        onClose={() => setDateOpen(false)}
         initialFrom={dateFrom}
         initialTo={dateTo}
-        onApply={(res) => {
-          setDateFrom(res.from);
-          setDateTo(res.to);
-          setDateLabel(res.label);
-        }}
+        onApply={(res) => { setDateFrom(res.from); setDateTo(res.to); setDateLabel(res.label); }}
       />
-
     </div>
   );
 }

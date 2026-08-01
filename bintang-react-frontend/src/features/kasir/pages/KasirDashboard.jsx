@@ -19,7 +19,9 @@ import { useKasir } from '../context/KasirContext';
 import apiClient from '../../../api/apiClient';
 import SiapDiambilPanel from '../components/SiapDiambilPanel';
 
-export default function KasirDashboard() {
+import PosHeaderBar from '../components/PosHeaderBar';
+
+export default function KasirDashboard({ onToggleSidebar }) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { shiftAktif } = useKasir();
@@ -104,15 +106,22 @@ export default function KasirDashboard() {
   const sudahClockIn = absensiHariIni && absensiHariIni.status !== 'belum_absen';
   const sudahClockOut = !!absensiHariIni?.jam_keluar;
 
+  // Status Shift Aktif = User SUDAH membuka shift DAN SUDAH melakukan absensi Clock-In (dan belum Clock-Out)
+  const isShiftAndAbsenAktif = Boolean(shiftAktif && sudahClockIn && !sudahClockOut);
+
   const metrics = [
     {
       label: 'Status Shift',
-      value: shiftAktif ? 'Aktif' : 'Belum Dibuka',
-      sub: shiftAktif
-        ? `Kas awal ${formatCurrency(shiftAktif.kas_awal)}`
-        : 'Buka shift untuk mulai mencatat transaksi',
+      value: isShiftAndAbsenAktif ? 'Aktif' : 'Belum Aktif',
+      sub: isShiftAndAbsenAktif
+        ? `Kas awal ${formatCurrency(shiftAktif?.kas_awal)} · Absen Masuk`
+        : shiftAktif && !sudahClockIn
+        ? 'Shift dibuka, silakan lakukan Clock-In absensi'
+        : !shiftAktif && sudahClockIn
+        ? 'Absen masuk dicatat, silakan buka shift kasir'
+        : 'Buka shift kasir & lakukan absensi untuk mulai bekerja',
       icon: Wallet,
-      tone: shiftAktif ? 'emerald' : 'rose',
+      tone: isShiftAndAbsenAktif ? 'emerald' : 'amber',
     },
     {
       label: 'Pesanan WA Menunggu',
@@ -128,18 +137,12 @@ export default function KasirDashboard() {
       icon: TrendingUp,
       tone: 'blue',
     },
-    {
-      label: 'Penjualan Hari Ini',
-      value: formatCurrency(todayStats.total),
-      sub: 'Akumulasi omzet pada shift berjalan',
-      icon: CreditCard,
-      tone: 'emerald',
-    },
   ];
 
   const toneMap = {
     emerald: 'bg-emerald-50 text-emerald-600',
     rose: 'bg-rose-50 text-rose-600',
+    amber: 'bg-amber-50 text-amber-600',
     indigo: 'bg-indigo-50 text-indigo-600',
     blue: 'bg-blue-50 text-blue-600',
   };
@@ -158,16 +161,19 @@ export default function KasirDashboard() {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 bg-[#F4F7FE]">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-xl font-black text-slate-800">
-          Dashboard Kasir — {user?.username || 'Kasir'}
-        </h1>
-        <p className="text-xs font-semibold text-slate-500 mt-0.5">
-          Ringkasan operasional kasir · {todayLabel}
-        </p>
-      </div>
+    <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#F4F7FE]">
+      <PosHeaderBar onToggleSidebar={onToggleSidebar} />
+
+      <div className="flex-1 overflow-y-auto p-6">
+        {/* Header */}
+        <div className="mb-6">
+          <h1 className="text-xl font-black text-slate-800">
+            Dashboard Kasir — {user?.username || 'Kasir'}
+          </h1>
+          <p className="text-xs font-semibold text-slate-500 mt-0.5">
+            Ringkasan operasional kasir · {todayLabel}
+          </p>
+        </div>
 
       {/* Grid Status: Absensi Staff & Warning Shift Kasir */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -191,12 +197,6 @@ export default function KasirDashboard() {
                   {!sudahClockIn ? 'Belum Clock-In' : absensiHariIni?.status}
                 </h3>
               </div>
-              <button
-                onClick={() => navigate('/attendance')}
-                className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
-              >
-                Lihat Detail →
-              </button>
             </div>
             <p className="text-xs text-slate-500 leading-relaxed mb-3">
               {absensiHariIni?.jam_masuk
@@ -244,7 +244,7 @@ export default function KasirDashboard() {
         {/* Info Shift Kasir */}
         <div
           className={`rounded-2xl border p-4 shadow-sm flex flex-col justify-between ${
-            shiftAktif
+            isShiftAndAbsenAktif
               ? 'bg-emerald-50/60 border-emerald-200'
               : 'bg-amber-50/60 border-amber-200'
           }`}
@@ -253,33 +253,49 @@ export default function KasirDashboard() {
             <div className="flex items-center gap-2 mb-2">
               <div
                 className={`p-2 rounded-xl ${
-                  shiftAktif ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'
+                  isShiftAndAbsenAktif ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'
                 }`}
               >
-                {shiftAktif ? <Wallet size={18} /> : <AlertCircle size={18} />}
+                {isShiftAndAbsenAktif ? <Wallet size={18} /> : <AlertCircle size={18} />}
               </div>
               <div>
                 <h4 className="font-extrabold text-slate-800 text-sm">
-                  {shiftAktif ? 'Shift Kasir Aktif' : 'Shift Kasir Belum Dibuka'}
+                  {isShiftAndAbsenAktif ? 'Shift Kasir Aktif' : 'Shift Kasir Belum Aktif'}
                 </h4>
                 <p className="text-xs text-slate-500 font-semibold mt-0.5">
-                  {shiftAktif
-                    ? `Kas Awal: ${formatCurrency(shiftAktif.kas_awal)}`
-                    : 'Buka shift kasir untuk mulai mencatat dan memproses transaksi.'}
+                  {isShiftAndAbsenAktif
+                    ? `Kas Awal: ${formatCurrency(shiftAktif?.kas_awal)} · Absensi Berhasil`
+                    : shiftAktif && !sudahClockIn
+                    ? 'Shift sudah dibuka, silakan lakukan Clock-In absensi untuk mengaktifkan status.'
+                    : !shiftAktif && sudahClockIn
+                    ? 'Absensi Clock-In dicatat, silakan buka shift kasir untuk mulai transaksi.'
+                    : 'Buka shift kasir & lakukan Clock-In absensi untuk mulai mencatat transaksi.'}
                 </p>
               </div>
             </div>
           </div>
           <div className="flex justify-end mt-3">
             <button
-              onClick={() => navigate('/kasir/shift')}
+              onClick={() => {
+                if (!shiftAktif) {
+                  navigate('/kasir/shift');
+                } else if (!sudahClockIn) {
+                  handleClockIn();
+                } else {
+                  navigate('/kasir/shift');
+                }
+              }}
               className={`font-extrabold text-xs px-4 py-2 rounded-xl transition-all cursor-pointer shadow-sm ${
-                shiftAktif
+                isShiftAndAbsenAktif
                   ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
                   : 'bg-amber-500 hover:bg-amber-600 text-white'
               }`}
             >
-              {shiftAktif ? 'Kelola Shift & Kas' : 'Buka Shift Sekarang'}
+              {isShiftAndAbsenAktif
+                ? 'Kelola Shift & Kas'
+                : !shiftAktif
+                ? 'Buka Shift Sekarang'
+                : 'Clock-In Absensi'}
             </button>
           </div>
         </div>
@@ -403,6 +419,7 @@ export default function KasirDashboard() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

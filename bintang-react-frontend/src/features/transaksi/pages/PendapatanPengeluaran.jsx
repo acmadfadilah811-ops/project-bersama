@@ -104,7 +104,7 @@ const inDateRange = (waktu, filter) => {
   return d >= s && d <= e;
 };
 
-export default function PendapatanPengeluaran() {
+export default function PendapatanPengeluaran({ initialDirection = null }) {
   const { user } = useAuth();
   const { setSubtitle } = useTransaksiCrumb();
   const [activeTab, setActiveTab] = useState('transaksi');
@@ -299,10 +299,11 @@ export default function PendapatanPengeluaran() {
     const q = search.trim().toLowerCase();
     return transaksiData.filter((r) => {
       if (!inDateRange(r.waktu, dateFilter)) return false;
+      if (initialDirection && r.arah !== initialDirection) return false;
       if (!q) return true;
       return `${r.nomor} ${r.staff_nama || ''} ${r.tipe_transaksi_nama || ''} ${r.catatan || ''}`.toLowerCase().includes(q);
     });
-  }, [transaksiData, search, dateFilter]);
+  }, [transaksiData, search, dateFilter, initialDirection]);
 
   const filteredTipe = useMemo(() => {
     const q = tipeSearch.trim().toLowerCase();
@@ -354,16 +355,20 @@ export default function PendapatanPengeluaran() {
         <div className="flex flex-col flex-1 p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 className="text-slate-800 font-bold text-[15px]">Transaksi</h2>
+              <h2 className="text-slate-800 font-bold text-[15px]">{initialDirection === 'pendapatan' ? 'Pendapatan' : initialDirection === 'pengeluaran' ? 'Data Pengeluaran' : 'Transaksi'}</h2>
               <p className="text-slate-400 text-xs mt-0.5">{filteredTransaksi.length} Transaksi</p>
             </div>
             <div className="flex items-center gap-2">
-              <TButton variant="danger" onClick={() => setModal('pengeluaran')}>
-                <Minus size={16} /> Pengeluaran
-              </TButton>
-              <TButton variant="success" onClick={() => setModal('pendapatan')}>
-                <Plus size={16} /> Pendapatan
-              </TButton>
+              {initialDirection !== 'pendapatan' && (
+                <TButton variant="danger" onClick={() => setModal('pengeluaran')}>
+                  <Minus size={16} /> Pengeluaran
+                </TButton>
+              )}
+              {initialDirection !== 'pengeluaran' && (
+                <TButton variant="success" onClick={() => setModal('pendapatan')}>
+                  <Plus size={16} /> Pendapatan
+                </TButton>
+              )}
               <TButton variant="primary" onClick={handleExportExcel}>
                 <FileSpreadsheet size={16} /> Export Excel
               </TButton>

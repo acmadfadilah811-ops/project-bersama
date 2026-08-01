@@ -9,7 +9,7 @@ class AccountListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Account
-        fields = ["id", "code", "name", "klasifikasi", "account_type", "saldo", "is_active", "ignore_minus_closing"]
+        fields = ["id", "code", "name", "klasifikasi", "account_type", "saldo", "is_active", "is_contra", "ignore_minus_closing"]
 
     def get_saldo(self, obj):
         balances = self.context.get("balances", {})
@@ -88,7 +88,10 @@ class LedgerLineSerializer(serializers.Serializer):
     entry_number = serializers.CharField()
     external_document_no = serializers.CharField()
     pelanggan_supplier = serializers.CharField()
+    email = serializers.CharField()
+    dilayani_oleh = serializers.CharField()
     description = serializers.CharField()
+    processed_by_name = serializers.CharField()
     debit = serializers.DecimalField(max_digits=15, decimal_places=0)
     kredit = serializers.DecimalField(max_digits=15, decimal_places=0)
     running_balance = serializers.DecimalField(max_digits=15, decimal_places=0)

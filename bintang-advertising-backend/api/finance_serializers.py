@@ -34,8 +34,10 @@ class CashTransactionSerializer(serializers.ModelSerializer):
     tipe_transaksi_nama = serializers.ReadOnlyField(source='tipe_transaksi.nama')
     staff_nama = serializers.ReadOnlyField(source='staff.username')
     dibuat_oleh_nama = serializers.ReadOnlyField(source='dibuat_oleh.username')
+    akun_debit_nama = serializers.ReadOnlyField(source='akun_debit.name', default='')
+    akun_kredit_nama = serializers.ReadOnlyField(source='akun_kredit.name', default='')
 
     class Meta:
         model = CashTransaction
         fields = '__all__'
-        read_only_fields = ['nomor', 'arah', 'dibuat_oleh']
+        read_only_fields = ['nomor', 'arah', 'dibuat_oleh', 'status']

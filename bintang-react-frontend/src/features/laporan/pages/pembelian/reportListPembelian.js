@@ -7,6 +7,7 @@
 export const PEMBELIAN_REPORTS = [
   {
     id: 'rincian-pembelian',
+    dataSource: 'purchases/rincian-pembelian',
     label: 'Rincian Pembelian',
     toolbar: { paket: false, cari: false },
     columns: [
@@ -17,14 +18,14 @@ export const PEMBELIAN_REPORTS = [
       { key: 'no_terima', label: 'No. Terima' },
       { key: 'supplier', label: 'Supplier' },
       { key: 'subtotal', label: 'Subtotal', align: 'right' },
-      { key: 'diskon', label: 'Diskon', align: 'right' },
-      { key: 'pengiriman', label: 'Pengiriman', align: 'right' },
-      { key: 'pajak', label: 'Pajak', align: 'right' },
-      { key: 'total', label: 'Total', align: 'right' },
+      { key: 'total_dibayar', label: 'Total Dibayar', align: 'right' },
+      { key: 'sisa', label: 'Sisa Tagihan', align: 'right' },
+      { key: 'status', label: 'Status Pembayaran' },
     ],
   },
   {
     id: 'pembelian-tanggal',
+    dataSource: 'purchases/pembelian-tanggal',
     label: 'Pembelian berdasarkan Tanggal',
     toolbar: { paket: false, cari: false },
     columns: [
@@ -34,6 +35,7 @@ export const PEMBELIAN_REPORTS = [
   },
   {
     id: 'item-pembelian-tanggal',
+    dataSource: 'purchases/item-pembelian-tanggal',
     label: 'Item Pembelian berdasarkan Tanggal',
     toolbar: { paket: false, cari: false },
     columns: [
@@ -47,6 +49,7 @@ export const PEMBELIAN_REPORTS = [
   },
   {
     id: 'pembelian-supplier',
+    dataSource: 'purchases/pembelian-supplier',
     label: 'Pembelian berdasarkan Supplier',
     toolbar: { paket: false, cari: false },
     columns: [
@@ -57,6 +60,7 @@ export const PEMBELIAN_REPORTS = [
   },
   {
     id: 'pembelian-pembeli',
+    dataSource: 'purchases/pembelian-pembeli',
     label: 'Pembelian berdasarkan Pembeli',
     toolbar: { paket: false, cari: false },
     columns: [
@@ -67,6 +71,7 @@ export const PEMBELIAN_REPORTS = [
   },
   {
     id: 'retur-pembelian-tanggal',
+    dataSource: 'purchases/retur-pembelian-tanggal',
     label: 'Retur Pembelian berdasarkan Tanggal',
     toolbar: { paket: false, cari: false },
     summary: { title: 'Ringkasan', type: 'list', items: [{ label: 'Total' }] },
@@ -80,6 +85,7 @@ export const PEMBELIAN_REPORTS = [
   },
   {
     id: 'retur-pembelian-supplier',
+    dataSource: 'purchases/retur-pembelian-supplier',
     label: 'Retur Pembelian berdasarkan Supplier',
     toolbar: { paket: false, cari: false },
     summary: { title: 'Ringkasan', type: 'list', items: [{ label: 'Total' }] },
@@ -92,18 +98,36 @@ export const PEMBELIAN_REPORTS = [
   },
   {
     id: 'pembayaran-belum-lunas',
+    dataSource: 'purchases/pembayaran-belum-lunas',
     label: 'Pembayaran yang belum lunas',
     toolbar: { paket: false, cari: false },
-    hideTable: true,
+    columns: [
+      { key: 'no_pembelian', label: 'No. Pembelian' },
+      { key: 'tanggal', label: 'Tanggal' },
+      { key: 'supplier', label: 'Supplier' },
+      { key: 'total', label: 'Total Pembelian', align: 'right' },
+      { key: 'telah_dibayar', label: 'Telah Dibayar', align: 'right' },
+      { key: 'sisa', label: 'Sisa Tagihan', align: 'right' },
+      { key: 'jatuh_tempo', label: 'Jatuh Tempo' },
+    ],
   },
   {
     id: 'pembayaran-pembelian',
+    dataSource: 'purchases/pembayaran-pembelian',
     label: 'Pembayaran Pembelian',
     toolbar: { paket: false, cari: false },
-    hideTable: true,
+    columns: [
+      { key: 'no_pembelian', label: 'No. Pembelian' },
+      { key: 'tanggal', label: 'Tanggal Pembayaran' },
+      { key: 'supplier', label: 'Supplier' },
+      { key: 'metode', label: 'Metode' },
+      { key: 'nominal', label: 'Nominal', align: 'right' },
+      { key: 'catatan', label: 'Catatan' },
+    ],
   },
   {
     id: 'rekomendasi-pembelian',
+    dataSource: 'purchases/rekomendasi-pembelian',
     label: 'Rekomendasi Pembelian',
     dateMode: 'none',
     toolbar: { paket: false, cari: false },

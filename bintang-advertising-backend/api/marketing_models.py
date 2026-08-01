@@ -7,8 +7,10 @@ KANAL_ONLINE = 'online'
 
 
 class SalesDiscount(models.Model):
-    """Diskon Penjualan (Marketing > Voucher & Diskon > Diskon Penjualan) — hanya berlaku
-    untuk Toko Online sesuai panduan Olsera, diterapkan otomatis saat total pesanan terpenuhi."""
+    """Diskon Penjualan (Marketing > Voucher & Diskon > Diskon Penjualan) — berlaku
+    otomatis di semua kanal (POS Terminal, Order/SPK, Online) saat total pesanan
+    minimal terpenuhi. Tidak perlu kode kupon; diskon langsung diterapkan oleh
+    promo_engine.evaluate_sales_discount()."""
     tanggal_aktif = models.DateField()
     tanpa_kadaluarsa = models.BooleanField(default=True)
     tanggal_kadaluarsa = models.DateField(null=True, blank=True)

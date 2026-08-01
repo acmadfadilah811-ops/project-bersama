@@ -16,7 +16,6 @@ from ..serializers import (
     InventoryItemSerializer, ProductPriceSerializer, BillOfMaterialsSerializer, BoMItemSerializer
 )
 from ..permissions import IsOwnerManagerAdminOrReadOnly, IsOwnerManagerOrAdmin, IsOwnerOrManager
-from hr.models import Akun, TransaksiBukuBesar
 
 logger = logging.getLogger(__name__)
 
@@ -31,40 +30,38 @@ def record_material_consumption_to_general_ledger(inventory_item, qty, job):
         if cost <= 0:
             return
             
-        akun_hpp, _ = Akun.objects.get_or_create(
-            kode_akun='5-1000',
-            defaults={'nama_akun': 'Beban Bahan Baku (HPP)', 'kategori': 'Beban'}
-        )
-        akun_persediaan, _ = Akun.objects.get_or_create(
-            kode_akun='1-3000',
-            defaults={'nama_akun': 'Persediaan Bahan Baku', 'kategori': 'Aset'}
-        )
-        
         ref_no = f"Job #{job.id}"
         order_id = job.order_item.order.id
         ket_tx = f"HPP Otomatis: {inventory_item.nama} ({qty} {inventory_item.satuan}) - Order {order_id} - Job {job.id}"
         
-        # DEBIT ke akun Beban HPP (Beban bertambah)
-        TransaksiBukuBesar.objects.create(
-            akun=akun_hpp,
-            tanggal=timezone.localdate(),
-            no_referensi=ref_no,
-            keterangan=ket_tx,
-            debit=int(round(cost)),
-            kredit=0
-        )
-        
-        # KREDIT ke akun Persediaan (Aset berkurang)
-        TransaksiBukuBesar.objects.create(
-            akun=akun_persediaan,
-            tanggal=timezone.localdate(),
-            no_referensi=ref_no,
-            keterangan=ket_tx,
-            debit=0,
-            kredit=int(round(cost))
-        )
+        # Forward to Official Double-Entry Ledger (accounting.JournalEntry)
+        try:
+            from accounting.models import Account, JournalEntry
+            from accounting.services.journal import create_journal_entry
+            from decimal import Decimal, ROUND_HALF_UP
+
+            acc_hpp = Account.objects.filter(code="51000").first()
+            acc_persediaan = Account.objects.filter(code="11400").first()
+            if not acc_hpp or not acc_persediaan:
+                raise RuntimeError("COA HPP 51000 dan Persediaan 11400 wajib tersedia.")
+            amt = Decimal(str(cost)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+            if amt > 0:
+                create_journal_entry(
+                    date=timezone.localdate(),
+                    lines=[
+                        {"account": acc_hpp, "debit": amt, "kredit": 0, "description": ket_tx, "external_document_no": ref_no},
+                        {"account": acc_persediaan, "debit": 0, "kredit": amt, "description": ket_tx, "external_document_no": ref_no},
+                    ],
+                    description=ket_tx,
+                    source_type=JournalEntry.SourceType.PRODUCTION,
+                    source_id=getattr(job, "id", None),
+                )
+        except Exception as err:
+            logger.error(f"Gagal mencatat JournalEntry HPP: {err}")
+            raise
     except Exception as e:
         logger.error(f"Gagal mencatat jurnal HPP otomatis untuk Job #{getattr(job, 'id', '?')}: {e}", exc_info=True)
+        raise
 
 
 class InventoryItemViewSet(viewsets.ModelViewSet):
@@ -295,4 +292,3 @@ class BoMItemViewSet(viewsets.ModelViewSet):
     queryset = BoMItem.objects.select_related('bom', 'inventory_item').all()
     serializer_class = BoMItemSerializer
     permission_classes = [IsOwnerOrManager]
-

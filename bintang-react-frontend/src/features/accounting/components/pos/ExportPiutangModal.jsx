@@ -1,61 +1,49 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState } from 'react';
 import { X, Calendar } from 'lucide-react';
-import { notify } from '../../../../utils/notify';
+import { exportRowsToXlsx } from '../../../../utils/exportXlsx';
+import ExportRowRangeSelect from './ExportRowRangeSelect';
+import ExportStatusButtons from './ExportStatusButtons';
 
-export default function ExportPiutangModal({ isOpen, onClose }) {
-  if (!isOpen) return null;
+const getTodayStr = () => new Date().toISOString().split('T')[0];
 
+export default function ExportPiutangModal({ isOpen, onClose, rows = [] }) {
   // File type: 'PDF' | 'EXCEL'
   const [fileType, setFileType] = useState('PDF');
-  
+
   // Search query
   const [searchQuery, setSearchQuery] = useState('');
-  
+
   // Rows range dropdown
   const [rowRange, setRowRange] = useState('1 - 1000');
-  const [isRangeOpen, setIsRangeOpen] = useState(false);
-  const rangeRef = useRef(null);
 
   // Date range type: 'Periode' | 'Batas Tanggal'
   const [dateType, setDateType] = useState('Periode');
-  const [dateFrom, setDateFrom] = useState('2026-07-26');
-  const [dateTo, setDateTo] = useState('2026-07-26');
+  const [dateFrom, setDateFrom] = useState(getTodayStr());
+  const [dateTo, setDateTo] = useState(getTodayStr());
 
   // Status: 'Belum Bayar' | 'Sebagian' | 'Lunas'
   const [status, setStatus] = useState('Belum Bayar');
 
   // Piutang Type: 'Jatuh Tempo' | 'Semua Piutang'
   const [piutangType, setPiutangType] = useState('Semua Piutang');
-  const [dueDateAt, setDueDateAt] = useState('2026-07-26');
+  const [dueDateAt, setDueDateAt] = useState(getTodayStr());
 
   // Checkbox detail
   const [showDetail, setShowDetail] = useState(false);
 
-  // Close dropdown on click outside
-  useEffect(() => {
-    function clickOutside(e) {
-      if (rangeRef.current && !rangeRef.current.contains(e.target)) {
-        setIsRangeOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', clickOutside);
-    return () => document.removeEventListener('mousedown', clickOutside);
-  }, []);
-
-  // Generate range items (1-1000 up to 199001-200000)
-  const rangeList = [];
-  for (let i = 0; i < 200; i++) {
-    const start = i * 1000 + 1;
-    const end = (i + 1) * 1000;
-    rangeList.push(`${start} - ${end}`);
-  }
+  if (!isOpen) return null;
 
   const handleExport = () => {
-    notify({
-      type: 'success',
-      title: 'Export Dimulai',
-      message: `File piutang ${fileType} sedang diunduh. Filter: Status ${status}.`
-    });
+    const filteredRows = rows.filter((row) => row.status === status);
+    if (fileType === 'EXCEL') {
+      exportRowsToXlsx(
+        'piutang.xlsx',
+        ['Tanggal', 'No. Transaksi', 'Pelanggan', 'Deskripsi', 'Total', 'Sisa Tagihan', 'Status'],
+        filteredRows.map((row) => [row.date, row.txNo, row.client, row.desc, row.amount, row.remaining, row.status]),
+      );
+    } else {
+      window.print();
+    }
     onClose();
   };
 
@@ -136,35 +124,7 @@ export default function ExportPiutangModal({ isOpen, onClose }) {
                 <label className="w-20 text-slate-400 font-bold text-right text-[10px] uppercase tracking-wider select-none shrink-0">
                   Baris
                 </label>
-                <div className="flex-1 relative" ref={rangeRef}>
-                  <button
-                    type="button"
-                    onClick={() => setIsRangeOpen(!isRangeOpen)}
-                    className="w-full flex items-center justify-between px-3 py-2 border border-slate-205 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-lg shadow-3xs cursor-pointer text-left"
-                  >
-                    <span>{rowRange}</span>
-                    <span className="text-[9px] text-slate-400">▼</span>
-                  </button>
-                  {isRangeOpen && (
-                    <div className="absolute left-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl py-1 z-50 w-full max-h-48 overflow-y-auto font-semibold">
-                      {rangeList.map((range) => (
-                        <button
-                          key={range}
-                          type="button"
-                          onClick={() => {
-                            setRowRange(range);
-                            setIsRangeOpen(false);
-                          }}
-                          className={`w-full text-left px-3.5 py-1.5 text-[11px] hover:bg-slate-50 transition-colors cursor-pointer ${
-                            rowRange === range ? 'text-[#0088E8] bg-[#E6F4FF]/50 font-bold' : 'text-slate-700'
-                          }`}
-                        >
-                          {range}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <ExportRowRangeSelect value={rowRange} onChange={setRowRange} />
               </div>
 
               {/* Tanggal (Periode / Batas Tanggal) */}
@@ -220,34 +180,7 @@ export default function ExportPiutangModal({ isOpen, onClose }) {
             <label className="w-20 text-slate-400 font-bold text-right text-[10px] uppercase tracking-wider select-none shrink-0">
               Status
             </label>
-            <div className="flex-1 flex gap-3">
-              {[
-                { id: 'Belum Bayar', label: 'Belum Bayar' },
-                { id: 'Sebagian', label: 'Sebagian' },
-                { id: 'Lunas', label: 'Lunas' }
-              ].map((opt) => {
-                const isActive = status === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => setStatus(opt.id)}
-                    className={`flex-1 py-2 px-3 border rounded-lg font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-3xs ${
-                      isActive
-                        ? 'border-[#0088E8] bg-[#E6F4FF]/20 text-[#0088E8]'
-                        : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-650'
-                    }`}
-                  >
-                    <span className={`w-2.5 h-2.5 rounded-full border flex items-center justify-center shrink-0 ${
-                      isActive ? 'border-[#0088E8]' : 'border-slate-300'
-                    }`}>
-                      {isActive && <span className="w-1.5 h-1.5 bg-[#0088E8] rounded-full" />}
-                    </span>
-                    <span>{opt.label}</span>
-                  </button>
-                );
-              })}
-            </div>
+            <ExportStatusButtons value={status} onChange={setStatus} />
           </div>
 
           {/* If Lunas is active, render only File, Status, and Date Range */}

@@ -1,29 +1,75 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Search, Calendar, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronDown, Search, Calendar, Filter, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import HutangFilterModal from '../components/pos/HutangFilterModal';
 import HutangExportModal from '../components/pos/HutangExportModal';
 import HutangDateModal from '../components/pos/HutangDateModal';
 import TambahJurnalDropdown from '../components/pos/TambahJurnalDropdown';
+import HutangActionDropdown from '../components/pos/HutangActionDropdown';
+import PasanganHutangModal from '../components/pos/PasanganHutangModal';
+import DetailHutang from './DetailHutang';
 import { notify } from '../../../utils/notify';
+import { fetchAllPages } from '../../../utils/paginatedApi';
+import apiClient from '../../../api/apiClient';
+import { notifyApiError } from '../../../utils/notify';
+
+const getTodayStr = () => new Date().toISOString().split('T')[0];
 
 export default function SemuaHutang() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('Belum Bayar'); // 'Belum Bayar' | 'Sebagian' | 'Lunas'
-  
+
   // Modal states
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isDateModalOpen, setIsDateModalOpen] = useState(false);
 
   // Date range states
-  const [dateFrom, setDateFrom] = useState('2026-07-26');
-  const [dateTo, setDateTo] = useState('2026-07-26');
+  const [dateFrom, setDateFrom] = useState(getTodayStr());
+  const [dateTo, setDateTo] = useState(getTodayStr());
   const [dateLabel, setDateLabel] = useState('Semua');
 
   // Limit page size states
   const [pageSize, setPageSize] = useState(15);
   const [isPageSizeOpen, setIsPageSizeOpen] = useState(false);
   const pageSizeRef = useRef(null);
+  const [hutangData, setHutangData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedDetailId, setSelectedDetailId] = useState(null);
+  const [selectedJournalRow, setSelectedJournalRow] = useState(null);
+
+  const loadHutang = async () => {
+    setLoading(true);
+    try {
+      const purchases = await fetchAllPages('/purchases/');
+      const rows = purchases
+        .filter((purchase) => !purchase.is_retur)
+        .map((purchase) => {
+          const total = Number(purchase.total || 0);
+          const paidAmount = Number(purchase.total_dibayar || 0);
+          const remaining = Math.max(0, Number(purchase.sisa ?? total - paidAmount));
+          return {
+            id: purchase.id,
+            date: purchase.tanggal || '-',
+            txNo: purchase.nomor || `PUR-${purchase.id}`,
+            supplier: purchase.supplier || 'Supplier',
+            amount: total,
+            paidAmount,
+            remaining,
+            dueDate: purchase.jatuh_tempo || '-',
+            paymentIds: (purchase.payments || []).map((payment) => payment.id),
+            status: purchase.payment_status === 'lunas' || remaining === 0
+              ? 'Lunas'
+              : paidAmount > 0 ? 'Sebagian' : 'Belum Bayar',
+          };
+        });
+      setHutangData(rows);
+    } catch (error) {
+      setHutangData([]);
+      notify({ type: 'error', title: 'Gagal Memuat Hutang', message: 'Data pembelian tidak dapat dimuat dari server.' });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -34,6 +80,36 @@ export default function SemuaHutang() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    loadHutang();
+  }, []);
+
+  const handleDelete = async (row) => {
+    if (!window.confirm(`Hapus pembelian ${row.txNo}? Hanya pembelian draft yang dapat dihapus.`)) return;
+    try {
+      await apiClient.delete(`/purchases/${row.id}/`);
+      notify({ type: 'success', title: 'Pembelian Dihapus', message: `${row.txNo} telah dihapus.` });
+      await loadHutang();
+    } catch (error) {
+      notifyApiError(error, 'Pembelian tidak dapat dihapus. Dokumen yang sudah diposting harus tetap disimpan untuk audit.');
+    }
+  };
+
+  const filteredData = hutangData.filter((row) => {
+    const query = searchQuery.trim().toLowerCase();
+    if (query && ![row.txNo, row.supplier].some((value) => value.toLowerCase().includes(query))) return false;
+    if (statusFilter && row.status !== statusFilter) return false;
+    if (dateLabel !== 'Semua' && dateLabel !== 'Semua Data') {
+      if (dateFrom && row.date < dateFrom) return false;
+      if (dateTo && row.date > dateTo) return false;
+    }
+    return true;
+  });
+  const visibleData = filteredData.slice(0, pageSize);
+  const totalRemaining = filteredData.reduce((total, row) => total + row.remaining, 0);
+  const totalPaid = filteredData.reduce((total, row) => total + row.paidAmount, 0);
+  const formatIDR = (value) => (Number(value) || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const handleApplyFilter = (filters) => {
     console.log('Applied filters:', filters);
@@ -55,8 +131,12 @@ export default function SemuaHutang() {
     });
   };
 
+  if (selectedDetailId) {
+    return <DetailHutang purchaseId={selectedDetailId} onBack={() => { setSelectedDetailId(null); loadHutang(); }} />;
+  }
+
   return (
-    <div className="space-y-4 animate-fade-in text-xs font-semibold text-slate-700 select-none">
+      <div className="space-y-4 animate-fade-in text-xs font-semibold text-slate-700">
       
       {/* Header Panel */}
       <div className="flex items-center justify-between">
@@ -152,7 +232,7 @@ export default function SemuaHutang() {
       {/* Main Table Card showing "No Data" as in Screenshot */}
       <div className="bg-white border border-slate-200 rounded-xl shadow-2xs p-5 space-y-4 min-h-[360px] relative">
         
-        <div className="border border-slate-150 rounded-lg overflow-hidden bg-white">
+        <div className="border border-slate-100 rounded-lg overflow-hidden bg-white">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-450 uppercase tracking-wider">
@@ -164,25 +244,33 @@ export default function SemuaHutang() {
                 <th className="px-5 py-3.5 w-[5%] text-center rounded-tr-lg">Aksi</th>
               </tr>
             </thead>
-            <tbody>
-              {/* Row indicating no data */}
-              <tr>
-                <td colSpan={6} className="px-5 py-14 text-center text-slate-400 font-bold">
-                  No Data
-                </td>
-              </tr>
+            <tbody className="divide-y divide-slate-100">
+              {loading ? (
+                <tr><td colSpan={6} className="px-5 py-14 text-center text-slate-400"><Loader2 className="mx-auto animate-spin" size={22} /></td></tr>
+              ) : visibleData.length === 0 ? (
+                <tr><td colSpan={6} className="px-5 py-14 text-center text-slate-400 font-bold">No Data</td></tr>
+              ) : visibleData.map((row) => (
+                <tr key={row.id} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="px-5 py-3.5 text-slate-600">{row.date}</td>
+                  <td className="px-5 py-3.5 font-bold text-[#0088E8]">{row.txNo}</td>
+                  <td className="px-5 py-3.5 text-slate-800 font-bold">{row.supplier}</td>
+                  <td className="px-5 py-3.5 text-right font-bold text-slate-800">Rp {formatIDR(row.amount)}</td>
+                  <td className="px-5 py-3.5 text-center text-slate-500">{row.dueDate}</td>
+                  <td className="px-5 py-3.5 text-center"><HutangActionDropdown purchaseId={row.id} isLunas={row.status === 'Lunas'} onDetailClick={() => setSelectedDetailId(row.id)} onJournalClick={() => setSelectedJournalRow(row)} onDeleteClick={() => handleDelete(row)} /></td>
+                </tr>
+              ))}
               {/* Total Summary Row below the table row */}
-              <tr className="bg-slate-50/50 font-bold text-slate-800 text-[11px] border-t border-slate-150 select-none">
+              <tr className="bg-slate-50/50 font-bold text-slate-800 text-[11px]">
                 <td className="px-5 py-3">Total</td>
                 <td colSpan={2} />
                 <td className="px-5 py-3 text-right">
                   <div className="text-[10px] text-rose-600 font-extrabold leading-normal">
-                    Belum dibayar : 0
+                    Belum dibayar : Rp {formatIDR(totalRemaining)}
                   </div>
                 </td>
                 <td className="px-5 py-3 text-center">
                   <div className="text-[10px] text-slate-500 font-extrabold leading-normal">
-                    Dibayar : 0
+                    Dibayar : Rp {formatIDR(totalPaid)}
                   </div>
                 </td>
                 <td />
@@ -225,7 +313,7 @@ export default function SemuaHutang() {
 
           {/* Pagination Controls */}
           <div className="flex items-center gap-4">
-            <span>Total 0</span>
+            <span>Total {filteredData.length}</span>
             <div className="flex items-center gap-1.5">
               <button disabled className="w-6 h-6 flex items-center justify-center rounded border border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed select-none">
                 &lt;
@@ -262,12 +350,20 @@ export default function SemuaHutang() {
       <HutangExportModal
         isOpen={isExportOpen}
         onClose={() => setIsExportOpen(false)}
+        rows={filteredData}
       />
 
       <HutangDateModal
         isOpen={isDateModalOpen}
         onClose={() => setIsDateModalOpen(false)}
         onApply={handleApplyDateModal}
+      />
+
+      <PasanganHutangModal
+        isOpen={Boolean(selectedJournalRow)}
+        onClose={() => setSelectedJournalRow(null)}
+        txNo={selectedJournalRow?.txNo || ''}
+        paymentIds={selectedJournalRow?.paymentIds || []}
       />
 
     </div>

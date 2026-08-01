@@ -11,6 +11,7 @@ import { useTransaksiCrumb } from './TransaksiContext';
 import Dropdown from './Dropdown';
 import DateRangePicker from './DateRangePicker';
 import Pagination from './Pagination';
+import { formatOrderReference } from './orderReference';
 
 export { Dropdown, DateRangePicker, Pagination };
 
@@ -212,10 +213,14 @@ export default function TransactionScaffold({
     const ordId = `ord-${r.id}`.toLowerCase();
     const olId = yy ? `ol${yy}${mm}${dd}${paddedId}`.toLowerCase() : '';
     const srId = yy ? `sr${yy}${mm}${dd}${paddedId}`.toLowerCase() : '';
+    const categoryId = ['butuh-diproses', 'selesai', 'pengembalian', 'dibatalkan'].includes(activeTab)
+      ? formatOrderReference(r, activeTab).toLowerCase()
+      : '';
 
     const idMatch =
       rawId.includes(q) ||
       ordId.includes(q) ||
+      categoryId.includes(q) ||
       (olId && olId.includes(q)) ||
       (srId && srId.includes(q));
 

@@ -1,16 +1,18 @@
 import { useState, useEffect } from 'react';
 import { X, Calendar } from 'lucide-react';
 
-export default function HutangFilterModal({ isOpen, onClose, onApply }) {
-  if (!isOpen) return null;
+const getTodayStr = () => new Date().toISOString().split('T')[0];
 
+export default function HutangFilterModal({ isOpen, onClose, onApply }) {
   const [dateType, setDateType] = useState('Satu hari'); // 'Satu hari' | 'Batas tanggal'
-  const [filterDate, setFilterDate] = useState('2026-07-26');
+  const [filterDate, setFilterDate] = useState(getTodayStr());
   const [amount, setAmount] = useState('0,00');
   const [dueFilter, setDueFilter] = useState('Semua Hutang'); // 'Jatuh Tempo' | 'Semua Hutang'
-  const [dueDate, setDueDate] = useState('2026-07-26');
+  const [dueDate, setDueDate] = useState(getTodayStr());
   const [sortColumn, setSortColumn] = useState('Tgl Transaksi');
   const [sortDirection, setSortDirection] = useState('Ascending');
+
+  if (!isOpen) return null;
 
   const handleApply = () => {
     if (onApply) {

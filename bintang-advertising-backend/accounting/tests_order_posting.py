@@ -1,6 +1,5 @@
 """
 accounting/tests_order_posting.py
-
 T-202: Test posting pembayaran Order ke accounting.JournalEntry.
 
 Wajib (T3):
@@ -17,7 +16,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from api.models import CustomUser, Order, OrderActivityLog
+from api.models import CustomUser, Order, OrderActivityLog, OrderItem
 from accounting.models import AccountingSettings, JournalEntry
 from accounting.models.coa import Account, AccountClassification
 from accounting.models.cashbank import PaymentMethod
@@ -58,6 +57,12 @@ class OrderPostingSetupMixin:
             account=cls.kas_account,
             is_cash=True,
         )
+        cls.qris_payment_method = PaymentMethod.objects.create(
+            name="QRIS Test",
+            payment_type="QRIS",
+            account=cls.kas_account,
+            is_cash=False,
+        )
 
         # User kasir
         cls.kasir = CustomUser.objects.create_user(
@@ -88,6 +93,13 @@ class OrderPostingSetupMixin:
             tindakan="PAYMENT",
             keterangan=f"Pembayaran {jumlah} [test]",
         )
+
+    def _add_item(self, order, harga_jual=10_000_000):
+        """T-203: /bayar/ menolak jumlah_bayar > sisa_tagihan — beri Order
+        item bernilai cukup besar supaya total_harga tidak nol di test."""
+        OrderItem.objects.create(order=order, jenis_produk="Item Test", harga_jual=harga_jual)
+        order.refresh_from_db()
+        return order
 
 
 class OrderPostingUnitTest(OrderPostingSetupMixin, TestCase):
@@ -211,8 +223,10 @@ class OrderPostingUnitTest(OrderPostingSetupMixin, TestCase):
         self.settings_row.save(update_fields=["order_sales_revenue_account"])
 
     def test_gating_skips_when_payment_method_not_set(self):
-        """Posting di-skip jika Order.accounting_payment_method belum ter-resolve."""
+        """Posting di-skip jika Order.accounting_payment_method belum ter-resolve dan tidak ada PaymentMethod yang cocok."""
         order = self._make_order(with_pm=False)  # tanpa payment method
+        order.metode_pembayaran = "metode_tanpa_mapping_123"
+        order.save()
         activity_log = self._make_payment_log(order, 50_000)
 
         result = post_order_payment_journal(
@@ -220,6 +234,7 @@ class OrderPostingUnitTest(OrderPostingSetupMixin, TestCase):
             jumlah_bayar=Decimal("50000"),
         )
         self.assertIsNone(result)
+
 
     def test_gating_skips_zero_amount(self):
         """Posting di-skip jika jumlah bayar = 0."""
@@ -257,6 +272,7 @@ class OrderPostingViaAPITest(OrderPostingSetupMixin, APITestCase):
             dp_dibayar=0,
             accounting_payment_method=self.payment_method,
         )
+        self._add_item(self.order)
 
     def test_bayar_dp_creates_journal_via_api(self):
         """POST /api/orders/:id/bayar/ dengan DP membuat JournalEntry."""
@@ -328,16 +344,17 @@ class OrderPostingViaAPITest(OrderPostingSetupMixin, APITestCase):
         self.settings_row.save(update_fields=["is_active"])
 
     def test_bayar_sukses_meskipun_pm_belum_dipetakan(self):
-        """bayar() tetap sukses saat accounting_payment_method belum dikonfigurasi di Order."""
+        """bayar() tetap sukses saat metode_pembayaran tidak dapat dipetakan ke PaymentMethod mana pun."""
         order_tanpa_pm = Order.objects.create(
             nomor_wa="081234567891",
             nama="Pelanggan Tanpa PM",
             dp_dibayar=0,
             accounting_payment_method=None,
         )
+        self._add_item(order_tanpa_pm)
         response = self.client.post(
             f"/api/orders/{order_tanpa_pm.id}/bayar/",
-            data={"jumlah_bayar": 30000, "metode_pembayaran": "tunai"},
+            data={"jumlah_bayar": 30000, "metode_pembayaran": "metode_tidak_dikenal_xyz"},
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
@@ -352,3 +369,141 @@ class OrderPostingViaAPITest(OrderPostingSetupMixin, APITestCase):
                 source_id=payment_log.id,
             ).count()
             self.assertEqual(count, 0)
+
+    def test_auto_resolve_payment_method_on_bayar_without_preset_fk(self):
+        """
+        Pembuktian resolusi otomatis: Order dibuat TANPA pre-set FK accounting_payment_method.
+        Saat /bayar/ dipanggil dengan string 'tunai', FK ter-resolve otomatis ke PaymentMethod
+        DAN JournalEntry benar-benar terbuat.
+        """
+        order_polos = Order.objects.create(
+            nomor_wa="081234567892",
+            nama="Pelanggan Polos",
+            dp_dibayar=0,
+            accounting_payment_method=None,
+        )
+        self._add_item(order_polos)
+        self.assertIsNone(order_polos.accounting_payment_method)
+
+        response = self.client.post(
+            f"/api/orders/{order_polos.id}/bayar/",
+            data={"jumlah_bayar": 50000, "metode_pembayaran": "tunai"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        order_polos.refresh_from_db()
+        self.assertIsNotNone(
+            order_polos.accounting_payment_method,
+            "accounting_payment_method harus ter-resolve otomatis oleh bayar()",
+        )
+        self.assertEqual(order_polos.accounting_payment_method, self.payment_method)
+
+        payment_log = OrderActivityLog.objects.filter(
+            order=order_polos, tindakan="PAYMENT"
+        ).first()
+        self.assertIsNotNone(payment_log)
+
+        entry = JournalEntry.objects.filter(
+            source_type=JournalEntry.SourceType.ORDER_PAYMENT,
+            source_id=payment_log.id,
+        ).first()
+        self.assertIsNotNone(entry, "JournalEntry HARUS benar-benar terbuat setelah auto-resolusi")
+        self.assertEqual(entry.status, JournalEntry.Status.POSTED)
+
+    def test_auto_resolve_payment_method_on_perform_create_dp_without_preset_fk(self):
+        """
+        Pembuktian resolusi DP awal: POST /api/orders/ dengan dp_dibayar & metode_pembayaran string.
+        FK accounting_payment_method ter-resolve otomatis DAN JournalEntry DP terbuat.
+        """
+        response = self.client.post(
+            "/api/orders/",
+            data={
+                "nomor_wa": "081234567893",
+                "nama": "Pelanggan DP Awal",
+                "dp_dibayar": 40000,
+                "metode_pembayaran": "tunai",
+                "status_global": "review",
+                "dilayani_oleh": self.kasir.id,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+        order_id = response.data["id"]
+        order = Order.objects.get(pk=order_id)
+        self.assertIsNotNone(
+            order.accounting_payment_method,
+            "accounting_payment_method harus ter-resolve otomatis saat perform_create()",
+        )
+        self.assertEqual(order.accounting_payment_method, self.payment_method)
+
+        dp_log = OrderActivityLog.objects.filter(
+            order=order, tindakan="PAYMENT"
+        ).first()
+        self.assertIsNotNone(dp_log)
+
+        entry = JournalEntry.objects.filter(
+            source_type=JournalEntry.SourceType.ORDER_PAYMENT,
+            source_id=dp_log.id,
+        ).first()
+        self.assertIsNotNone(entry, "JournalEntry DP awal HARUS terbuat setelah auto-resolusi")
+        self.assertEqual(entry.status, JournalEntry.Status.POSTED)
+
+    def test_non_cash_order_payment_is_available_for_settlement(self):
+        """
+        Order dibayar via metode non-tunai (mis. 'qris') siap masuk settlement:
+        1. settlement_status diset 'unsettled'.
+        2. Order muncul di get_settlement_batches().
+        """
+        from accounting.services.settlement import get_settlement_batches
+
+        response = self.client.post(
+            f"/api/orders/{self.order.id}/bayar/",
+            data={"jumlah_bayar": 50000, "metode_pembayaran": "qris"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        self.order.refresh_from_db()
+        self.assertEqual(
+            self.order.settlement_status,
+            "unsettled",
+            "Order non-tunai harus menunggu konfirmasi settlement.",
+        )
+        self.assertEqual(self.order.accounting_payment_method, self.qris_payment_method)
+
+        today = timezone.localdate()
+        batches = get_settlement_batches(date_from=today, date_to=today)
+        order_batch_count = sum(b.get("order_count", 0) for b in batches)
+        self.assertEqual(order_batch_count, 1)
+
+    def test_bayar_overpayment_rejected(self):
+        """T-203: jumlah_bayar > sisa_tagihan ditolak 400 — dp_dibayar TIDAK berubah,
+        tidak ada JournalEntry (mencegah over-recognized revenue vs total_harga)."""
+        sisa_sebelum = self.order.sisa_tagihan
+        response = self.client.post(
+            f"/api/orders/{self.order.id}/bayar/",
+            data={"jumlah_bayar": sisa_sebelum + 1, "metode_pembayaran": "tunai"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.dp_dibayar, 0)
+        self.assertEqual(
+            JournalEntry.objects.filter(source_type=JournalEntry.SourceType.ORDER_PAYMENT).count(), 0
+        )
+
+    def test_bayar_zero_or_negative_rejected(self):
+        """T-203: jumlah_bayar 0 atau negatif ditolak 400 di endpoint (bukan cuma di-skip diam-diam)."""
+        for nilai in (0, -1000):
+            response = self.client.post(
+                f"/api/orders/{self.order.id}/bayar/",
+                data={"jumlah_bayar": nilai, "metode_pembayaran": "tunai"},
+                format="json",
+            )
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.dp_dibayar, 0)

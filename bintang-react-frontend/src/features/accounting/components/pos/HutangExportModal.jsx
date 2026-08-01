@@ -1,26 +1,33 @@
 import { useState } from 'react';
 import { X, Calendar } from 'lucide-react';
-import { notify } from '../../../../utils/notify';
+import { exportRowsToXlsx } from '../../../../utils/exportXlsx';
 
-export default function HutangExportModal({ isOpen, onClose }) {
-  if (!isOpen) return null;
+const getTodayStr = () => new Date().toISOString().split('T')[0];
 
+export default function HutangExportModal({ isOpen, onClose, rows = [] }) {
   const [fileType, setFileType] = useState('PDF'); // 'PDF' | 'EXCEL'
   const [searchQuery, setSearchQuery] = useState('');
   const [rowRange, setRowRange] = useState('');
   const [dateType, setDateType] = useState('Periode');
-  const [dateFrom, setDateFrom] = useState('2026-07-26');
-  const [dateTo, setDateTo] = useState('2026-07-26');
+  const [dateFrom, setDateFrom] = useState(getTodayStr());
+  const [dateTo, setDateTo] = useState(getTodayStr());
   const [status, setStatus] = useState('Belum Bayar'); // 'Belum Bayar' | 'Sebagian' | 'Lunas'
   const [dueType, setDueType] = useState('Semua Hutang'); // 'Jatuh Tempo' | 'Semua Hutang'
   const [showDetail, setShowDetail] = useState(false);
 
+  if (!isOpen) return null;
+
   const handleExport = () => {
-    notify({
-      type: 'success',
-      title: 'Export Berhasil',
-      message: `Hutang berhasil diexport ke format ${fileType}.`
-    });
+    const filteredRows = rows.filter((row) => row.status === status);
+    if (fileType === 'EXCEL') {
+      exportRowsToXlsx(
+        'hutang.xlsx',
+        ['Tanggal', 'No. Transaksi', 'Supplier', 'Total', 'Sisa Hutang', 'Status'],
+        filteredRows.map((row) => [row.date, row.txNo, row.supplier, row.amount, row.remaining, row.status]),
+      );
+    } else {
+      window.print();
+    }
     onClose();
   };
 

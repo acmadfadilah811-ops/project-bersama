@@ -5,13 +5,27 @@ import CustomerCard from './CustomerCard';
 import ShippingCard from './ShippingCard';
 import PaymentCard from './PaymentCard';
 import OrderLogSection from './OrderLogSection';
+import ProdukPesananCard from './ProdukPesananCard';
 import { parseOrderMetadata, serializeOrderMetadata } from './metadataHelper';
 import CancelledOrderDetail from './CancelledOrderDetail';
+import { useTransaksiCrumb } from './TransaksiContext';
 
 export default function OrderDetail({ orderId, onBack, onSaved }) {
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [metadata, setMetadata] = useState({});
+  const { setSubtitle } = useTransaksiCrumb();
+
+  useEffect(() => {
+    if (order?.status_global === 'batal') {
+      setSubtitle('Detail Pesanan Dibatalkan');
+    } else if (order?.status_global === 'selesai') {
+      setSubtitle('Detail Pesanan Selesai');
+    } else {
+      setSubtitle('Open Order Detail');
+    }
+    return () => setSubtitle('');
+  }, [order?.status_global, setSubtitle]);
 
   const fetchOrderDetail = async () => {
     try {
@@ -151,8 +165,10 @@ export default function OrderDetail({ orderId, onBack, onSaved }) {
     );
   }
 
+  const canEditItems = order.status_global !== 'selesai' && order.status_global !== 'batal';
+
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-5 animate-fade-in text-slate-700">
+    <div className="p-6 max-w-6xl mx-auto space-y-5 animate-fade-in text-slate-700">
       {/* 1. Header Section */}
       <OrderHeader
         order={order}
@@ -178,60 +194,14 @@ export default function OrderDetail({ orderId, onBack, onSaved }) {
         readOnly={order.status_global === 'batal'}
       />
 
-      {/* 4. Products list section */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs">
-        <div className="border-b border-slate-100 pb-2.5 mb-3">
-          <span className="text-xs font-bold text-slate-800">Produk Pesanan</span>
-        </div>
-        
-        {items.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="border-b border-slate-100 text-slate-400 font-semibold">
-                  <th className="py-2.5">Produk</th>
-                  <th className="py-2.5 text-center">Jumlah</th>
-                  <th className="py-2.5 text-right">Harga Satuan</th>
-                  <th className="py-2.5 text-right">Total</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50 text-slate-700">
-                {items.map((item, idx) => {
-                  const namaProduk = item.jenis_produk || item.product_nama || item.nama_produk || item.nama || 'Produk Custom';
-                  const qty = item.qty ?? item.jumlah ?? 1;
-                  const harga = item.harga_jual ?? item.harga_satuan ?? item.harga ?? 0;
-                  const subtotal = qty * harga;
-                  return (
-                    <tr key={item.id || idx}>
-                      <td className="py-3">
-                        <span className="font-bold text-slate-800 block">{namaProduk}</span>
-                        {(item.panjang > 0 || item.lebar > 0) && (
-                          <span className="text-[10px] text-slate-400 block mt-0.5">
-                            Ukuran: {item.panjang || 0}m × {item.lebar || 0}m
-                          </span>
-                        )}
-                        {item.catatan && <span className="text-[10px] text-slate-400 block mt-0.5">{item.catatan}</span>}
-                      </td>
-                      <td className="py-3 text-center font-semibold">{qty} pcs</td>
-                      <td className="py-3 text-right font-mono">Rp {harga.toLocaleString('id-ID')}</td>
-                      <td className="py-3 text-right font-mono font-bold text-slate-800">
-                        Rp {subtotal.toLocaleString('id-ID')}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center min-h-[200px] text-center py-4">
-            <div className="mb-3 text-slate-300">
-              <span className="text-6xl select-none">🐻‍❄️</span>
-            </div>
-            <span className="text-xs font-bold text-slate-700 block">Tidak ada pesanan</span>
-          </div>
-        )}
-      </div>
+      {/* 4. Products list + order summary (satu kartu menyatu) */}
+      <ProdukPesananCard
+        orderId={orderId}
+        order={order}
+        items={items}
+        canEdit={canEditItems}
+        onItemsChanged={fetchOrderDetail}
+      />
 
       {/* 5. Payments and notes cards */}
       <PaymentCard

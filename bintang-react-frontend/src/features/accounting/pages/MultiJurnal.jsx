@@ -2,6 +2,10 @@ import { useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Check, X, Trash2, HelpCircle, AlertCircle, Plus, FileText, ChevronDown, Calendar } from 'lucide-react';
 import { notify } from '../../../utils/notify';
+import { fetchAllPages } from '../../../utils/paginatedApi';
+import apiClient from '../../../api/apiClient';
+
+const parseAmount = (value) => Number(String(value || '').replace(/\./g, '').replace(',', '.')) || 0;
 
 export default function MultiJurnal() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -30,6 +34,7 @@ export default function MultiJurnal() {
   // Department names list
   const defaultDepts = ['Pusat', 'Cabang A', 'Cabang B'];
   const [depts, setDepts] = useState(defaultDepts);
+  const [departments, setDepartments] = useState([]);
   const [selectedDept, setSelectedDept] = useState('');
   const [isDeptDropdownOpen, setIsDeptDropdownOpen] = useState(false);
   const deptDropdownRef = useRef(null);
@@ -39,7 +44,7 @@ export default function MultiJurnal() {
   const [newDeptName, setNewDeptName] = useState('');
 
   // Date and currency
-  const [txDate, setTxDate] = useState('2026-07-26');
+  const [txDate, setTxDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [currency] = useState('IDR');
 
   // Account selector list
@@ -95,6 +100,8 @@ export default function MultiJurnal() {
   ];
 
   const [selectedAccount, setSelectedAccount] = useState('');
+  const [accounts, setAccounts] = useState([]);
+  const [accountsLoading, setAccountsLoading] = useState(true);
   const [isAccountDropdownOpen, setIsAccountDropdownOpen] = useState(false);
   const accountDropdownRef = useRef(null);
 
@@ -125,6 +132,34 @@ export default function MultiJurnal() {
     document.addEventListener('mousedown', clickOutside);
     return () => document.removeEventListener('mousedown', clickOutside);
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    const loadLookups = async () => {
+      try {
+        const [accountResult, departmentResult] = await Promise.all([
+          fetchAllPages('/accounting/accounts/'),
+          fetchAllPages('/accounting/departments/'),
+        ]);
+        if (!active) return;
+        setAccounts(accountResult);
+        setDepartments(departmentResult);
+        setDepts(departmentResult.map((department) => department.name));
+      } catch (error) {
+        if (active) {
+          notify({ type: 'error', title: 'Data Form Tidak Tersedia', message: 'Daftar akun atau departemen gagal dimuat dari server.' });
+        }
+      } finally {
+        if (active) setAccountsLoading(false);
+      }
+    };
+    loadLookups();
+    return () => { active = false; };
+  }, []);
+
+  const accountOptions = accounts.length > 0
+    ? accounts.map((account) => ({ id: account.id, label: `${account.code} ${account.name}` }))
+    : accountsList.map((label) => ({ id: null, label }));
 
   const handleAddCustomJournal = () => {
     const trimmed = newJournalName.trim();
@@ -162,10 +197,10 @@ export default function MultiJurnal() {
     notify({ type: 'success', title: 'Dept Ditambahkan', message: `Departemen "${trimmed}" ditambahkan ke pilihan.` });
   };
 
-  const handleAccountSelect = (acc) => {
+  const handleAccountSelect = (account) => {
     if (!selectedJournal) return; // Disallowed
-    setSelectedAccount(acc);
-    setModalAccount(acc);
+    setSelectedAccount(account.label);
+    setModalAccount(account.label);
     setModalType('Debit');
     setModalAmount('0,00');
     setModalNotes('');
@@ -175,13 +210,20 @@ export default function MultiJurnal() {
   };
 
   const handleAddRowFromModal = () => {
+    const accountId = accountOptions.find((account) => account.label === modalAccount)?.id;
+    const numericAmount = parseAmount(modalAmount);
+    if (!accountId || numericAmount <= 0 || !modalNotes.trim()) {
+      notify({ type: 'warning', title: 'Rincian Belum Lengkap', message: 'Pilih akun dari server, isi jumlah valid, dan catatan.' });
+      return;
+    }
     const newRow = {
       id: Date.now(),
       account: modalAccount,
+      accountId,
       description: modalNotes || 'Rincian jurnal internal',
       docNo: modalDocNo || '-',
-      debit: modalType === 'Debit' ? parseFloat(modalAmount.replace(/\./g, '').replace(',', '.')) || 0 : 0,
-      credit: modalType === 'Kredit' ? parseFloat(modalAmount.replace(/\./g, '').replace(',', '.')) || 0 : 0
+      debit: modalType === 'Debit' ? numericAmount : 0,
+      credit: modalType === 'Kredit' ? numericAmount : 0
     };
 
     setRows((prev) => [...prev, newRow]);
@@ -199,16 +241,41 @@ export default function MultiJurnal() {
     notify({ type: 'info', title: 'Baris Dihapus', message: 'Rincian jurnal berhasil dihapus dari daftar.' });
   };
 
-  const handleSaveAll = () => {
+  const handleSaveAll = async () => {
     if (rows.length === 0) {
       notify({ type: 'warning', title: 'Daftar Kosong', message: 'Masukkan setidaknya satu rincian jurnal sebelum menyimpan.' });
       return;
     }
-    notify({ type: 'success', title: 'Multi Jurnal Disimpan', message: 'Seluruh rincian multi jurnal berhasil disimpan ke kas.' });
-    if (isHutang) {
-      setSearchParams({ active: 'payable', subMenu: 'hutang-semua' });
-    } else {
-      setSearchParams({ active: 'receivable', subMenu: 'piutang-semua' });
+    const totalDebit = rows.reduce((total, row) => total + row.debit, 0);
+    const totalKredit = rows.reduce((total, row) => total + row.credit, 0);
+    if (!txDate || !selectedJournal || totalDebit <= 0 || Math.abs(totalDebit - totalKredit) > 0.0001) {
+      notify({ type: 'warning', title: 'Jurnal Belum Seimbang', message: 'Isi tanggal/nama jurnal dan pastikan total debit sama dengan kredit.' });
+      return;
+    }
+    const departmentId = departments.find((department) => department.name === selectedDept)?.id;
+    if (selectedDept && !departmentId) {
+      notify({ type: 'warning', title: 'Departemen Tidak Valid', message: 'Pilih departemen yang tersedia dari server.' });
+      return;
+    }
+    try {
+      await apiClient.post('/accounting/journal-entries/', {
+        date: txDate,
+        source_type: 'manual',
+        department: departmentId || null,
+        description: `Multi Jurnal: ${selectedJournal}`,
+        lines: rows.map((row) => ({
+          account: row.accountId,
+          debit: row.debit,
+          kredit: row.credit,
+          description: row.description,
+          external_document_no: row.docNo === '-' ? '' : row.docNo,
+        })),
+      });
+      setRows([]);
+      notify({ type: 'success', title: 'Multi Jurnal Disimpan', message: 'Jurnal seimbang berhasil diposting ke pembukuan.' });
+      setSearchParams(isHutang ? { active: 'payable', subMenu: 'hutang-semua' } : { active: 'receivable', subMenu: 'piutang-semua' });
+    } catch (error) {
+      notify({ type: 'error', title: 'Gagal Menyimpan Jurnal', message: error.response?.data?.detail || 'Server menolak jurnal. Periksa data baris.' });
     }
   };
 
@@ -229,8 +296,14 @@ export default function MultiJurnal() {
       <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 bg-[#F8FAFC]">
         <h3 className="text-sm font-bold text-slate-800 tracking-wide">Form Multi Jurnal</h3>
         <button
-          disabled
-          className="px-3.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-350 font-extrabold text-[10px] flex items-center gap-1.5 cursor-not-allowed shadow-3xs"
+          type="button"
+          disabled={rows.length === 0}
+          onClick={() => window.print()}
+          className={`px-3.5 py-1.5 rounded-lg border font-extrabold text-[10px] flex items-center gap-1.5 shadow-3xs ${
+            rows.length > 0
+              ? 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 cursor-pointer'
+              : 'border-slate-200 bg-slate-50 text-slate-350 cursor-not-allowed'
+          }`}
         >
           <FileText size={12} />
           <span>Cetak jurnal ({rows.length})</span>
@@ -463,26 +536,26 @@ export default function MultiJurnal() {
                     }
                   }}
                   className={`w-full flex items-center justify-between px-3 py-2 border rounded-lg shadow-3xs text-left transition-all ${
-                    selectedJournal
+                    selectedJournal && !accountsLoading
                       ? 'border-slate-205 bg-white hover:bg-slate-50 text-slate-700 font-bold cursor-pointer'
                       : 'border-slate-150 bg-slate-100/60 text-slate-400 font-semibold cursor-not-allowed'
                   }`}
-                  title={!selectedJournal ? 'Pilih Nama Jurnal terlebih dahulu' : ''}
+                  title={!selectedJournal ? 'Pilih Nama Jurnal terlebih dahulu' : (accountsLoading ? 'Memuat akun...' : '')}
                 >
                   <span>{selectedAccount || 'Pilih Akun'}</span>
                   <ChevronDown size={14} className={selectedJournal ? 'text-slate-400' : 'text-slate-300'} />
                 </button>
                 
-                {selectedJournal && isAccountDropdownOpen && (
+                {selectedJournal && !accountsLoading && isAccountDropdownOpen && (
                   <div className="absolute left-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl py-1.5 z-50 w-full font-bold max-h-56 overflow-y-auto">
-                    {accountsList.map((acc) => (
+                    {accountOptions.map((account) => (
                       <button
-                        key={acc}
+                        key={account.id || account.label}
                         type="button"
-                        onClick={() => handleAccountSelect(acc)}
+                        onClick={() => handleAccountSelect(account)}
                         className="w-full text-left px-3.5 py-2 text-[11px] hover:bg-slate-50 cursor-pointer transition-colors text-slate-750"
                       >
-                        {acc}
+                        {account.label}
                       </button>
                     ))}
                   </div>

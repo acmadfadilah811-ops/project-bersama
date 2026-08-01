@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from ..models import AccountingSettings, AccountingLifecycleLog, Account
+from ..models import AccountingSettings, AccountingLifecycleLog, POSPostingSettingsAuditLog, Account
 
 class AccountingSettingsSerializer(serializers.ModelSerializer):
     opening_balance_equity_account_code = serializers.CharField(
@@ -7,6 +7,12 @@ class AccountingSettingsSerializer(serializers.ModelSerializer):
     )
     opening_balance_equity_account_name = serializers.CharField(
         source="opening_balance_equity_account.name", read_only=True
+    )
+    closing_account_code = serializers.CharField(
+        source="closing_account.code", default=None, read_only=True
+    )
+    closing_account_name = serializers.CharField(
+        source="closing_account.name", default=None, read_only=True
     )
 
     class Meta:
@@ -24,8 +30,24 @@ class AccountingSettingsSerializer(serializers.ModelSerializer):
             "opening_balance_equity_account",
             "opening_balance_equity_account_code",
             "opening_balance_equity_account_name",
+            "closing_account",
+            "closing_account_code",
+            "closing_account_name",
             "pos_sales_revenue_account",
             "pos_ppn_output_account",
+            "pos_auto_post_enabled",
+            "default_pos_payment_method",
+            "pos_post_discount_line_enabled",
+            "pos_marketplace_admin_fee_account",
+            "pos_deposit_income_difference_account",
+            "pos_deposit_expense_difference_account",
+            "pos_purchase_tax_account",
+            "pos_sales_total_minus_account",
+            "pos_sales_delivery_account",
+            "pos_sales_rounding_account",
+            "pos_sales_unique_payment_account",
+            "komisi_penjualan_debit_account",
+            "komisi_penjualan_kredit_account",
             "enable_product_account_group",
             "enable_transfer_between_stores_as_sale",
             "enable_ojek_online_fee",
@@ -47,3 +69,18 @@ class AccountingLifecycleLogSerializer(serializers.ModelSerializer):
         model = AccountingLifecycleLog
         fields = ["id", "action", "actor", "actor_name", "actor_email", "created_at"]
         read_only_fields = ["id", "created_at"]
+
+
+class POSPostingSettingsAuditLogSerializer(serializers.ModelSerializer):
+    actor_name = serializers.SerializerMethodField()
+    actor_email = serializers.CharField(source="actor.email", default=None, read_only=True)
+
+    def get_actor_name(self, obj):
+        if not obj.actor:
+            return None
+        return obj.actor.get_full_name() or obj.actor.username
+
+    class Meta:
+        model = POSPostingSettingsAuditLog
+        fields = ["id", "action", "previous_value", "new_value", "actor_name", "actor_email", "created_at"]
+        read_only_fields = fields

@@ -253,13 +253,15 @@ class PromosiPOSTestCase(BasisPromoTestCase):
 
 class DiskonPenjualanTestCase(BasisPromoTestCase):
 
-    def test_hanya_berlaku_di_kanal_online(self):
+    def test_berlaku_di_semua_kanal(self):
+        """Diskon Penjualan berlaku otomatis di semua kanal (POS, Order/SPK, Online)
+        saat minimal total pesanan terpenuhi — bukan cuma online."""
         SalesDiscount.objects.create(
             tanggal_aktif=self.hari_ini, tanpa_kadaluarsa=True,
             minimal_total_pesanan=Decimal('50000'), tipe_diskon='percent',
             jumlah_diskon=Decimal('10'), is_active=True)
         di_pos, _ = promo_engine.evaluate_sales_discount(konteks([baris(self.produk, 2, 50000)]))
-        self.assertEqual(di_pos, Decimal('0'))
+        self.assertEqual(di_pos, Decimal('10000.00'))
         di_online, _ = promo_engine.evaluate_sales_discount(
             konteks([baris(self.produk, 2, 50000)], kanal=promo_engine.KANAL_ONLINE))
         self.assertEqual(di_online, Decimal('10000.00'))

@@ -7,6 +7,7 @@ export default function SplitBillSelection({
   moveToA,
   formatCurrency,
   getTotal,
+  getUnitPrice,
 }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full min-h-0 animate-in fade-in slide-in-from-left duration-200">
@@ -31,7 +32,7 @@ export default function SplitBillSelection({
                 <div className="min-w-0 pr-2">
                   <p className="text-xs font-extrabold text-slate-800 truncate">{item.nama}</p>
                   <span className="text-[10px] text-slate-400 font-semibold block">
-                    {item.qty} x {formatCurrency(item.harga)}
+                    {item.qty} x {formatCurrency(getUnitPrice(item))}
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
@@ -79,7 +80,7 @@ export default function SplitBillSelection({
                 <div className="min-w-0 pr-2">
                   <p className="text-xs font-extrabold text-slate-800 truncate">{item.nama}</p>
                   <span className="text-[10px] text-slate-400 font-semibold block">
-                    {item.qty} x {formatCurrency(item.harga)}
+                    {item.qty} x {formatCurrency(getUnitPrice(item))}
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">

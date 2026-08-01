@@ -1,521 +1,765 @@
-import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Wallet, Calendar, Clock, AlertCircle, CheckCircle, ArrowRight, User, Search, RefreshCw } from 'lucide-react';
-import { useKasir } from '../context/KasirContext';
-import { useAuth } from '../../../context/AuthContext';
+import React, { useState, useEffect, useRef } from 'react';
+import { Plus, Minus, X, Flag, HelpCircle, Check, Trash2 } from 'lucide-react';
+import PosHeaderBar from '../components/PosHeaderBar';
+import DeleteConfirmModal from '../components/DeleteConfirmModal';
 import apiClient from '../../../api/apiClient';
-import NumericInput from '../../../components/NumericInput';
+import { useAuth } from '../../../context/AuthContext';
+import { useKasir } from '../context/KasirContext';
+import { notifyApiError, notifySuccess } from '../../../utils/notify';
 
-export default function PosShift() {
-  const navigate = useNavigate();
+// Nama tunai dicocokkan sama seperti server (SaldoKasHarianViewSet.close()):
+// tipe pembayaran POSPaymentMethod='Tunai' + nama bawaan 'cash'/'tunai'. Di
+// sini dipakai perkiraan by-name karena master metode bayar tidak difetch di
+// layar ini — cukup untuk ringkasan tampilan, bukan sumber kebenaran keuangan
+// (server yang menghitung ulang expected/selisih saat shift ditutup).
+const isMetodeTunai = (metode) => {
+  const m = (metode || '').toLowerCase();
+  return m.includes('cash') || m.includes('tunai');
+};
+
+export default function PosShift({ onToggleSidebar }) {
   const { user } = useAuth();
-  const { shiftAktif, setShiftAktif, checkActiveShift } = useKasir();
+  const { shiftAktif, loadingShift, checkActiveShift } = useKasir();
 
-  // Create Shift Form States
-  const [kasirQuery, setKasirQuery] = useState('');
-  const [selectedKasir, setSelectedKasir] = useState(user || null);
-  const [showKasirDropdown, setShowKasirDropdown] = useState(false);
-  const [cashiers, setCashiers] = useState([]);
-  
-  const [selectedShiftTiming, setSelectedShiftTiming] = useState('Shift Pagi');
-  const [shiftTimings, setShiftTimings] = useState([]);
+  // Mode View: 'startShift' (SS Mulai Shift) | 'activeShift' (SS 1) | 'closeShiftNumpad' (SS 3)
+  const [viewMode, setViewMode] = useState('startShift');
 
-  // Auto select logged-in user as Kasir
+  // Start Shift Cash Amount State
+  const [startCashStr, setStartCashStr] = useState('0');
+  const [startingShift, setStartingShift] = useState(false);
+
+  // Modals: 'kasForm' (SS 2) | 'confirmClose' (SS 4)
+  const [kasModalType, setKasModalType] = useState(null); // 'in' | 'out' | null
+  const [showConfirmCloseModal, setShowConfirmCloseModal] = useState(false);
+  const [showPlusDropdown, setShowPlusDropdown] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState(null);
+  const [closingShift, setClosingShift] = useState(false);
+
+  // Rekap kas harian nyata (GET /pos/sales/rekap-harian/) untuk kasir ini.
+  const [penjualanTunai, setPenjualanTunai] = useState(0);
+  const [pengembalianTunai] = useState(0);
+  const [pembatalanTunai] = useState(0);
+
+  // List of Cash Movements (SS 1 Right Panel) — dari rekap_harian.pendapatan_lain
+  // + .pengeluaran (CashTransaction arah='pendapatan'/'pengeluaran' hari ini).
+  const [cashMovements, setCashMovements] = useState([]);
+
+  // Tipe Transaksi (master, wajib diisi backend) untuk modal Kas Masuk/Keluar.
+  const [transTypeOptions, setTransTypeOptions] = useState([]);
+
+  // Form State for Kas Masuk / Kas Keluar Modal (SS 2)
+  const [formTransTypeName, setFormTransTypeName] = useState('');
+  const [formAmountStr, setFormAmountStr] = useState('0');
+  const [formCatatan, setFormCatatan] = useState('');
+  const [formAttachments, setFormAttachments] = useState([]);
+  const [savingKasMovement, setSavingKasMovement] = useState(false);
+  const attachmentInputRef = useRef(null);
+
+  // Close Shift Typed Cash Amount (SS 3)
+  const [typedCloseCashStr, setTypedCloseCashStr] = useState('0');
+
+  const kasirName = user?.nama_lengkap || `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || user?.username || '-';
+  const awalDiLaci = Number(shiftAktif?.kas_awal || 0);
+  const shiftStartTime = shiftAktif?.waktu_buka
+    ? new Date(shiftAktif.waktu_buka).toLocaleString('id-ID', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : '-';
+
+  // Ikuti status shift NYATA dari KasirContext (bukan asumsi 'startShift' selalu).
   useEffect(() => {
-    if (user && !selectedKasir) {
-      setSelectedKasir(user);
-    }
-  }, [user]);
+    if (loadingShift) return;
+    setViewMode(shiftAktif ? 'activeShift' : 'startShift');
+  }, [shiftAktif, loadingShift]);
 
-  const [kasAwal, setKasAwal] = useState(0);
-  const [loadingOpen, setLoadingOpen] = useState(false);
-
-  // Close Shift States
-  const [kasAkhir, setKasAkhir] = useState(0);
-  const [tutupCatatan, setTutupCatatan] = useState('');
-  const [loadingClose, setLoadingClose] = useState(false);
-
-  // Shift Sales Summary
-  const [salesSummary, setSalesSummary] = useState({
-    totalSalesCount: 0,
-    totalSalesAmount: 0,
-    cashAmount: 0,
-    nonCashAmount: 0,
-  });
-  const [loadingSummary, setLoadingSummary] = useState(false);
-
-  const kasirDropdownRef = useRef(null);
-
-  // Fetch cashiers for searchable selection
-  const fetchCashiers = async (search = '') => {
+  const fetchRekapHarian = async () => {
     try {
-      const res = await apiClient.get('/users/', { params: { search } });
-      setCashiers(res.data || []);
-    } catch (err) {
-      console.warn('Cannot fetch full user list (non-admin), using current logged in user.');
-      if (user) {
-        setCashiers([user]);
-      }
-    }
-  };
-
-  // Fetch shift timings
-  const fetchShiftTimings = async () => {
-    try {
-      const res = await apiClient.get('/shift-timing/');
-      const data = res.data || [];
-      setShiftTimings(data);
-      if (data.length > 0) {
-        setSelectedShiftTiming(data[0].judul || data[0].nama || String(data[0].id));
-      } else {
-        setSelectedShiftTiming('Shift Pagi');
-      }
-    } catch (err) {
-      console.error('Error fetching shift timings:', err);
-      setSelectedShiftTiming('Shift Pagi');
-    }
-  };
-
-  // Fetch sales summary when active shift changes
-  const fetchShiftSalesSummary = async () => {
-    if (!shiftAktif) return;
-    setLoadingSummary(true);
-    try {
-      const res = await apiClient.get('/pos/sales/', {
-        params: { shift: shiftAktif.id },
+      const res = await apiClient.get('/pos/sales/rekap-harian/', {
+        params: { kasir: user?.id },
       });
-      const data = res.data || [];
-      
-      let totalAmount = 0;
-      let cash = 0;
-      let nonCash = 0;
+      const tunai = (res.data?.penjualan_per_metode || [])
+        .filter((p) => isMetodeTunai(p.metode))
+        .reduce((sum, p) => sum + Number(p.jumlah || 0), 0);
+      setPenjualanTunai(tunai);
 
-      data.forEach(sale => {
-        if (sale.status === 'paid') {
-          const total = parseFloat(sale.total || 0);
-          totalAmount += total;
-          if (sale.metode_bayar?.toLowerCase() === 'cash') {
-            cash += total;
-          } else {
-            nonCash += total;
-          }
-        }
-      });
-
-      setSalesSummary({
-        totalSalesCount: data.filter(s => s.status === 'paid').length,
-        totalSalesAmount: totalAmount,
-        cashAmount: cash,
-        nonCashAmount: nonCash,
-      });
-    } catch (err) {
-      console.error('Error fetching shift sales summary:', err);
-    } finally {
-      setLoadingSummary(false);
+      const masuk = (res.data?.pendapatan_lain || []).map((t) => ({
+        id: t.id, type: 'in', timeStr: new Date(t.waktu).toLocaleString('id-ID', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+        catatan: t.catatan || t.tipe, amount: Number(t.jumlah || 0),
+      }));
+      const keluar = (res.data?.pengeluaran || []).map((t) => ({
+        id: t.id, type: 'out', timeStr: new Date(t.waktu).toLocaleString('id-ID', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+        catatan: t.catatan || t.tipe, amount: Number(t.jumlah || 0),
+      }));
+      setCashMovements([...masuk, ...keluar].sort((a, b) => b.id - a.id));
+    } catch {
+      setCashMovements([]);
     }
   };
 
   useEffect(() => {
-    fetchCashiers();
-    fetchShiftTimings();
-  }, []);
+    if (viewMode === 'activeShift' && user?.id) {
+      fetchRekapHarian();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, user?.id]);
 
+  // Daftar Tipe Transaksi nyata (master) untuk dropdown modal Kas Masuk/Keluar.
   useEffect(() => {
-    fetchShiftSalesSummary();
-  }, [shiftAktif]);
-
-  // Click outside close cashier dropdown
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (kasirDropdownRef.current && !kasirDropdownRef.current.contains(e.target)) {
-        setShowKasirDropdown(false);
+    if (!kasModalType) return;
+    (async () => {
+      try {
+        const res = await apiClient.get('/cash-transaction-types/', {
+          params: { tipe: kasModalType === 'in' ? 'pendapatan' : 'pengeluaran' },
+        });
+        const list = res.data?.results || res.data || [];
+        setTransTypeOptions(list);
+        setFormTransTypeName('');
+      } catch (err) {
+        setTransTypeOptions([]);
+        notifyApiError(err, 'Gagal memuat daftar tipe transaksi. Hanya Owner/Manager yang bisa mencatat Kas Masuk/Keluar.');
       }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    })();
+  }, [kasModalType]);
 
-  // Filtered Cashiers list based on text input
-  const filteredCashiers = cashiers.filter(c =>
-    c.username.toLowerCase().includes(kasirQuery.toLowerCase()) ||
-    (c.first_name || '').toLowerCase().includes(kasirQuery.toLowerCase())
+  // Calculated values
+  const totalKasMasukOutNet = cashMovements.reduce(
+    (acc, m) => acc + (m.type === 'in' ? m.amount : -m.amount),
+    0
   );
+  const totalTunai = awalDiLaci + penjualanTunai - pengembalianTunai - pembatalanTunai + totalKasMasukOutNet;
+  const totalDiharapkan = totalTunai;
 
-  const handleOpenShift = async (e) => {
-    e.preventDefault();
-    if (!selectedKasir) {
-      alert('Nama kasir wajib dipilih.');
-      return;
-    }
-    if (!selectedShiftTiming) {
-      alert('Periode shift wajib dipilih.');
-      return;
-    }
-
-    setLoadingOpen(true);
-    try {
-      // Simpan NAMA shift (bukan id) agar terbaca di laporan & ringkasan.
-      const timing = shiftTimings.find((t) => String(t.id) === String(selectedShiftTiming) || t.judul === selectedShiftTiming);
-      const payload = {
-        kasir: selectedKasir.id,
-        shift: timing?.judul || timing?.nama || selectedShiftTiming || 'Shift Pagi',
-        kas_awal: parseFloat(kasAwal || 0),
-        waktu_buka: new Date().toISOString(),
-      };
-      const res = await apiClient.post('/saldo-kas-harian/', payload);
-      setShiftAktif(res.data);
-      alert('Shift berhasil dibuka. Kas awal telah tercatat pada periode ini.');
-    } catch (err) {
-      console.error('Error opening shift:', err);
-      alert('Gagal membuka shift: ' + (err.response?.data?.error || err.response?.data?.detail || err.message));
-    } finally {
-      setLoadingOpen(false);
-    }
+  // Format currency with dot separator e.g. 11.000
+  const formatNumberDot = (num) => {
+    const val = Math.round(Number(num) || 0);
+    return val.toLocaleString('de-DE'); // 'de-DE' uses dot for thousands
   };
 
-  const handleCloseShift = async (e) => {
-    e.preventDefault();
-    if (!shiftAktif) return;
-    if (!window.confirm('Tutup shift ini? Seluruh transaksi pada shift akan dikunci dan tidak dapat diubah kembali.')) {
-      return;
-    }
+  // Label shift otomatis dari jam saat ini (tidak ada picker shift di UI ini).
+  const shiftLabelByTime = () => {
+    const h = new Date().getHours();
+    if (h >= 4 && h < 12) return 'Shift Pagi';
+    if (h >= 12 && h < 17) return 'Shift Siang';
+    return 'Shift Malam';
+  };
 
-    setLoadingClose(true);
+  // Handle Start Shift (Screenshot Mulai Shift) -> POST /saldo-kas-harian/
+  const handleStartShift = async (e) => {
+    e?.preventDefault();
+    if (startingShift) return;
+    const cashNum = parseFloat(startCashStr.replace(/\./g, '')) || 0;
+    setStartingShift(true);
     try {
-      // Endpoint `close` menutup shift SEKALIGUS membuat Ringkasan Shift (V2)
-      // dengan `expected` yang dihitung di server (kas awal + tunai + kas masuk
-      // - kas keluar), lalu mengembalikan rinciannya untuk ditampilkan.
-      const res = await apiClient.post(`/saldo-kas-harian/${shiftAktif.id}/close/`, {
-        kas_akhir: parseFloat(kasAkhir || 0),
-        catatan: tutupCatatan,
+      await apiClient.post('/saldo-kas-harian/', {
+        shift: shiftLabelByTime(),
+        kas_awal: cashNum,
       });
-      const d = res.data?.rincian || {};
-      const rp = (n) => `Rp ${Number(n || 0).toLocaleString('id-ID')}`;
-      setShiftAktif(null);
-      setKasirQuery('');
-      setSelectedKasir(null);
-      setKasAwal('0');
-      setKasAkhir('0');
-      setTutupCatatan('');
-      alert(
-        'Shift berhasil ditutup. Rekapitulasi kas:\n\n' +
-        `Kas awal        : ${rp(d.kas_awal)}\n` +
-        `Penjualan tunai : ${rp(d.penjualan_tunai)}\n` +
-        `Kas masuk       : ${rp(d.kas_masuk)}\n` +
-        `Kas keluar      : ${rp(d.kas_keluar)}\n` +
-        `Seharusnya      : ${rp(d.expected)}\n` +
-        `Kas aktual      : ${rp(d.aktual)}\n` +
-        `Selisih         : ${rp(d.selisih)}`
-      );
-      checkActiveShift();
+      await checkActiveShift();
     } catch (err) {
-      console.error('Error closing shift:', err);
-      alert('Gagal menutup shift: ' + (err.response?.data?.error || err.message));
+      notifyApiError(err, 'Gagal membuka shift.');
     } finally {
-      setLoadingClose(false);
+      setStartingShift(false);
     }
   };
 
-  const formatCurrency = (val) => {
-    return new Intl.NumberFormat('id-ID', {
-      style: 'currency',
-      currency: 'IDR',
-      minimumFractionDigits: 0,
-    }).format(val);
+  // Handle Save Kas Masuk / Kas Keluar (SS 2) -> POST /cash-transactions/
+  // (Hanya Owner/Manager — IsStrictOwnerOrManager di backend; kasir akan
+  // mendapat error 403 yang jujur ditampilkan, bukan sukses palsu.)
+  const handleSaveKasMovement = async (e) => {
+    e.preventDefault();
+    const amountNum = parseFloat(formAmountStr.replace(/\./g, '')) || 0;
+    if (amountNum <= 0) {
+      alert('Masukkan jumlah nominal yang valid.');
+      return;
+    }
+    const tipeNama = formTransTypeName.trim();
+    if (!tipeNama) {
+      alert('Masukkan tipe transaksi terlebih dahulu.');
+      return;
+    }
+    setSavingKasMovement(true);
+    try {
+      // Gunakan tipe master yang sudah ada bila namanya cocok. Bila kasir
+      // mengetik jenis baru, buat master sesuai arah transaksi terlebih dahulu
+      // lalu gunakan ID hasilnya untuk transaksi kas. Backend tetap memegang
+      // kebijakan apakah kasir diizinkan menambah tipe baru.
+      const arah = kasModalType === 'in' ? 'pendapatan' : 'pengeluaran';
+      let tipeId = transTypeOptions.find(
+        (tipe) => tipe.nama.trim().toLocaleLowerCase() === tipeNama.toLocaleLowerCase(),
+      )?.id;
+      if (!tipeId) {
+        const typeResponse = await apiClient.post('/cash-transaction-types/', {
+          nama: tipeNama,
+          tipe: arah,
+        });
+        tipeId = typeResponse.data.id;
+        setTransTypeOptions((current) => [...current, typeResponse.data]);
+      }
+      const transactionPayload = new FormData();
+      transactionPayload.append('tipe_transaksi', tipeId);
+      transactionPayload.append('jumlah', amountNum);
+      transactionPayload.append('waktu', new Date().toISOString());
+      transactionPayload.append('catatan', formCatatan);
+      formAttachments.forEach((file) => transactionPayload.append('lampiran', file));
+      await apiClient.post('/cash-transactions/', transactionPayload, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      await fetchRekapHarian();
+      setKasModalType(null);
+      setFormTransTypeName('');
+      setFormAmountStr('0');
+      setFormCatatan('');
+      setFormAttachments([]);
+    } catch (err) {
+      notifyApiError(err, 'Gagal menyimpan Kas Masuk/Keluar.');
+    } finally {
+      setSavingKasMovement(false);
+    }
+  };
+
+  // Delete cash movement entry
+  const handleDeleteKasEntry = (id) => {
+    setDeleteTargetId(id);
+  };
+
+  const confirmDeleteKasEntry = async () => {
+    const id = deleteTargetId;
+    setDeleteTargetId(null);
+    try {
+      await apiClient.delete(`/cash-transactions/${id}/`);
+      await fetchRekapHarian();
+    } catch (err) {
+      notifyApiError(err, 'Gagal menghapus pencatatan kas.');
+    }
+  };
+
+  // Numpad key handlers for Close Shift (SS 3)
+  const handleNumpadClick = (val) => {
+    if (val === 'C') {
+      setTypedCloseCashStr('0');
+    } else if (val === '00') {
+      if (typedCloseCashStr === '0' || !typedCloseCashStr) return;
+      const unformatted = typedCloseCashStr.replace(/\./g, '') + '00';
+      setTypedCloseCashStr(formatNumberDot(unformatted));
+    } else {
+      const raw = typedCloseCashStr === '0' ? val : typedCloseCashStr.replace(/\./g, '') + val;
+      setTypedCloseCashStr(formatNumberDot(raw));
+    }
+  };
+
+  // Final Close Shift Confirm (SS 4) -> POST /saldo-kas-harian/{id}/close/.
+  // Ringkasan adalah laporan Point of Sale, bukan route Kasir.
+  const handleFinalCloseShift = async () => {
+    if (closingShift || !shiftAktif?.id) return;
+    setClosingShift(true);
+    const kasAkhir = parseFloat(typedCloseCashStr.replace(/\./g, '')) || 0;
+    try {
+      await apiClient.post(`/saldo-kas-harian/${shiftAktif.id}/close/`, {
+        kas_akhir: kasAkhir,
+      });
+      setShowConfirmCloseModal(false);
+      await checkActiveShift();
+      setStartCashStr('0');
+      setTypedCloseCashStr('0');
+      setViewMode('startShift');
+      notifySuccess(
+        'Shift berhasil ditutup',
+        'Ringkasan Shift V2 telah tersimpan dan dapat dilihat di Point of Sale.',
+      );
+    } catch (err) {
+      notifyApiError(err, 'Gagal menutup shift.');
+    } finally {
+      setClosingShift(false);
+    }
   };
 
   return (
-    <div className="flex-1 p-6 overflow-y-auto w-full max-w-4xl mx-auto space-y-6">
+    <div className="flex-1 flex flex-col h-full bg-[#EAEAEA] overflow-hidden select-none">
       
-      {/* Header */}
-      <div>
-        <h4 className="font-extrabold text-slate-800 text-lg">Manajemen Shift & Saldo Kas Harian</h4>
-        <p className="text-xs text-slate-500 font-semibold">Kelola pembukaan kasir awal harian, pelacakan setoran tunai, dan penutupan shift kasir.</p>
+      {/* Top Header Bar SS 1 with Setrip 3 */}
+      <PosHeaderBar
+        accountName={kasirName}
+        onToggleSidebar={onToggleSidebar}
+      />
+
+      {/* Sub-Header Blue Bar */}
+      <div className="bg-[#0088FF] px-6 py-2.5 text-white flex items-center justify-between shadow-sm shrink-0 font-bold text-xs">
+        {viewMode === 'closeShiftNumpad' ? (
+          <div className="flex items-center gap-2">
+            <Flag size={16} />
+            <span>Akhiri Shift</span>
+          </div>
+        ) : (
+          <span>Shift Saat Ini</span>
+        )}
       </div>
 
-      {!shiftAktif ? (
-        /* ================= KAS AWAL / BUKA SHIFT ================= */
-        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm max-w-lg mx-auto space-y-6">
-          <div className="flex items-center gap-3 pb-4 border-b border-slate-100">
-            <div className="bg-indigo-100 text-indigo-600 p-2.5 rounded-2xl">
-              <Wallet size={20} />
-            </div>
-            <div>
-              <h5 className="font-extrabold text-slate-800 text-sm">Buka Shift Kasir Baru</h5>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Tambah Kas Awal Harian</p>
-            </div>
-          </div>
-
-          <form onSubmit={handleOpenShift} className="space-y-4 text-xs font-semibold text-slate-700">
+      {/* ==================== VIEW 0: START SHIFT / MULAI SHIFT (SCREENSHOT) ==================== */}
+      {viewMode === 'startShift' ? (
+        <div className="flex-1 flex flex-col items-center justify-center p-8 bg-[#F8FAFC]">
+          <form onSubmit={handleStartShift} className="flex flex-col items-center max-w-sm w-full space-y-6">
             
-            {/* Kasir Selection (Filterable dropdown) */}
-            <div className="relative" ref={kasirDropdownRef}>
-              <label className="block text-slate-650 font-extrabold text-slate-650 mb-1">Kasir *</label>
-              <div className="relative flex items-center bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5">
-                <User size={14} className="text-slate-400 mr-2 shrink-0" />
-                {selectedKasir ? (
-                  <div className="flex-1 flex items-center justify-between text-slate-800 font-bold">
-                    <span>{selectedKasir.username} ({selectedKasir.first_name || 'Karyawan'})</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedKasir(null);
-                        setKasirQuery('');
-                      }}
-                      className="text-slate-400 hover:text-slate-600"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ) : (
-                  <input
-                    type="text"
-                    placeholder="Ketik nama kasir untuk mencari..."
-                    value={kasirQuery}
-                    onChange={(e) => {
-                      setKasirQuery(e.target.value);
-                      setShowKasirDropdown(true);
-                    }}
-                    onFocus={() => setShowKasirDropdown(true)}
-                    className="flex-1 bg-transparent text-xs font-semibold focus:outline-none text-slate-700"
-                  />
-                )}
-                <Search size={14} className="text-slate-400 ml-2 shrink-0" />
-              </div>
+            {/* Cash Register Illustration Graphic SS */}
+            <div className="relative w-36 h-32 flex items-center justify-center">
+              <svg width="120" height="100" viewBox="0 0 120 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                {/* Screen / Display */}
+                <rect x="25" y="10" width="30" height="20" rx="3" fill="#818CF8" />
+                <rect x="29" y="14" width="22" height="12" rx="2" fill="#C7D2FE" />
+                <text x="32" y="23" fontSize="8" fontWeight="bold" fill="#312E81">1.11</text>
+                
+                {/* Register Base */}
+                <rect x="45" y="22" width="45" height="42" rx="4" fill="#9CA3AF" />
+                <rect x="50" y="27" width="35" height="32" rx="2" fill="#E5E7EB" />
+                
+                {/* Keypad Buttons */}
+                <circle cx="56" cy="34" r="3" fill="#F59E0B" />
+                <circle cx="67" cy="34" r="3" fill="#F59E0B" />
+                <circle cx="78" cy="34" r="3" fill="#F59E0B" />
+                <circle cx="56" cy="43" r="3" fill="#F59E0B" />
+                <circle cx="67" cy="43" r="3" fill="#F59E0B" />
+                <circle cx="78" cy="43" r="3" fill="#F59E0B" />
+                <circle cx="56" cy="52" r="3" fill="#F59E0B" />
+                <circle cx="67" cy="52" r="3" fill="#F59E0B" />
+                <circle cx="78" cy="52" r="3" fill="#F59E0B" />
+                
+                {/* Paper Receipt */}
+                <rect x="25" y="32" width="18" height="28" fill="#F9FAFB" rx="1" />
+                <line x1="28" y1="36" x2="38" y2="36" stroke="#9CA3AF" strokeWidth="1.5" strokeLinecap="round" />
+                <line x1="28" y1="41" x2="36" y2="41" stroke="#9CA3AF" strokeWidth="1.5" strokeLinecap="round" />
+                <line x1="28" y1="46" x2="39" y2="46" stroke="#9CA3AF" strokeWidth="1.5" strokeLinecap="round" />
 
-              {/* Suggestions Dropdown */}
-              {showKasirDropdown && filteredCashiers.length > 0 && (
-                <div className="absolute inset-x-0 top-full mt-1 bg-white rounded-xl border border-slate-200 shadow-xl z-50 overflow-hidden max-h-48 overflow-y-auto">
-                  {filteredCashiers.map((cashier) => (
-                    <button
-                      key={cashier.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedKasir(cashier);
-                        setShowKasirDropdown(false);
-                      }}
-                      className="w-full px-4 py-2.5 hover:bg-slate-50 text-left text-xs font-semibold text-slate-700 flex justify-between cursor-pointer border-b border-slate-100"
-                    >
-                      <span>{cashier.username}</span>
-                      <span className="text-slate-400 capitalize">{cashier.role || 'Staff'}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
+                {/* Cash Drawer Bottom */}
+                <rect x="15" y="62" width="90" height="14" rx="3" fill="#6B7280" />
+                <rect x="52" y="66" width="16" height="4" rx="1" fill="#374151" />
+              </svg>
             </div>
 
-            {/* Shift Timing Selection */}
-            <div>
-              <label className="block text-slate-650 font-extrabold text-slate-650 mb-1">Shift *</label>
-              <select
-                value={selectedShiftTiming}
-                onChange={(e) => setSelectedShiftTiming(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-bold text-slate-700 focus:outline-none cursor-pointer"
-              >
-                {shiftTimings.length === 0 ? (
-                  <>
-                    <option value="Shift Pagi">Shift Pagi (08:00 - 16:00)</option>
-                    <option value="Shift Sore">Shift Sore (16:00 - 23:00)</option>
-                  </>
-                ) : (
-                  shiftTimings.map((st) => {
-                    const labelName = st.judul || st.nama || `Shift #${st.id}`;
-                    const timeRange = st.jam_mulai ? `(${st.jam_mulai} - ${st.jam_berakhir || st.jam_selesai || ''})` : '';
-                    return (
-                      <option key={st.id} value={labelName}>
-                        {labelName} {timeRange}
-                      </option>
-                    );
-                  })
-                )}
-              </select>
+            {/* Input Field Kas Awal di Laci SS */}
+            <div className="w-full text-center space-y-1">
+              <label className="text-[11px] font-bold text-slate-400 block">Kas Awal di Laci</label>
+              <input
+                type="text"
+                value={startCashStr}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/\D/g, '');
+                  setStartCashStr(raw ? Number(raw).toLocaleString('de-DE') : '0');
+                }}
+                className="w-full text-center border-b border-slate-400 pb-1 font-black text-2xl text-slate-900 focus:outline-none focus:border-blue-500 bg-transparent"
+              />
             </div>
 
-            {/* Kas Awal Input */}
-            <div>
-              <label className="block text-slate-650 font-extrabold text-slate-650 mb-1">Kas Awal (Rp.) *</label>
-              <div className="relative flex items-center bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5">
-                <span className="font-extrabold text-slate-500 mr-2">Rp.</span>
-                <NumericInput
-                  value={kasAwal}
-                  onChange={(val) => setKasAwal(val)}
-                  className="w-full bg-transparent border-none focus:outline-none font-black text-slate-900 text-right"
-                />
-              </div>
-            </div>
-
-            {/* Buttons */}
-            <div className="flex gap-3 pt-4 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => navigate('/kasir/terminal')}
-                className="flex-1 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold text-xs rounded-xl text-center cursor-pointer"
-              >
-                Batal
-              </button>
-              <button
-                type="submit"
-                disabled={loadingOpen || !selectedKasir || !selectedShiftTiming}
-                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-indigo-500/10 flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
-              >
-                {loadingOpen ? (
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                ) : (
-                  <span>Simpan</span>
-                )}
-              </button>
-            </div>
+            {/* Green Button Mulai Shift SS */}
+            <button
+              type="submit"
+              disabled={startingShift}
+              className="w-full bg-[#4CAF50] hover:bg-emerald-600 text-white font-extrabold text-sm py-2.5 px-6 rounded-lg flex items-center justify-center gap-2 shadow-md cursor-pointer transition-all active:scale-95 disabled:opacity-60"
+            >
+              <Check size={18} strokeWidth={3} />
+              <span>{startingShift ? 'Membuka Shift...' : 'Mulai Shift'}</span>
+            </button>
 
           </form>
         </div>
-      ) : (
-        /* ================= TAMPILAN SHIFT AKTIF & TUTUP SHIFT ================= */
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      ) : viewMode === 'activeShift' ? (
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           
-          {/* Sisi Kiri: Detail Shift & Penjualan */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6">
-            <div className="flex items-center gap-3 pb-4 border-b border-slate-100">
-              <div className="bg-emerald-100 text-emerald-600 p-2.5 rounded-2xl">
-                <CheckCircle size={20} className="animate-pulse" />
+          {/* Main 2-Column Split Layout SS 1 */}
+          <div className="flex-1 flex min-h-0 overflow-hidden bg-white">
+            
+            {/* LEFT COLUMN: Rekapan Shift Saat Ini SS 1 */}
+            <div className="flex-1 p-6 space-y-4 border-r border-slate-200 overflow-y-auto text-xs font-semibold text-slate-800">
+              
+              {/* Kasir Row */}
+              <div className="flex justify-between items-center pb-2 border-b border-blue-400">
+                <span className="text-slate-500">Kasir</span>
+                <span className="font-extrabold text-slate-900">{kasirName}</span>
               </div>
-              <div>
-                <h5 className="font-extrabold text-slate-800 text-sm">Shift Sedang Aktif</h5>
-                <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">Toko Beroperasi</p>
+
+              {/* Mulai Shift Row */}
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500">Mulai Shift</span>
+                <span className="font-extrabold text-slate-900">{shiftStartTime}</span>
               </div>
+
+              {/* Tunai Breakdown Section */}
+              <div className="space-y-3 pt-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-600">Tunai</span>
+                  <span className="font-extrabold text-slate-900">{formatNumberDot(totalTunai)}</span>
+                </div>
+
+                <div className="pl-6 space-y-2.5 text-slate-600">
+                  <div className="flex justify-between items-center">
+                    <span>Awal di Laci</span>
+                    <span className="font-bold text-slate-800">{formatNumberDot(awalDiLaci)}</span>
+                  </div>
+
+                  <div className="flex justify-between items-center">
+                    <span>Penjualan Tunai</span>
+                    <span className="font-bold text-slate-800">{formatNumberDot(penjualanTunai)}</span>
+                  </div>
+
+                  <div className="flex justify-between items-center">
+                    <span>Pengembalian Tunai</span>
+                    <span className="font-bold text-slate-800">{formatNumberDot(pengembalianTunai)}</span>
+                  </div>
+
+                  <div className="flex justify-between items-center">
+                    <span>Pembatalan Tunai</span>
+                    <span className="font-bold text-slate-800">{formatNumberDot(pembatalanTunai)}</span>
+                  </div>
+
+                  <div className="flex justify-between items-center">
+                    <span>Kas Masuk-Keluar</span>
+                    <span className="font-bold text-slate-800">{formatNumberDot(totalKasMasukOutNet)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Total Diharapkan Row */}
+              <div className="flex justify-between items-center pt-4 text-xs font-black text-slate-900 border-t border-slate-200">
+                <span>Total Diharapkan</span>
+                <span className="text-sm font-black">{formatNumberDot(totalDiharapkan)}</span>
+              </div>
+
             </div>
 
-            <div className="space-y-4 text-xs font-semibold text-slate-600">
-              <div className="grid grid-cols-2 gap-4 border-b border-slate-50 pb-3">
-                <div>
-                  <span className="text-[10px] text-slate-400 block leading-none mb-1">Kasir</span>
-                  <span className="text-slate-800 font-bold">{shiftAktif.kasir_name}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-400 block leading-none mb-1">Shift</span>
-                  <span className="text-slate-800 font-bold">{shiftAktif.shift_nama || 'Shift 1'}</span>
-                </div>
+            {/* RIGHT COLUMN: Kas Masuk-Keluar SS 1 */}
+            <div className="flex-1 bg-[#EAEAEA] p-4 flex flex-col min-h-0 relative">
+              
+              {/* Right Column Header SS 1 */}
+              <div className="flex justify-between items-center pb-3 font-extrabold text-xs text-slate-900 shrink-0">
+                <span>Kas Masuk-Keluar</span>
+                <span>{formatNumberDot(totalKasMasukOutNet)}</span>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 border-b border-slate-50 pb-3">
-                <div>
-                  <span className="text-[10px] text-slate-400 block leading-none mb-1">Waktu Buka</span>
-                  <span className="text-slate-800 font-bold">
-                    {new Date(shiftAktif.waktu_buka).toLocaleString('id-ID')}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-400 block leading-none mb-1">Kas Awal</span>
-                  <span className="text-slate-800 font-extrabold">{formatCurrency(shiftAktif.kas_awal)}</span>
-                </div>
-              </div>
+              {/* List of Cash Movement Entries SS 1 */}
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                {cashMovements.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="p-3 bg-white rounded-lg border border-slate-200 shadow-sm flex items-center justify-between text-xs"
+                  >
+                    <div className="flex items-start gap-3 min-w-0 flex-1">
+                      {/* Green + or Red - Box Icon SS 1 */}
+                      <div
+                        className={`w-9 h-9 rounded-md flex items-center justify-center text-white shrink-0 font-bold ${
+                          entry.type === 'in' ? 'bg-[#4CAF50]' : 'bg-[#EF5350]'
+                        }`}
+                      >
+                        {entry.type === 'in' ? <Plus size={18} /> : <Minus size={18} />}
+                      </div>
 
-              {/* Sales Summary values */}
-              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-150 space-y-3">
-                <h6 className="font-extrabold text-slate-800 text-xs">Ringkasan Penjualan Shift Ini</h6>
-                
-                {loadingSummary ? (
-                  <div className="flex items-center justify-center py-4">
-                    <RefreshCw size={16} className="animate-spin text-slate-400" />
+                      <div className="min-w-0 flex-1">
+                        <div className="font-extrabold text-slate-900 text-[11px]">
+                          {entry.timeStr}
+                        </div>
+                        <div className="text-[11px] text-slate-600 font-semibold truncate mt-0.5">
+                          {entry.catatan}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className={`font-black text-xs ${entry.type === 'in' ? 'text-slate-900' : 'text-[#EF5350]'}`}>
+                        {formatNumberDot(entry.amount)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteKasEntry(entry.id)}
+                        className="text-rose-400 hover:text-rose-600 transition-colors p-1 cursor-pointer"
+                        title="Hapus Pencatatan Kas"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
                   </div>
-                ) : (
-                  <div className="space-y-2 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Jumlah Transaksi Lunas</span>
-                      <span className="font-bold text-slate-700">{salesSummary.totalSalesCount} Nota</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Total Penjualan Lunas</span>
-                      <span className="font-extrabold text-slate-800">{formatCurrency(salesSummary.totalSalesAmount)}</span>
-                    </div>
-                    <div className="h-px bg-slate-200/60 my-1" />
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Penerimaan Tunai (Cash)</span>
-                      <span className="font-bold text-emerald-600">{formatCurrency(salesSummary.cashAmount)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Penerimaan Non-Tunai</span>
-                      <span className="font-bold text-slate-700">{formatCurrency(salesSummary.nonCashAmount)}</span>
-                    </div>
+                ))}
+              </div>
+
+              {/* Floating Blue Circle (+) Button SS 1 */}
+              <div className="absolute bottom-6 right-6 z-20">
+                <button
+                  type="button"
+                  onClick={() => setShowPlusDropdown(!showPlusDropdown)}
+                  className="w-12 h-12 rounded-full bg-[#0088FF] hover:bg-blue-600 text-white flex items-center justify-center shadow-xl cursor-pointer transition-all active:scale-95"
+                  title="Catat Kas Masuk / Keluar"
+                >
+                  <Plus size={24} />
+                </button>
+
+                {/* Dropdown Options Kas Masuk & Kas Keluar SS 1 */}
+                {showPlusDropdown && (
+                  <div className="absolute bottom-full right-0 mb-3 w-44 bg-white rounded-xl shadow-2xl border border-slate-200 py-1.5 z-50 text-xs font-bold text-slate-800 animate-fade-in">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowPlusDropdown(false);
+                        setFormAttachments([]);
+                        if (attachmentInputRef.current) attachmentInputRef.current.value = '';
+                        setKasModalType('in');
+                      }}
+                      className="w-full px-4 py-2.5 hover:bg-slate-50 text-left flex items-center gap-2 text-emerald-600 cursor-pointer border-b border-slate-100"
+                    >
+                      <Plus size={16} />
+                      <span>Kas Masuk</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowPlusDropdown(false);
+                        setFormAttachments([]);
+                        if (attachmentInputRef.current) attachmentInputRef.current.value = '';
+                        setKasModalType('out');
+                      }}
+                      className="w-full px-4 py-2.5 hover:bg-slate-50 text-left flex items-center gap-2 text-rose-600 cursor-pointer"
+                    >
+                      <Minus size={16} />
+                      <span>Kas Keluar</span>
+                    </button>
                   </div>
                 )}
               </div>
+
             </div>
+
           </div>
 
-          {/* Sisi Kanan: Form Tutup Shift */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6">
-            <div className="flex items-center gap-3 pb-4 border-b border-slate-100">
-              <div className="bg-rose-100 text-rose-600 p-2.5 rounded-2xl">
-                <AlertCircle size={20} />
-              </div>
-              <div>
-                <h5 className="font-extrabold text-slate-800 text-sm">Tutup Shift Kasir</h5>
-                <p className="text-[10px] text-rose-600 font-bold uppercase tracking-wider">Rekonsiliasi Kas Setoran</p>
+          {/* Bottom Green Full-Width Button 🏁 Akhiri Shift SS 1 */}
+          <button
+            type="button"
+            onClick={() => {
+              setTypedCloseCashStr(formatNumberDot(totalDiharapkan));
+              setViewMode('closeShiftNumpad');
+            }}
+            className="w-full bg-[#4CAF50] hover:bg-emerald-600 text-white py-3.5 px-4 font-black text-base flex items-center justify-center gap-2 shadow-lg cursor-pointer transition-all shrink-0"
+          >
+            <Flag size={18} />
+            <span>Akhiri Shift</span>
+          </button>
+
+        </div>
+      ) : (
+        /* ==================== VIEW 2: AKHIRI SHIFT NUMPAD (SS 3) ==================== */
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-white">
+          
+          <div className="flex-1 flex min-h-0 overflow-hidden">
+            {/* Left Column: Kas Diharapkan SS 3 */}
+            <div className="flex-1 flex flex-col items-center justify-center p-8 border-r border-slate-200">
+              <h3 className="font-extrabold text-slate-900 text-2xl mb-4">Kas Diharapkan</h3>
+              <div className="font-black text-5xl text-slate-900 tracking-tight">
+                {formatNumberDot(totalDiharapkan)}
               </div>
             </div>
 
-            <form onSubmit={handleCloseShift} className="space-y-4 text-xs font-semibold text-slate-700">
+            {/* Right Column: Typed Cash Input & Numpad SS 3 */}
+            <div className="flex-1 flex flex-col min-h-0 p-8 justify-between">
               
-              {/* Expected Cash in drawer */}
-              <div className="bg-amber-50/50 border border-amber-200 rounded-2xl p-4 text-slate-700 space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="font-bold">Estimasi Uang Tunai di Drawer:</span>
-                  <span className="font-extrabold text-slate-800">
-                    {formatCurrency(parseFloat(shiftAktif.kas_awal) + salesSummary.cashAmount)}
-                  </span>
-                </div>
-                <p className="text-[10px] text-slate-400 font-medium">Dihitung dari: Kas Awal + Total Penjualan Tunai.</p>
+              {/* Display Input Nominal Kas di Laci SS 3 */}
+              <div className="text-right pb-2 border-b-2 border-blue-500 font-black text-5xl text-slate-900 tracking-tight mb-4">
+                {typedCloseCashStr || '0'}
               </div>
 
-              {/* Kas Akhir Riil */}
-              <div>
-                <label className="block text-slate-650 font-extrabold mb-1">Kas Akhir Riil (Uang Tunai Fisik) *</label>
-                <div className="relative flex items-center bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5">
-                  <span className="font-extrabold text-slate-500 mr-2">Rp.</span>
-                  <NumericInput
-                  value={kasAkhir}
-                  onChange={(val) => setKasAkhir(val)}
-                  className="w-full bg-transparent border-none focus:outline-none font-black text-slate-900 text-right"
-                  placeholder="0"
-                />
-                </div>
+              {/* Touch Numpad Grid 3x4 SS 3 */}
+              <div className="flex-1 grid grid-cols-3 gap-4 items-center justify-center">
+                {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '00'].map((btn) => (
+                  <button
+                    key={btn}
+                    type="button"
+                    onClick={() => handleNumpadClick(btn)}
+                    className={`h-full min-h-[50px] max-h-[75px] rounded-xl font-bold text-3xl flex items-center justify-center transition-all shadow-sm border border-slate-200 cursor-pointer active:scale-95 ${
+                      btn === 'C'
+                        ? 'bg-amber-50 text-amber-600 hover:bg-amber-100 border-amber-200'
+                        : 'bg-white hover:bg-slate-50 text-slate-800'
+                    }`}
+                  >
+                    {btn}
+                  </button>
+                ))}
               </div>
 
-              {/* Catatan Penutup */}
-              <div>
-                <label className="block text-slate-650 font-extrabold mb-1">Catatan Penutup / Selisih Kas</label>
-                <textarea
-                  rows="3"
-                  value={tutupCatatan}
-                  onChange={(e) => setTutupCatatan(e.target.value)}
-                  placeholder="Keterangan selisih kas atau catatan serah terima shift"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                />
-              </div>
-
-              {/* Submit Button */}
-              <div className="pt-2">
+              {/* Bottom Green Button Konfirmasi SS 3 */}
+              <div className="pt-6">
                 <button
-                  type="submit"
-                  disabled={loadingClose}
-                  className="w-full py-3 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-sm rounded-xl shadow-lg shadow-rose-500/10 flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                  type="button"
+                  onClick={() => setShowConfirmCloseModal(true)}
+                  className="w-full py-3.5 rounded-lg bg-[#4CAF50] hover:bg-emerald-600 text-white font-extrabold text-lg shadow-lg transition-all cursor-pointer text-center"
                 >
-                  {loadingClose ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  ) : (
-                    <>
-                      <span>Tutup Shift & Simpan Rekonsiliasi</span>
-                      <ArrowRight size={14} />
-                    </>
-                  )}
+                  Konfirmasi
                 </button>
               </div>
 
-            </form>
+            </div>
           </div>
 
         </div>
       )}
+
+      {/* ==================== MODAL 1: FORM KAS MASUK / KAS KELUAR (SS 2) ==================== */}
+      {kasModalType && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden flex flex-col transform scale-100 transition-all duration-300">
+            {/* Header Blue Bar SS 2 */}
+            <div className="bg-[#0088FF] px-5 py-3.5 text-white flex items-center justify-between shadow-sm shrink-0">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-full border-2 border-white flex items-center justify-center">
+                  {kasModalType === 'in' ? <Plus size={16} /> : <Minus size={16} />}
+                </div>
+                <h3 className="font-extrabold text-sm tracking-wide">
+                  {kasModalType === 'in' ? 'Kas Masuk' : 'Kas Keluar'}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setKasModalType(null)}
+                className="text-white/80 hover:text-white hover:bg-white/10 p-1 rounded-full transition-all cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Form Body SS 2 */}
+            <form onSubmit={handleSaveKasMovement} className="p-6 space-y-4 text-xs font-semibold">
+              <div>
+                <label className="text-[10px] font-bold text-blue-500 block mb-0.5">Tipe Transaksi</label>
+                <input
+                  type="text"
+                  list={`cash-transaction-types-${kasModalType}`}
+                  value={formTransTypeName}
+                  onChange={(e) => setFormTransTypeName(e.target.value)}
+                  placeholder="Pilih atau ketik tipe transaksi"
+                  className="w-full border-b border-blue-500 pb-1 text-xs font-bold text-slate-800 focus:outline-none bg-transparent placeholder:text-slate-400"
+                />
+                <datalist id={`cash-transaction-types-${kasModalType}`}>
+                  {transTypeOptions.map((t) => (
+                    <option key={t.id} value={t.nama} />
+                  ))}
+                </datalist>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 block mb-0.5">Jumlah</label>
+                <input
+                  type="text"
+                  value={formAmountStr}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/\D/g, '');
+                    setFormAmountStr(raw ? Number(raw).toLocaleString('de-DE') : '0');
+                  }}
+                  className="w-full border-b border-slate-300 pb-1 text-xs font-bold text-slate-800 focus:outline-none bg-transparent"
+                />
+              </div>
+
+              <div>
+                <input
+                  type="text"
+                  placeholder="Catatan"
+                  value={formCatatan}
+                  onChange={(e) => setFormCatatan(e.target.value)}
+                  className="w-full border-b border-slate-300 pb-1 text-xs font-semibold text-slate-700 placeholder:text-slate-400 focus:outline-none bg-transparent"
+                />
+              </div>
+
+              {/* File Lampiran */}
+              <div className="pt-2">
+                <div className="flex items-center justify-between p-3 border border-slate-200 rounded-lg text-slate-600 font-bold">
+                  <div className="min-w-0">
+                    <span className="block">File lampiran</span>
+                    {formAttachments.length > 0 && (
+                      <span className="block text-[10px] text-slate-400 truncate mt-0.5">
+                        {formAttachments.map((file) => file.name).join(', ')}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => attachmentInputRef.current?.click()}
+                    className="text-blue-500 hover:text-blue-700 p-0.5 cursor-pointer"
+                    title="Pilih file lampiran"
+                  >
+                    <Plus size={18} />
+                  </button>
+                  <input
+                    ref={attachmentInputRef}
+                    type="file"
+                    multiple
+                    accept=".pdf,.png,.jpg,.jpeg,.webp,.xlsx,.xls,.csv,.doc,.docx"
+                    onChange={(e) => setFormAttachments(Array.from(e.target.files || []))}
+                    className="hidden"
+                  />
+                </div>
+              </div>
+
+              {/* Button Simpan SS 2 */}
+              <div className="pt-4">
+                <button
+                  type="submit"
+                  disabled={savingKasMovement}
+                  className="w-full py-2.5 rounded-lg bg-[#0088FF] hover:bg-blue-600 text-white font-extrabold text-xs shadow-md transition-all cursor-pointer disabled:opacity-60"
+                >
+                  {savingKasMovement ? 'Menyimpan...' : 'Simpan'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== MODAL 2: KONFIRMASI AKHIRI SHIFT (SS 4) ==================== */}
+      {showConfirmCloseModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-sm w-full overflow-hidden flex flex-col transform scale-100 transition-all duration-300">
+            {/* Header Blue Bar SS 4 */}
+            <div className="bg-[#0088FF] px-5 py-3.5 text-white flex items-center justify-between shadow-sm shrink-0">
+              <div className="flex items-center gap-2">
+                <HelpCircle size={18} />
+                <h3 className="font-extrabold text-sm tracking-wide">Akhiri Shift</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowConfirmCloseModal(false)}
+                className="text-white/80 hover:text-white hover:bg-white/10 p-1 rounded-full transition-all cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body SS 4 */}
+            <div className="p-6 text-center space-y-6">
+              <p className="text-xs font-bold text-slate-700">
+                Konfirmasi jumlah kas di laci : <span className="font-black text-slate-900">{typedCloseCashStr || formatNumberDot(totalDiharapkan)}</span> ?
+              </p>
+
+              {/* Action Buttons SS 4 */}
+              <div className="flex items-center justify-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={handleFinalCloseShift}
+                  disabled={closingShift}
+                  className="px-8 py-2 rounded bg-[#0088FF] hover:bg-blue-600 text-white font-extrabold text-xs shadow-md transition-all cursor-pointer disabled:opacity-60"
+                >
+                  {closingShift ? 'Menutup...' : 'Ya'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmCloseModal(false)}
+                  className="px-8 py-2 rounded bg-[#555555] hover:bg-slate-700 text-white font-extrabold text-xs shadow-md transition-all cursor-pointer"
+                >
+                  Batal
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== MODAL 3: DELETE CONFIRMATION ==================== */}
+      <DeleteConfirmModal
+        isOpen={!!deleteTargetId}
+        title="Hapus Item"
+        message="Apakah anda yakin ingin menghapus item ini?"
+        onConfirm={confirmDeleteKasEntry}
+        onCancel={() => setDeleteTargetId(null)}
+      />
+
     </div>
   );
 }

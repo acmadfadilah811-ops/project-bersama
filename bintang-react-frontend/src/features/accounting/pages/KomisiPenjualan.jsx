@@ -1,165 +1,113 @@
-import { useState, useRef, useEffect } from 'react';
-import { Settings, AlertTriangle, ChevronDown } from 'lucide-react';
-import KomisiPenjualanSettingsDrawer from '../components/pos/KomisiPenjualanSettingsDrawer';
+import { useEffect, useState } from 'react';
+import { AlertTriangle, Loader2, Settings } from 'lucide-react';
+import apiClient from '../../../api/apiClient';
+import { notifyApiError } from '../../../utils/notify';
 import ReturPenjualanDateModal from '../components/pos/ReturPenjualanDateModal';
+import KomisiPenjualanSettingsDrawer from '../components/pos/KomisiPenjualanSettingsDrawer';
 
+const today = () => new Date().toISOString().slice(0, 10);
+const ago = (days) => {
+  const value = new Date();
+  value.setDate(value.getDate() - days);
+  return value.toISOString().slice(0, 10);
+};
+const fmtRp = (value) => `Rp ${Number(value || 0).toLocaleString('id-ID')}`;
+
+// Komisi brand sudah dihitung backend (Brand.komisi_persen x nilai jual per
+// baris) lewat laporan "item-brand" — dibaca ulang di sini, bukan dihitung
+// ulang di frontend (satu sumber kebenaran, lihat report_views.py).
 export default function KomisiPenjualan() {
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isDateOpen, setIsDateOpen] = useState(false);
-  
-  const [dateFrom, setDateFrom] = useState('2026-06-26');
-  const [dateTo, setDateTo] = useState('2026-07-26');
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [dateFrom, setDateFrom] = useState(ago(30));
+  const [dateTo, setDateTo] = useState(today());
   const [dateLabel, setDateLabel] = useState('30 Hari yang lalu');
+  const [dateOpen, setDateOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    apiClient.get('/reports/item-brand/', { params: { start: dateFrom, end: dateTo } })
+      .then((res) => { if (active) setRows((res.data?.rows || []).filter((row) => row.komisi_nilai > 0)); })
+      .catch((err) => { if (active) { notifyApiError(err, 'Gagal memuat data komisi penjualan.'); setRows([]); } })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [dateFrom, dateTo]);
+
+  const totalKomisi = rows.reduce((sum, row) => sum + Number(row.komisi_nilai || 0), 0);
 
   return (
     <div className="space-y-4 animate-fade-in text-xs font-semibold text-slate-700">
-      
-      {/* Warning banner */}
-      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3.5 flex items-start gap-3 shadow-2xs">
-        <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={16} />
+      <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3.5 flex items-start gap-3 shadow-2xs">
+        <AlertTriangle className="text-emerald-600 shrink-0 mt-0.5" size={16} />
         <div className="space-y-1">
-          <p className="font-bold text-amber-900 text-xs">
-            Sistem Belum Terhubung ke POS Komisi Penjualan
-          </p>
-          <p className="text-amber-700 text-[11px] font-medium leading-relaxed">
-            Koneksi data transaksi komisi penjualan kasir POS belum terintegrasi. 
-            Tampilan di bawah ini memprioritaskan kesesuaian tata letak UI (fokus antarmuka).
+          <p className="font-bold text-emerald-900 text-xs">Data Komisi Penjualan (Brand)</p>
+          <p className="text-emerald-700 text-[11px] font-medium leading-relaxed">
+            Dihitung otomatis dari rate komisi Brand x nilai jual per baris pesanan. Layar ini tampilan saja (read-only).
           </p>
         </div>
       </div>
 
-      {/* Title */}
       <h2 className="text-base font-bold text-slate-900">Komisi Penjualan</h2>
 
-      {/* Action Row */}
       <div className="flex flex-wrap gap-4 items-center justify-between">
-        
-        {/* Left Filters */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => setIsDateOpen(true)}
-            className="px-3 py-1.5 border border-slate-205 bg-slate-50 hover:bg-slate-105 text-slate-600 rounded-lg shadow-2xs transition-colors cursor-pointer"
-          >
-            {dateLabel} {dateFrom.split('-').reverse().join('-')} - {dateTo.split('-').reverse().join('-')}
-          </button>
-        </div>
-
-        {/* Right Actions */}
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            disabled
-            className="px-4 py-1.5 font-bold rounded-lg text-[10px] bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed transition-all shadow-2xs"
-          >
-            Batal Post
-          </button>
-
-          <button
-            type="button"
-            disabled
-            className="px-4 py-1.5 font-bold rounded-lg text-[10px] bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed transition-all shadow-2xs"
-          >
-            Post
-          </button>
-
-          {/* Settings button triggers drawer */}
-          <button
-            type="button"
-            onClick={() => setIsSettingsOpen(true)}
-            className="p-1.5 border border-slate-200 text-slate-400 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors shadow-2xs ml-1"
-          >
-            <Settings size={14} />
-          </button>
-        </div>
-
+        <button type="button" onClick={() => setDateOpen(true)} className="px-3 py-1.5 border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-lg shadow-2xs transition-colors cursor-pointer">
+          {dateLabel} {dateFrom} - {dateTo}
+        </button>
+        <button type="button" onClick={() => setSettingsOpen(true)} className="p-1.5 border border-slate-200 text-slate-400 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors shadow-2xs">
+          <Settings size={14} />
+        </button>
       </div>
 
-      {/* Table Section */}
       <div className="bg-white border border-slate-100 rounded-xl shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead className="bg-slate-50/50 border-b border-slate-100 text-slate-500 font-bold">
               <tr>
-                <th className="px-5 py-3.5 w-10 text-center">
-                  <div className="w-3.5 h-3.5 rounded border border-slate-200 bg-white" />
-                </th>
                 <th className="px-5 py-3.5">Transaksi</th>
                 <th className="px-5 py-3.5">Staff</th>
                 <th className="px-5 py-3.5">Tanggal</th>
-                <th className="px-5 py-3.5 text-right">Nominal transaksi</th>
+                <th className="px-5 py-3.5">Brand</th>
+                <th className="px-5 py-3.5 text-right">Nominal Transaksi</th>
+                <th className="px-5 py-3.5 text-right">Rate</th>
                 <th className="px-5 py-3.5 text-right">Komisi</th>
-                <th className="px-5 py-3.5 text-center">Status</th>
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td colSpan={7} className="px-5 py-12 text-center text-slate-400 font-bold">
-                  No Data
-                </td>
-              </tr>
+              {loading ? (
+                <tr><td colSpan={7} className="px-5 py-12 text-center text-slate-400"><Loader2 className="inline animate-spin" size={16} /> Memuat data...</td></tr>
+              ) : rows.length === 0 ? (
+                <tr><td colSpan={7} className="px-5 py-12 text-center text-slate-400 font-bold">No Data</td></tr>
+              ) : rows.map((row, idx) => (
+                <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50/60">
+                  <td className="px-5 py-3">{row.no_pesanan}</td>
+                  <td className="px-5 py-3">{row.dilayani_oleh || row.sales_oleh || '-'}</td>
+                  <td className="px-5 py-3">{row.waktu}</td>
+                  <td className="px-5 py-3">{row.brand}</td>
+                  <td className="px-5 py-3 text-right font-mono">{fmtRp(row.jumlah)}</td>
+                  <td className="px-5 py-3 text-right font-mono">{Number(row.komisi_persen || 0).toLocaleString('id-ID')}%</td>
+                  <td className="px-5 py-3 text-right font-mono font-bold text-emerald-700">{fmtRp(row.komisi_nilai)}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
-
-        {/* Footer info & pagination */}
         <div className="p-4 border-t border-slate-50 flex items-center justify-between text-[11px] font-bold text-slate-500 bg-slate-50/30">
-          
-          <div className="flex items-center gap-2">
-            <button className="flex items-center gap-1 px-2.5 py-1 border border-slate-200 bg-white hover:bg-slate-50 rounded-md transition-colors shadow-2xs">
-              <span>15 item</span>
-              <ChevronDown size={11} className="text-slate-400" />
-            </button>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <span>Total 0</span>
-            <div className="flex items-center gap-1.5">
-              <button disabled className="w-6 h-6 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-400 cursor-not-allowed">
-                &lt;
-              </button>
-              <span className="w-6 h-6 flex items-center justify-center rounded bg-[#0088E8] text-white">
-                1
-              </span>
-              <button disabled className="w-6 h-6 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-400 cursor-not-allowed">
-                &gt;
-              </button>
-            </div>
-            
-            <div className="flex items-center gap-1.5">
-              <span>Go to</span>
-              <input
-                type="text"
-                defaultValue="1"
-                disabled
-                className="w-8 py-0.5 text-center border border-slate-200 rounded bg-slate-50 text-slate-400 outline-none"
-              />
-            </div>
-          </div>
-
+          <span>Total {rows.length} baris</span>
+          <span className="text-emerald-700">Total Komisi {fmtRp(totalKomisi)}</span>
         </div>
-
       </div>
 
-      {/* Date Modal */}
       <ReturPenjualanDateModal
-        isOpen={isDateOpen}
-        onClose={() => setIsDateOpen(false)}
+        isOpen={dateOpen}
+        onClose={() => setDateOpen(false)}
         initialFrom={dateFrom}
         initialTo={dateTo}
-        onApply={(res) => {
-          setDateFrom(res.from);
-          setDateTo(res.to);
-          setDateLabel(res.label);
-        }}
+        onApply={(res) => { setDateFrom(res.from); setDateTo(res.to); setDateLabel(res.label); }}
       />
 
-      {/* Settings Drawer */}
-      <KomisiPenjualanSettingsDrawer
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-      />
-
+      <KomisiPenjualanSettingsDrawer isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }

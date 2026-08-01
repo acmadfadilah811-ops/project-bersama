@@ -161,7 +161,8 @@ class ApiTestCase(APITestCase):
         data = {
             "nomor_wa": "08987654321",
             "nama": "Pelanggan Baru",
-            "status_global": "review"
+            "status_global": "review",
+            "dilayani_oleh": self.owner.pk,
         }
         response = self.client.post(url, data, format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)

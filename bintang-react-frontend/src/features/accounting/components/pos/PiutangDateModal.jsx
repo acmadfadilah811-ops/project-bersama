@@ -1,21 +1,40 @@
 import { useState } from 'react';
 import { X, Calendar } from 'lucide-react';
 
+const toDateStr = (d) => d.toISOString().split('T')[0];
+const getTodayStr = () => toDateStr(new Date());
+const getDaysAgoStr = (days) => {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return toDateStr(d);
+};
+const getMonthStartStr = (monthsAgo = 0) => {
+  const d = new Date();
+  d.setMonth(d.getMonth() - monthsAgo, 1);
+  return toDateStr(d);
+};
+const getMonthEndStr = (monthsAgo = 0) => {
+  const d = new Date();
+  d.setMonth(d.getMonth() - monthsAgo + 1, 0);
+  return toDateStr(d);
+};
+
 export default function PiutangDateModal({ isOpen, onClose, onApply }) {
-  const [fromDate, setFromDate] = useState('2026-07-20');
-  const [toDate, setToDate] = useState('2026-07-26');
+  const today = getTodayStr();
+  const [fromDate, setFromDate] = useState(getDaysAgoStr(7));
+  const [toDate, setToDate] = useState(today);
   const [activeLabel, setActiveLabel] = useState('7 Hari yang lalu');
 
   if (!isOpen) return null;
 
   const presets = [
-    { label: 'Hari ini', from: '2026-07-26', to: '2026-07-26' },
-    { label: 'Kemarin', from: '2026-07-25', to: '2026-07-25' },
-    { label: '7 Hari yang lalu', from: '2026-07-20', to: '2026-07-26' },
-    { label: '30 Hari yang lalu', from: '2026-06-26', to: '2026-07-26' },
-    { label: 'Bulan ini', from: '2026-07-01', to: '2026-07-31' },
-    { label: 'Bulan lalu', from: '2026-06-01', to: '2026-06-30' },
-    { label: 'Sesuaikan', from: '2026-07-20', to: '2026-07-26' }
+    { label: 'Hari ini', from: today, to: today },
+    { label: 'Kemarin', from: getDaysAgoStr(1), to: getDaysAgoStr(1) },
+    { label: '7 Hari yang lalu', from: getDaysAgoStr(7), to: today },
+    { label: '30 Hari yang lalu', from: getDaysAgoStr(30), to: today },
+    { label: 'Bulan ini', from: getMonthStartStr(0), to: getMonthEndStr(0) },
+    { label: 'Bulan lalu', from: getMonthStartStr(1), to: getMonthEndStr(1) },
+    { label: 'Sesuaikan', from: getDaysAgoStr(7), to: today }
   ];
 
   const handleSelectPreset = (p) => {
@@ -34,9 +53,10 @@ export default function PiutangDateModal({ isOpen, onClose, onApply }) {
   };
 
   const handleAllData = () => {
+    const year = new Date().getFullYear();
     onApply({
-      from: '2026-01-01',
-      to: '2026-12-31',
+      from: `${year}-01-01`,
+      to: `${year}-12-31`,
       label: 'Semua Data'
     });
     onClose();

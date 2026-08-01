@@ -1,7 +1,8 @@
 from django.db import models
 from django.conf import settings
-from .models import Contact, SaldoKasHarian
+from .models import Contact, CustomUser, SaldoKasHarian
 from .product_models import Product, ProductVariant
+from django.utils import timezone
 
 class POSSale(models.Model):
     STATUS_CHOICES = (
@@ -71,6 +72,60 @@ class POSSale(models.Model):
 
     def __str__(self):
         return f"{self.nomor} - {self.status}"
+
+
+class RingkasanShift(models.Model):
+    """Snapshot rekonsiliasi kas ketika satu shift ditutup.
+
+    Nilai rincian disimpan agar riwayat tidak berubah ketika transaksi/master
+    pembayaran diedit setelah shift ditutup.
+    """
+    tanggal = models.DateField(default=timezone.localdate)
+    kasir = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='ringkasan_shift')
+    mulai = models.DateTimeField(default=timezone.now)
+    berakhir = models.DateTimeField(null=True, blank=True)
+    expected = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    aktual = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    selisih = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    rincian_tersedia = models.BooleanField(default=False)
+    kas_awal = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    penjualan_tunai = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    kas_masuk = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    kas_keluar = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+
+    def save(self, *args, **kwargs):
+        self.selisih = self.aktual - self.expected
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.tanggal} - {self.kasir.username} (Selisih: {self.selisih})"
+
+
+class POSPaymentMethod(models.Model):
+    """Metode pembayaran yang dapat dipilih di POS."""
+    TIPE_CHOICES = [
+        ('Tunai', 'Tunai (Cash)'), ('QRIS', 'QRIS'), ('Debit', 'Kartu Debit'),
+        ('Kredit', 'Kartu Kredit'), ('Transfer', 'Transfer Bank'), ('E-Wallet', 'E-Wallet'),
+    ]
+
+    tipe = models.CharField(max_length=30, choices=TIPE_CHOICES, default='Tunai')
+    nama = models.CharField(max_length=100, help_text="Nama yang tampil di POS, mis. 'CASH'")
+    nama_biaya = models.CharField(max_length=100, blank=True, default='', help_text="Mis. 'MDR'")
+    nilai_biaya = models.DecimalField(max_digits=6, decimal_places=2, default=0, help_text="Persen biaya layanan")
+    is_active = models.BooleanField(default=True)
+    accounting_payment_method = models.ForeignKey(
+        'accounting.PaymentMethod', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='pos_payment_methods',
+        help_text="Pemetaan ke Cara Pembayaran di modul Akuntansi Internal.",
+    )
+    urutan = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['urutan', 'id']
+
+    def __str__(self):
+        return f"{self.nama} ({self.tipe})"
 
 class POSSaleItem(models.Model):
     sale = models.ForeignKey(POSSale, on_delete=models.CASCADE, related_name='items')

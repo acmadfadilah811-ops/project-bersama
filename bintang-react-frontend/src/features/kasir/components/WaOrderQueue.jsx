@@ -18,8 +18,9 @@ import {
 } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import { useAuth } from '../../../context/AuthContext';
+import PosHeaderBar from './PosHeaderBar';
 
-export default function WaOrderQueue() {
+export default function WaOrderQueue({ onToggleSidebar }) {
   // Kasir hanya boleh menerbitkan SPK ke antrean divisi — aturan yang sama
   // dengan SpkPublishModal, ditegakkan backend di api/spk.py. Layar ini punya
   // pemilih penugasan sendiri, jadi gatenya harus ikut dipasang di sini.
@@ -291,9 +292,12 @@ export default function WaOrderQueue() {
   };
 
   return (
-    <div className="flex-1 flex flex-col lg:flex-row h-full overflow-hidden w-full">
-      {/* Kiri: Antrean Order List */}
-      <div className="w-full lg:w-[380px] border-r border-slate-200 bg-white flex flex-col h-full shrink-0">
+    <div className="flex-1 flex flex-col h-full overflow-hidden w-full select-none">
+      <PosHeaderBar onToggleSidebar={onToggleSidebar} />
+
+      <div className="flex-1 flex flex-col lg:flex-row h-full overflow-hidden w-full">
+        {/* Kiri: Antrean Order List */}
+        <div className="w-full lg:w-[380px] border-r border-slate-200 bg-white flex flex-col h-full shrink-0">
         <div className="p-4 border-b border-slate-200 bg-slate-50/50 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="bg-indigo-100 text-indigo-600 p-2 rounded-xl">
@@ -733,10 +737,10 @@ export default function WaOrderQueue() {
                 </button>
               </div>
             </div>
-
           </div>
         )}
       </div>
     </div>
-  );
+  </div>
+);
 }

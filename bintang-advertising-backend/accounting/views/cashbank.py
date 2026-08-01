@@ -11,9 +11,10 @@ from ..models import PaymentMethod, PaymentMethodAuditLog
 from ..serializers import (
     PaymentMethodAuditLogSerializer,
     PaymentMethodBulkUpdateAccountSerializer,
+    PaymentMethodMdrUpdateSerializer,
     PaymentMethodSerializer,
 )
-from ..services.payment_method import bulk_update_payment_method_account
+from ..services.payment_method import bulk_update_payment_method_account, update_payment_method_mdr
 
 
 class PaymentMethodListView(generics.ListAPIView):
@@ -67,3 +68,22 @@ class PaymentMethodAuditLogView(generics.ListAPIView):
         return PaymentMethodAuditLog.objects.filter(
             payment_method_id=self.kwargs["payment_method_id"],
         ).select_related("actor")
+
+
+class PaymentMethodMdrUpdateView(APIView):
+    """PATCH /api/accounting/payment-methods/<id>/mdr/ â€” simpan Debit/Kredit/Rating MDR."""
+
+    permission_classes = [IsOwnerOrManager]
+
+    def patch(self, request, payment_method_id):
+        serializer = PaymentMethodMdrUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            method = update_payment_method_mdr(
+                payment_method_id=payment_method_id,
+                actor=request.user,
+                **serializer.validated_data,
+            )
+        except DjangoValidationError as exc:
+            raise DRFValidationError(getattr(exc, "messages", [str(exc)]))
+        return Response(PaymentMethodSerializer(method).data)

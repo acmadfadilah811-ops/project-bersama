@@ -16,7 +16,6 @@ import KonfirmasiSettlement from './KonfirmasiSettlement';
 import TransferModal from './TransferModal';
 import PosTransactions from './PosTransactions';
 import PenjualanDiToko from './PenjualanDiToko';
-import PenjualanMarketplace from './PenjualanMarketplace';
 import Pembelian from './Pembelian';
 import ReturPenjualan from './ReturPenjualan';
 import ReturPembelian from './ReturPembelian';
@@ -49,6 +48,7 @@ import PerubahanModal from './PerubahanModal';
 import ArusKas from './ArusKas';
 import TutupBukuTokoIni from './TutupBukuTokoIni';
 import TutupBukuTokoPusatCabang from './TutupBukuTokoPusatCabang';
+import FeatureShield from '../components/FeatureShield';
 import PenyesuaianHakAkses from './PenyesuaianHakAkses';
 
 export default function AccountingInternalApp() {
@@ -172,28 +172,44 @@ export default function AccountingInternalApp() {
               <BukuBesar onToggleSidebar={setHideSidebar} />
             ) : activeSubMenu === 'kas-bank-list' ? (
               <ListKasBank onToggleSidebar={setHideSidebar} initialViewState="list" />
-            ) : activeSubMenu === 'transfer-kas' ? (
-              <ListKasBank onToggleSidebar={setHideSidebar} initialViewState="transfer" />
             ) : activeSubMenu === 'cara-pembayaran' ? (
               <CaraPembayaran />
+            ) : activeSubMenu === 'transfer-kas' ? (
+              <ListKasBank onToggleSidebar={setHideSidebar} initialViewState="transfer" />
             ) : activeSubMenu === 'bank-statement' ? (
               <BankStatement />
+            ) : activeSubMenu === 'invoice' ? (
+              <Invoice />
+            ) : activeSubMenu === 'log-jurnal' || activeSubMenu === 'log' ? (
+              <LogJurnal />
             ) : activeSubMenu === 'rekonsiliasi-bank' ? (
               <RekonsiliasiBank />
             ) : activeSubMenu === 'konfirmasi-settlement' ? (
               <KonfirmasiSettlement />
             ) : activeSubMenu === 'transfer-modal' ? (
               <TransferModal />
-            ) : activeSubMenu === 'pos-penjualan-toko' ? (
-              <PenjualanDiToko />
-            ) : activeSubMenu === 'pos-penjualan-marketplace' ? (
-              <PenjualanMarketplace />
-            ) : activeSubMenu === 'pos-pembelian' ? (
-              <Pembelian />
+            ) : activeSubMenu === 'jurnal-tunggal' ? (
+              <JurnalTunggal />
+            ) : activeSubMenu === 'multi-jurnal' ? (
+              <MultiJurnal />
+            ) : activeSubMenu === 'hutang-jurnal-tunggal' ? (
+              <HutangJurnalTunggal />
+            ) : activeSubMenu === 'hutang-multi-jurnal' ? (
+              <HutangMultiJurnal />
             ) : activeSubMenu === 'pos-return-penjualan' ? (
               <ReturPenjualan />
             ) : activeSubMenu === 'pos-return-pembelian' ? (
               <ReturPembelian />
+            ) : activeSubMenu === 'pos-penjualan-toko' ? (
+              <PenjualanDiToko />
+            ) : activeSubMenu === 'pos-pembelian' ? (
+              <Pembelian />
+            ) : activeSubMenu === 'pos-penjualan-marketplace' ? (
+              <FeatureShield
+                title="Penjualan Marketplace belum terintegrasi"
+                description="Konektor dan kredensial marketplace belum tersedia. Tidak ada transaksi marketplace yang ditampilkan sampai sinkronisasi resmi diaktifkan."
+                targetTask="Integrasi marketplace"
+              />
             ) : activeSubMenu === 'pos-stok-masuk' ? (
               <StokMasuk />
             ) : activeSubMenu === 'pos-stok-keluar' ? (
@@ -222,22 +238,12 @@ export default function AccountingInternalApp() {
               <PengaturanSupplier />
             ) : activeSubMenu === 'hutang-simpanan-pelanggan' ? (
               <SimpananPelanggan />
-            ) : activeSubMenu === 'hutang-jurnal-tunggal' ? (
-              <HutangJurnalTunggal />
-            ) : activeSubMenu === 'hutang-multi-jurnal' ? (
-              <HutangMultiJurnal />
-            ) : activeSubMenu === 'jurnal-tunggal' ? (
-              <JurnalTunggal />
-            ) : activeSubMenu === 'multi-jurnal' ? (
-              <MultiJurnal />
             ) : activeSubMenu === 'aset' || activeSubMenu === 'asset' || activeSubMenu === 'aset-tambah' ? (
               <DaftarAset />
             ) : activeSubMenu === 'biaya' || activeSubMenu === 'expense' ? (
               <DaftarBiaya />
-            ) : activeSubMenu === 'invoice' ? (
-              <Invoice />
-            ) : activeSubMenu === 'log-jurnal' || activeSubMenu === 'log' ? (
-              <LogJurnal />
+            ) : activeSubMenu.startsWith('pos-') ? (
+              <PosTransactions activeSubMenu={activeSubMenu} />
             ) : activeSubMenu === 'laporan-laba-rugi-satu-periode' || activeSubMenu === 'laporan-laba-rugi' ? (
               <LabaRugiSatuPeriode />
             ) : activeSubMenu === 'laporan-laba-rugi-multi-periode' ? (
@@ -254,17 +260,8 @@ export default function AccountingInternalApp() {
               <TutupBukuTokoPusatCabang />
             ) : activeSubMenu === 'hak-akses' || activeSubMenu === 'penyesuaian-hak-akses' || activeParam === 'permission' ? (
               <PenyesuaianHakAkses />
-            ) : activeSubMenu.startsWith('pos-') ? (
-              <PosTransactions activeSubMenu={activeSubMenu} />
             ) : (
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-12 text-center text-slate-400">
-                <p className="text-base font-bold text-slate-700 mb-1">
-                  Modul {activeSubMenu.replace('-', ' ').toUpperCase()}
-                </p>
-                <p className="text-xs">
-                  Halaman ini sedang dalam siklus pengembangan bertahap.
-                </p>
-              </div>
+              <FeatureShield title={`Modul ${activeSubMenu.replace('-', ' ').toUpperCase()}`} targetTask="T-607+" />
             )}
           </main>
         </div>
@@ -272,4 +269,3 @@ export default function AccountingInternalApp() {
     </TransaksiProvider>
   );
 }
-
