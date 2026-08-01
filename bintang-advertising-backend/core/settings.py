@@ -198,8 +198,9 @@ AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
 AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME')
 AWS_S3_ENDPOINT_URL = os.getenv('AWS_S3_ENDPOINT_URL')
 AWS_S3_CUSTOM_DOMAIN = os.getenv('AWS_S3_CUSTOM_DOMAIN')
+USE_R2_MEDIA = os.getenv('USE_R2_MEDIA', 'False').strip().lower() in {'1', 'true', 'yes', 'on'}
 
-if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY and AWS_STORAGE_BUCKET_NAME and AWS_S3_ENDPOINT_URL:
+if USE_R2_MEDIA and AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY and AWS_STORAGE_BUCKET_NAME and AWS_S3_ENDPOINT_URL:
     # Mendaftarkan storages di INSTALLED_APPS secara dinamis
     if 'storages' not in INSTALLED_APPS:
         INSTALLED_APPS.append('storages')
