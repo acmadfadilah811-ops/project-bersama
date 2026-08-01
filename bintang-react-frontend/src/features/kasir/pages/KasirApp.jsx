@@ -7,7 +7,6 @@ import PosTerminal from './PosTerminal';
 import PosHistory from './PosHistory';
 import PosShift from './PosShift';
 import PosRekapHarian from './PosRekapHarian';
-import WaSettings from './WaSettings';
 import WaOrderQueue from '../components/WaOrderQueue';
 import KasirDashboard from './KasirDashboard';
 import ProductListPage from './ProductListPage';
@@ -68,7 +67,7 @@ export default function KasirApp() {
               <Route path="riwayat" element={<PosHistory onToggleSidebar={handleToggleSidebar} />} />
               <Route path="rekap-harian" element={<Navigate to="/kasir/shift" replace />} />
               <Route path="shift" element={<PosShift onToggleSidebar={handleToggleSidebar} />} />
-              <Route path="pengaturan-wa" element={<WaSettings onToggleSidebar={handleToggleSidebar} />} />
+              <Route path="pengaturan-wa" element={<Navigate to="/kasir/dashboard" replace />} />
               <Route path="*" element={<Navigate to="dashboard" replace />} />
             </Routes>
           </main>

@@ -8,7 +8,6 @@ import {
   MessageCircle,
   History,
   Clock,
-  Settings,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -70,7 +69,6 @@ export default function KasirSidebar({ isCollapsed, setIsCollapsed }) {
     { path: '/kasir/antrean-wa', label: 'Antrean WA', icon: MessageCircle, badge: waOrderCount },
     { path: '/kasir/riwayat', label: 'Riwayat Transaksi', icon: History },
     { path: '/kasir/shift', label: 'Shift', icon: Clock },
-    { path: '/kasir/pengaturan-wa', label: 'Pengaturan WA', icon: Settings },
   ];
 
   return (
