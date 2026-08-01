@@ -20,6 +20,7 @@ export default function PosHistory({ onToggleSidebar }) {
   const [voiding, setVoiding] = useState(false);
   const [showSpkModal, setShowSpkModal] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [sendingWa, setSendingWa] = useState(false);
   const [showVoidModal, setShowVoidModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [emailInput, setEmailInput] = useState('');
@@ -71,11 +72,14 @@ export default function PosHistory({ onToggleSidebar }) {
     fetchSales();
   }, []);
 
-  const handleKirimResiWaSubmit = (e) => {
+  const handleKirimResiWaSubmit = async (e) => {
     e.preventDefault();
     if (!selectedSale) return;
     let phone = (waInput || '').replace(/[^0-9]/g, '');
-    if (!phone) return;
+    if (phone.length < 8 || phone.length > 15) {
+      notifyApiError(null, 'Nomor WhatsApp tidak valid. Gunakan 8–15 digit.');
+      return;
+    }
     if (phone.startsWith('0')) phone = `62${phone.slice(1)}`;
     else if (!phone.startsWith('62')) phone = `62${phone}`;
 
@@ -85,8 +89,16 @@ export default function PosHistory({ onToggleSidebar }) {
     });
     msg += `\nTotal: Rp ${Number(selectedSale.total).toLocaleString('id-ID')}\nMetode Bayar: ${selectedSale.metode_bayar}\n\nTerima kasih telah berbelanja!`;
 
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
-    setShowWaModal(false);
+    setSendingWa(true);
+    try {
+      await apiClient.post('/whatsapp/send/', { number: phone, text: msg });
+      notifySuccess('Resi terkirim', `Resi ${selectedSale.nomor} dikirim ke WhatsApp ${phone}.`);
+      setShowWaModal(false);
+    } catch (err) {
+      notifyApiError(err, 'Gagal mengirim resi via WhatsApp.');
+    } finally {
+      setSendingWa(false);
+    }
   };
 
   const handleEmailResiSubmit = async (e) => {
@@ -334,6 +346,7 @@ export default function PosHistory({ onToggleSidebar }) {
                   <div className="absolute bottom-full right-0 mb-2 w-48 bg-white rounded-xl shadow-2xl border border-slate-200 py-1.5 z-50 text-xs font-bold text-slate-800 animate-fade-in">
                     <button
                       type="button"
+                      disabled={sendingWa}
                       onClick={() => {
                         setShowActionDropdown(false);
                         // ReceiptPrint dirender di luar dropdown (hidden, hanya
@@ -342,7 +355,7 @@ export default function PosHistory({ onToggleSidebar }) {
                         // Bill sudah pakai pola ini.
                         window.print();
                       }}
-                      className="w-full px-4 py-2.5 hover:bg-slate-50 text-left flex items-center gap-3 border-b border-slate-100 cursor-pointer"
+                      className="w-full px-4 py-2.5 hover:bg-slate-50 text-left flex items-center gap-3 border-b border-slate-100 cursor-pointer disabled:opacity-50"
                     >
                       <Printer size={16} className="text-slate-600" />
                       <span>Cetak Resi</span>
@@ -571,7 +584,7 @@ export default function PosHistory({ onToggleSidebar }) {
                   autoFocus
                 />
                 <span className="text-[11px] text-slate-400 font-semibold block mt-1.5">
-                  Resi transaksi {selectedSale.nomor} akan dibuka di WhatsApp Web/App.
+                  Resi transaksi {selectedSale.nomor} akan dikirim melalui WhatsApp bisnis.
                 </span>
               </div>
               <div className="flex items-center justify-end gap-3 pt-2">
@@ -584,10 +597,11 @@ export default function PosHistory({ onToggleSidebar }) {
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow-md shadow-emerald-500/20 transition-all cursor-pointer flex items-center gap-2"
+                  disabled={sendingWa}
+                  className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow-md shadow-emerald-500/20 transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
                 >
                   <Send size={15} />
-                  <span>Buka WhatsApp</span>
+                  <span>{sendingWa ? 'Mengirim...' : 'Kirim Resi'}</span>
                 </button>
               </div>
             </form>
