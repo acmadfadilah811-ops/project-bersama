@@ -57,3 +57,21 @@ class EmailResiTests(APITestCase):
                 f'/api/pos/sales/{self.sale.id}/email-resi/', {'email': 'pelanggan@test.com'}, format='json'
             )
         self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    @patch('api.pos_views.whatsapp_client.send_text_message', return_value={'key': {'id': 'wa-test'}})
+    def test_kirim_whatsapp_resi_menggunakan_gateway(self, send_text_message):
+        self.client.force_authenticate(self.kasir)
+        response = self.client.post(
+            f'/api/pos/sales/{self.sale.id}/whatsapp-resi/', {'number': '081234567890'}, format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(send_text_message.call_args.args[0], '6281234567890')
+        self.assertIn(self.sale.nomor, send_text_message.call_args.args[1])
+
+    @patch('api.pos_views.whatsapp_client.send_text_message', return_value=None)
+    def test_kegagalan_gateway_whatsapp_dilaporkan(self, _send_text_message):
+        self.client.force_authenticate(self.kasir)
+        response = self.client.post(
+            f'/api/pos/sales/{self.sale.id}/whatsapp-resi/', {'number': '081234567890'}, format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { CheckCircle2, X, Send, Printer, FileText, Plus, ChevronDown } from 'lucide-react';
 import ReceiptEmailField from './ReceiptEmailField';
+import apiClient from '../../../api/apiClient';
+import { notifyApiError, notifyError, notifySuccess } from '../../../utils/notify';
 
 export default function PaymentSuccessModal({
   isOpen,
@@ -9,11 +11,12 @@ export default function PaymentSuccessModal({
   onNewOrder,
 }) {
   const [waResi, setWaResi] = useState('');
+  const [sendingWa, setSendingWa] = useState(false);
   const [showCustomPrintDropdown, setShowCustomPrintDropdown] = useState(false);
 
   React.useEffect(() => {
     if (isOpen && transactionData) {
-      setWaResi(transactionData.customerPhone || '+6281234567890');
+      setWaResi(transactionData.customerPhone || '');
       setShowCustomPrintDropdown(false);
     }
   }, [isOpen, transactionData]);
@@ -25,9 +28,27 @@ export default function PaymentSuccessModal({
   const totalAmount = transactionData?.totalAmount || 50000;
   const changeAmount = transactionData?.changeAmount || 0;
 
-  const handleSendWa = () => {
-    if (!waResi) return alert('Masukkan nomor WhatsApp resi.');
-    alert(`Resi pembayaran berhasil dikirim ke WhatsApp: ${waResi}`);
+  const handleSendWa = async () => {
+    if (!transactionData?.id) {
+      notifyError('Resi belum siap', 'Transaksi belum memiliki ID untuk pengiriman resi.');
+      return;
+    }
+    if (!waResi.trim()) {
+      notifyError('Nomor diperlukan', 'Masukkan nomor WhatsApp penerima resi.');
+      return;
+    }
+
+    setSendingWa(true);
+    try {
+      const response = await apiClient.post(`/pos/sales/${transactionData.id}/whatsapp-resi/`, {
+        number: waResi.trim(),
+      });
+      notifySuccess('Resi terkirim', response.data?.message || 'Resi berhasil dikirim ke WhatsApp.');
+    } catch (error) {
+      notifyApiError(error, 'Gagal mengirim resi via WhatsApp.');
+    } finally {
+      setSendingWa(false);
+    }
   };
 
   const handleKirimSpk = () => {
@@ -105,7 +126,8 @@ export default function PaymentSuccessModal({
               <button
                 type="button"
                 onClick={handleSendWa}
-                className="w-8 h-8 rounded-full bg-[#0088FF] hover:bg-blue-600 text-white flex items-center justify-center ml-2 transition-all shadow-md cursor-pointer shrink-0"
+                disabled={sendingWa}
+                className="w-8 h-8 rounded-full bg-[#0088FF] hover:bg-blue-600 text-white flex items-center justify-center ml-2 transition-all shadow-md cursor-pointer shrink-0 disabled:opacity-50"
                 title="Kirim Resi via WhatsApp"
               >
                 <Send size={15} />

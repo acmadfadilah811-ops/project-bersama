@@ -1,5 +1,7 @@
 import random
+import re
 from django.db import transaction
+from django.core.cache import cache
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.db.models import Q
@@ -18,6 +20,7 @@ from . import spk
 from .permissions import IsOwnerManagerAdminOrKasir, IsStrictOwnerOrManager
 from .throttles import PasskeyRateThrottle
 from .pos_services import create_sale, void_sale
+from .whatsapp_client import whatsapp_client
 
 class POSSaleViewSet(viewsets.ModelViewSet):
     queryset = POSSale.objects.all().order_by('-created_at')
@@ -319,6 +322,53 @@ class POSSaleViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         return Response({'ok': True, 'message': f'Resi dikirim ke {email}.'})
+
+    @action(detail=True, methods=['post'], url_path='whatsapp-resi',
+            permission_classes=[IsOwnerManagerAdminOrKasir])
+    def whatsapp_resi(self, request, pk=None):
+        """Kirim resi POS melalui instance Evolution API yang aktif.
+
+        Body: {"number": "081234567890"}. Pengiriman dilakukan server-side
+        agar UI tidak pernah mengklaim resi terkirim sebelum gateway menerima
+        permintaan pengiriman.
+        """
+        sale = self.get_object()
+        number = re.sub(r'\D', '', str(request.data.get('number') or ''))
+        if number.startswith('0'):
+            number = f'62{number[1:]}'
+        elif number and not number.startswith('62'):
+            number = f'62{number}'
+
+        if not re.fullmatch(r'\d{8,15}', number):
+            return Response({'error': 'Nomor WhatsApp tidak valid.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        baris_item = '\n'.join(
+            f"- {it.nama_snapshot} x{it.qty} = Rp {it.subtotal:,.0f}"
+            for it in sale.items.all()
+        )
+        message = (
+            f"*Resi Transaksi {sale.nomor}*\n\n"
+            f"Tanggal: {sale.created_at.strftime('%d-%m-%Y %H:%M')}\n\n"
+            f"{baris_item}\n\n"
+            f"Subtotal: Rp {sale.subtotal:,.0f}\n"
+            f"Diskon: Rp {sale.diskon:,.0f}\n"
+            f"Pajak: Rp {sale.pajak:,.0f}\n"
+            f"*Total: Rp {sale.total:,.0f}*\n"
+            f"Metode Bayar: {sale.metode_bayar}\n"
+            f"Dibayar: Rp {sale.dibayar:,.0f}\n"
+            f"Kembalian: Rp {sale.kembalian:,.0f}\n\n"
+            "Terima kasih telah berbelanja."
+        )
+        result = whatsapp_client.send_text_message(number, message)
+        if not result:
+            return Response(
+                {'error': 'Gateway WhatsApp tidak dapat mengirim resi. Coba lagi nanti.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        # Pesan manual dari kasir menahan auto-reply bot sementara untuk nomor ini.
+        cache.set(f"wa_handover_{number}", True, timeout=900)
+        return Response({'ok': True, 'message': f'Resi dikirim ke WhatsApp {number}.'})
 
     @action(detail=True, methods=['post'], url_path='terbitkan-spk',
             permission_classes=[IsOwnerManagerAdminOrKasir])
