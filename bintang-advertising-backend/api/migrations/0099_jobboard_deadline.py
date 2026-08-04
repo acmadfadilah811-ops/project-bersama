@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('api', '0098_possale_void_audit_fields'),
+        ('api', '0097_productstockmovement_pos_sale'),
     ]
 
     operations = [
