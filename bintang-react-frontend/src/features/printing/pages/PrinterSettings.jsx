@@ -137,6 +137,19 @@ export default function PrinterSettings() {
               </select>
             </label>
             <label className="space-y-1.5 text-xs font-bold text-slate-700">
+              <span>Profil printer</span>
+              <select
+                value={localSettings.printerProfile}
+                onChange={(event) => setLocalSettings((current) => (event.target.value === 'epson-tm-u220-70'
+                  ? { ...current, printerProfile: event.target.value, connectionMode: 'qz', paperSize: '70mm', autoPrintReceipt: true }
+                  : { ...current, printerProfile: event.target.value }))}
+                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 font-medium outline-none focus:border-blue-500"
+              >
+                <option value="generic">Umum (thermal / printer Windows)</option>
+                <option value="epson-tm-u220-70">Epson TM-U220 - 70 mm (raw ESC/POS)</option>
+              </select>
+            </label>
+            <label className="space-y-1.5 text-xs font-bold text-slate-700">
               <span>Printer di Windows</span>
               {localSettings.connectionMode === 'qz' ? (
                 <select
@@ -161,8 +174,10 @@ export default function PrinterSettings() {
               <select
                 value={localSettings.paperSize}
                 onChange={(event) => setLocalSettings((current) => ({ ...current, paperSize: event.target.value }))}
+                disabled={localSettings.printerProfile === 'epson-tm-u220-70'}
                 className="w-full rounded-xl border border-slate-200 px-3 py-2.5 font-medium outline-none focus:border-blue-500"
               >
+                <option value="70mm">Epson TM-U220 70 mm</option>
                 <option value="58mm">Thermal 58 mm</option>
                 <option value="80mm">Thermal 80 mm</option>
               </select>
@@ -180,6 +195,12 @@ export default function PrinterSettings() {
             </div>
           )}
 
+          {localSettings.printerProfile === 'epson-tm-u220-70' && (
+            <p className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs leading-relaxed text-blue-800">
+              Profil TM-U220 memakai perintah raw ESC/POS 36 kolom untuk gulungan 70 mm. Isi resi dicetak rata kiri dan hanya memberi tiga baris akhir; tidak memakai format HTML/pixel sehingga tidak memusatkan teks atau membuang kertas. Pilih nama printer Epson yang terdeteksi QZ Tray di atas.
+            </p>
+          )}
+
           <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3 text-xs text-slate-700">
             <input
               type="checkbox"
@@ -187,7 +208,7 @@ export default function PrinterSettings() {
               onChange={(event) => setLocalSettings((current) => ({ ...current, autoPrintReceipt: event.target.checked }))}
               className="mt-0.5"
             />
-            <span><strong>Cetak resi otomatis di PC ini</strong><br />Aktif hanya jika kebijakan global juga mengizinkan cetak otomatis.</span>
+            <span><strong>Cetak resi otomatis di PC ini</strong><br />Setelah pembayaran berhasil, resi langsung dikirim ke QZ Tray. Owner/Manager dapat mematikannya pada kebijakan global.</span>
           </label>
 
           <div className="mt-4 flex flex-wrap items-center gap-2">

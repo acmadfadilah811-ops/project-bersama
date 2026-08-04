@@ -4,6 +4,7 @@ const LOCAL_PRINTER_SETTINGS_KEY = 'bintang_pos_printer_settings';
 
 export const DEFAULT_LOCAL_PRINTER_SETTINGS = Object.freeze({
   printerName: '',
+  printerProfile: 'generic',
   paperSize: '80mm',
   connectionMode: 'browser',
   autoPrintReceipt: false,
@@ -29,7 +30,7 @@ export function saveLocalPrinterSettings(settings) {
 export function getPrintPolicy(businessSettings) {
   const ext = businessSettings?.pos_ext_settings || {};
   return {
-    autoPrintPosReceipt: Boolean(ext.auto_print_pos_receipt),
+    autoPrintPosReceipt: ext.auto_print_pos_receipt !== false,
     useA4ReceiptLayout: Boolean(ext.pos_custom_resi_windows),
   };
 }
@@ -64,6 +65,7 @@ export async function printReceipt({ receipt, businessSettings, localSettings = 
       settings: businessSettings,
       printerName: localSettings.printerName,
       paperSize: localSettings.paperSize,
+      printerProfile: localSettings.printerProfile,
     });
     return { channel: 'qz' };
   }

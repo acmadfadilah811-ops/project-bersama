@@ -1,6 +1,7 @@
 import qz from 'qz-tray';
 import apiClient from '../../../api/apiClient';
 import { buildQzReceiptHtml, getPaperWidthInches } from './qzReceiptHtml';
+import { buildTmU220Receipt, TM_U220_70_PROFILE } from './qzTmU220Receipt';
 
 let securityConfigured = false;
 
@@ -51,7 +52,7 @@ export async function getQzPrinters() {
   }
 }
 
-export async function printQzReceipt({ receipt, settings, printerName, paperSize }) {
+export async function printQzReceipt({ receipt, settings, printerName, paperSize, printerProfile }) {
   if (!printerName) throw new QZTrayError('Pilih printer QZ Tray terlebih dahulu.');
 
   await connectQzTray();
@@ -61,13 +62,15 @@ export async function printQzReceipt({ receipt, settings, printerName, paperSize
       margins: 0,
       scaleContent: false,
     });
-    const data = [{
-      type: 'pixel',
-      format: 'html',
-      flavor: 'plain',
-      data: buildQzReceiptHtml({ receipt, settings, paperSize }),
-      options: { pageWidth: getPaperWidthInches(settings?.pos_ext_settings?.pos_custom_resi_windows ? 'a4' : paperSize) },
-    }];
+    const data = printerProfile === TM_U220_70_PROFILE
+      ? [{ type: 'raw', format: 'command', flavor: 'plain', data: buildTmU220Receipt(receipt, settings) }]
+      : [{
+        type: 'pixel',
+        format: 'html',
+        flavor: 'plain',
+        data: buildQzReceiptHtml({ receipt, settings, paperSize }),
+        options: { pageWidth: getPaperWidthInches(settings?.pos_ext_settings?.pos_custom_resi_windows ? 'a4' : paperSize) },
+      }];
     await qz.print(config, data);
   } catch (error) {
     throw new QZTrayError(getErrorMessage(error));
