@@ -12,6 +12,7 @@ from . import finance_views
 from .report_views import ReportDataView, ReportExportView
 from .views.purchase_workflow import PurchaseWorkflowView
 from .views.purchase_reports import PurchaseReportView
+from .views.qz import QZCertificateView, QZSignView
 
 router = DefaultRouter()
 
@@ -136,6 +137,8 @@ urlpatterns = [
 
     # Business Settings (mirip OrgSettings di Django CRM)
     path('business-settings/', BusinessSettingsView.as_view(), name='business-settings'),
+    path('integrations/qz/certificate/', QZCertificateView.as_view(), name='qz-certificate'),
+    path('integrations/qz/sign/', QZSignView.as_view(), name='qz-sign'),
     
     # WhatsApp Chat Integration
     path('whatsapp/status/', views.WhatsAppStatusView.as_view(), name='whatsapp-status'),

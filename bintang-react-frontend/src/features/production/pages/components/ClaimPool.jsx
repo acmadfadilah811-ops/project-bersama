@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Inbox, UserCheck, Ruler, Clipboard, AlertCircle, Cpu } from 'lucide-react';
+import DeadlineBadge from '../../components/DeadlineBadge';
 
 export default function ClaimPool({ claimPool, onClaim, loading }) {
   const [selectedTahap, setSelectedTahap] = useState('');
@@ -120,6 +121,7 @@ export default function ClaimPool({ claimPool, onClaim, loading }) {
                       <h3 className="text-sm font-extrabold text-slate-800 mt-1">
                         {item.jenis_produk || 'Produk'}
                       </h3>
+                      <div className="mt-1.5"><DeadlineBadge deadline={job.deadline} /></div>
                     </div>
                     <span className="text-[10px] text-slate-450 font-semibold font-mono">
                       ID: #{job.id}

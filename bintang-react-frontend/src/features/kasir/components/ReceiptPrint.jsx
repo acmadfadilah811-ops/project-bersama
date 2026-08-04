@@ -1,11 +1,15 @@
 import React from 'react';
+import { getLocalPrinterSettings } from '../../printing/services/printService';
 
 export default function ReceiptPrint({ receipt, settings }) {
   if (!receipt) return null;
 
   const extSettings = settings?.pos_ext_settings || {};
+  const { paperSize } = getLocalPrinterSettings();
   const isA4Layout = !!extSettings.pos_custom_resi_windows;
   const isPaperSaving = !!extSettings.enable_paper_saving;
+  const thermalWidth = paperSize === '58mm' ? '48mm' : '72mm';
+  const documentTitle = receipt.documentTitle || settings?.pos_resi_judul || 'RESI PEMBELIAN';
 
   // Format currency in IDR
   const formatCurrency = (val) => {
@@ -57,7 +61,7 @@ export default function ReceiptPrint({ receipt, settings }) {
             <p className="text-[10px] text-slate-500 font-semibold mt-1">Solusi Cetak & Promosi Terpercaya</p>
           </div>
           <div className="text-right">
-            <h2 className="text-lg font-extrabold uppercase tracking-wide text-slate-700">Faktur Penjualan (POS)</h2>
+            <h2 className="text-lg font-extrabold uppercase tracking-wide text-slate-700">{receipt.documentTitle || 'Faktur Penjualan (POS)'}</h2>
             {!settings?.pos_resi_sembunyikan_no_pesanan && (
               <p className="text-[10px] font-black text-slate-900 mt-1">No. Invoice: {receipt.nomor}</p>
             )}
@@ -162,14 +166,20 @@ export default function ReceiptPrint({ receipt, settings }) {
               <span className="text-indigo-600">{formatCurrency(receipt.total)}</span>
             </div>
             <div className="h-px bg-slate-200 my-1" />
-            <div className="flex justify-between text-[10px] text-slate-500">
-              <span>Dibayar ({receipt.metode_bayar}):</span>
-              <span>{formatCurrency(receipt.dibayar)}</span>
-            </div>
-            <div className="flex justify-between text-[10px] text-emerald-600 font-bold">
-              <span>Kembalian:</span>
-              <span>{formatCurrency(receipt.kembalian)}</span>
-            </div>
+            {receipt.isDraft ? (
+              <div className="text-[10px] font-bold text-amber-700">STATUS: BELUM DIBAYAR</div>
+            ) : (
+              <>
+                <div className="flex justify-between text-[10px] text-slate-500">
+                  <span>Dibayar ({receipt.metode_bayar}):</span>
+                  <span>{formatCurrency(receipt.dibayar)}</span>
+                </div>
+                <div className="flex justify-between text-[10px] text-emerald-600 font-bold">
+                  <span>Kembalian:</span>
+                  <span>{formatCurrency(receipt.kembalian)}</span>
+                </div>
+              </>
+            )}
             {extSettings.print_total_qty_resi && (
               <div className="text-[10px] text-slate-400 font-bold pt-2 border-t border-dashed border-slate-100">
                 TOTAL QTY ITEM: {totalQty}
@@ -190,11 +200,14 @@ export default function ReceiptPrint({ receipt, settings }) {
 
   // Render Thermal receipt layout
   return (
-    <div className="receipt-print-area hidden print:block bg-white text-black font-mono text-[11px] p-2 leading-tight max-w-[280px] mx-auto">
+    <div
+      className="receipt-print-area hidden bg-white p-2 font-mono text-[11px] leading-tight text-black print:block"
+      style={{ width: thermalWidth, maxWidth: thermalWidth, margin: '0 auto' }}
+    >
       {/* Business Name & Title */}
       <div className="text-center space-y-1 mb-3">
         <h2 className="text-xs font-black uppercase tracking-wider">{settings?.nama_bisnis || 'BINTANG ADVERTISING'}</h2>
-        <h3 className="text-[10px] font-bold uppercase">{settings?.pos_resi_judul || 'RESI PEMBELIAN'}</h3>
+        <h3 className="text-[10px] font-bold uppercase">{documentTitle}</h3>
         <p className="text-[9px] text-slate-650">Tanggal: {new Date(receipt.created_at).toLocaleString('id-ID')}</p>
       </div>
 
@@ -269,18 +282,26 @@ export default function ReceiptPrint({ receipt, settings }) {
           <span>Total</span>
           <span>{formatCurrency(receipt.total)}</span>
         </div>
-        <div className="flex justify-between pt-1">
-          <span>Metode Bayar</span>
-          <span className="font-bold">{receipt.metode_bayar}</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Dibayar</span>
-          <span>{formatCurrency(receipt.dibayar)}</span>
-        </div>
-        <div className="flex justify-between font-bold">
-          <span>Kembalian</span>
-          <span>{formatCurrency(receipt.kembalian)}</span>
-        </div>
+        {!receipt.isDraft && (
+          <div className="flex justify-between pt-1">
+            <span>Metode Bayar</span>
+            <span className="font-bold">{receipt.metode_bayar}</span>
+          </div>
+        )}
+        {receipt.isDraft ? (
+          <div className="font-bold text-amber-700">STATUS: BELUM DIBAYAR</div>
+        ) : (
+          <>
+            <div className="flex justify-between">
+              <span>Dibayar</span>
+              <span>{formatCurrency(receipt.dibayar)}</span>
+            </div>
+            <div className="flex justify-between font-bold">
+              <span>Kembalian</span>
+              <span>{formatCurrency(receipt.kembalian)}</span>
+            </div>
+          </>
+        )}
       </div>
 
       {extSettings.print_total_qty_resi && (

@@ -1,8 +1,30 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { CheckCircle2, X, Send, Printer, FileText, Plus, ChevronDown } from 'lucide-react';
 import ReceiptEmailField from './ReceiptEmailField';
 import apiClient from '../../../api/apiClient';
 import { notifyApiError, notifyError, notifySuccess } from '../../../utils/notify';
+import { useAuth } from '../../../context/AuthContext';
+import ReceiptPrint from './ReceiptPrint';
+import {
+  getPrintErrorMessage,
+  printReceipt,
+  printReceiptAfterRender,
+  shouldAutoPrintPosReceipt,
+} from '../../printing/services/printService';
+
+const toReceipt = (transactionData) => {
+  if (!transactionData) return null;
+  const total = Number(transactionData.total ?? transactionData.totalAmount ?? 0);
+  return {
+    ...transactionData,
+    nomor: transactionData.nomor || transactionData.refCode || '-',
+    pelanggan_name: transactionData.pelanggan_name || transactionData.customerName || 'Pelanggan umum',
+    subtotal: transactionData.subtotal ?? total,
+    total: transactionData.total ?? total,
+    dibayar: transactionData.dibayar ?? transactionData.payAmount ?? total,
+    kembalian: transactionData.kembalian ?? transactionData.changeAmount ?? 0,
+  };
+};
 
 export default function PaymentSuccessModal({
   isOpen,
@@ -10,9 +32,12 @@ export default function PaymentSuccessModal({
   transactionData,
   onNewOrder,
 }) {
+  const { businessSettings } = useAuth();
   const [waResi, setWaResi] = useState('');
   const [sendingWa, setSendingWa] = useState(false);
   const [showCustomPrintDropdown, setShowCustomPrintDropdown] = useState(false);
+  const autoPrintedSaleId = useRef(null);
+  const receipt = React.useMemo(() => toReceipt(transactionData), [transactionData]);
 
   React.useEffect(() => {
     if (isOpen && transactionData) {
@@ -21,12 +46,21 @@ export default function PaymentSuccessModal({
     }
   }, [isOpen, transactionData]);
 
+  React.useEffect(() => {
+    if (!isOpen || !transactionData?.id || !shouldAutoPrintPosReceipt(businessSettings)) return;
+    if (autoPrintedSaleId.current === transactionData.id) return;
+    autoPrintedSaleId.current = transactionData.id;
+    void printReceiptAfterRender({ receipt, businessSettings }).catch((error) => {
+      notifyError('Cetak resi otomatis gagal', getPrintErrorMessage(error));
+    });
+  }, [businessSettings, isOpen, receipt, transactionData]);
+
   if (!isOpen) return null;
 
-  const refCode = transactionData?.refCode || `32FB${Date.now().toString().slice(-12)}`;
-  const customerName = transactionData?.customerName || 'Dika';
-  const totalAmount = transactionData?.totalAmount || 50000;
-  const changeAmount = transactionData?.changeAmount || 0;
+  const refCode = transactionData?.nomor || transactionData?.refCode || '-';
+  const customerName = receipt?.pelanggan_name || 'Pelanggan umum';
+  const totalAmount = Number(transactionData?.total ?? transactionData?.totalAmount ?? 0);
+  const changeAmount = Number(transactionData?.kembalian ?? transactionData?.changeAmount ?? 0);
 
   const handleSendWa = async () => {
     if (!transactionData?.id) {
@@ -55,13 +89,20 @@ export default function PaymentSuccessModal({
     alert(`SPK (Surat Perintah Kerja) untuk transaksi ${refCode} berhasil dikirim ke Tim Produksi & WhatsApp.`);
   };
 
-  const handlePrintReceipt = () => {
-    alert(`Mencetak Resi/Struk POS untuk transaksi: ${refCode}`);
+  const handlePrintReceipt = async () => {
+    try {
+      const result = await printReceipt({ receipt, businessSettings });
+      if (result.channel === 'qz') {
+        notifySuccess('Resi dikirim', 'Resi sudah dikirim ke antrean printer QZ Tray.');
+      }
+    } catch (error) {
+      notifyError('Cetak resi gagal', getPrintErrorMessage(error));
+    }
   };
 
   const handleCustomPrint = (type) => {
     setShowCustomPrintDropdown(false);
-    alert(`Mencetak dokumen ${type} untuk transaksi: ${refCode}`);
+    notifyError('Dokumen belum tersedia', `Template cetak ${type} belum tersedia untuk transaksi POS ini. Gunakan Cetak Resi.`);
   };
 
   return (
@@ -214,6 +255,7 @@ export default function PaymentSuccessModal({
         </div>
 
       </div>
+      <ReceiptPrint receipt={receipt} settings={businessSettings} />
     </div>
   );
 }

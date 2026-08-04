@@ -12,6 +12,7 @@ import KasirDashboard from './KasirDashboard';
 import ProductListPage from './ProductListPage';
 import CreateOrderPage from './CreateOrderPage';
 import PesananPage from './PesananPage';
+import PrinterSettings from '../../printing/pages/PrinterSettings';
 import { X } from 'lucide-react';
 
 export default function KasirApp() {
@@ -67,6 +68,7 @@ export default function KasirApp() {
               <Route path="riwayat" element={<PosHistory onToggleSidebar={handleToggleSidebar} />} />
               <Route path="rekap-harian" element={<Navigate to="/kasir/shift" replace />} />
               <Route path="shift" element={<PosShift onToggleSidebar={handleToggleSidebar} />} />
+              <Route path="pengaturan-cetak" element={<PrinterSettings />} />
               <Route path="pengaturan-wa" element={<Navigate to="/kasir/dashboard" replace />} />
               <Route path="*" element={<Navigate to="dashboard" replace />} />
             </Routes>

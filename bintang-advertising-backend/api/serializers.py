@@ -162,7 +162,7 @@ class JobBoardSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         role = getattr(getattr(request, 'user', None), 'role', '')
         if role not in ('owner', 'manager', 'admin'):
-            for name in ('insentif', 'biaya_desain', 'pic_staff', 'order_item', 'pos_sale_item', 'tahap'):
+            for name in ('insentif', 'biaya_desain', 'deadline', 'pic_staff', 'order_item', 'pos_sale_item', 'tahap'):
                 if name in fields:
                     fields[name].read_only = True
         return fields

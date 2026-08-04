@@ -1,4 +1,5 @@
 import { MapPin } from 'lucide-react';
+import DeadlineBadge from './DeadlineBadge';
 
 /**
  * JobCard — Kartu job minimal di papan kanban staff.
@@ -31,6 +32,7 @@ export default function JobCard({ job, orderInfo, onOpenWorkspace }) {
           <span className="truncate">{job.tahap_nama}</span>
         </p>
       )}
+      <div className="mt-1"><DeadlineBadge deadline={job?.deadline} /></div>
       {orderInfo?.desainSusulan && (
         <div className="mt-2 flex items-center gap-1.5 bg-cyan-50 border border-cyan-150 rounded px-1.5 py-0.5 w-fit">
           <span className="relative flex h-1.5 w-1.5">

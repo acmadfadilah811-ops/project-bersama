@@ -22,6 +22,12 @@ load_dotenv()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# QZ Tray: sertifikat publik dan private key untuk menandatangani permintaan
+# cetak senyap. Nilai ini hanya path dari environment; private key tidak pernah
+# disimpan di database atau dikirim ke browser.
+QZ_TRAY_CERTIFICATE_PATH = os.getenv('QZ_TRAY_CERTIFICATE_PATH', '')
+QZ_TRAY_PRIVATE_KEY_PATH = os.getenv('QZ_TRAY_PRIVATE_KEY_PATH', '')
+
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/

@@ -1,4 +1,5 @@
 import { Play, CheckCircle2, Clock, FileText } from 'lucide-react';
+import DeadlineBadge from '../../components/DeadlineBadge';
 
 export default function KanbanPersonal({ jobs, onSelectJob, onStart, onComplete }) {
   // Group jobs by status
@@ -106,6 +107,7 @@ export default function KanbanPersonal({ jobs, onSelectJob, onStart, onComplete 
                           )}
                         </div>
                       </div>
+                      <div className="mt-1.5"><DeadlineBadge deadline={job.deadline} /></div>
 
                       {/* Baris Tengah: Nama Pelanggan & Nama Produk */}
                       <div className="mt-1.5 flex items-baseline gap-1.5 min-w-0">

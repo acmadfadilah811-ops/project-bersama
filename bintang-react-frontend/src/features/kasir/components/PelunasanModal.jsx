@@ -3,6 +3,7 @@ import { Loader2, Printer, Wallet, X } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import NumericInput from '../../../components/NumericInput';
 import OrderInvoicePrint from './OrderInvoicePrint';
+import { requestBrowserPrint } from '../../printing/services/printService';
 
 /**
  * Penerimaan pelunasan untuk pesanan yang sudah siap diambil.
@@ -160,7 +161,7 @@ export default function PelunasanModal({ order, onClose, onSelesai }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => window.print()}
+                  onClick={requestBrowserPrint}
                   className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-black text-xs rounded-xl flex items-center gap-1.5 cursor-pointer"
                 >
                   <Printer size={14} /> Cetak Faktur

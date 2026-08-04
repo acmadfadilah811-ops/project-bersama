@@ -10,6 +10,9 @@ Dipakai oleh AssignOrderView (api/views/orders.py) dan POSSaleSpkView
 """
 
 import logging
+from datetime import date
+
+from django.utils.dateparse import parse_date
 
 from .models import CustomUser, JobBoard, TahapProses
 
@@ -29,6 +32,17 @@ class SpkError(Exception):
 # staff tertentu. Penugasan per-staff adalah wewenang kepala produksi/manager;
 # kasir cukup melempar pekerjaan ke divisi dan divisi yang membagi tugas.
 ROLE_TANPA_PENUGASAN_STAFF = ('kasir',)
+
+
+def resolve_deadline(value):
+    """Validasi tanggal deadline SPK dari payload API (format YYYY-MM-DD)."""
+    if value in (None, ''):
+        return None
+    if isinstance(value, date):
+        return value
+    if not isinstance(value, str) or not (deadline := parse_date(value)):
+        raise SpkError('Deadline harus menggunakan tanggal valid berformat YYYY-MM-DD.')
+    return deadline
 
 
 def resolve_staff(staff_id, pemohon=None):
@@ -91,7 +105,7 @@ def resolve_tahap(tahap_id=None, divisi_id=None, staff=None):
     return tahap
 
 
-def terbitkan(items, *, field, tahap, staff, biaya_desain=0, insentif=0):
+def terbitkan(items, *, field, tahap, staff, biaya_desain=0, insentif=0, deadline=None):
     """Buat/perbarui JobBoard untuk tiap item.
 
     `field` menentukan sumbernya: 'order_item' atau 'pos_sale_item'. Lookup
@@ -118,6 +132,7 @@ def terbitkan(items, *, field, tahap, staff, biaya_desain=0, insentif=0):
                 'status_pekerjaan': 'antrean',
                 'biaya_desain': biaya_desain,
                 'insentif': insentif,
+                'deadline': deadline,
                 'waktu_mulai': None,
                 'waktu_selesai': None,
             },

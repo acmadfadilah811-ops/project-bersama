@@ -31,6 +31,7 @@ import DivisionPanel from './panels/DivisionPanel';
 import ActivityLogsPanel from './panels/ActivityLogsPanel';
 import KanbanGlobalPanel from './panels/KanbanGlobalPanel';
 import PapanKerjaSpkPanel from './panels/PapanKerjaSpkPanel';
+import DeadlineBadge from '../components/DeadlineBadge';
 
 // --- DYNAMIC MINI CALENDAR COMPONENT ---
 function MiniCalendar() {
@@ -659,13 +660,18 @@ export default function ProductionApp() {
 
           <div className="flex-1 min-h-0">
             {selectedWorkspaceJob ? (
-              <WorkspaceSPK
-                job={selectedWorkspaceJob}
-                onClose={() => setSelectedWorkspaceJob(null)}
-                onStart={handleStart}
-                onComplete={handleComplete}
-                saving={savingAction}
-              />
+              <div className="flex h-full min-h-0 flex-col gap-2">
+                <div className="shrink-0 px-1"><DeadlineBadge deadline={selectedWorkspaceJob.deadline} /></div>
+                <div className="min-h-0 flex-1">
+                  <WorkspaceSPK
+                    job={selectedWorkspaceJob}
+                    onClose={() => setSelectedWorkspaceJob(null)}
+                    onStart={handleStart}
+                    onComplete={handleComplete}
+                    saving={savingAction}
+                  />
+                </div>
+              </div>
             ) : (
               renderPanel()
             )}

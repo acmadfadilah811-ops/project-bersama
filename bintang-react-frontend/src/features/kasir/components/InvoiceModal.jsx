@@ -1,5 +1,6 @@
 import { FileText, Printer, X } from 'lucide-react';
 import OrderInvoicePrint from './OrderInvoicePrint';
+import { requestBrowserPrint } from '../../printing/services/printService';
 
 /**
  * Pratinjau & cetak faktur tanpa transaksi pembayaran.
@@ -107,7 +108,7 @@ export default function InvoiceModal({ order, onClose }) {
             </button>
             <button
               type="button"
-              onClick={() => window.print()}
+              onClick={requestBrowserPrint}
               className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-black text-xs rounded-xl flex items-center gap-1.5 cursor-pointer"
             >
               <Printer size={14} /> Cetak Faktur

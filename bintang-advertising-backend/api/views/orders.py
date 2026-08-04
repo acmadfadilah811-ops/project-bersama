@@ -926,6 +926,7 @@ class AssignOrderView(APIView):
         # dengan penerbitan SPK dari terminal POS agar aturannya tidak bercabang.
         try:
             staff = spk.resolve_staff(staff_id, pemohon=request.user)
+            deadline = spk.resolve_deadline(request.data.get('deadline'))
             tahap = spk.resolve_tahap(tahap_id=tahap_id, divisi_id=divisi_id, staff=staff)
         except spk.SpkError as exc:
             return Response({'error': exc.pesan}, status=exc.status_code)
@@ -941,7 +942,7 @@ class AssignOrderView(APIView):
         try:
             created_jobs = spk.terbitkan(
                 items, field='order_item', tahap=tahap, staff=staff,
-                biaya_desain=biaya_desain, insentif=insentif,
+                biaya_desain=biaya_desain, insentif=insentif, deadline=deadline,
             )
         except spk.SpkError as exc:
             return Response({'error': exc.pesan}, status=exc.status_code)

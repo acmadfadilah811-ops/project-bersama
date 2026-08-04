@@ -639,16 +639,23 @@ class StaffDashboardView(APIView):
         # --- Job Aktif ---
         job_aktif = JobBoard.objects.filter(
             pic_staff=user, status_pekerjaan__in=["antrean", "dikerjakan"]
-        ).select_related("tahap", "tahap__divisi", "order_item__order")
+        ).select_related(
+            "tahap",
+            "tahap__divisi",
+            "order_item__order",
+            "pos_sale_item__sale",
+        )
 
         job_data = [
             {
                 "job_id": j.id,
-                "produk": j.order_item.jenis_produk,
+                "produk": j.nama_produk,
                 "tahap": j.tahap.nama if j.tahap else "-",
                 "divisi": j.tahap.divisi.nama if j.tahap and j.tahap.divisi else "-",
                 "status": j.get_status_pekerjaan_display(),
-                "order_id": j.order_item.order_id,
+                "order_id": j.order_item.order_id if j.order_item_id else None,
+                "sumber": j.sumber,
+                "nomor_sumber": j.nomor_sumber,
             }
             for j in job_aktif
         ]

@@ -5,6 +5,7 @@ import Settings from './Settings';
 import PointOfSale from './pos/PointOfSale';
 import Notifikasi from './Notifikasi';
 import SistemStok from './SistemStok';
+import PrinterSettings from '../../printing/pages/PrinterSettings';
 
 /**
  * Pembungkus area "Pengaturan" (full-screen, topbar sendiri).
@@ -21,6 +22,7 @@ export default function SettingsApp() {
             <Route path="point-of-sale" element={<PointOfSale />} />
             <Route path="notifikasi" element={<Notifikasi />} />
             <Route path="sistem-stok" element={<SistemStok />} />
+            <Route path="cetak" element={<PrinterSettings />} />
             <Route path="*" element={<Navigate to="point-of-sale" replace />} />
           </Routes>
         </div>

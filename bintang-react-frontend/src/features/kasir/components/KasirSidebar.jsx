@@ -18,6 +18,7 @@ import {
   Sparkles,
   ExternalLink,
   RefreshCw,
+  Printer,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useKasir } from '../context/KasirContext';
@@ -69,6 +70,7 @@ export default function KasirSidebar({ isCollapsed, setIsCollapsed }) {
     { path: '/kasir/antrean-wa', label: 'Antrean WA', icon: MessageCircle, badge: waOrderCount },
     { path: '/kasir/riwayat', label: 'Riwayat Transaksi', icon: History },
     { path: '/kasir/shift', label: 'Shift', icon: Clock },
+    { path: '/kasir/pengaturan-cetak', label: 'Printer & Cetak', icon: Printer },
   ];
 
   return (

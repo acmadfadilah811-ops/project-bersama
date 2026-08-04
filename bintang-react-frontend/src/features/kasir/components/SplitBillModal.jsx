@@ -6,7 +6,8 @@ import SpkPublishModal from './SpkPublishModal';
 import SplitBillPayment from './SplitBillPayment';
 import SplitBillSelection from './SplitBillSelection';
 import useSplitBillPricing from '../hooks/useSplitBillPricing';
-import { notifySuccess } from '../../../utils/notify';
+import { notifyError, notifySuccess } from '../../../utils/notify';
+import { getPrintErrorMessage, printReceipt } from '../../printing/services/printService';
 
 export default function SplitBillModal({
   isOpen,
@@ -345,10 +346,12 @@ export default function SplitBillModal({
                 <span>Kirim SPK</span>
               </button>
               <button
-                onClick={() => {
-                  // Custom print logic or trigger window print for the active receipt
-                  // We'll pass lastReceipt up to the printing layout
-                  window.print();
+                onClick={async () => {
+                  try {
+                    await printReceipt({ receipt: lastReceipt, businessSettings: settings });
+                  } catch (error) {
+                    notifyError('Cetak struk gagal', getPrintErrorMessage(error));
+                  }
                 }}
                 className="py-2.5 px-4 bg-slate-100 hover:bg-slate-250 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
               >

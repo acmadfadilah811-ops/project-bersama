@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Cloud, Search, Filter, MoreVertical, Banknote, Clock, User, DollarSign, Printer, Mail, Smartphone, Factory, XCircle, Eye, X, Check, FileText, Send } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
-import { notifyApiError, notifySuccess } from '../../../utils/notify';
+import { notifyApiError, notifyError, notifySuccess } from '../../../utils/notify';
 import { useAuth } from '../../../context/AuthContext';
 import PosHeaderBar from '../components/PosHeaderBar';
 import SpkPublishModal from '../components/SpkPublishModal';
 import ReceiptPrint from '../components/ReceiptPrint';
 import VoidOrderModal from '../components/VoidOrderModal';
+import { getPrintErrorMessage, printReceipt } from '../../printing/services/printService';
 
 export default function PosHistory({ onToggleSidebar }) {
   const { businessSettings } = useAuth();
@@ -347,13 +348,16 @@ export default function PosHistory({ onToggleSidebar }) {
                     <button
                       type="button"
                       disabled={sendingWa}
-                      onClick={() => {
+                      onClick={async () => {
                         setShowActionDropdown(false);
                         // ReceiptPrint dirender di luar dropdown (hidden, hanya
-                        // muncul saat print:block) — window.print() memicu
-                        // dialog cetak browser sungguhan, sama seperti Split
-                        // Bill sudah pakai pola ini.
-                        window.print();
+                        // muncul saat print:block). QZ Tray atau dialog browser
+                        // dipilih oleh konfigurasi perangkat kasir.
+                        try {
+                          await printReceipt({ receipt: selectedSale, businessSettings });
+                        } catch (error) {
+                          notifyError('Cetak resi gagal', getPrintErrorMessage(error));
+                        }
                       }}
                       className="w-full px-4 py-2.5 hover:bg-slate-50 text-left flex items-center gap-3 border-b border-slate-100 cursor-pointer disabled:opacity-50"
                     >
@@ -711,8 +715,8 @@ export default function PosHistory({ onToggleSidebar }) {
         />
       )}
 
-      {/* Tersembunyi kecuali saat print (lihat ReceiptPrint.jsx) — dipicu
-          tombol "Cetak Resi" lewat window.print(). */}
+      {/* Tersembunyi kecuali saat print (lihat ReceiptPrint.jsx), dipicu
+          tombol "Cetak Resi" melalui PrintService. */}
       <ReceiptPrint receipt={selectedSale} settings={businessSettings} />
 
     </div>

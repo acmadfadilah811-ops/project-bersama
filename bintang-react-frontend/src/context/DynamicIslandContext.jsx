@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { playSoundForType } from '../utils/notificationSounds';
 import apiClient from '../api/apiClient';
+import authSession from '../utils/authSession';
 import { registerNotifier } from '../utils/notify';
 
 const DynamicIslandContext = createContext(null);
@@ -147,7 +148,7 @@ export function DynamicIslandProvider({ children }) {
   useEffect(() => {
     let active = true;
     const pollChats = async () => {
-      if (!localStorage.getItem('access_token')) return;
+      if (!authSession.getAccessToken()) return;
       try {
         const response = await apiClient.get('/whatsapp/chats/');
         const data = Array.isArray(response.data)

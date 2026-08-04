@@ -29,6 +29,7 @@ export default function SpkPublishModal({ judul, keterangan, onTerbitkan, onClos
   const [divisiId, setDivisiId] = useState('');
   const [staffId, setStaffId] = useState('');
   const [tahapId, setTahapId] = useState('');
+  const [deadline, setDeadline] = useState('');
 
   const [memuat, setMemuat] = useState(true);
   const [mengirim, setMengirim] = useState(false);
@@ -78,12 +79,14 @@ export default function SpkPublishModal({ judul, keterangan, onTerbitkan, onClos
 
   useEffect(() => { setTahapId(''); }, [divisiId, tipeEfektif]);
 
-  const bisaKirim = tipeEfektif === 'divisi' ? !!divisiId : !!staffId;
+  const bisaKirim = (tipeEfektif === 'divisi' ? !!divisiId : !!staffId) && !!deadline;
 
   const kirim = async () => {
     if (!bisaKirim || mengirim) return;
     setMengirim(true); setError('');
-    const payload = tipeEfektif === 'staff' ? { staff_id: staffId } : { divisi_id: divisiId };
+    const payload = tipeEfektif === 'staff'
+      ? { staff_id: staffId, deadline }
+      : { divisi_id: divisiId, deadline };
     if (tahapId) payload.tahap_id = tahapId;
     try {
       await onTerbitkan(payload);
@@ -165,6 +168,19 @@ export default function SpkPublishModal({ judul, keterangan, onTerbitkan, onClos
                   </select>
                 </label>
               )}
+
+              <label style={{ display: 'block' }}>
+                <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 5 }}>
+                  Deadline pengerjaan <span style={{ color: '#dc2626' }}>(wajib)</span>
+                </span>
+                <input
+                  type="date"
+                  value={deadline}
+                  onChange={(event) => setDeadline(event.target.value)}
+                  required
+                  style={{ width: '100%', padding: 9, border: '1px solid #cbd5e1', borderRadius: 8 }}
+                />
+              </label>
             </div>
           )}
 

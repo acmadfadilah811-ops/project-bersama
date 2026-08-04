@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useKasir } from '../context/KasirContext';
 import apiClient from '../../../api/apiClient';
-import { notifyApiError } from '../../../utils/notify';
+import { notifyApiError, notifyError, notifySuccess } from '../../../utils/notify';
+import { useAuth } from '../../../context/AuthContext';
+import { getPrintErrorMessage, printReceiptAfterRender } from '../../printing/services/printService';
 
 // Subcomponents for POS Kasir v2
 import PosHeaderBar from '../components/PosHeaderBar';
@@ -21,9 +23,11 @@ import OrderNoteModal from '../components/OrderNoteModal';
 import PosShareWaPanel from '../components/PosShareWaPanel';
 import PaymentProcessModal from '../components/PaymentProcessModal';
 import PaymentSuccessModal from '../components/PaymentSuccessModal';
+import ReceiptPrint from '../components/ReceiptPrint';
 
 export default function PosTerminal({ onToggleSidebar }) {
   const navigate = useNavigate();
+  const { businessSettings, user } = useAuth();
   const {
     cart,
     addToCart,
@@ -47,6 +51,7 @@ export default function PosTerminal({ onToggleSidebar }) {
     cartNotes,
     getTotal,
     getSubtotal,
+    getTaxAmount,
     setCartNotes,
     salesDiscountPreview,
   } = useKasir();
@@ -67,6 +72,7 @@ export default function PosTerminal({ onToggleSidebar }) {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [lastTransaction, setLastTransaction] = useState(null);
+  const [checkReceipt, setCheckReceipt] = useState(null);
   const [availableCoupons, setAvailableCoupons] = useState([]);
   const [targetCustomer, setTargetCustomer] = useState(null);
 
@@ -377,6 +383,7 @@ export default function PosTerminal({ onToggleSidebar }) {
       });
 
       setLastTransaction({
+        ...res.data,
         id: res.data.id,
         nomor: res.data.nomor,
         customerName: res.data.pelanggan_name || null,
@@ -404,6 +411,50 @@ export default function PosTerminal({ onToggleSidebar }) {
 
   const selectedStaffObj = staffList.find((s) => String(s.id) === String(selectedPelayanId));
   const selectedCartItem = cart.find((i) => i.key === selectedCartItemKey);
+
+  const handlePrintCheck = async () => {
+    if (cart.length === 0) return;
+
+    const subtotal = Number(getSubtotal());
+    const pajak = Number(getTaxAmount());
+    const total = Number(getTotal());
+    const receipt = {
+      nomor: 'CEK-PESANAN',
+      documentTitle: 'CEK PESANAN',
+      isDraft: true,
+      created_at: new Date().toISOString(),
+      pelanggan_name: selectedContact?.nama || selectedContact?.name || 'Pelanggan umum',
+      kasir_name: selectedStaffObj?.nama || user?.username || 'Kasir POS',
+      catatan: cartNotes || '',
+      items: cart.map((item) => {
+        const qty = Number(item.qty || 0);
+        const harga = Number(item.harga_snapshot ?? item.harga ?? 0);
+        return {
+          ...item,
+          nama_snapshot: item.nama_snapshot || item.nama || item.product?.nama || 'Item',
+          uom_kode: item.uom_kode || item.uomKode || 'pcs',
+          harga_snapshot: harga,
+          subtotal: Number(item.subtotal ?? item.hargaTotal ?? (harga * qty)),
+        };
+      }),
+      subtotal,
+      diskon: Math.max(0, subtotal + pajak - total),
+      pajak,
+      total,
+      dibayar: 0,
+      kembalian: 0,
+    };
+
+    setCheckReceipt(receipt);
+    try {
+      const result = await printReceiptAfterRender({ receipt, businessSettings });
+      if (result.channel === 'qz') {
+        notifySuccess('Cek pesanan dikirim', 'Cek pesanan telah dikirim ke antrean printer QZ Tray.');
+      }
+    } catch (error) {
+      notifyError('Cetak cek pesanan gagal', getPrintErrorMessage(error));
+    }
+  };
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-900 font-sans">
@@ -455,6 +506,7 @@ export default function PosTerminal({ onToggleSidebar }) {
           onShareWaClick={() => {
             setRightPanelMode('shareWa');
           }}
+          onPrintCheckClick={handlePrintCheck}
         />
 
         {/* Right Panel View Switcher: Catalog | Item Detail | Customer List | Share WA */}
@@ -611,6 +663,7 @@ export default function PosTerminal({ onToggleSidebar }) {
         transactionData={lastTransaction}
         onNewOrder={handleNewOrder}
       />
+      <ReceiptPrint receipt={checkReceipt} settings={businessSettings} />
     </div>
   );
 }

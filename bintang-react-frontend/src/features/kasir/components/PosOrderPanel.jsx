@@ -21,6 +21,7 @@ export default function PosOrderPanel({
   onDiscountClick,
   onRedeemPointClick,
   onShareWaClick,
+  onPrintCheckClick,
 }) {
   const [customerQuery, setCustomerQuery] = useState('');
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
@@ -184,7 +185,13 @@ export default function PosOrderPanel({
             <span>WhatsApp</span>
           </button>
 
-          <button type="button" className="flex flex-col items-center gap-1 cursor-pointer hover:text-blue-600">
+          <button
+            type="button"
+            onClick={onPrintCheckClick}
+            disabled={cart.length === 0}
+            title={cart.length ? 'Cetak cek pesanan sebelum pembayaran' : 'Tambahkan item untuk mencetak cek pesanan'}
+            className="flex flex-col items-center gap-1 cursor-pointer hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
+          >
             <div className="w-8 h-8 rounded-full bg-[#0088FF] text-white flex items-center justify-center shadow-sm">
               <Printer size={16} />
             </div>

@@ -16,6 +16,7 @@ const _loadCachedSettings = () => {
 };
 
 import apiClient from '../api/apiClient';
+import authSession from '../utils/authSession';
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -37,8 +38,8 @@ export function AuthProvider({ children }) {
   };
 
   useEffect(() => {
-    const token = localStorage.getItem('access_token');
-    const savedUser = localStorage.getItem('user_data');
+    const token = authSession.getAccessToken();
+    const savedUser = authSession.getUser();
 
     if (token && savedUser) {
       setUser(JSON.parse(savedUser));
@@ -49,7 +50,7 @@ export function AuthProvider({ children }) {
           const data = res.data;
           if (data.id) {
             setUser(data);
-            localStorage.setItem('user_data', JSON.stringify(data));
+            authSession.setUser(data);
           }
         })
         .catch((err) => console.error('Gagal sinkronisasi data user:', err));
@@ -61,18 +62,14 @@ export function AuthProvider({ children }) {
   }, []);
 
   const login = (userData, accessToken, refreshToken) => {
-    localStorage.setItem('access_token', accessToken);
-    localStorage.setItem('refresh_token', refreshToken);
-    localStorage.setItem('user_data', JSON.stringify(userData));
+    authSession.start(userData, accessToken, refreshToken);
     setUser(userData);
     // Settings sudah ada di state dari cache, langsung fetch untuk sinkron
     fetchBusinessSettings();
   };
 
   const logout = () => {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
-    localStorage.removeItem('user_data');
+    authSession.clear();
     // business_settings TIDAK dihapus dari localStorage maupun state —
     // itu data bisnis (logo, nama toko) yang sama untuk semua user,
     // bukan data sensitif. Logo tetap tampil saat login kembali.
@@ -81,7 +78,7 @@ export function AuthProvider({ children }) {
 
   const updateUser = (newData) => {
     const updatedUser = { ...user, ...newData };
-    localStorage.setItem('user_data', JSON.stringify(updatedUser));
+    authSession.setUser(updatedUser);
     setUser(updatedUser);
   };
 

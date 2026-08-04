@@ -584,6 +584,7 @@ class JobBoard(models.Model):
     tahap = models.ForeignKey(TahapProses, on_delete=models.SET_NULL, null=True, related_name='jobs')
     pic_staff = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, limit_choices_to={'role': 'staff'}, related_name='my_tasks')
     status_pekerjaan = models.CharField(max_length=20, choices=STATUS_JOB_CHOICES, default='antrean', db_index=True) 
+    deadline = models.DateField(null=True, blank=True, help_text='Batas tanggal penyelesaian SPK')
     
     # Catatan hasil modifikasi/interview staff berbentuk tabel Excel (JSON)
     catatan_staff = models.JSONField(default=list, null=True, blank=True, help_text="Keterangan staff berformat Tabel/Excel (JSON)")

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import authSession from '../utils/authSession';
 
 // Ganti URL fallback ke Cloudflare Tunnel untuk testing via Netlify
 // Ganti URL fallback ke URL Ngrok / production nanti
@@ -13,7 +14,7 @@ const apiClient = axios.create({
 
 // Otomatis pasang JWT token di setiap request
 apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token');
+  const token = authSession.getAccessToken();
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
@@ -54,13 +55,11 @@ apiClient.interceptors.response.use(
 
     // Hanya proses 401 dan yang belum pernah di-retry
     if (error.response?.status === 401 && !originalRequest._retry) {
-      const refreshToken = localStorage.getItem('refresh_token');
+      const refreshToken = authSession.getRefreshToken();
 
       // Kalau tidak ada refresh token sama sekali → langsung logout
       if (!refreshToken) {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        localStorage.removeItem('user_data');
+        authSession.clear();
         window.location.href = '/login';
         return Promise.reject(error);
       }
@@ -87,7 +86,7 @@ apiClient.interceptors.response.use(
         });
 
         const newAccessToken = data.access;
-        localStorage.setItem('access_token', newAccessToken);
+        authSession.setAccessToken(newAccessToken);
 
         // Update header default untuk semua request berikutnya
         apiClient.defaults.headers.common['Authorization'] = `Bearer ${newAccessToken}`;
@@ -101,9 +100,7 @@ apiClient.interceptors.response.use(
       } catch (refreshError) {
         // Refresh gagal → hapus semua token & paksa login
         processQueue(refreshError, null);
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        localStorage.removeItem('user_data');
+        authSession.clear();
         window.location.href = '/login';
         return Promise.reject(refreshError);
       } finally {

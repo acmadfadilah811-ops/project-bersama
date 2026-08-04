@@ -102,7 +102,6 @@ export default function Login() {
 
       const { access, refresh, user: userData } = res.data;
 
-      localStorage.setItem('access_token', access);
       login(userData, access, refresh);
 
       if (userData?.role?.toLowerCase() === 'staff') {
@@ -125,7 +124,6 @@ export default function Login() {
       const res = await apiClient.post('/auth/verify-login/', { temp_token: tempToken, otp });
       const { access, refresh, user: userData } = res.data;
 
-      localStorage.setItem('access_token', access);
       login(userData, access, refresh);
 
       if (userData?.role?.toLowerCase() === 'staff') {
