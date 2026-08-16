@@ -1,2 +1,4 @@
-/api/*  https://boating-transmitted-roberts-dancing.trycloudflare.com/api/:splat  200!
-/*      /index.html                                                              200
+# URL trycloudflare.com berubah tiap restart cloudflared di VPS — cek README
+# deploy (langkah 3b) untuk ambil URL terbaru, lalu ganti baris di bawah ini.
+/api/*  https://CHANGE_THIS_TO_CURRENT_TUNNEL_URL.trycloudflare.com/api/:splat  200!
+/*      /index.html                                                            200

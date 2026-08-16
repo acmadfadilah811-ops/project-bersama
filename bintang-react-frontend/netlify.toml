@@ -1,0 +1,14 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+  # Relatif, bukan URL absolut — diproxy ke backend VPS lewat rule di public/_redirects
+  # (browser cuma bicara ke domain Netlify, jadi tetap same-origin/HTTPS).
+  VITE_API_URL = "/api"
+  # Sentry DSN memang didesain publik (dipasang di bundle client), bukan secret.
+  VITE_SENTRY_DSN = "https://d8d77c18149ee83669eb0a601aa4b2a1@o4511462289309696.ingest.us.sentry.io/4511462344097792"
+
+# Aturan redirect (proxy /api/* ke backend, fallback SPA) sudah didefinisikan
+# lengkap di public/_redirects — sengaja tidak diduplikasi di sini.

@@ -61,7 +61,7 @@ services:
       - static_files:/app/staticfiles
       - media_files:/app/media
     deploy:
-      replicas: ${BACKEND_REPLICAS:-3}
+      replicas: ${BACKEND_REPLICAS:-2}
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/health/"]
       interval: 15s
@@ -70,18 +70,12 @@ services:
       start_period: 20s
     restart: unless-stopped
 
-  frontend:
-    build:
-      context: ../bintang-react-frontend
-    # Image frontend didesain untuk Cloud Run (nginx template pakai ${PORT}
-    # yang biasanya di-inject platform) — di docker-compose harus diisi manual.
-    environment:
-      PORT: 8080
-    restart: unless-stopped
+  # Frontend TIDAK dijalankan di VPS ini — di-deploy terpisah ke Netlify
+  # (bintang-react-frontend/netlify.toml). VPS cuma jadi API backend.
 
   # Gateway publik — satu-satunya service yang expose port ke host. Rute /api,
   # /admin, /static, /media ke backend (round-robin ke semua replica lewat DNS
-  # Docker bawaan); selain itu ke frontend (SPA).
+  # Docker bawaan). Tidak ada rute frontend di sini (dilayani Netlify).
   gateway:
     image: nginx:1.27-alpine
     restart: unless-stopped
@@ -93,7 +87,6 @@ services:
       - media_files:/srv/media:ro
     depends_on:
       - backend
-      - frontend
 
   cloudflared:
     image: cloudflare/cloudflared:latest
