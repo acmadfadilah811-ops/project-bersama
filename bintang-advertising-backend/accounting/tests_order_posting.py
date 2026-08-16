@@ -82,6 +82,7 @@ class OrderPostingSetupMixin:
             nomor_wa="081234567890",
             nama="Pelanggan Test",
             dp_dibayar=0,
+            metode_pembayaran="tunai" if with_pm else "metode_tidak_dikenal_xyz",
             accounting_payment_method=self.payment_method if with_pm else None,
         )
         return order

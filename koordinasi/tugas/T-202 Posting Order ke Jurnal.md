@@ -287,4 +287,3 @@ Diverifikasi independen (baca kode + jalankan ulang test):
 - Scope tepat: cuma `order_posting.py` (fungsi resolve) + test file yang berubah untuk perbaikan ini; `orders.py` tidak perlu disentuh lagi (perubahannya dari revisi ke-2, sudah diverifikasi sebelumnya).
 
 **T-202 selesai penuh** — 3 putaran review (gap resolusi PaymentMethod → gap atomicity → gap settlement_status), semuanya tuntas dan terverifikasi independen tiap putaran. `record_payment_to_general_ledger()` legacy tidak tersentuh (M3). [[T-207]] (jurnal pembalik) sekarang bisa mulai didesain — sudah ada jurnal asli untuk dibalik. [[T-211]] (desain settlement Order) tetap backlog terpisah, tidak mendesak karena sudah di-neutralisir amannya.
-
