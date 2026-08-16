@@ -39,7 +39,7 @@ services:
       bintang-redis:
         condition: service_started
     volumes:
-      - static_files:/app/staticfiles
+      - static_files:/app/static
       - media_files:/app/media
     restart: "no"
 
@@ -58,7 +58,7 @@ services:
       bintang-redis:
         condition: service_started
     volumes:
-      - static_files:/app/staticfiles
+      - static_files:/app/static
       - media_files:/app/media
     deploy:
       replicas: ${BACKEND_REPLICAS:-2}
