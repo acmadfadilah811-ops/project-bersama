@@ -1,0 +1,160 @@
+name: bintang
+
+x-backend-env: &backend-env
+  env_file:
+    - .env
+
+services:
+  bintang-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-bintang}
+      POSTGRES_USER: ${DB_USER:-bintang}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD wajib diisi di deploy/.env}
+    volumes:
+      - bintang_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-bintang} -d ${DB_NAME:-bintang}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  bintang-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - bintang_redis_data:/data
+
+  # Migrate + collectstatic sekali sebelum backend naik. Wajib rebuild image
+  # (docker compose build backend) sebelum up — build context, bukan bind-mount live.
+  backend-init:
+    build:
+      context: ../bintang-advertising-backend
+    <<: *backend-env
+    command: sh -c "python manage.py migrate --noinput && python manage.py collectstatic --noinput"
+    depends_on:
+      bintang-db:
+        condition: service_healthy
+      bintang-redis:
+        condition: service_started
+    volumes:
+      - static_files:/app/staticfiles
+      - media_files:/app/media
+    restart: "no"
+
+  # Diskalakan (replicas) supaya beberapa proses Daphne jalan paralel — 1 proses
+  # Daphne saja jadi bottleneck untuk endpoint sinkron berat (kasir, produk).
+  # Butuh docker-compose v2 (bukan swarm) — replicas didukung native oleh `docker compose up`.
+  backend:
+    build:
+      context: ../bintang-advertising-backend
+    <<: *backend-env
+    depends_on:
+      backend-init:
+        condition: service_completed_successfully
+      bintang-db:
+        condition: service_healthy
+      bintang-redis:
+        condition: service_started
+    volumes:
+      - static_files:/app/staticfiles
+      - media_files:/app/media
+    deploy:
+      replicas: ${BACKEND_REPLICAS:-3}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/health/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ../bintang-react-frontend
+    # Image frontend didesain untuk Cloud Run (nginx template pakai ${PORT}
+    # yang biasanya di-inject platform) — di docker-compose harus diisi manual.
+    environment:
+      PORT: 8080
+    restart: unless-stopped
+
+  # Gateway publik — satu-satunya service yang expose port ke host. Rute /api,
+  # /admin, /static, /media ke backend (round-robin ke semua replica lewat DNS
+  # Docker bawaan); selain itu ke frontend (SPA).
+  gateway:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - static_files:/srv/static:ro
+      - media_files:/srv/media:ro
+    depends_on:
+      - backend
+      - frontend
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://gateway:80
+    depends_on:
+      - gateway
+
+  evolution-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: evolution
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: ${EVOLUTION_DB_PASSWORD:?EVOLUTION_DB_PASSWORD wajib diisi di deploy/.env}
+    volumes:
+      - evolution_db_data:/var/lib/postgresql/data
+
+  evolution-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - evolution_redis_data:/data
+
+  evolution-api:
+    image: atendai/evolution-api:latest
+    restart: unless-stopped
+    env_file:
+      - evolution.env
+    volumes:
+      - evolution_instances:/evolution/instances
+    depends_on:
+      - evolution-db
+      - evolution-redis
+
+  # Backup harian: pg_dump bintang-db -> gzip lokal -> upload off-site via
+  # rclone (retensi lokal 14 hari; retensi off-site diatur di sisi provider).
+  # rclone.conf berisi kredensial cloud storage — TIDAK boleh masuk git,
+  # ditaruh manual di VPS (lihat backup/README).
+  backup:
+    build:
+      context: ./backup
+    restart: unless-stopped
+    environment:
+      DB_HOST: bintang-db
+      DB_NAME: ${DB_NAME:-bintang}
+      DB_USER: ${DB_USER:-bintang}
+      DB_PASSWORD: ${DB_PASSWORD}
+      RCLONE_REMOTE: ${BACKUP_RCLONE_REMOTE:-}
+    volumes:
+      - ./backup/backups:/backups
+      - ./backup/rclone.conf:/root/.config/rclone/rclone.conf:ro
+    depends_on:
+      bintang-db:
+        condition: service_healthy
+
+volumes:
+  bintang_db_data:
+  bintang_redis_data:
+  static_files:
+  media_files:
+  evolution_db_data:
+  evolution_redis_data:
+  evolution_instances:

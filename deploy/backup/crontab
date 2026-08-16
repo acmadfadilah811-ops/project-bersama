@@ -1,0 +1,2 @@
+# Backup harian jam 02:00 (waktu container — set TZ lewat env TZ di compose kalau perlu)
+0 2 * * * /app/backup.sh >> /backups/backup.log 2>&1

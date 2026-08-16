@@ -19,6 +19,9 @@ __pycache__/
 # Isi sebenarnya cukup di-scp manual ke VPS, bukan lewat git pull (lihat koordinasi/Deploy VPS.md).
 .env
 .env.production
+deploy/evolution.env
+deploy/backup/rclone.conf
+deploy/backup/backups/
 
 # Script deploy VPS dengan password root plaintext tertanam — repo ini PUBLIC,
 # jangan sampai ke-commit. Kredensial ganti env var (pola check_backend_vps.py)
