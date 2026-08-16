@@ -44,7 +44,7 @@ produk - produk*.csv
 INVOICE_*.pdf
 RESI_*.pdf
 SPK_*.pdf
-#PRICELIST*
+\#PRICELIST*
 PRICELIST_*.md
 Dokumentasi_Bintang_ERP*.pdf
 /deliverables/
