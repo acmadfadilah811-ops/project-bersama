@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X, Loader2, ArrowRightCircle, CheckCircle, Unlock } from 'lucide-react';
+import apiClient from '../../../../api/apiClient';
 
 /**
  * ForwardJobModal — Modal untuk meneruskan job ke tahap/divisi berikutnya
@@ -15,9 +16,39 @@ export default function ForwardJobModal({
   onClose,
 }) {
   const [aksi, setAksi] = useState('forward');
+  const [availableTahap, setAvailableTahap] = useState(tahapList || []);
+  const [loadingTahap, setLoadingTahap] = useState(false);
+  const [tahapError, setTahapError] = useState('');
+
+  useEffect(() => {
+    setAvailableTahap(tahapList || []);
+  }, [tahapList]);
+
+  useEffect(() => {
+    let active = true;
+
+    const fetchTahapTujuan = async () => {
+      setLoadingTahap(true);
+      setTahapError('');
+      try {
+        const response = await apiClient.get('/tahap-proses/');
+        const data = Array.isArray(response.data) ? response.data : (response.data?.results || []);
+        if (active) setAvailableTahap(data);
+      } catch (error) {
+        console.error('Gagal memuat tahap tujuan:', error);
+        if (active) setTahapError('Tahap tujuan tidak dapat dimuat. Coba buka kembali dialog ini.');
+      } finally {
+        if (active) setLoadingTahap(false);
+      }
+    };
+
+    if (job) fetchTahapTujuan();
+    return () => { active = false; };
+  }, [job?.id]);
 
   if (!job) return null;
   const orderInfo = orderMap[job.order_item];
+  const tahapTujuan = availableTahap.filter((tahap) => String(tahap.id) !== String(job.tahap));
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -126,17 +157,25 @@ export default function ForwardJobModal({
                 <select
                   name="tahap_id"
                   required
+                  disabled={loadingTahap}
                   className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
-                  <option value="">-- Pilih Tahap --</option>
-                  {tahapList
-                    .filter((t) => t.id !== job.tahap)
-                    .map((t) => (
+                  <option value="">
+                    {loadingTahap ? 'Memuat tahap...' : '-- Pilih Tahap --'}
+                  </option>
+                  {tahapTujuan.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.nama} ({t.divisi_nama})
                       </option>
                     ))}
                 </select>
+                {tahapError ? (
+                  <p className="mt-1 text-[11px] font-semibold text-rose-600">{tahapError}</p>
+                ) : tahapTujuan.length === 0 && !loadingTahap ? (
+                  <p className="mt-1 text-[11px] font-semibold text-amber-600">
+                    Belum ada tahap lain yang dapat dipilih.
+                  </p>
+                ) : null}
               </div>
 
               {/* Assign Staff (opsional) */}

@@ -1,16 +1,67 @@
 import { useState, useEffect } from 'react';
 import { Cloud, Search, Filter, MoreVertical, Banknote, Clock, User, DollarSign, Printer, Mail, Smartphone, Factory, XCircle, Eye, X, Check, FileText, Send } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
+import { fetchAllPages } from '../../../utils/paginatedApi';
 import { notifyApiError, notifyError, notifySuccess } from '../../../utils/notify';
 import { useAuth } from '../../../context/AuthContext';
 import PosHeaderBar from '../components/PosHeaderBar';
 import SpkPublishModal from '../components/SpkPublishModal';
 import ReceiptPrint from '../components/ReceiptPrint';
 import VoidOrderModal from '../components/VoidOrderModal';
+import VoidOrderOtpModal from '../components/VoidOrderOtpModal';
 import { getPrintErrorMessage, printReceipt } from '../../printing/services/printService';
 
+const ORDER_STATUS_LABEL = {
+  draft: 'DRAFT',
+  quotation: 'PENAWARAN',
+  review: 'REVIEW',
+  desain: 'PROSES DESAIN',
+  proses: 'PROSES PRODUKSI',
+  ready: 'SIAP DIAMBIL',
+  selesai: 'SELESAI',
+  batal: 'DIBATALKAN',
+};
+
+const ORDER_SUMBER_LABEL = {
+  wa: 'Order via WA',
+  pos: 'Order via Kasir (DP)',
+  manual: 'Order Manual',
+};
+
+// Satu bentuk item yang sama dipakai baik untuk baris POSSaleItem maupun
+// OrderItem, supaya render di bawah tidak perlu tahu asalnya — dan tidak lagi
+// salah baca nama field (penyebab NaN sebelumnya: kode lama pakai `harga`/
+// `jumlah`/`harga_total` yang memang tidak pernah ada di kedua model ini).
+function normalizePosItem(it) {
+  const qty = Number(it.qty) || 0;
+  const jumlah = Number(it.subtotal || 0);
+  const namaSatuan = Number(it.harga_snapshot || 0);
+  const nama = it.nama_snapshot || it.nama || 'Item';
+  return {
+    // Bentuk baru dipakai render tabel di layar ini.
+    nama, qty, harga_satuan: namaSatuan, jumlah,
+    // Alias nama field lama — ReceiptPrint.jsx (Cetak Resi) baca field ini
+    // langsung, jangan diubah supaya cetak resi POS tidak ikut rusak.
+    nama_snapshot: nama, harga_snapshot: namaSatuan, subtotal: jumlah,
+    uom_kode: it.uom_kode,
+  };
+}
+
+function normalizeOrderItem(it) {
+  const qty = Number(it.qty) || 0;
+  const jumlah = Number(it.harga_jual || 0); // harga_jual di OrderItem = total baris, bukan per-satuan
+  const hargaSatuan = qty > 0 ? jumlah / qty : jumlah;
+  const nama = it.jenis_produk || it.product_nama || 'Item';
+  return {
+    nama, qty, harga_satuan: hargaSatuan, jumlah,
+    // Alias supaya Cetak Resi (ReceiptPrint.jsx) tetap bisa dipakai untuk Pesanan juga.
+    nama_snapshot: nama, harga_snapshot: hargaSatuan, subtotal: jumlah,
+  };
+}
+
 export default function PosHistory({ onToggleSidebar }) {
-  const { businessSettings } = useAuth();
+  const { businessSettings, user } = useAuth();
+  const isKasir = user?.role?.toLowerCase() === 'kasir';
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -23,43 +74,110 @@ export default function PosHistory({ onToggleSidebar }) {
   const [sendingEmail, setSendingEmail] = useState(false);
   const [sendingWa, setSendingWa] = useState(false);
   const [showVoidModal, setShowVoidModal] = useState(false);
+  const [showVoidOtpModal, setShowVoidOtpModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [emailInput, setEmailInput] = useState('');
   const [showWaModal, setShowWaModal] = useState(false);
   const [waInput, setWaInput] = useState('');
   const [showLogsModal, setShowLogsModal] = useState(false);
+  const [showReturModal, setShowReturModal] = useState(false);
+  const [returCatatan, setReturCatatan] = useState('');
+  const [returNominal, setReturNominal] = useState('');
+  const [returTanggal, setReturTanggal] = useState('');
+  const [returLangsungKonfirmasi, setReturLangsungKonfirmasi] = useState(false);
+  const [processingRetur, setProcessingRetur] = useState(false);
 
   const fetchSales = async () => {
     setLoading(true);
     try {
-      const res = await apiClient.get('/pos/sales/');
-      const apiData = res.data?.results || res.data || [];
-      const formatted = apiData.map((item) => ({
-        id: item.id,
-        nomor: item.nomor,
-        created_at: item.created_at,
-        date_str: new Date(item.created_at).toLocaleDateString('id-ID', {
-          day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
-        }),
-        kasir_name: item.kasir_name || '-',
-        pelanggan_name: item.pelanggan_name || '',
-        pelanggan: item.pelanggan || null, // PK Contact = nomor_wa, dipakai utk Kirim Resi WA
-        metode_bayar: (item.metode_bayar || 'CASH').toUpperCase(),
-        status: (item.status || '').toUpperCase(),
-        total: Number(item.total || 0),
-        items_summary: item.items ? item.items.map((i) => `${i.qty}x ${i.nama_snapshot || i.nama}`).join(', ') : '',
-        items: item.items || [],
-        // Field mentah untuk ReceiptPrint (Cetak Resi) — sama seperti yang
-        // dikembalikan POSSaleSerializer, tidak diringkas ulang di sini.
-        subtotal: item.subtotal,
-        diskon: item.diskon,
-        pajak: item.pajak,
-        dibayar: item.dibayar,
-        kembalian: item.kembalian,
-        catatan: item.catatan,
-      }));
+      const [posData, orderData] = await Promise.all([
+        fetchAllPages('/pos/sales/'),
+        fetchAllPages('/orders/'),
+      ]);
+
+      const posFormatted = posData.map((item) => {
+        const items = (item.items || []).map(normalizePosItem);
+        return {
+          tipe: 'pos',
+          id: item.id,
+          nomor: item.nomor,
+          created_at: item.created_at,
+          date_str: new Date(item.created_at).toLocaleDateString('id-ID', {
+            day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+          }),
+          kasir_name: item.kasir_name || '-',
+          pelanggan_name: item.pelanggan_name || '',
+          pelanggan: item.pelanggan || null, // PK Contact = nomor_wa, dipakai utk Kirim Resi WA
+          metode_bayar: (item.metode_bayar || 'CASH').toUpperCase(),
+          status: (item.status || '').toUpperCase(),
+          is_void: (item.status || '').toUpperCase() === 'VOID',
+          diambil_pada: item.diambil_pada || null,
+          total: Number(item.total || 0),
+          dp_dibayar: 0,
+          sisa_tagihan: 0,
+          items_summary: items.map((i) => `${i.qty}x ${i.nama}`).join(', '),
+          items,
+          // Field mentah untuk ReceiptPrint (Cetak Resi) — sama seperti yang
+          // dikembalikan POSSaleSerializer, tidak diringkas ulang di sini.
+          subtotal: item.subtotal,
+          diskon: item.diskon,
+          pajak: item.pajak,
+          dibayar: item.dibayar,
+          kembalian: item.kembalian,
+          catatan: item.catatan,
+        };
+      });
+
+      const orderFormatted = orderData.map((order) => {
+        const items = (order.items || []).map(normalizeOrderItem);
+        const sisaTagihan = Number(order.sisa_tagihan || 0);
+        const dpDibayar = Number(order.dp_dibayar || 0);
+        const isBatal = order.status_global === 'batal';
+        return {
+          tipe: 'order',
+          id: order.id,
+          nomor: order.id,
+          created_at: order.waktu,
+          date_str: new Date(order.waktu).toLocaleDateString('id-ID', {
+            day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+          }),
+          kasir_name: order.dilayani_oleh_nama || '-',
+          pelanggan_name: order.nama || '',
+          pelanggan: order.nomor_wa || null,
+          metode_bayar: (order.metode_pembayaran || '-').toUpperCase(),
+          status: isBatal ? 'VOID' : (ORDER_STATUS_LABEL[order.status_global] || order.status_global || '').toUpperCase(),
+          status_global: order.status_global,
+          sumber: order.sumber || 'manual',
+          sumber_label: ORDER_SUMBER_LABEL[order.sumber] || 'Order Manual',
+          is_void: isBatal,
+          total: Number(order.total_harga || 0),
+          dp_dibayar: dpDibayar,
+          sisa_tagihan: sisaTagihan,
+          // Keterangan pembayaran khusus Pesanan (DP/lunas) — POS selalu lunas
+          // di muka jadi tidak perlu keterangan ini.
+          keterangan_bayar: isBatal
+            ? ''
+            : sisaTagihan > 0
+              ? (dpDibayar > 0
+                  ? `Baru bayar DP Rp ${dpDibayar.toLocaleString('id-ID')} — Sisa tagihan Rp ${sisaTagihan.toLocaleString('id-ID')}`
+                  : `Belum dibayar — Sisa tagihan Rp ${sisaTagihan.toLocaleString('id-ID')}`)
+              : 'Lunas',
+          items_summary: items.map((i) => `${i.qty}x ${i.nama}`).join(', '),
+          items,
+          subtotal: order.total_harga,
+          diskon: order.diskon_kupon + order.diskon_otomatis,
+          pajak: 0,
+          dibayar: dpDibayar,
+          kembalian: 0,
+          catatan: order.catatan_pelanggan,
+        };
+      });
+
+      const formatted = [...posFormatted, ...orderFormatted].sort(
+        (a, b) => new Date(b.created_at) - new Date(a.created_at),
+      );
       setSales(formatted);
-      setSelectedSale((prev) => formatted.find((s) => s.id === prev?.id) || formatted[0] || null);
+      setSelectedSale((prev) => formatted.find((s) => s.tipe === prev?.tipe && s.id === prev?.id) || formatted[0] || null);
     } catch (err) {
       setSales([]);
       setSelectedSale(null);
@@ -121,13 +239,57 @@ export default function PosHistory({ onToggleSidebar }) {
     if (!selectedSale) return;
     setVoiding(true);
     try {
-      await apiClient.post(`/pos/sales/${selectedSale.id}/void/`, { alasan });
-      notifySuccess('Berhasil', `Transaksi ${selectedSale.nomor} berhasil di-void / refund.`);
+      if (selectedSale.tipe === 'order') {
+        await apiClient.post(`/orders/${selectedSale.id}/batalkan/`, { alasan });
+        notifySuccess('Berhasil', `Pesanan ${selectedSale.nomor} berhasil dibatalkan.`);
+      } else {
+        await apiClient.post(`/pos/sales/${selectedSale.id}/void/`, { alasan });
+        notifySuccess('Berhasil', `Transaksi ${selectedSale.nomor} berhasil di-void / refund.`);
+      }
       fetchSales();
     } catch (err) {
-      notifyApiError(err, 'Gagal memproses Refund/Void.');
+      notifyApiError(err, selectedSale.tipe === 'order' ? 'Gagal membatalkan pesanan.' : 'Gagal memproses Refund/Void.');
     } finally {
       setVoiding(false);
+    }
+  };
+
+  const openReturModal = () => {
+    if (!selectedSale) return;
+    setReturCatatan('');
+    setReturNominal(String(Math.round(selectedSale.total || 0)));
+    setReturTanggal(new Date().toISOString().slice(0, 10));
+    setReturLangsungKonfirmasi(false);
+    setShowActionDropdown(false);
+    setShowReturModal(true);
+  };
+
+  const handleConfirmRetur = async (e) => {
+    e.preventDefault();
+    if (!selectedSale || processingRetur) return;
+    setProcessingRetur(true);
+    try {
+      await apiClient.post(`/orders/${selectedSale.id}/retur/`, {
+        catatan: returCatatan,
+        tanggal_pengembalian: returTanggal,
+        nominal_refund: Number(returNominal) || 0,
+        // 'Dikonfirmasi' langsung memicu pengembalian stok (lihat retur() di
+        // backend) — 'Tunda' cuma mencatat pengajuan, stok baru kembali kalau
+        // dikonfirmasi belakangan (mis. lewat Transaksi > Penjualan).
+        status: returLangsungKonfirmasi ? 'Dikonfirmasi' : 'Tunda',
+      });
+      notifySuccess(
+        'Berhasil',
+        returLangsungKonfirmasi
+          ? `Retur ${selectedSale.nomor} dikonfirmasi — stok sudah otomatis ditambahkan kembali.`
+          : `Pengembalian pesanan ${selectedSale.nomor} berhasil diajukan (status Tunda) — stok belum berubah sampai dikonfirmasi.`
+      );
+      setShowReturModal(false);
+      fetchSales();
+    } catch (err) {
+      notifyApiError(err, 'Gagal mengajukan pengembalian pesanan.');
+    } finally {
+      setProcessingRetur(false);
     }
   };
 
@@ -235,8 +397,13 @@ export default function PosHistory({ onToggleSidebar }) {
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      <div className="font-extrabold text-slate-900 text-xs tracking-tight">
-                        {sale.nomor}
+                      <div className="font-extrabold text-slate-900 text-xs tracking-tight flex items-center gap-1.5 flex-wrap">
+                        <span>{sale.nomor}</span>
+                        {sale.tipe === 'order' && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">
+                            {sale.sumber_label}
+                          </span>
+                        )}
                       </div>
                       <div className="text-xs text-slate-700 font-semibold truncate mt-0.5">
                         {sale.items_summary}
@@ -247,6 +414,13 @@ export default function PosHistory({ onToggleSidebar }) {
                           <span className="font-bold text-slate-800 ml-1">({sale.pelanggan_name})</span>
                         )}
                       </div>
+                      {sale.tipe === 'order' && sale.keterangan_bayar && (
+                        <div className={`text-[11px] font-bold mt-0.5 ${
+                          sale.sisa_tagihan > 0 ? 'text-amber-700' : 'text-emerald-700'
+                        }`}>
+                          {sale.keterangan_bayar}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -266,9 +440,14 @@ export default function PosHistory({ onToggleSidebar }) {
             
             {/* Metadata Info Header List SS 1 */}
             <div className="p-4 space-y-2 text-xs font-semibold text-slate-700 bg-[#EAEAEA] shrink-0 border-b border-slate-300">
-              <div className="flex items-center gap-2 text-slate-700 font-bold">
+              <div className="flex items-center gap-2 text-slate-700 font-bold flex-wrap">
                 <Clock size={16} className="text-slate-600 shrink-0" />
                 <span>{selectedSale.nomor}</span>
+                {selectedSale.tipe === 'order' && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">
+                    {selectedSale.sumber_label}
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2 text-slate-600">
                 <Clock size={16} className="text-slate-600 shrink-0" />
@@ -286,6 +465,14 @@ export default function PosHistory({ onToggleSidebar }) {
                 <DollarSign size={16} className="text-slate-700 shrink-0" />
                 <span>{selectedSale.metode_bayar} ({selectedSale.status})</span>
               </div>
+              {selectedSale.tipe === 'order' && selectedSale.keterangan_bayar && (
+                <div className={`flex items-center gap-2 font-bold ${
+                  selectedSale.sisa_tagihan > 0 ? 'text-amber-700' : 'text-emerald-700'
+                }`}>
+                  <Banknote size={16} className="shrink-0" />
+                  <span>{selectedSale.keterangan_bayar}</span>
+                </div>
+              )}
             </div>
 
             {/* Items Table SS 1 */}
@@ -302,27 +489,23 @@ export default function PosHistory({ onToggleSidebar }) {
                 {selectedSale.items && selectedSale.items.length > 0 ? (
                   selectedSale.items.map((it, idx) => (
                     <div key={idx} className="flex justify-between items-center text-xs font-semibold text-slate-800">
-                      <span className="w-1/2 font-bold truncate">{it.nama || it.nama_snapshot}</span>
+                      <span className="w-1/2 font-bold truncate">{it.nama}</span>
                       <span className="w-1/4 text-center text-slate-600 font-bold">
-                        {it.qty} x {Number(it.harga || 0).toLocaleString('id-ID')}
+                        {it.qty} x {Math.round(it.harga_satuan).toLocaleString('id-ID')}
                       </span>
                       <span className="w-1/4 text-right font-bold text-slate-900">
-                        {Number(it.jumlah || it.harga_total || (it.harga * it.qty)).toLocaleString('id-ID')}
+                        {Math.round(it.jumlah).toLocaleString('id-ID')}
                       </span>
                     </div>
                   ))
                 ) : (
-                  <div className="flex justify-between items-center text-xs font-semibold text-slate-800">
-                    <span className="w-1/2 font-bold">benner</span>
-                    <span className="w-1/4 text-center text-slate-600 font-bold">1 x 50.000</span>
-                    <span className="w-1/4 text-right font-bold text-slate-900">50.000</span>
-                  </div>
+                  <div className="p-3 text-center text-slate-400 text-xs font-semibold">Tidak ada item.</div>
                 )}
               </div>
 
               {/* Item Count Summary Row SS 1 */}
               <div className="px-4 py-2.5 bg-[#EAEAEA] text-xs font-semibold text-slate-700 shrink-0 border-t border-slate-300">
-                Jumlah Item: {selectedSale.items ? selectedSale.items.reduce((acc, i) => acc + (i.qty || 1), 0) : 1}
+                Jumlah Item: {selectedSale.items ? selectedSale.items.reduce((acc, i) => acc + (Number(i.qty) || 0), 0) : 0}
               </div>
             </div>
 
@@ -365,19 +548,21 @@ export default function PosHistory({ onToggleSidebar }) {
                       <span>Cetak Resi</span>
                     </button>
 
-                    <button
-                      type="button"
-                      disabled={sendingEmail}
-                      onClick={() => {
-                        setShowActionDropdown(false);
-                        setEmailInput('');
-                        setShowEmailModal(true);
-                      }}
-                      className="w-full px-4 py-2.5 hover:bg-slate-50 text-left flex items-center gap-3 border-b border-slate-100 cursor-pointer disabled:opacity-50"
-                    >
-                      <Mail size={16} className="text-slate-600" />
-                      <span>Email Resi</span>
-                    </button>
+                    {selectedSale?.tipe !== 'order' && (
+                      <button
+                        type="button"
+                        disabled={sendingEmail}
+                        onClick={() => {
+                          setShowActionDropdown(false);
+                          setEmailInput('');
+                          setShowEmailModal(true);
+                        }}
+                        className="w-full px-4 py-2.5 hover:bg-slate-50 text-left flex items-center gap-3 border-b border-slate-100 cursor-pointer disabled:opacity-50"
+                      >
+                        <Mail size={16} className="text-slate-600" />
+                        <span>Email Resi</span>
+                      </button>
+                    )}
 
                     <button
                       type="button"
@@ -394,28 +579,57 @@ export default function PosHistory({ onToggleSidebar }) {
 
                     <button
                       type="button"
-                      disabled={voiding || selectedSale?.status === 'VOID'}
+                      disabled={
+                        voiding || selectedSale?.status === 'VOID' ||
+                        (selectedSale?.tipe === 'order' && selectedSale?.status_global === 'selesai') ||
+                        (selectedSale?.tipe === 'pos' && !!selectedSale?.diambil_pada)
+                      }
                       onClick={() => {
                         setShowActionDropdown(false);
-                        setShowVoidModal(true);
+                        if (isKasir) {
+                          setShowVoidOtpModal(true);
+                        } else {
+                          setShowVoidModal(true);
+                        }
                       }}
                       className="w-full px-4 py-2.5 hover:bg-rose-50 text-rose-600 text-left flex items-center gap-3 border-b border-slate-100 cursor-pointer disabled:opacity-50"
                     >
                       <XCircle size={16} className="text-rose-500" />
-                      <span>{selectedSale?.status === 'VOID' ? 'Telah Di-Void' : 'Refund/Void'}</span>
+                      <span>
+                        {selectedSale?.status === 'VOID'
+                          ? (selectedSale?.tipe === 'order' ? 'Sudah Dibatalkan' : 'Telah Di-Void')
+                          : selectedSale?.tipe === 'order' && selectedSale?.status_global === 'selesai'
+                            ? 'Sudah Selesai — Gunakan Retur'
+                            : selectedSale?.tipe === 'pos' && selectedSale?.diambil_pada
+                              ? 'Sudah Diambil — Tidak Bisa Void'
+                              : (selectedSale?.tipe === 'order' ? 'Batalkan Pesanan' : 'Refund/Void')}
+                      </span>
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowActionDropdown(false);
-                        setShowSpkModal(true);
-                      }}
-                      className="w-full px-4 py-2.5 hover:bg-slate-50 text-left flex items-center gap-3 border-b border-slate-100 cursor-pointer"
-                    >
-                      <Factory size={16} className="text-slate-600" />
-                      <span>Terbitkan SPK</span>
-                    </button>
+                    {selectedSale?.tipe === 'order' && selectedSale?.status_global === 'selesai' && (
+                      <button
+                        type="button"
+                        onClick={openReturModal}
+                        className="w-full px-4 py-2.5 hover:bg-amber-50 text-amber-700 text-left flex items-center gap-3 border-b border-slate-100 cursor-pointer"
+                      >
+                        <XCircle size={16} className="text-amber-600" />
+                        <span>Retur Pesanan</span>
+                      </button>
+                    )}
+
+                    {selectedSale?.tipe !== 'order' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowActionDropdown(false);
+                          setShowSpkModal(true);
+                        }}
+                        className="w-full px-4 py-2.5 hover:bg-slate-50 text-left flex items-center gap-3 border-b border-slate-100 cursor-pointer"
+                      >
+                        <Factory size={16} className="text-slate-600" />
+                        <span>Terbitkan SPK</span>
+                      </button>
+                    )}
 
                     <button
                       type="button"
@@ -493,6 +707,116 @@ export default function PosHistory({ onToggleSidebar }) {
           onClose={() => setShowVoidModal(false)}
           onConfirmVoid={handleConfirmVoid}
         />
+      )}
+
+      {showVoidOtpModal && selectedSale && (
+        <VoidOrderOtpModal
+          isOpen={showVoidOtpModal}
+          onClose={() => setShowVoidOtpModal(false)}
+          tipe={selectedSale.tipe === 'pos' ? 'pos' : 'order'}
+          target={selectedSale}
+          onVoided={() => {
+            notifySuccess(
+              'Berhasil',
+              selectedSale.tipe === 'pos'
+                ? `Transaksi ${selectedSale.nomor} berhasil di-void.`
+                : `Pesanan ${selectedSale.nomor} berhasil dibatalkan.`
+            );
+            fetchSales();
+          }}
+        />
+      )}
+
+      {/* POPUP MODAL UI: Retur Pesanan (khusus Order berstatus Selesai — void
+          biasa sengaja ditolak backend untuk order selesai, harus lewat sini) */}
+      {showReturModal && selectedSale && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden flex flex-col transform scale-100 transition-all duration-300">
+            <div className="bg-amber-600 px-6 py-4 text-white flex items-center justify-between shadow-sm shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-white shrink-0">
+                  <XCircle size={20} />
+                </div>
+                <h3 className="font-extrabold text-base tracking-wide">Retur Pesanan</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowReturModal(false)}
+                className="text-white/80 hover:text-white hover:bg-white/10 p-1.5 rounded-full transition-all cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleConfirmRetur} className="p-6 space-y-5 bg-white text-xs font-semibold text-slate-700">
+              <p className="text-[11px] text-slate-500 font-semibold -mt-1">
+                Pesanan {selectedSale.nomor} sudah berstatus Selesai — pembatalan langsung tidak diizinkan,
+                pengajuan pengembalian ini akan tercatat dengan status "Tunda" untuk ditindaklanjuti.
+              </p>
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-2">Tanggal Pengembalian</label>
+                <input
+                  type="date"
+                  value={returTanggal}
+                  onChange={(e) => setReturTanggal(e.target.value)}
+                  className="w-full border border-slate-300 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 focus:outline-none focus:border-amber-500 bg-slate-50 focus:bg-white transition-all"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-2">Nominal Refund (Rp)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={returNominal}
+                  onChange={(e) => setReturNominal(e.target.value)}
+                  className="w-full border border-slate-300 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 focus:outline-none focus:border-amber-500 bg-slate-50 focus:bg-white transition-all"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-2">Catatan</label>
+                <textarea
+                  value={returCatatan}
+                  onChange={(e) => setReturCatatan(e.target.value)}
+                  rows={3}
+                  placeholder="Alasan pengembalian..."
+                  className="w-full border border-slate-300 rounded-xl px-4 py-3 text-sm font-semibold text-slate-900 focus:outline-none focus:border-amber-500 bg-slate-50 focus:bg-white transition-all resize-none"
+                  required
+                />
+              </div>
+              <label className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={returLangsungKonfirmasi}
+                  onChange={(e) => setReturLangsungKonfirmasi(e.target.checked)}
+                  className="mt-0.5 cursor-pointer"
+                />
+                <span className="text-[11px] font-semibold text-slate-600">
+                  Barang sudah diterima kembali sekarang — langsung konfirmasi
+                  (stok otomatis ditambahkan kembali). Kalau belum yakin barangnya
+                  sudah kembali secara fisik, biarkan tidak dicentang (status Tunda,
+                  stok baru bertambah setelah dikonfirmasi belakangan).
+                </span>
+              </label>
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowReturModal(false)}
+                  className="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-600 hover:bg-slate-50 font-bold transition-all cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={processingRetur}
+                  className="px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold shadow-md shadow-amber-500/20 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {processingRetur ? 'Memproses...' : returLangsungKonfirmasi ? 'Ajukan & Konfirmasi Retur' : 'Ajukan Retur'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {/* POPUP MODAL UI: Kirim Resi via Email */}

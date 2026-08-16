@@ -46,59 +46,10 @@ from .customer_models import Supplier
 from . import production_costing
 from . import stock_fifo
 from . import uom
+from .services.purchase_accounting import post_stock_journal
+from .services.purchase_payments import PurchasePaymentError, create_purchase_payment
 
 logger = logging.getLogger(__name__)
-
-
-def _post_stock_journal(document, actor, *, direction='in'):
-    """Post nilai stok masuk/keluar ke ledger dan fail-closed bila COA belum siap."""
-    from accounting.models import Account, JournalEntry
-    from accounting.services.journal import create_journal_entry
-
-    amount = sum(
-        (Decimal(str(item.qty or 0)) * Decimal(str(item.harga_beli or 0))
-         for item in document.items.all()),
-        Decimal('0'),
-    ).quantize(Decimal('1'))
-    if amount <= 0:
-        return None
-
-    existing = JournalEntry.objects.filter(
-        source_type=(JournalEntry.SourceType.STOCK_IN if direction == 'in' else JournalEntry.SourceType.STOCK_OUT),
-        source_id=document.id,
-    ).exclude(status=JournalEntry.Status.VOID).first()
-    if existing:
-        return existing
-
-    inventory = Account.objects.filter(code='11400', is_active=True).first()
-    payable = Account.objects.filter(code='21000', is_active=True).first()
-    if not inventory or not payable:
-        raise ValidationError('COA 11400 (Persediaan) dan 21000 (Hutang Dagang) wajib tersedia.')
-
-    if direction == 'in':
-        lines = [
-            {'account': inventory, 'debit': amount, 'kredit': 0, 'description': f'Stok masuk {document.nomor}', 'external_document_no': document.nomor},
-            {'account': payable, 'debit': 0, 'kredit': amount, 'description': f'Stok masuk {document.nomor}', 'external_document_no': document.nomor},
-        ]
-        source_type = JournalEntry.SourceType.STOCK_IN
-    else:
-        lines = [
-            {'account': payable, 'debit': amount, 'kredit': 0, 'description': f'Retur stok {document.nomor}', 'external_document_no': document.nomor},
-            {'account': inventory, 'debit': 0, 'kredit': amount, 'description': f'Retur stok {document.nomor}', 'external_document_no': document.nomor},
-        ]
-        source_type = JournalEntry.SourceType.STOCK_OUT
-
-    try:
-        return create_journal_entry(
-            date=document.tanggal,
-            lines=lines,
-            description=f"{'Stok masuk' if direction == 'in' else 'Retur stok'} {document.nomor}",
-            source_type=source_type,
-            source_id=document.id,
-            created_by=actor,
-        )
-    except DjangoValidationError as exc:
-        raise ValidationError(getattr(exc, 'messages', [str(exc)])) from exc
 
 
 def post_stock_in_document(document, actor):
@@ -146,7 +97,7 @@ def post_stock_in_document(document, actor):
 
     document.status = 'selesai'
     document.save()
-    _post_stock_journal(document, actor, direction='in')
+    post_stock_journal(document, actor, direction='in')
     return document
 
 
@@ -235,6 +186,66 @@ def post_stock_opname_journal(document, actor, surplus_amount, defisit_amount):
         )
     except DjangoValidationError as exc:
         raise ValidationError(getattr(exc, 'messages', [str(exc)])) from exc
+
+
+def post_stock_opname_document(document, user):
+    """Posting inti dokumen Stok Opname — dipisah dari
+    StockOpnameDocumentViewSet.post_document (action HTTP) supaya bisa dipakai
+    ulang oleh ProductViewSet/ProductVariantViewSet.perform_update ketika
+    field Qty Stok diubah lewat form edit produk (M8 Aturan Engineering:
+    mutasi stok bernilai uang/HPP wajib lewat service resmi — bukan `.save()`
+    langsung di view — bug ditemukan user 2026-08-15: field itu sebelumnya
+    menimpa qty_stok tanpa jejak Pergerakan Stok maupun sinkronisasi lapisan
+    FIFO sama sekali)."""
+    # Produk yang sama boleh muncul di beberapa baris (rak berbeda) — jumlahkan
+    # stok_aktual per (product, variant) dulu sebelum menimpa qty_stok, supaya
+    # baris kedua tidak menghapus hasil hitung baris pertama untuk produk yang sama.
+    groups = {}
+    for item in document.items.select_related('product', 'variant'):
+        key = (item.product_id, item.variant_id)
+        if key not in groups:
+            groups[key] = {'product': item.product, 'variant': item.variant, 'total': Decimal('0')}
+        groups[key]['total'] += item.stok_aktual
+
+    with transaction.atomic():
+        surplus_total = Decimal('0')
+        defisit_total = Decimal('0')
+        for group in groups.values():
+            if group['variant']:
+                owner = ProductVariant.objects.select_for_update().get(pk=group['variant'].id)
+            else:
+                owner = Product.objects.select_for_update().get(pk=group['product'].id)
+
+            stok_awal = owner.qty_stok
+            stok_akhir = group['total']
+            owner.qty_stok = stok_akhir
+            owner.save()
+
+            ProductStockMovement.objects.create(
+                product=group['product'],
+                variant=group['variant'],
+                user=user,
+                tipe='opname',
+                qty=abs(stok_akhir - stok_awal),
+                stok_awal=stok_awal,
+                stok_akhir=stok_akhir,
+                catatan=document.catatan,
+                tanggal=document.tanggal,
+                stock_opname_document=document,
+            )
+            hpp, rincian = stock_fifo.recalibrate_layers(
+                group['product'], group['variant'], stok_akhir, document.tanggal,
+                sumber_nomor=document.nomor,
+            )
+            if stok_akhir < stok_awal:
+                defisit_total += hpp
+            elif stok_akhir > stok_awal and rincian:
+                layer = rincian[0]
+                surplus_total += layer.qty_masuk * layer.harga_beli
+
+        document.status = 'selesai'
+        document.save()
+        post_stock_opname_journal(document, user, surplus_total, defisit_total)
 
 
 from . import pos_settings
@@ -381,6 +392,59 @@ class ProductViewSet(viewsets.ModelViewSet):
                 )
         return super().destroy(request, *args, **kwargs)
 
+    @action(detail=True, methods=['get'], url_path='hitung-harga')
+    def hitung_harga_action(self, request, pk=None):
+        """Hitung harga_satuan/total resmi sesuai `price_type` produk
+        (flat/tier/per_m2) — satu sumber kebenaran yang sama dipakai
+        kalkulator bot WA (`services/product_pricing.hitung_harga`).
+        Dipakai form input manual (mis. verifikasi nota Antrean WA) supaya
+        harga yang otomatis terisi saat memilih produk BENAR utk produk
+        per_m2/tier, bukan cuma field harga flat yang ditebak di frontend
+        (bug ditemukan & diperbaiki 2026-08-12).
+        GET (bukan POST) supaya kasir/staff read-only tetap bisa pakai —
+        ini murni kalkulasi, tidak menulis apa pun."""
+        from .services.product_pricing import hitung_harga, HargaProdukError
+        from .models import Contact
+
+        product = self.get_object()
+        variant = None
+        variant_id = request.query_params.get('variant_id')
+        if variant_id:
+            try:
+                variant = ProductVariant.objects.get(pk=variant_id, product=product)
+            except (ProductVariant.DoesNotExist, ValueError, TypeError):
+                return Response({'error': 'Varian tidak ditemukan untuk produk ini.'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Opsional: preview harga sesuai Tipe Pelanggan pelanggan yang dipilih
+        # kasir, supaya angka yang tampil di form sama dengan yang bakal
+        # dipakai saat checkout POS beneran (pos_services.create_sale
+        # meresolusi tipe pelanggan yang sama lewat Contact.customer.customer_group).
+        customer_group_nama = None
+        pelanggan_id = request.query_params.get('pelanggan_id')
+        if pelanggan_id:
+            kontak = Contact.objects.filter(pk=pelanggan_id).first()
+            if kontak and kontak.customer_id and kontak.customer.customer_group_id:
+                customer_group_nama = kontak.customer.customer_group.nama
+
+        try:
+            hasil = hitung_harga(
+                product,
+                qty=request.query_params.get('qty', 1),
+                panjang=request.query_params.get('panjang'),
+                lebar=request.query_params.get('lebar'),
+                variant=variant,
+                kanal=request.query_params.get('kanal') or 'toko',
+                # Opt-in eksplisit dari caller (Antrean WA) — P x L selalu jadi
+                # pengali harga apa pun price_type produknya (instruksi user
+                # 2026-08-12). Default False, tidak memengaruhi caller lain.
+                paksa_per_m2=request.query_params.get('paksa_per_m2') == 'true',
+                customer_group_nama=customer_group_nama,
+            )
+        except HargaProdukError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(hasil, status=status.HTTP_200_OK)
+
     def perform_create(self, serializer):
         product = serializer.save()
         ProductActivityLog.objects.create(
@@ -392,13 +456,25 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         old_product = self.get_object()
-        
+
         old_tersedia_online = old_product.tersedia_online
         old_tidak_tersedia_offline = old_product.tidak_tersedia_offline_pos
         old_harga_jual = old_product.harga_jual_toko
-        
+        old_qty_stok = old_product.qty_stok
+
+        # Qty Stok boleh diedit langsung dari form produk, tapi mutasinya WAJIB
+        # lewat service stok resmi (M8), bukan `serializer.save()` yang
+        # langsung menimpa kolom tanpa jejak. Dicegat DULU dari validated_data
+        # (biar instance masih pegang nilai LAMA saat post_stock_opname_document
+        # dipanggil di bawah — fungsi itu yang menuliskan nilai akhirnya lewat
+        # 1 dokumen Stok Opname otomatis: movement + sinkron lapisan FIFO +
+        # jurnal surplus/defisit, PERSIS spt opname manual). Bug ditemukan user
+        # 2026-08-15: field ini sebelumnya menimpa qty_stok mentah2, bikin
+        # "Pergerakan Stok" tidak sinkron dgn angka yang tampil di produk.
+        new_qty_stok = serializer.validated_data.pop('qty_stok', None)
+
         product = serializer.save()
-        
+
         changes = []
         if old_tersedia_online != product.tersedia_online:
             status_str = "Tersedia" if product.tersedia_online else "Tidak Tersedia"
@@ -408,7 +484,23 @@ class ProductViewSet(viewsets.ModelViewSet):
             changes.append(f"Mengubah ketersediaan offline (POS) menjadi {status_str}")
         if old_harga_jual != product.harga_jual_toko:
             changes.append(f"Mengubah harga jual dari Rp. {old_harga_jual:,.2f} menjadi Rp. {product.harga_jual_toko:,.2f}".replace(",", "."))
-            
+
+        if new_qty_stok is not None and old_qty_stok != new_qty_stok:
+            today = timezone.now().date()
+            nomor = _next_document_number(StockOpnameDocument, f"OP{today.strftime('%y%m%d')}")
+            doc = StockOpnameDocument.objects.create(
+                nomor=nomor, tanggal=today,
+                catatan='Penyesuaian stok otomatis dari form edit produk',
+                dibuat_oleh=self.request.user, status='draft',
+            )
+            StockOpnameDocumentItem.objects.create(
+                document=doc, product=product, variant=None,
+                stok_sistem=old_qty_stok, stok_aktual=new_qty_stok,
+            )
+            post_stock_opname_document(doc, self.request.user)
+            product.refresh_from_db(fields=['qty_stok'])
+            changes.append(f"Menyesuaikan stok dari {old_qty_stok} menjadi {new_qty_stok} (opname {nomor})")
+
         if not changes:
             changes.append("Memperbarui detail produk")
             
@@ -887,9 +979,12 @@ class ProductViewSet(viewsets.ModelViewSet):
                             harga=0
                         )
                 
-                # Temukan atau buat BillOfMaterials
+                # Temukan atau buat BillOfMaterials (CSV cuma bawa nama, jadi
+                # tetap lewat tautan legacy product_price — lihat migration
+                # 0114 & BillOfMaterialsViewSet.get_or_create_for_product
+                # untuk jalur product_id yang dipakai UI "Tambah Bahan")
                 bom_obj, _ = BillOfMaterials.objects.get_or_create(
-                    product=product_price_obj,
+                    product_price=product_price_obj,
                     defaults={'nama': f"BoM {product_price_obj.nama_produk}" + (f" - {product_price_obj.material}" if product_price_obj.material else "")}
                 )
                 
@@ -1215,6 +1310,32 @@ class ProductVariantViewSet(viewsets.ModelViewSet):
     queryset = ProductVariant.objects.all().order_by('product__nama', 'nama_varian')
     serializer_class = ProductVariantSerializer
     permission_classes = [IsOwnerManagerAdminOrReadOnly]
+
+    def perform_update(self, serializer):
+        old_variant = self.get_object()
+        old_qty_stok = old_variant.qty_stok
+
+        # Sama seperti ProductViewSet.perform_update — Qty Stok varian wajib
+        # lewat service stok resmi (M8), bukan tertulis langsung oleh
+        # serializer.save().
+        new_qty_stok = serializer.validated_data.pop('qty_stok', None)
+
+        variant = serializer.save()
+
+        if new_qty_stok is not None and old_qty_stok != new_qty_stok:
+            today = timezone.now().date()
+            nomor = _next_document_number(StockOpnameDocument, f"OP{today.strftime('%y%m%d')}")
+            doc = StockOpnameDocument.objects.create(
+                nomor=nomor, tanggal=today,
+                catatan='Penyesuaian stok otomatis dari form edit varian produk',
+                dibuat_oleh=self.request.user, status='draft',
+            )
+            StockOpnameDocumentItem.objects.create(
+                document=doc, product=variant.product, variant=variant,
+                stok_sistem=old_qty_stok, stok_aktual=new_qty_stok,
+            )
+            post_stock_opname_document(doc, self.request.user)
+            variant.refresh_from_db(fields=['qty_stok'])
 
 class ProductPackageViewSet(viewsets.ModelViewSet):
     queryset = ProductPackage.objects.all().order_by('nama')
@@ -1980,57 +2101,10 @@ class PurchaseViewSet(viewsets.ModelViewSet):
     # ---- pembayaran (cicilan/DP) ----
     @action(detail=True, methods=['post'], url_path='add-payment')
     def add_payment(self, request, pk=None):
-        purchase = self.get_object()
-        if purchase.is_retur:
-            return Response({'error': 'Dokumen retur tidak menerima pembayaran.'}, status=status.HTTP_400_BAD_REQUEST)
-        if purchase.status == 'batal':
-            return Response({'error': 'Dokumen batal tidak bisa menerima pembayaran.'}, status=status.HTTP_400_BAD_REQUEST)
         try:
-            nominal = _to_decimal(request.data.get('nominal'), 'nominal')
-        except ValueError as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        if nominal <= 0:
-            return Response({'error': 'Nominal pembayaran harus lebih besar dari 0.'}, status=status.HTTP_400_BAD_REQUEST)
-        if nominal != nominal.quantize(Decimal('1')):
-            return Response({'error': 'Nominal pembayaran harus berupa rupiah utuh.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        raw_tanggal = request.data.get('tanggal')
-        tanggal = parse_date(raw_tanggal) if raw_tanggal else timezone.now().date()
-        if not tanggal:
-            return Response({'error': 'Format tanggal harus YYYY-MM-DD.'}, status=status.HTTP_400_BAD_REQUEST)
-        with transaction.atomic():
-            # Lock PO agar dua pembayaran bersamaan tidak melewati status yang
-            # sama dan menghasilkan saldo/jurnal yang tidak konsisten.
-            purchase = self.get_queryset().select_for_update().get(pk=pk)
-            if purchase.is_retur:
-                return Response({'error': 'Dokumen retur tidak menerima pembayaran.'}, status=status.HTTP_400_BAD_REQUEST)
-            if purchase.status == 'batal':
-                return Response({'error': 'Dokumen batal tidak bisa menerima pembayaran.'}, status=status.HTTP_400_BAD_REQUEST)
-
-            from accounting.models import Account
-            from accounting.services.purchase_posting import post_purchase_payment_journal
-
-            account_id = request.data.get('payment_account_id')
-            if account_id:
-                acc_kas = Account.objects.filter(pk=account_id, is_active=True).first()
-            else:
-                acc_kas = Account.objects.filter(code='11101', is_active=True).first()
-            if not acc_kas:
-                return Response({'error': 'Pilih akun Kas/Bank aktif untuk pembayaran.'}, status=status.HTTP_400_BAD_REQUEST)
-
-            payment = PurchasePayment.objects.create(
-                purchase=purchase,
-                tanggal=tanggal,
-                nominal=nominal,
-                metode=(request.data.get('payment_jurnal') or request.data.get('metode') or f'{acc_kas.code} {acc_kas.name}').strip(),
-                catatan=(request.data.get('referensi_pembayaran') or request.data.get('catatan') or '').strip(),
-                dibuat_oleh=request.user,
-            )
-            try:
-                post_purchase_payment_journal(payment, acc_kas, actor=request.user)
-            except DjangoValidationError as exc:
-                raise ValidationError(getattr(exc, 'messages', [str(exc)])) from exc
-            purchase.recompute_payment_status()
+            purchase = create_purchase_payment(purchase_id=pk, data=request.data, actor=request.user)
+        except PurchasePaymentError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         return self._detail_response(purchase.pk, status.HTTP_201_CREATED)
 
@@ -2175,7 +2249,7 @@ class PurchaseViewSet(viewsets.ModelViewSet):
                     sumber_tipe='purchase', sumber_nomor=purchase.nomor,
                     tanggal_kadaluwarsa=it.tanggal_kadaluwarsa,
                 )
-            _post_stock_journal(doc, request.user, direction='in')
+            post_stock_journal(doc, request.user, direction='in')
             return None
 
         # direction == 'out'
@@ -2205,7 +2279,7 @@ class PurchaseViewSet(viewsets.ModelViewSet):
                 catatan=purchase.catatan, tanggal=tanggal, stock_out_document=doc,
             )
             stock_fifo.consume_layers(it.product, it.variant, it.qty, movement=mv)
-        _post_stock_journal(doc, request.user, direction='out')
+        post_stock_journal(doc, request.user, direction='out')
         return None
 
 
@@ -2901,55 +2975,7 @@ class StockOpnameDocumentViewSet(viewsets.ModelViewSet):
         if not document.items.exists():
             return Response({'error': 'Tambahkan minimal satu produk sebelum posting.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Produk yang sama boleh muncul di beberapa baris (rak berbeda) — jumlahkan
-        # stok_aktual per (product, variant) dulu sebelum menimpa qty_stok, supaya
-        # baris kedua tidak menghapus hasil hitung baris pertama untuk produk yang sama.
-        groups = {}
-        for item in document.items.select_related('product', 'variant'):
-            key = (item.product_id, item.variant_id)
-            if key not in groups:
-                groups[key] = {'product': item.product, 'variant': item.variant, 'total': Decimal('0')}
-            groups[key]['total'] += item.stok_aktual
-
-        with transaction.atomic():
-            surplus_total = Decimal('0')
-            defisit_total = Decimal('0')
-            for group in groups.values():
-                if group['variant']:
-                    owner = ProductVariant.objects.select_for_update().get(pk=group['variant'].id)
-                else:
-                    owner = Product.objects.select_for_update().get(pk=group['product'].id)
-
-                stok_awal = owner.qty_stok
-                stok_akhir = group['total']
-                owner.qty_stok = stok_akhir
-                owner.save()
-
-                ProductStockMovement.objects.create(
-                    product=group['product'],
-                    variant=group['variant'],
-                    user=request.user,
-                    tipe='opname',
-                    qty=abs(stok_akhir - stok_awal),
-                    stok_awal=stok_awal,
-                    stok_akhir=stok_akhir,
-                    catatan=document.catatan,
-                    tanggal=document.tanggal,
-                    stock_opname_document=document,
-                )
-                hpp, rincian = stock_fifo.recalibrate_layers(
-                    group['product'], group['variant'], stok_akhir, document.tanggal,
-                    sumber_nomor=document.nomor,
-                )
-                if stok_akhir < stok_awal:
-                    defisit_total += hpp
-                elif stok_akhir > stok_awal and rincian:
-                    layer = rincian[0]
-                    surplus_total += layer.qty_masuk * layer.harga_beli
-
-            document.status = 'selesai'
-            document.save()
-            post_stock_opname_journal(document, request.user, surplus_total, defisit_total)
+        post_stock_opname_document(document, request.user)
 
         return Response(StockOpnameDocumentSerializer(document).data)
 

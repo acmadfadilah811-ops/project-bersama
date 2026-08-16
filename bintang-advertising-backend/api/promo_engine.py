@@ -26,8 +26,6 @@ from .marketing_models import KANAL_ONLINE, KANAL_POS
 MONEY = Decimal('0.01')
 NOL = Decimal('0')
 
-PAKET_BELUM_DIDUKUNG = True
-
 # Python weekday(): Senin=0 ... Minggu=6. Kode hari mengikuti nilai default
 # kolom POSPromotion.hari ('min,sen,sel,rab,kam,jum,sab').
 KODE_HARI = ['sen', 'sel', 'rab', 'kam', 'jum', 'sab', 'min']
@@ -54,6 +52,7 @@ class BarisKeranjang:
     """
     product: object = None
     variant: object = None
+    package: object = None
     qty: Decimal = NOL
     harga: Decimal = NOL
     subtotal: Decimal = NOL
@@ -148,14 +147,22 @@ def _pelanggan_cocok(rule, pelanggan):
     return False, 'Pelanggan ini tidak termasuk sasaran kupon.'
 
 
-def _baris_cocok(rule, baris, id_produk, id_kategori, id_brand):
+def _baris_cocok(rule, baris, id_produk, id_kategori, id_brand, id_paket):
     """Apakah satu baris keranjang masuk cakupan produk sebuah aturan.
 
     Kumpulan id di-precompute pemanggil supaya tidak query per-baris.
     """
     semua_produk = getattr(rule, 'all_products', True)
     semua_brand = getattr(rule, 'all_brands', True)
-    # all_packages sengaja tidak ikut menentukan: lihat PAKET_BELUM_DIDUKUNG.
+    semua_paket = getattr(rule, 'all_packages', True)
+    package = baris.package
+    if package is not None:
+        return semua_paket or package.pk in id_paket
+
+    # Aturan yang khusus paket tidak ikut diterapkan ke produk biasa kecuali
+    # aturan itu juga memiliki cakupan produk eksplisit.
+    if not semua_paket and not (not semua_produk or not semua_brand):
+        return False
     if semua_produk and semua_brand:
         return True
 
@@ -181,6 +188,7 @@ def _id_cakupan(rule):
         set(rule.produk.values_list('pk', flat=True)) if hasattr(rule, 'produk') else set(),
         set(rule.grup_produk.values_list('pk', flat=True)) if hasattr(rule, 'grup_produk') else set(),
         set(rule.brand.values_list('pk', flat=True)) if hasattr(rule, 'brand') else set(),
+        set(rule.paket_produk.values_list('pk', flat=True)) if hasattr(rule, 'paket_produk') else set(),
     )
 
 
@@ -267,10 +275,10 @@ def evaluate_coupon(kupon, konteks):
         hasil.alasan = alasan
         return hasil
 
-    id_produk, id_kategori, id_brand = _id_cakupan(kupon)
+    id_produk, id_kategori, id_brand, id_paket = _id_cakupan(kupon)
     basis = sum(
         (money(b.subtotal) for b in konteks.baris
-         if _baris_cocok(kupon, b, id_produk, id_kategori, id_brand)),
+         if _baris_cocok(kupon, b, id_produk, id_kategori, id_brand, id_paket)),
         NOL,
     )
     if basis <= NOL:
@@ -412,12 +420,12 @@ def evaluate_promotions(konteks, promosi=None):
                                          promo=promo))
 
         elif promo.tipe_promosi == 'DQ':
-            id_produk, id_kategori, id_brand = _id_cakupan(promo)
+            id_produk, id_kategori, id_brand, id_paket = _id_cakupan(promo)
             syarat = _syarat_produk(promo)
             basis = NOL
             for b in konteks.baris:
                 cocok = (b.product is not None and b.product.pk in syarat) if syarat else \
-                    _baris_cocok(promo, b, id_produk, id_kategori, id_brand)
+                    _baris_cocok(promo, b, id_produk, id_kategori, id_brand, id_paket)
                 if cocok:
                     basis += money(b.subtotal)
             if promo.tipe_diskon == 'nominal':

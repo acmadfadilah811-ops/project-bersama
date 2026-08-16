@@ -3,14 +3,18 @@ import { Search, Filter, Image } from 'lucide-react';
 
 export default function PosCatalogPanel({
   products = [],
+  packages = [],
   categories = [],
   onAddToCart,
+  onAddPackage,
   searchTerm,
   setSearchTerm,
   selectedCategory,
   setSelectedCategory,
 }) {
   const [activeTab, setActiveTab] = useState('produk');
+  const showingPackages = activeTab === 'paket';
+  const catalogItems = showingPackages ? packages : products;
 
   return (
     <div className="flex-1 bg-[#0088FF] flex flex-col h-full overflow-hidden">
@@ -31,6 +35,14 @@ export default function PosCatalogPanel({
           }`}
         >
           Barcode
+        </button>
+        <button
+          onClick={() => setActiveTab('paket')}
+          className={`pb-2.5 font-bold text-xs border-b-2 transition-all cursor-pointer ${
+            activeTab === 'paket' ? 'border-white text-white' : 'border-transparent text-blue-100 hover:text-white'
+          }`}
+        >
+          Paket
         </button>
         <button
           onClick={() => setActiveTab('custom')}
@@ -63,30 +75,38 @@ export default function PosCatalogPanel({
 
         {/* Product Grid Cards SS 1 */}
         <div className="flex-1 overflow-y-auto pr-1">
-          {products.length === 0 ? (
+          {catalogItems.length === 0 ? (
             <div className="h-full flex items-center justify-center text-white/70 text-xs font-bold">
-              Tidak ada produk ditemukan
+              {showingPackages ? 'Tidak ada paket aktif untuk POS' : 'Tidak ada produk ditemukan'}
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-              {products.map((product) => {
-                const hargaDisplay = product.harga_jual_toko || product.harga || 0;
+              {catalogItems.map((item) => {
+                const hargaDisplay = showingPackages
+                  ? (item.harga_jual_offline || 0)
+                  : (item.harga_jual_toko || item.harga || 0);
                 return (
                   <button
-                    key={product.id}
-                    onClick={() => onAddToCart(product)}
-                    className="bg-white rounded-lg p-3 text-left shadow-md hover:shadow-xl hover:scale-[1.02] transition-all cursor-pointer flex flex-col justify-between h-36 border border-white/20"
+                    key={`${showingPackages ? 'paket' : 'produk'}-${item.id}`}
+                    onClick={() => (showingPackages ? onAddPackage(item) : onAddToCart(item))}
+                    className="bg-white rounded-lg p-2.5 text-left shadow-md hover:shadow-xl hover:scale-[1.02] transition-all cursor-pointer flex flex-col gap-2 overflow-hidden min-w-0 border border-white/20"
                   >
-                    <div className="w-full flex-1 bg-slate-50 rounded flex items-center justify-center text-slate-300 mb-2">
-                      {product.foto_url ? (
-                        <img src={product.foto_url} alt={product.nama} className="h-full w-full object-cover rounded" />
+                    <div className="w-full h-20 shrink-0 overflow-hidden bg-slate-50 rounded flex items-center justify-center text-slate-300">
+                      {item.foto_url || item.foto ? (
+                        <img
+                          src={item.foto_url || item.foto}
+                          alt={item.nama}
+                          className="h-full w-full object-cover"
+                        />
                       ) : (
                         <Image size={32} />
                       )}
                     </div>
-                    <div>
-                      <h5 className="font-bold text-xs text-slate-800 truncate">{product.nama}</h5>
-                      <div className="text-right text-[11px] font-extrabold text-slate-900 mt-1">
+                    <div className="w-full min-w-0">
+                      <h5 className="font-bold text-xs leading-tight text-slate-800 h-[30px] overflow-hidden break-words">
+                        {item.nama}
+                      </h5>
+                      <div className="text-right text-[11px] leading-tight font-extrabold text-slate-900 mt-1">
                         {Number(hargaDisplay).toLocaleString('id-ID')}
                       </div>
                     </div>
@@ -98,7 +118,7 @@ export default function PosCatalogPanel({
         </div>
 
         {/* Bottom Category Chips SS 1 */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 shrink-0">
+        {!showingPackages && <div className="flex items-center gap-2 overflow-x-auto pb-1 shrink-0">
           <button
             onClick={() => setSelectedCategory('all')}
             className={`px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
@@ -122,7 +142,7 @@ export default function PosCatalogPanel({
               {cat.nama}
             </button>
           ))}
-        </div>
+        </div>}
       </div>
     </div>
   );

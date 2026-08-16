@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react';
 import { Search, FileSpreadsheet, Info, AlertCircle, Save, X } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
+import { todayISO } from '../../../utils/date';
 
 export default function Attendance() {
   const [absensiList, setAbsensiList] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // State untuk Kalender dan Filter
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  // Gunakan kalender lokal. toISOString() memakai UTC dan dapat kembali ke
+  // tanggal kemarin pada pagi hari di Indonesia.
+  const [selectedDate, setSelectedDate] = useState(todayISO);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDivisi, setSelectedDivisi] = useState('Semua Divisi');
   const [divisiList, setDivisiList] = useState([]);
@@ -95,6 +98,7 @@ export default function Attendance() {
     pulangCepat: filteredList.filter((a) => a.durasi_kerja_jam > 0 && a.durasi_kerja_jam < 7)
       .length,
     terlambat: filteredList.filter((a) => {
+      if (a.status === 'terlambat') return true;
       if (!a.jam_masuk) return false;
       const h = new Date(a.jam_masuk).getHours();
       return h >= 9; // Anggap masuk di atas jam 9 itu terlambat
@@ -144,7 +148,7 @@ export default function Attendance() {
       warnaLembur: warnaLembur,
       totalJam: totalJam,
       errorTotal: item.jam_masuk && !item.jam_keluar,
-      textStatus: item.status === 'alpha' ? 'text-red-500' : 'text-slate-600',
+      textStatus: item.status === 'alpha' ? 'text-red-500' : item.status === 'terlambat' ? 'text-amber-600' : 'text-slate-600',
       workspace_unlocked: item.workspace_unlocked,
     };
   });

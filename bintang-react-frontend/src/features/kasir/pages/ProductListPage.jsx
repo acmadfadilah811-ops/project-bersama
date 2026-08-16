@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Package, Plus, Boxes } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
+import { fetchAllPages } from '../../../utils/paginatedApi';
 import PosHeaderBar from '../components/PosHeaderBar';
 import { useKasir } from '../context/KasirContext';
 
@@ -34,8 +35,8 @@ export default function ProductListPage({ onToggleSidebar }) {
         const params = { is_active: true };
         if (selectedCategory !== 'all') params.kategori = selectedCategory;
         if (searchTerm) params.search = searchTerm;
-        const res = await apiClient.get('/products/', { params });
-        setProducts(res.data?.results || res.data || []);
+        const data = await fetchAllPages('/products/', { params });
+        setProducts(data);
       } catch (err) {
         console.error('Gagal memuat produk:', err);
       } finally {

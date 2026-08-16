@@ -474,7 +474,7 @@ export const PRODUK_REPORTS = [
   },
   {
     id: 'penjualan-paket',
-    unavailable: 'Baris penjualan tidak menyimpan referensi paket, sehingga penjualan paket tidak dapat dihitung.',
+    dataSource: 'penjualan-paket',
     label: 'Penjualan Paket',
     toolbar: {
       paket: 'select',
@@ -489,7 +489,7 @@ export const PRODUK_REPORTS = [
   },
   {
     id: 'rincian-paket',
-    unavailable: 'Baris penjualan tidak menyimpan referensi paket, sehingga rincian penjualan paket tidak tersedia.',
+    dataSource: 'rincian-paket',
     label: 'Rincian Penjualan Paket',
     toolbar: {
       paket: 'select',
@@ -507,7 +507,11 @@ export const PRODUK_REPORTS = [
   },
   {
     id: 'sisa-paket',
-    unavailable: 'Stok paket tidak dilacak tersendiri; yang punya stok hanya produk komponennya.',
+    dataSource: 'sisa-paket',
+    notice: {
+      tone: 'info',
+      text: 'Sisa paket dihitung dari komponen stok yang paling membatasi. Paket dengan komponen non-inventori ditampilkan tanpa batas stok sistem.',
+    },
     label: 'Sisa Stok Paket',
     dateMode: 'none',
     toolbar: {

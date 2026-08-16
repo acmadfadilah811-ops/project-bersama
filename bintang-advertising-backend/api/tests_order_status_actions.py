@@ -20,6 +20,14 @@ class OrderStatusActionsTestCase(APITestCase):
             password="password123",
             role="staff"
         )
+        # User dengan role owner — sejak 2026-08-14 kasir tidak lagi bisa
+        # membatalkan Order langsung (butuh alur OTP, lihat
+        # tests_order_void_otp.py), tapi owner/manager/admin tetap bisa.
+        self.owner_user = CustomUser.objects.create_user(
+            username="owner_test",
+            password="password123",
+            role="owner"
+        )
         self.client.force_authenticate(user=self.kasir_user)
 
         self.order_review = Order.objects.create(
@@ -85,7 +93,8 @@ class OrderStatusActionsTestCase(APITestCase):
         self.assertIn("error", response.data)
 
     def test_batalkan_order_success(self):
-        """POST /api/orders/{id}/batalkan/ mengubah status ke 'batal' dengan alasan untuk role diizinkan (kasir)."""
+        """POST /api/orders/{id}/batalkan/ mengubah status ke 'batal' dengan alasan untuk role diizinkan (owner) — kasir butuh alur OTP terpisah, lihat tests_order_void_otp.py."""
+        self.client.force_authenticate(user=self.owner_user)
         url = f"/api/orders/{self.order_review.id}/batalkan/"
         payload = {"alasan": "Pelanggan berubah pikiran"}
         response = self.client.post(url, data=payload, format="json")
@@ -96,8 +105,16 @@ class OrderStatusActionsTestCase(APITestCase):
         # Verifikasi log aktivitas
         log = OrderActivityLog.objects.filter(order=self.order_review, tindakan="CANCEL").first()
         self.assertIsNotNone(log)
-        self.assertEqual(log.user, self.kasir_user)
+        self.assertEqual(log.user, self.owner_user)
         self.assertIn("Pelanggan berubah pikiran", log.keterangan)
+
+    def test_batalkan_kasir_ditolak_tanpa_otp(self):
+        """POST /api/orders/{id}/batalkan/ ditolak (403) untuk kasir tanpa persetujuan OTP owner (instruksi user 2026-08-14)."""
+        url = f"/api/orders/{self.order_review.id}/batalkan/"
+        response = self.client.post(url, data={"alasan": "Pelanggan berubah pikiran"}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.order_review.refresh_from_db()
+        self.assertNotEqual(self.order_review.status_global, "batal")
 
     def test_batalkan_denied_for_staff(self):
         """POST /api/orders/{id}/batalkan/ ditolak (403 Forbidden) untuk user role staff."""
@@ -111,12 +128,14 @@ class OrderStatusActionsTestCase(APITestCase):
 
     def test_batalkan_order_invalid_when_already_batal(self):
         """Membatalkan order yang sudah batal ditolak (400 Bad Request)."""
+        self.client.force_authenticate(user=self.owner_user)
         url = f"/api/orders/{self.order_batal.id}/batalkan/"
         response = self.client.post(url, data={"alasan": "Lagi"}, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_batalkan_order_invalid_when_selesai(self):
         """Membatalkan order yang sudah selesai via endpoint ini ditolak (400 Bad Request)."""
+        self.client.force_authenticate(user=self.owner_user)
         url = f"/api/orders/{self.order_selesai.id}/batalkan/"
         response = self.client.post(url, data={"alasan": "Retur"}, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)

@@ -161,7 +161,7 @@ export default function ProductionApp() {
     fetchCustomers,
     fetchPricelists,
     fetchDivisions,
-    claimJob,
+    claimJobs,
     startJob,
     forwardJob,
   } = useProductionData();
@@ -259,10 +259,12 @@ export default function ProductionApp() {
   }, [activeTab, modeInitialized, fetchCustomers, fetchPricelists, fetchDivisions]);
 
   // Handle action triggers
-  const handleClaim = async (jobId) => {
-    const res = await claimJob(jobId);
+  // Klaim satu order/transaksi sekaligus — jobIds bisa lebih dari satu kalau
+  // order itu punya beberapa item/baris (qty >1 dengan detail beda-beda).
+  const handleClaimMany = async (jobIds) => {
+    const res = await claimJobs(jobIds);
     if (res.ok) {
-      alert('Pekerjaan berhasil diklaim!');
+      alert(jobIds.length > 1 ? `${jobIds.length} pekerjaan berhasil diklaim!` : 'Pekerjaan berhasil diklaim!');
     } else {
       alert(res.error);
     }
@@ -334,7 +336,7 @@ export default function ProductionApp() {
       // Staff Mode Panels
       switch (activeTab) {
         case 'claim_pool':
-          return <ClaimPool claimPool={claimPool} onClaim={handleClaim} loading={loading} />;
+          return <ClaimPool claimPool={claimPool} onClaimMany={handleClaimMany} loading={loading} />;
         case 'kanban_personal':
           return (
             <KanbanPersonal
@@ -347,7 +349,7 @@ export default function ProductionApp() {
         case 'logs':
           return <ActivityLogsPanel logs={logs} />;
         default:
-          return <ClaimPool claimPool={claimPool} onClaim={handleClaim} loading={loading} />;
+          return <ClaimPool claimPool={claimPool} onClaimMany={handleClaimMany} loading={loading} />;
       }
     }
   };

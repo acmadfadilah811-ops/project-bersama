@@ -1,14 +1,12 @@
 import React, { useState } from 'react';
-import { X, BadgePercent, Tag, Check, Trash2, Percent } from 'lucide-react';
+import { X, BadgePercent, Tag, Check, Trash2 } from 'lucide-react';
 
 export default function DiscountVoucherModal({
   isOpen,
   onClose,
   availableCoupons = [],
   selectedCoupon,
-  discountPercent,
   onApplyCoupon,
-  onApplyManualDiscount,
   onRemoveCoupon,
   salesDiscountPreview,
   isAutoDiscountActive,
@@ -16,7 +14,6 @@ export default function DiscountVoucherModal({
   onRemoveAutoDiscount,
 }) {
   const [voucherCode, setVoucherCode] = useState('');
-  const [manualPercent, setManualPercent] = useState(discountPercent || 0);
 
   if (!isOpen) return null;
 
@@ -30,11 +27,6 @@ export default function DiscountVoucherModal({
   const handleSelectCouponCard = (coupon) => {
     setVoucherCode(coupon.kode);
     onApplyCoupon(coupon.kode);
-  };
-
-  const handleSaveManual = () => {
-    onApplyManualDiscount(Number(manualPercent || 0));
-    onClose();
   };
 
   return (
@@ -183,34 +175,9 @@ export default function DiscountVoucherModal({
             </div>
           )}
 
-          <div className="h-px bg-slate-200 my-1" />
-
-          {/* Opsi Diskon Manual (%) */}
-          <div className="space-y-2">
-            <label className="text-[11px] font-bold text-slate-500 flex items-center gap-1.5">
-              <Percent size={14} className="text-blue-500" />
-              <span>Atau Masukkan Diskon Manual (%)</span>
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min="0"
-                max="100"
-                value={manualPercent}
-                onChange={(e) => setManualPercent(e.target.value)}
-                placeholder="0"
-                className="flex-1 bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white text-right"
-              />
-              <span className="font-bold text-slate-600">%</span>
-              <button
-                type="button"
-                onClick={handleSaveManual}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl transition-all cursor-pointer shrink-0"
-              >
-                Terapkan
-              </button>
-            </div>
-          </div>
+          <p className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5 text-[11px] font-semibold leading-relaxed text-blue-800">
+            Diskon hanya dapat diterapkan dari kupon atau Diskon Penjualan yang aktif di Marketing. Nominal manual tidak tersedia untuk kasir.
+          </p>
         </div>
 
         {/* Modal Footer */}

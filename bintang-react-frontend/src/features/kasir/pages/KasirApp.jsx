@@ -12,7 +12,9 @@ import KasirDashboard from './KasirDashboard';
 import ProductListPage from './ProductListPage';
 import CreateOrderPage from './CreateOrderPage';
 import PesananPage from './PesananPage';
+import KasirPelangganSupplier from './KasirPelangganSupplier';
 import PrinterSettings from '../../printing/pages/PrinterSettings';
+import WhatsAppChat from '../../whatsapp/pages/WhatsAppChat';
 import { X } from 'lucide-react';
 
 export default function KasirApp() {
@@ -65,9 +67,12 @@ export default function KasirApp() {
               <Route path="produk" element={<ProductListPage onToggleSidebar={handleToggleSidebar} />} />
               <Route path="pesanan" element={<PesananPage onToggleSidebar={handleToggleSidebar} />} />
               <Route path="antrean-wa" element={<WaOrderQueue onToggleSidebar={handleToggleSidebar} />} />
+              <Route path="wa-live" element={<WhatsAppChat onToggleSidebar={handleToggleSidebar} />} />
+              <Route path="pelanggan-supplier" element={<KasirPelangganSupplier onToggleSidebar={handleToggleSidebar} />} />
               <Route path="riwayat" element={<PosHistory onToggleSidebar={handleToggleSidebar} />} />
               <Route path="rekap-harian" element={<Navigate to="/kasir/shift" replace />} />
               <Route path="shift" element={<PosShift onToggleSidebar={handleToggleSidebar} />} />
+              <Route path="ringkasan-shift-v2" element={<PosRekapHarian onToggleSidebar={handleToggleSidebar} />} />
               <Route path="pengaturan-cetak" element={<PrinterSettings />} />
               <Route path="pengaturan-wa" element={<Navigate to="/kasir/dashboard" replace />} />
               <Route path="*" element={<Navigate to="dashboard" replace />} />

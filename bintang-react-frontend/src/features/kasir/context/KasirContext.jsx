@@ -118,6 +118,30 @@ export function KasirProvider({ children }) {
     });
   };
 
+  const addPackageToCart = (paket) => {
+    setCart((prev) => {
+      const key = `paket-${paket.id}`;
+      const existing = prev.find((item) => item.key === key);
+      if (existing) {
+        return prev.map((item) => item.key === key ? { ...item, qty: item.qty + 1 } : item);
+      }
+      return [
+        ...prev,
+        {
+          key,
+          product: null,
+          variant: null,
+          paket,
+          nama: paket.nama,
+          harga: Number(paket.harga_jual_offline || 0),
+          qty: 1,
+          catatan: '',
+          uomKode: '',
+        },
+      ];
+    });
+  };
+
   const addCustomToCart = (nama, harga, qty = 1, catatan = '') => {
     setCart((prev) => {
       const key = `custom-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -165,6 +189,27 @@ export function KasirProvider({ children }) {
     setCart((prev) =>
       prev.map((item) => (item.key === key ? { ...item, ...patch } : item))
     );
+  };
+
+  // Simpan beberapa baris cart sekaligus dari satu produk meteran dengan
+  // ukuran berbeda-beda (mis. Banner 2x3m + Banner 1x1m dalam satu produk) —
+  // beda dari updateCartItem yang cuma bisa timpa SATU baris ber-key sama.
+  // Baris pertama (key sudah ada di cart) diupdate; baris berikutnya (key
+  // baru dari PosItemDetailPanel) ditambahkan sebagai baris cart terpisah.
+  const upsertCartItems = (items) => {
+    if (!Array.isArray(items) || items.length === 0) return;
+    setCart((prev) => {
+      const next = [...prev];
+      items.forEach((newItem) => {
+        const idx = next.findIndex((i) => i.key === newItem.key);
+        if (idx >= 0) {
+          next[idx] = { ...next[idx], ...newItem };
+        } else {
+          next.push(newItem);
+        }
+      });
+      return next;
+    });
   };
 
   const clearCart = () => {
@@ -250,6 +295,7 @@ export function KasirProvider({ children }) {
           pelanggan: selectedContact ? selectedContact.nomor_wa : null,
           items: cart.map((it) => ({
             product_id: it.product ? it.product.id : null,
+            package_id: it.paket ? it.paket.id : null,
             harga: it.harga,
             qty: it.qty,
           })),
@@ -316,6 +362,7 @@ export function KasirProvider({ children }) {
         checkActiveShift,
         cart,
         addToCart,
+        addPackageToCart,
         addCustomToCart,
         setCartItemUom,
         removeFromCart,
@@ -323,6 +370,7 @@ export function KasirProvider({ children }) {
         updateCartQty,
         updateCartItemNote,
         updateCartItem,
+        upsertCartItems,
         clearCart,
         selectedContact,
         setSelectedContact,

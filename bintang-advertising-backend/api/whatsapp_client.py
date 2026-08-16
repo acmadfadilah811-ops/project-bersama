@@ -73,20 +73,86 @@ class EvolutionAPIClient:
             }
         }
         
+        # Try local Baileys gateway first (http://localhost:3001/send-message)
+        baileys_url = os.getenv("BAILEYS_GATEWAY_URL", "http://localhost:3001/send-message")
         try:
-            logger.info(f"Sending WA text to {clean_number} via Evolution API...")
-            response = requests.post(url, json=payload, headers=self.headers, timeout=5)
-            response.raise_for_status()
-            res_json = response.json()
-            logger.info(f"Evolution API Send Response: {res_json}")
-            return res_json
-        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
-            logger.error(f"Evolution API connection failed/timed out: {e}")
-            self._mark_failed()
+            baileys_res = requests.post(
+                baileys_url,
+                json={"to": clean_number, "message": text},
+                timeout=3
+            )
+            if baileys_res.status_code == 200:
+                logger.info(f"WA message sent via local Baileys gateway to {clean_number}")
+                return baileys_res.json()
+        except Exception:
+            pass # Fall back to Evolution API
+
+        # Evolution API candidate URLs (support localhost, docker evolution_api, and evolution)
+        candidate_urls = [self.base_url]
+        for host in ["http://evolution-api:8080", "http://evolution:8080", "http://evolution_api:8080", "http://127.0.0.1:8080", "http://localhost:8080"]:
+            if host not in candidate_urls:
+                candidate_urls.append(host)
+
+        for base in candidate_urls:
+            url = f"{base}/message/sendText/{self.instance_name}"
+            try:
+                response = requests.post(url, json=payload, headers=self.headers, timeout=5)
+                if response.status_code in (200, 201):
+                    res_json = response.json()
+                    logger.info(f"Evolution API Send Response: {res_json}")
+                    return res_json
+            except Exception as e:
+                logger.debug(f"Failed sending to {url}: {e}")
+
+        logger.error(f"Error sending WhatsApp message to all candidate URLs for {clean_number}")
+        self._mark_failed()
+        return None
+
+    def send_button_message(self, number, text, buttons, footer=""):
+        """
+        Kirim pesan dengan Quick Reply Buttons (tombol tap, maks. 3) via
+        Evolution API. `buttons` = list of {'id': ..., 'title': ...}.
+        Kembalikan None kalau gagal (mis. versi Evolution API di VPS tidak
+        dukung endpoint ini) — caller WAJIB fallback ke send_text_message
+        supaya bot tidak bisu.
+        """
+        if self._is_offline():
             return None
-        except Exception as e:
-            logger.error(f"Error sending WhatsApp message: {e}", exc_info=True)
-            return None
+
+        if '@' in number:
+            clean_number = number
+        else:
+            clean_number = number.replace('+', '').replace(' ', '').replace('-', '')
+
+        payload = {
+            "number": clean_number,
+            "title": "",
+            "description": text,
+            "footer": footer,
+            "buttons": [
+                {"type": "reply", "displayText": b["title"], "id": b["id"]}
+                for b in buttons[:3]
+            ],
+        }
+
+        candidate_urls = [self.base_url]
+        for host in ["http://evolution-api:8080", "http://evolution:8080", "http://evolution_api:8080", "http://127.0.0.1:8080", "http://localhost:8080"]:
+            if host not in candidate_urls:
+                candidate_urls.append(host)
+
+        for base in candidate_urls:
+            url = f"{base}/message/sendButtons/{self.instance_name}"
+            try:
+                response = requests.post(url, json=payload, headers=self.headers, timeout=5)
+                if response.status_code in (200, 201):
+                    res_json = response.json()
+                    logger.info(f"Evolution API sendButtons Response: {res_json}")
+                    return res_json
+            except Exception as e:
+                logger.debug(f"Failed sending buttons to {url}: {e}")
+
+        logger.warning(f"sendButtons gagal untuk semua candidate URL, {clean_number} — caller harus fallback teks.")
+        return None
 
     def send_presence(self, number, status="composing"):
         """
@@ -100,7 +166,6 @@ class EvolutionAPIClient:
             clean_number = number
         else:
             clean_number = number.split('@')[0].replace('+', '').replace(' ', '').replace('-', '')
-        url = f"{self.base_url}/chat/sendPresence/{self.instance_name}"
         
         payload = {
             "number": clean_number,
@@ -108,17 +173,20 @@ class EvolutionAPIClient:
             "delay": 1200
         }
         
-        try:
-            response = requests.post(url, json=payload, headers=self.headers, timeout=3)
-            response.raise_for_status()
-            return response.json()
-        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
-            logger.error(f"Evolution API presence failed/timed out: {e}")
-            self._mark_failed()
-            return None
-        except Exception as e:
-            logger.warning(f"Failed to set WhatsApp presence: {e}")
-            return None
+        candidate_urls = [self.base_url]
+        for host in ["http://evolution-api:8080", "http://evolution:8080", "http://evolution_api:8080", "http://127.0.0.1:8080", "http://localhost:8080"]:
+            if host not in candidate_urls:
+                candidate_urls.append(host)
+
+        for base in candidate_urls:
+            url = f"{base}/chat/sendPresence/{self.instance_name}"
+            try:
+                response = requests.post(url, json=payload, headers=self.headers, timeout=3)
+                if response.status_code in (200, 201):
+                    return response.json()
+            except Exception:
+                pass
+        return None
 
     def get_chats(self, limit=100):
         """

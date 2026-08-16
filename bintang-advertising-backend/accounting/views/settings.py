@@ -1,4 +1,6 @@
 from datetime import date
+from django.core.management import call_command
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
 from django.db import transaction
 from rest_framework import generics, status
@@ -13,6 +15,7 @@ from ..serializers.settings import (
     AccountingLifecycleLogSerializer,
     POSPostingSettingsAuditLogSerializer,
 )
+from ..services.purchase_accounts import get_purchase_account_mappings
 
 
 def _get_or_create_settings():
@@ -127,6 +130,13 @@ class AccountingCompleteSetupView(APIView):
 
     def post(self, request):
         settings = _get_or_create_settings()
+        try:
+            get_purchase_account_mappings()
+        except DjangoValidationError as exc:
+            return Response(
+                {"error": getattr(exc, "messages", [str(exc)])[0]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         already_done = settings.initial_setup_completed_at is not None
 
         response = _update_settings(
@@ -139,6 +149,21 @@ class AccountingCompleteSetupView(APIView):
             response.data["initial_setup_completed_at"] = settings.initial_setup_completed_at
 
         return response
+
+
+class AccountingBootstrapDefaultCoaView(APIView):
+    """Buat COA standar idempoten untuk instalasi yang masih kosong."""
+
+    permission_classes = [IsOwnerOrManager]
+
+    def post(self, request):
+        _get_or_create_settings()
+        call_command("seed_coa")
+        settings = _get_or_create_settings()
+        return Response({
+            "settings": AccountingSettingsSerializer(settings).data,
+            "accounts_count": Account.objects.count(),
+        })
 
 
 class AccountingLifecycleLogListView(generics.ListAPIView):

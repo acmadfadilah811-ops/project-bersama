@@ -159,6 +159,12 @@ export default function StaffDashboard() {
       await fetchDashboardData();
     } catch (err) {
       alert(err.response?.data?.detail || 'Gagal melakukan Clock-In');
+      // Status terkunci di Layout.jsx cuma dicek sekali saat halaman dimuat.
+      // Kalau batas waktu baru lewat setelah halaman ini terbuka, reload
+      // supaya Layout.jsx cek ulang dan tampilkan layar "Ajukan Izin".
+      if (err.response?.status === 403) {
+        window.location.reload();
+      }
     } finally {
       setActionLoading(false);
     }
@@ -228,7 +234,13 @@ export default function StaffDashboard() {
 
   const { absensi_hari_ini, timecard_bulan_ini, job_aktif, total_job_aktif, pengumuman } =
     dashboardData || {};
-  const isClockedIn = absensi_hari_ini?.status !== 'belum_absen';
+  // Setelah izin keterlambatan disetujui, backend membuat/mengubah record
+  // Absensi (status='terlambat', workspace_unlocked=true) TANPA mengisi
+  // jam_masuk — staff tetap harus Clock In sungguhan untuk mencatat jam
+  // masuk asli (lihat ClockInView di hr/views.py). Cek `status` saja bikin
+  // tombol Clock In salah tampil "Sudah Masuk" padahal jam_masuk kosong,
+  // sehingga Clock Out gagal terus dengan pesan "Belum ada clock-in".
+  const isClockedIn = Boolean(absensi_hari_ini?.jam_masuk);
   const isClockedOut = Boolean(absensi_hari_ini?.jam_keluar);
 
   return (

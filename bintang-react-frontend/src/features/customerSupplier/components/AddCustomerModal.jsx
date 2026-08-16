@@ -16,6 +16,8 @@ const emptyForm = {
   terima_buletin: false,
   bekukan: false,
   tanggal_berakhir: '',
+  tanggal_bergabung: '',
+  transaksi_terakhir: '',
   catatan: '',
   alamat: '',
   negara: 'Indonesia',
@@ -84,6 +86,8 @@ const toFormState = (c) => (c ? {
   terima_buletin: !!c.terima_buletin,
   bekukan: !!c.bekukan,
   tanggal_berakhir: c.tanggal_berakhir || '',
+  tanggal_bergabung: c.tanggal_bergabung || '',
+  transaksi_terakhir: c.transaksi_terakhir || '',
   catatan: c.catatan || '',
   alamat: c.alamat || '',
   negara: c.negara || 'Indonesia',
@@ -124,6 +128,8 @@ export default function AddCustomerModal({ onClose, onSaved, groups = [], custom
       terima_buletin: form.terima_buletin,
       bekukan: form.bekukan,
       tanggal_berakhir: form.tanggal_berakhir || null,
+      tanggal_bergabung: form.tanggal_bergabung || null,
+      transaksi_terakhir: form.transaksi_terakhir || null,
       catatan: form.catatan.trim(),
       alamat: form.alamat.trim(),
       negara: form.negara.trim(),
@@ -277,6 +283,14 @@ export default function AddCustomerModal({ onClose, onSaved, groups = [], custom
               <Toggle checked={form.bekukan} onChange={(v) => setForm((f) => ({ ...f, bekukan: v }))} />
             </div>
 
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Tanggal Gabung">
+                <input type="date" value={form.tanggal_bergabung} onChange={set('tanggal_bergabung')} className={inputCls} />
+              </Field>
+              <Field label="Transaksi Terakhir">
+                <input type="date" value={form.transaksi_terakhir} onChange={set('transaksi_terakhir')} className={inputCls} />
+              </Field>
+            </div>
             <Field label="Tanggal Berakhir">
               <input type="date" value={form.tanggal_berakhir} onChange={set('tanggal_berakhir')} className={inputCls} />
             </Field>

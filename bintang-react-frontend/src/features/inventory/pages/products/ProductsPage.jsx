@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MoreHorizontal, Plus, Trash2, MoreVertical, Upload, Download, Copy, ChevronUp, Check, X, Eye, Boxes, CheckCircle2, History } from 'lucide-react';
 import DataTable from '../components/DataTable';
@@ -6,6 +6,7 @@ import { Button, PageHeader, Select, StatusBadge, Toolbar } from '../components/
 import { formatCurrency } from '../productInventoryData';
 import { useAuth } from '../../../../context/AuthContext';
 import apiClient from '../../../../api/apiClient';
+import { fetchAllPages } from '../../../../utils/paginatedApi';
 import VariantModal, { PriceInput } from './VariantModal';
 import ImportProductModal from './ImportProductModal';
 import ImportRecipeModal from './ImportRecipeModal';
@@ -261,6 +262,7 @@ export default function ProductsPage() {
   };
 
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [brandFilter, setBrandFilter] = useState('');
   const [collectionFilter, setCollectionFilter] = useState('');
@@ -343,25 +345,41 @@ export default function ProductsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [variantTypes, hasVariants]);
 
+  // Debounce ketikan pencarian (350ms) supaya tidak menembak 1 request per
+  // huruf — mengurangi jumlah request yang bisa saling salip.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 350);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Penjaga urutan respons: request LEBIH LAMA yang tiba BELAKANGAN (mis.
+  // hasil utk "ba" nyampe setelah hasil utk "banner" krn jaringan) tidak
+  // boleh menimpa state dari request yang lebih baru — sebelumnya ini bikin
+  // hasil pencarian keliatan "ngerefresh" & kadang-kadang hilang (bug
+  // ditemukan user 2026-08-15).
+  const fetchIdRef = useRef(0);
+
   const fetchProducts = async () => {
+    const fetchId = ++fetchIdRef.current;
     setLoading(true);
     setError(null);
     try {
       const params = {};
-      if (search) params.search = search;
+      if (debouncedSearch) params.search = debouncedSearch;
       if (categoryFilter) params.kategori = categoryFilter;
-      const res = await apiClient.get('/products/', { params });
-      const data = Array.isArray(res.data) ? res.data : res.data?.results || [];
+      const data = await fetchAllPages('/products/', { params });
+      if (fetchId !== fetchIdRef.current) return; // respons basi, abaikan
       let filtered = brandFilter ? data.filter((p) => String(p.brand) === String(brandFilter)) : data;
       if (collectionFilter) {
         filtered = filtered.filter((p) => String(p.koleksi) === String(collectionFilter));
       }
       setProducts(filtered);
     } catch (err) {
+      if (fetchId !== fetchIdRef.current) return;
       console.error('[ProductsPage] fetch products error:', err);
       setError('Gagal memuat daftar produk.');
     } finally {
-      setLoading(false);
+      if (fetchId === fetchIdRef.current) setLoading(false);
     }
   };
 
@@ -385,7 +403,7 @@ export default function ProductsPage() {
   useEffect(() => {
     fetchProducts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, categoryFilter, brandFilter, collectionFilter]);
+  }, [debouncedSearch, categoryFilter, brandFilter, collectionFilter]);
 
   const toggleSelectAll = (e) => {
     if (e.target.checked) {

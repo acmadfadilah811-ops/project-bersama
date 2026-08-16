@@ -87,7 +87,6 @@ const groupedMenuOwnerManager = [
     accent: 'emerald',
     isGroup: true,
     submenus: [
-      { path: '/kasir/terminal', label: 'Kasir (POS)', icon: CreditCard },
       { path: '/transaksi/penjualan', label: 'Penjualan', icon: ShoppingCart },
       { path: '/transaksi/pembelian', label: 'Pembelian', icon: ShoppingBag },
       { path: '/transaksi/pendapatan-pengeluaran', label: 'Pendapatan/Pengeluaran', icon: ArrowLeftRight },
@@ -114,7 +113,6 @@ const groupedMenuOwnerManager = [
       { path: '/orders', label: 'Pesanan', icon: ShoppingCart },
       { path: '/produksi', label: 'Papan Kerja (SPK)', icon: Kanban },
       { path: '/customers', label: 'Pelanggan', icon: User },
-      { path: '/whatsapp-chat', label: 'WhatsApp Chat', icon: MessageSquare },
       { path: '/komplain', label: 'Komplain & Garansi', icon: AlertTriangle },
     ],
   },
@@ -228,7 +226,6 @@ export default function Sidebar() {
     if (path.startsWith('/kasir')) return 'kasir-pos';
     if (path === '/jobs' || path === '/produksi') return 'jobs';
     if (path === '/customers') return 'customers';
-    if (path === '/whatsapp-chat') return 'whatsapp-chat';
     if (path === '/attendance') return 'attendance';
     if (path === '/employees') return 'employees';
     if (path === '/payroll') return 'payroll';

@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Users, X, Calendar } from 'lucide-react';
+import apiClient from '../../../api/apiClient';
 
 const DEFAULT_PROVINSI = ['DKI JAKARTA', 'Jawa Barat', 'Jawa Tengah', 'Jawa Timur', 'Banten', 'DI Yogyakarta', 'Bali', 'Sumatera Utara', 'Sumatera Selatan'];
 const DEFAULT_KOTA = ['Kota Jakarta Pusat', 'Kota Jakarta Selatan', 'Kota Jakarta Barat', 'Kota Jakarta Timur', 'Kota Jakarta Utara', 'Kota Bandung', 'Kota Surabaya', 'Kota Semarang', 'Kota Medan'];
 const DEFAULT_KECAMATAN = ['Cempaka Putih', 'Gambir', 'Kemayoran', 'Menteng', 'Senen', 'Coblong', 'Tegalsari'];
 
 export default function CustomerEditModal({ isOpen, contact, contacts = [], onSave, onClose }) {
+  const [groups, setGroups] = useState([]);
   const [formData, setFormData] = useState({
-    tipe_pelanggan: 'Guest',
+    tipe_pelanggan: '',
     nama: '',
     gender: 'Male',
     tanggal_lahir: '',
@@ -26,6 +28,21 @@ export default function CustomerEditModal({ isOpen, contact, contacts = [], onSa
   const [historyProvinsi, setHistoryProvinsi] = useState([]);
   const [historyKota, setHistoryKota] = useState([]);
   const [historyKecamatan, setHistoryKecamatan] = useState([]);
+
+  // Tipe Pelanggan asli (Agen/MOU/dst) dari modul Pelanggan & Supplier —
+  // sebelumnya dropdown ini hardcode Guest/Regular/VIP, tidak pernah cocok
+  // dengan kategori sungguhan sehingga kategori yang dipilih di sini juga
+  // tidak pernah ikut tersimpan (lihat handleSaveEditCustomer di PosTerminal).
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiClient.get('/customer-groups/');
+        setGroups(res.data?.results || res.data || []);
+      } catch {
+        setGroups([]);
+      }
+    })();
+  }, []);
 
   // Load history from localStorage and existing contacts
   useEffect(() => {
@@ -51,7 +68,7 @@ export default function CustomerEditModal({ isOpen, contact, contacts = [], onSa
   useEffect(() => {
     if (contact) {
       setFormData({
-        tipe_pelanggan: contact.tipe_pelanggan || contact.kategori || 'Guest',
+        tipe_pelanggan: contact.customer_group != null ? String(contact.customer_group) : '',
         nama: contact.nama || '',
         gender: contact.gender || '',
         tanggal_lahir: contact.tanggal_lahir || '',
@@ -68,7 +85,7 @@ export default function CustomerEditModal({ isOpen, contact, contacts = [], onSa
       });
     } else {
       setFormData({
-        tipe_pelanggan: 'Guest',
+        tipe_pelanggan: '',
         nama: '',
         gender: '',
         tanggal_lahir: '',
@@ -144,14 +161,23 @@ export default function CustomerEditModal({ isOpen, contact, contacts = [], onSa
                 onChange={(e) => handleChange('tipe_pelanggan', e.target.value)}
                 className="w-full border-b border-slate-300 pb-1 text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500 bg-transparent cursor-pointer"
               >
-                <option value="Guest">Guest</option>
-                <option value="Regular">Regular</option>
-                <option value="VIP">VIP</option>
+                {/* Placeholder "tanpa grup" HANYA dilabeli "Guest" kalau tidak ada
+                    grup asli bernama "Guest" di /customer-groups/ — kalau ada
+                    (kasus nyata: grup id=4 "Guest" sungguhan), dropdown akan
+                    menampilkan 2 opsi "Guest" identik. Placeholder & grup asli
+                    tetap 2 opsi berbeda (value "" vs id), cuma labelnya yang
+                    dibedakan (bug ditemukan user 2026-08-15). */}
+                <option value="">
+                  {groups.some((g) => g.nama?.toLowerCase() === 'guest') ? '- Pilih Tipe Pelanggan -' : 'Guest'}
+                </option>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>{g.nama}</option>
+                ))}
               </select>
             </div>
 
             <div>
-              <label className="text-[10px] font-medium text-slate-400 block mb-0.5">Nama</label>
+              <label className="text-[10px] font-medium text-slate-400 block mb-0.5">Nama<span className="text-red-500">*</span></label>
               <input
                 type="text"
                 required
@@ -163,12 +189,16 @@ export default function CustomerEditModal({ isOpen, contact, contacts = [], onSa
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-[10px] font-medium text-slate-400 block mb-0.5">Gender</label>
+                <label className="text-[10px] font-medium text-slate-400 block mb-0.5">
+                  Gender{!contact && <span className="text-red-500">*</span>}
+                </label>
                 <select
+                  required={!contact}
                   value={formData.gender}
                   onChange={(e) => handleChange('gender', e.target.value)}
                   className="w-full border-b border-slate-300 pb-1 text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500 bg-transparent cursor-pointer"
                 >
+                  <option value="" disabled>Pilih Gender</option>
                   <option value="Male">Male</option>
                   <option value="Female">Female</option>
                 </select>
@@ -209,9 +239,13 @@ export default function CustomerEditModal({ isOpen, contact, contacts = [], onSa
             </div>
 
             <div>
-              <label className="text-[10px] font-medium text-slate-400 block mb-0.5">Telpon</label>
+              <label className="text-[10px] font-medium text-slate-400 block mb-0.5">
+                Telpon{!contact && <span className="text-red-500">*</span>}
+              </label>
               <input
                 type="text"
+                required={!contact}
+                placeholder={!contact ? 'cth. 081234567890' : ''}
                 value={formData.telepon}
                 onChange={(e) => handleChange('telepon', e.target.value)}
                 className="w-full border-b border-slate-300 pb-1 text-xs font-semibold text-slate-800 focus:outline-none bg-transparent"

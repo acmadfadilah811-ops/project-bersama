@@ -54,6 +54,23 @@ class SupplierSettingsTest(APITestCase):
         )
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_kasir_tetap_bisa_tambah_dan_ubah_data_dasar_supplier(self):
+        # Kasir DIIZINKAN create/update supplier dasar (nama/kontak) sejak
+        # instruksi user 2026-08-10 — hanya field Pengaturan Supplier
+        # (akun_hutang/jatuh_tempo_hari) yang dikunci (2026-08-13). Regresi
+        # ini memastikan penguncian field tidak ikut memblokir kemampuan
+        # dasar itu.
+        self.client.force_authenticate(user=self.kasir)
+        res_create = self.client.post('/api/suppliers/', {'nama': 'CV Baru Dari Kasir'}, format='json')
+        self.assertEqual(res_create.status_code, status.HTTP_201_CREATED, res_create.data)
+
+        res_update = self.client.patch(
+            f'/api/suppliers/{self.supplier.id}/', {'nama': 'CV Test Supplier Diubah'}, format='json',
+        )
+        self.assertEqual(res_update.status_code, status.HTTP_200_OK, res_update.data)
+        self.supplier.refresh_from_db()
+        self.assertEqual(self.supplier.nama, 'CV Test Supplier Diubah')
+
     def test_akun_hutang_display_kosong_saat_belum_diset(self):
         self.client.force_authenticate(user=self.owner)
         res = self.client.get(f'/api/suppliers/{self.supplier.id}/')

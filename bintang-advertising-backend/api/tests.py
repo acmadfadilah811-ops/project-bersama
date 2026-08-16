@@ -87,6 +87,20 @@ class ModelsTestCase(TestCase):
         self.assertEqual(order.total_harga, 90000)
         self.assertEqual(order.sisa_tagihan, 40000)
 
+    def test_order_item_qty_nol_ditolak(self):
+        """Qty 0 (atau negatif) tidak boleh pernah tersimpan — mencemari
+        pencatatan inventori/akuntansi & pergerakan stok."""
+        order = Order.objects.create(nomor_wa="08123456789", nama="Jane")
+        with self.assertRaises(ValueError):
+            OrderItem.objects.create(
+                order=order, jenis_produk="Banner", harga_jual=50000, qty=0,
+            )
+        with self.assertRaises(ValueError):
+            OrderItem.objects.create(
+                order=order, jenis_produk="Banner", harga_jual=50000, qty=-1,
+            )
+        self.assertEqual(order.items.count(), 0)
+
     def test_job_board_linkage(self):
         """Uji apakah penugasan Job Board berhasil dengan status antrean default."""
         order = Order.objects.create(nomor_wa="08123456789", nama="Jane")

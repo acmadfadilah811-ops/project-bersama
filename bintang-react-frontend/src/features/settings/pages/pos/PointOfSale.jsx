@@ -31,7 +31,15 @@ import { useTransaksiCrumb } from '../../../transaksi/components/TransaksiContex
 const POS_TABS = [
   { id: 'pengaturan', label: 'Pengaturan' },
   { id: 'ringkasan-shift', label: 'Ringkasan Shift (V2)' },
+  { id: 'kas-harian', label: 'Kas Awal Harian (V1)' },
 ];
+
+const formatLocalDate = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 const POS_MENUS = [
   { id: 'pembayaran', label: 'Pembayaran', icon: Wallet },
@@ -112,6 +120,10 @@ export default function PointOfSale() {
     const name = `${user.first_name || ''} ${user.last_name || ''}`.trim();
     return name || user.username || '';
   };
+
+  const formatRekapMetode = (rows) => (Array.isArray(rows) ? rows : [])
+    .map((row) => `${row.metode || 'Lainnya'}: ${formatIDR(row.total)}`)
+    .join(' | ');
 
   // Cara Pembayaran — tersimpan di backend (/pos-payment-methods/).
   const [payments, setPayments] = useState([]);
@@ -357,17 +369,11 @@ export default function PointOfSale() {
   const [filterShiftHarianRows, setFilterShiftHarianRows] = useState(5);
   const [filterShiftHarianStartDate, setFilterShiftHarianStartDate] = useState(() => {
     const d = new Date();
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    d.setDate(d.getDate() - 30);
+    return formatLocalDate(d);
   });
   const [filterShiftHarianEndDate, setFilterShiftHarianEndDate] = useState(() => {
-    const d = new Date();
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    return formatLocalDate(new Date());
   });
   const [filterShiftHarianSearch, setFilterShiftHarianSearch] = useState('');
   const [shiftHarianPage, setShiftHarianPage] = useState(1);
@@ -488,9 +494,17 @@ export default function PointOfSale() {
   }, [activeTab, filterKasHarianDate]);
 
   useEffect(() => {
-    if (activeTab === 'ringkasan-shift') {
-      fetchShiftHarianData();
-    }
+    if (activeTab !== 'ringkasan-shift') return undefined;
+
+    fetchShiftHarianData();
+    // Ringkasan dapat dibuat oleh kasir lain saat Owner/Manager membukanya.
+    // Refresh ringan ini membuat tabel dan drawer detail segera dapat dijangkau
+    // tanpa reload manual, sambil mempertahankan isi tabel saat refresh berjalan.
+    const intervalId = window.setInterval(() => {
+      fetchShiftHarianData({ background: true });
+    }, 20_000);
+
+    return () => window.clearInterval(intervalId);
   }, [activeTab, filterShiftHarianStartDate, filterShiftHarianEndDate]);
 
   const handleSaveSettings = async () => {
@@ -818,8 +832,8 @@ export default function PointOfSale() {
 
   const [selectedShiftDetail, setSelectedShiftDetail] = useState(null);
 
-  const fetchShiftHarianData = async () => {
-    setLoadingSettings(true);
+  const fetchShiftHarianData = async ({ background = false } = {}) => {
+    if (!background) setLoadingSettings(true);
     try {
       const params = {};
       if (filterShiftHarianStartDate) {
@@ -838,7 +852,7 @@ export default function PointOfSale() {
       console.error('Failed to fetch shift harian data:', err);
       setShiftHarianData([]);
     } finally {
-      setLoadingSettings(false);
+      if (!background) setLoadingSettings(false);
     }
   };
 
@@ -847,7 +861,7 @@ export default function PointOfSale() {
       triggerToast('Tidak ada data untuk diekspor!');
       return;
     }
-    const headers = ['Tanggal', 'Kasir', 'Mulai', 'Berakhir', 'Expected', 'Aktual', 'Selisih'];
+    const headers = ['Tanggal', 'Kasir', 'Mulai', 'Berakhir', 'Expected', 'Aktual', 'Selisih', 'Rekap Metode Pembayaran'];
     const rows = shiftHarianData.map(item => [
       item.tanggal,
       item.kasir_nama,
@@ -855,7 +869,8 @@ export default function PointOfSale() {
       item.berakhir ? new Date(item.berakhir).toLocaleString('id-ID') : '-',
       item.expected,
       item.aktual,
-      item.selisih
+      item.selisih,
+      formatRekapMetode(item.rincian_metode),
     ]);
 
     let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
@@ -3446,6 +3461,33 @@ export default function PointOfSale() {
                 </div>
               </div>
 
+              {/* Rekap pembayaran non-kas tetap terlihat, tetapi tidak ikut
+                  mengubah Kas Diharapkan di laci. */}
+              <div className="space-y-2 bg-white p-4 rounded-lg border border-slate-200">
+                <div className="flex justify-between items-center font-extrabold text-slate-900 text-xs pb-2 border-b border-slate-100">
+                  <span>Rekap Semua Metode Pembayaran</span>
+                  <span>{(selectedShiftDetail.rincian_metode || []).length} Metode</span>
+                </div>
+                {(selectedShiftDetail.rincian_metode || []).length === 0 ? (
+                  <p className="text-[11px] text-slate-400">Belum ada snapshot metode pembayaran untuk shift ini.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {(selectedShiftDetail.rincian_metode || []).map((row) => (
+                      <div key={`${row.metode}-${row.tipe}`} className="rounded-md bg-slate-50 px-3 py-2">
+                        <div className="flex justify-between gap-3 text-slate-800">
+                          <span className="font-bold">{row.metode}</span>
+                          <span className="font-extrabold">IDR {Number(row.total || 0).toLocaleString('de-DE')}</span>
+                        </div>
+                        <div className="mt-1 flex justify-between text-[10px] text-slate-500">
+                          <span>POS: IDR {Number(row.pos || 0).toLocaleString('de-DE')}</span>
+                          <span>DP/Pelunasan: IDR {Number(row.order || 0).toLocaleString('de-DE')}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Section 1: Kas Diharapkan & Breakdown SS 2 */}
               <div className="space-y-2 bg-[#F8FAFC] p-4 rounded-lg border border-slate-100">
                 <div className="flex justify-between items-center font-extrabold text-slate-900 text-xs pb-1">
@@ -3496,6 +3538,15 @@ export default function PointOfSale() {
                 <span>Kas Selisih</span>
                 <span>IDR {Number(selectedShiftDetail.selisih || 0).toLocaleString('de-DE')}</span>
               </div>
+
+              {/* Keterangan penutupan shift (opsional, diisi kasir saat
+                  konfirmasi Akhiri Shift) */}
+              {selectedShiftDetail.keterangan && (
+                <div className="space-y-1 bg-[#F8FAFC] p-4 rounded-lg border border-slate-100">
+                  <span className="text-[10px] text-slate-400 font-bold block">Keterangan</span>
+                  <p className="text-slate-700 font-semibold text-xs whitespace-pre-wrap">{selectedShiftDetail.keterangan}</p>
+                </div>
+              )}
 
               {/* Section 4: Summary Totals at Bottom SS 2 */}
               <div className="pt-4 space-y-3 border-t border-slate-200 text-xs font-semibold text-slate-600">

@@ -3,6 +3,7 @@ import DataTable from '../components/DataTable';
 import { PageHeader, Select, StatusBadge, Toolbar } from '../components/PageShell';
 import { formatCurrency } from '../productInventoryData';
 import apiClient from '../../../../api/apiClient';
+import { fetchAllPages } from '../../../../utils/paginatedApi';
 
 /**
  * Produk Lain-lain = produk yang TIDAK dilacak stoknya (`lacak_inventori = false`),
@@ -22,8 +23,7 @@ export function ProductOthersPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiClient.get('/products/', { params: { page: 1, page_size: 1000 } });
-      const rows = res.data.results || res.data || [];
+      const rows = await fetchAllPages('/products/');
       setItems(rows.filter((p) => !p.lacak_inventori));
     } catch (err) {
       console.error('[ProductOthersPage] gagal memuat:', err);

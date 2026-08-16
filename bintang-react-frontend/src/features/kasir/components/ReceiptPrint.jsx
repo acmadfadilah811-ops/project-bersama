@@ -10,6 +10,11 @@ export default function ReceiptPrint({ receipt, settings }) {
   const isPaperSaving = !!extSettings.enable_paper_saving;
   const thermalWidth = paperSize === '58mm' ? '48mm' : '72mm';
   const documentTitle = receipt.documentTitle || settings?.pos_resi_judul || 'RESI PEMBELIAN';
+  const formatReceiptDateTime = (value) => new Intl.DateTimeFormat('id-ID', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+    timeZone: 'Asia/Jakarta',
+  }).format(new Date(value));
 
   // Format currency in IDR
   const formatCurrency = (val) => {
@@ -32,8 +37,9 @@ export default function ReceiptPrint({ receipt, settings }) {
       if (merged[key]) {
         merged[key].qty = parseFloat(merged[key].qty || 0) + parseFloat(item.qty || 0);
         merged[key].subtotal = parseFloat(merged[key].subtotal || 0) + parseFloat(item.subtotal || 0);
+        merged[key].addons = [...(merged[key].addons || []), ...(item.addons || [])];
       } else {
-        merged[key] = { ...item };
+        merged[key] = { ...item, addons: [...(item.addons || [])] };
       }
     });
     itemsToPrint = Object.values(merged);
@@ -65,7 +71,7 @@ export default function ReceiptPrint({ receipt, settings }) {
             {!settings?.pos_resi_sembunyikan_no_pesanan && (
               <p className="text-[10px] font-black text-slate-900 mt-1">No. Invoice: {receipt.nomor}</p>
             )}
-            <p className="text-[10px] text-slate-500 font-semibold">Tanggal: {new Date(receipt.created_at).toLocaleString('id-ID')}</p>
+            <p className="text-[10px] text-slate-500 font-semibold">Tanggal: {formatReceiptDateTime(receipt.created_at)}</p>
           </div>
         </div>
 
@@ -111,6 +117,15 @@ export default function ReceiptPrint({ receipt, settings }) {
                   <td className="py-3 text-right">{formatCurrency(item.harga_snapshot)}</td>
                   <td className="py-3 text-right font-extrabold text-slate-900 pr-2">{formatCurrency(item.subtotal)}</td>
                 </tr>
+                {(item.addons || []).map((addon) => (
+                  <tr key={addon.id} className="text-slate-500">
+                    <td></td>
+                    <td className="py-1 pl-3 text-[10px]">+ {addon.nama_snapshot} &times; {addon.qty}</td>
+                    <td className="py-1 text-right text-[10px]"></td>
+                    <td className="py-1 text-right text-[10px]">{formatCurrency(addon.harga_snapshot)}</td>
+                    <td className="py-1 text-right text-[10px] pr-2">{formatCurrency(addon.subtotal)}</td>
+                  </tr>
+                ))}
                 {extSettings.print_note_item_resi && item.catatan && (
                   <tr className="bg-slate-50/50">
                     <td></td>
@@ -174,6 +189,12 @@ export default function ReceiptPrint({ receipt, settings }) {
                   <span>Dibayar ({receipt.metode_bayar}):</span>
                   <span>{formatCurrency(receipt.dibayar)}</span>
                 </div>
+                {Number(receipt.sisa_tagihan || 0) > 0 && (
+                  <div className="flex justify-between text-[10px] text-amber-700 font-extrabold">
+                    <span>Sisa Tagihan:</span>
+                    <span>{formatCurrency(receipt.sisa_tagihan)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-[10px] text-emerald-600 font-bold">
                   <span>Kembalian:</span>
                   <span>{formatCurrency(receipt.kembalian)}</span>
@@ -208,7 +229,7 @@ export default function ReceiptPrint({ receipt, settings }) {
       <div className="text-center space-y-1 mb-3">
         <h2 className="text-xs font-black uppercase tracking-wider">{settings?.nama_bisnis || 'BINTANG ADVERTISING'}</h2>
         <h3 className="text-[10px] font-bold uppercase">{documentTitle}</h3>
-        <p className="text-[9px] text-slate-650">Tanggal: {new Date(receipt.created_at).toLocaleString('id-ID')}</p>
+        <p className="text-[9px] text-slate-650">Tanggal: {formatReceiptDateTime(receipt.created_at)}</p>
       </div>
 
       {/* Divider */}
@@ -248,6 +269,12 @@ export default function ReceiptPrint({ receipt, settings }) {
             <div className="text-[8px] text-slate-700">
               {item.qty} {item.uom_kode || 'pcs'} x {formatCurrency(item.harga_snapshot)}
             </div>
+            {(item.addons || []).map((addon) => (
+              <div key={addon.id} className="flex justify-between text-[8px] text-slate-600 pl-2">
+                <span>+ {addon.nama_snapshot} &times; {addon.qty}</span>
+                <span>{formatCurrency(addon.subtotal)}</span>
+              </div>
+            ))}
             {extSettings.print_note_item_resi && item.catatan && (
               <div className="text-[8px] text-slate-600 italic pl-2">
                 * Note: {item.catatan}
@@ -296,6 +323,12 @@ export default function ReceiptPrint({ receipt, settings }) {
               <span>Dibayar</span>
               <span>{formatCurrency(receipt.dibayar)}</span>
             </div>
+            {Number(receipt.sisa_tagihan || 0) > 0 && (
+              <div className="flex justify-between font-bold">
+                <span>Sisa Tagihan</span>
+                <span>{formatCurrency(receipt.sisa_tagihan)}</span>
+              </div>
+            )}
             <div className="flex justify-between font-bold">
               <span>Kembalian</span>
               <span>{formatCurrency(receipt.kembalian)}</span>

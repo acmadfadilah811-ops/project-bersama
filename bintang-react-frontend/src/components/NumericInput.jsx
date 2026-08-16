@@ -114,19 +114,39 @@ export default function NumericInput({
       // Restore cursor position seamlessly after DOM update
       requestAnimationFrame(() => {
         if (!inputEl) return;
+        // Kursor asalnya sebelum digit pertama (mis. klik di posisi 0) —
+        // tetap di posisi 0, jangan ikut loop di bawah (loop itu baru
+        // "match" setelah MELEWATI sebuah digit, jadi digitsBeforeCaret=0
+        // tidak akan pernah cocok dan salah lompat ke akhir teks kalau
+        // tidak ditangani terpisah di sini — regresi ditemukan 2026-08-13
+        // saat perbaikan koma di bawah).
         let newPos = 0;
-        let count = 0;
-        for (let i = 0; i < formatted.length; i++) {
-          if (/\d/.test(formatted[i])) {
-            count++;
+        if (digitsBeforeCaret > 0) {
+          let count = 0;
+          let matched = false;
+          for (let i = 0; i < formatted.length; i++) {
+            if (/\d/.test(formatted[i])) {
+              count++;
+            }
+            if (count === digitsBeforeCaret) {
+              newPos = i + 1;
+              matched = true;
+              break;
+            }
           }
-          if (count === digitsBeforeCaret) {
-            newPos = i + 1;
-            break;
+          if (!matched) {
+            newPos = formatted.length;
+          } else {
+            // Lewati karakter pemisah (koma desimal, titik ribuan) yang
+            // menempel persis setelah digit yang barusan dihitung, supaya
+            // kursor jatuh SETELAH pemisah itu, bukan sebelum. Tanpa ini,
+            // ketik "0" lalu "," menaruh kursor sebelum koma — digit
+            // berikutnya nyelip ke bagian bulat, bukan desimal (mis. "0,5"
+            // jadi "5", bug ditemukan 2026-08-13).
+            while (newPos < formatted.length && !/\d/.test(formatted[newPos])) {
+              newPos++;
+            }
           }
-        }
-        if (count < digitsBeforeCaret) {
-          newPos = formatted.length;
         }
         try {
           inputEl.setSelectionRange(newPos, newPos);

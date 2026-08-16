@@ -108,6 +108,8 @@ class POSVoidPostingTestCase(TestCase):
         void_sale(sale_id=sale.id, user=self.user)
         sale.refresh_from_db()
         self.assertEqual(sale.status, "void")
+        self.assertIsNotNone(sale.voided_at)
+        self.assertEqual(sale.voided_by, self.user)
 
         # Verifikasi reversal entry
         reversal = JournalEntry.objects.get(reversed_entry=orig_entry)

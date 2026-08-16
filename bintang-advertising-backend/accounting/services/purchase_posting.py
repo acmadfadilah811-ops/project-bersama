@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from ..models import Account, JournalAuditLog, JournalEntry
 from .journal import create_journal_entry
+from .purchase_accounts import get_purchase_account_mappings
 
 
 def _source_type():
@@ -25,15 +26,18 @@ def post_purchase_payment_journal(payment, cash_account, actor=None):
     if existing:
         return existing
 
-    hutang = Account.objects.filter(code='21000', is_active=True).first()
-    if not hutang:
-        raise ValidationError('COA 21000 (Hutang Dagang) wajib tersedia dan aktif.')
+    accounts = get_purchase_account_mappings()
+    debit_account = (
+        accounts['advance']
+        if payment.jenis == payment.Jenis.ADVANCE
+        else accounts['payable']
+    )
 
     amount = payment.nominal
     description = f'Pembayaran Pembelian PO #{payment.purchase.nomor}'
     lines = [
         {
-            'account': hutang, 'debit': amount, 'kredit': 0,
+            'account': debit_account, 'debit': amount, 'kredit': 0,
             'description': description, 'external_document_no': payment.purchase.nomor,
         },
         {

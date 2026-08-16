@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Trash2, Edit2, X, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
 import { PriceInput } from './VariantModal';
@@ -16,6 +16,19 @@ export default function ProductTingkatanHargaTab({ product, onUpdated, storeName
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState(null);
+
+  // Daftar Tipe Pelanggan asli (menu Pelanggan & Supplier > Tipe Pelanggan)
+  // — dipakai supaya field di bawah jadi dropdown, bukan ketik bebas.
+  const [customerGroups, setCustomerGroups] = useState([]);
+
+  useEffect(() => {
+    apiClient.get('/customer-groups/')
+      .then(res => {
+        const items = res.data.results || res.data || [];
+        setCustomerGroups(items.filter(g => g.is_active));
+      })
+      .catch(err => console.error('[TingkatanHargaTab] Error fetching customer groups:', err));
+  }, []);
 
   // Form states for ADD / EDIT
   const [formTipePelanggan, setFormTipePelanggan] = useState('');
@@ -55,12 +68,12 @@ export default function ProductTingkatanHargaTab({ product, onUpdated, storeName
     setEditingTierId(tier.id);
     setFormTipePelanggan(tier.tipe_pelanggan || '');
     setFormVariant(tier.variant || 'All');
-    setFormQtyMulai((tier.qty_mulai || 1).toString());
-    
+    setFormQtyMulai((tier.min_qty || 1).toString());
+
     // Set price format "Rp. XXX" for PriceInput
-    const priceNum = typeof tier.harga_jual === 'number' ? tier.harga_jual : parsePriceString(tier.harga_jual);
+    const priceNum = typeof tier.price === 'number' ? tier.price : parsePriceString(tier.price);
     setFormHargaJual('Rp. ' + priceNum.toLocaleString('id-ID'));
-    
+
     setFormError(null);
     setIsEditOpen(true);
   };
@@ -86,6 +99,11 @@ export default function ProductTingkatanHargaTab({ product, onUpdated, storeName
 
     let updatedTiers = [...tiers];
 
+    // `min_qty`/`price` (bukan `qty_mulai`/`harga_jual`) — nama field ini
+    // wajib cocok dengan yang dibaca `_harga_tier()` di
+    // services/product_pricing.py dan laporan `rpt_tingkatan_harga` di
+    // report_views.py. Sebelum ini field beda nama, jadi kalkulator harga
+    // tier selalu jatuh ke 0 (bug ditemukan & diperbaiki 2026-08-13).
     if (isEdit) {
       // Edit existing
       updatedTiers = updatedTiers.map(t => {
@@ -94,8 +112,8 @@ export default function ProductTingkatanHargaTab({ product, onUpdated, storeName
             ...t,
             tipe_pelanggan: formTipePelanggan.trim(),
             variant: formVariant,
-            qty_mulai: qty,
-            harga_jual: price
+            min_qty: qty,
+            price: price
           };
         }
         return t;
@@ -106,8 +124,8 @@ export default function ProductTingkatanHargaTab({ product, onUpdated, storeName
         id: 'tier-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
         tipe_pelanggan: formTipePelanggan.trim(),
         variant: formVariant,
-        qty_mulai: qty,
-        harga_jual: price
+        min_qty: qty,
+        price: price
       };
       updatedTiers.push(newTier);
     }
@@ -251,10 +269,10 @@ export default function ProductTingkatanHargaTab({ product, onUpdated, storeName
                       {tier.variant === 'All' ? 'Semua Varian' : tier.variant}
                     </td>
                     <td style={{ padding: '12px 18px', fontWeight: 600 }}>
-                      {tier.qty_mulai}
+                      {tier.min_qty}
                     </td>
                     <td style={{ padding: '12px 18px', fontWeight: 700, color: '#0f172a' }}>
-                      {formatPrice(tier.harga_jual)}
+                      {formatPrice(tier.price)}
                     </td>
                     <td style={{ padding: '12px 18px', textAlign: 'right' }}>
                       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
@@ -433,9 +451,7 @@ export default function ProductTingkatanHargaTab({ product, onUpdated, storeName
               {/* Tipe Pelanggan */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <label style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>Tipe Pelanggan</label>
-                <input
-                  type="text"
-                  placeholder="Masukkan Nama/Tipe Pelanggan"
+                <select
                   value={formTipePelanggan}
                   onChange={(e) => setFormTipePelanggan(e.target.value)}
                   style={{
@@ -443,9 +459,20 @@ export default function ProductTingkatanHargaTab({ product, onUpdated, storeName
                     border: '1px solid #cbd5e1',
                     borderRadius: 6,
                     fontSize: 13.5,
-                    outline: 'none'
+                    outline: 'none',
+                    backgroundColor: '#fff'
                   }}
-                />
+                >
+                  <option value="">Pilih Tipe Pelanggan</option>
+                  {customerGroups.map(g => (
+                    <option key={g.id} value={g.nama}>{g.nama}</option>
+                  ))}
+                </select>
+                {customerGroups.length === 0 && (
+                  <span style={{ fontSize: 11.5, color: '#94a3b8' }}>
+                    Belum ada Tipe Pelanggan aktif. Tambah dulu di menu Pelanggan &amp; Supplier &gt; Tipe Pelanggan.
+                  </span>
+                )}
               </div>
 
               {/* Variant selector */}

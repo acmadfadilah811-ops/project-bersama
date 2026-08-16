@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Loader2, Printer, Wallet, X } from 'lucide-react';
+import { Loader2, MessageCircle, Printer, Wallet, X } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import NumericInput from '../../../components/NumericInput';
 import OrderInvoicePrint from './OrderInvoicePrint';
@@ -20,6 +20,10 @@ export default function PelunasanModal({ order, onClose, onSelesai }) {
   const [memproses, setMemproses] = useState(false);
   const [error, setError] = useState('');
   const [orderLunas, setOrderLunas] = useState(null);
+  const [sendingInvoice, setSendingInvoice] = useState(false);
+  const [idempotencyKey] = useState(
+    () => globalThis.crypto?.randomUUID?.() || `order-payment-${Date.now()}-${Math.random()}`
+  );
 
   if (!order) return null;
 
@@ -32,7 +36,7 @@ export default function PelunasanModal({ order, onClose, onSelesai }) {
 
   const jumlahNum = Number(jumlah || 0);
   const sisaSetelah = Math.max(0, sisaAwal - jumlahNum);
-  const bisaProses = jumlahNum > 0 && !memproses;
+  const bisaProses = jumlahNum > 0 && jumlahNum <= sisaAwal && !memproses;
 
   const proses = async () => {
     if (!bisaProses) return;
@@ -42,6 +46,7 @@ export default function PelunasanModal({ order, onClose, onSelesai }) {
       const res = await apiClient.post(`/orders/${order.id}/bayar/`, {
         jumlah_bayar: Math.round(jumlahNum),
         metode_pembayaran: metode,
+        idempotency_key: idempotencyKey,
       });
       setOrderLunas(res.data);
       if (onSelesai) onSelesai(res.data);
@@ -54,6 +59,22 @@ export default function PelunasanModal({ order, onClose, onSelesai }) {
       );
     } finally {
       setMemproses(false);
+    }
+  };
+
+  const kirimInvoiceWa = async () => {
+    if (!orderLunas || sendingInvoice) return;
+    setSendingInvoice(true);
+    try {
+      const { data } = await apiClient.post(`/orders/${orderLunas.id}/invoice-whatsapp/`);
+      alert(`Faktur terkirim ke WhatsApp ${data.number}.`);
+    } catch (err) {
+      const detail = err?.response?.data?.reason;
+      alert(detail === 'invalid_number'
+        ? 'Faktur tidak dikirim karena nomor WhatsApp pelanggan tidak valid.'
+        : 'Faktur gagal dikirim ke WhatsApp. Periksa koneksi gateway lalu coba lagi.');
+    } finally {
+      setSendingInvoice(false);
     }
   };
 
@@ -114,11 +135,10 @@ export default function PelunasanModal({ order, onClose, onSelesai }) {
               <div className="space-y-3">
                 <div>
                   <label className="text-[11px] font-bold text-slate-500 block mb-1">Jumlah Diterima</label>
-                  <NumericInput value={jumlah} onChange={(val) => setJumlah(val)} className={inputCls} />
+                  <NumericInput value={jumlah} onChange={(val) => setJumlah(val)} min={0} max={sisaAwal} className={inputCls} />
                   {jumlahNum > sisaAwal && (
                     <p className="text-[11px] font-semibold text-amber-600 mt-1">
-                      Kembalian {formatCurrency(jumlahNum - sisaAwal)}. Yang tercatat sebagai pembayaran
-                      tetap sebesar jumlah yang Anda masukkan.
+                      Jumlah tidak boleh melebihi sisa tagihan.
                     </p>
                   )}
                 </div>
@@ -165,6 +185,14 @@ export default function PelunasanModal({ order, onClose, onSelesai }) {
                   className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-black text-xs rounded-xl flex items-center gap-1.5 cursor-pointer"
                 >
                   <Printer size={14} /> Cetak Faktur
+                </button>
+                <button
+                  type="button"
+                  onClick={kirimInvoiceWa}
+                  disabled={sendingInvoice}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black text-xs rounded-xl flex items-center gap-1.5 cursor-pointer"
+                >
+                  <MessageCircle size={14} /> {sendingInvoice ? 'Mengirim...' : 'Kirim Faktur WA'}
                 </button>
               </>
             ) : (

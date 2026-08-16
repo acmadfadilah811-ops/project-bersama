@@ -21,6 +21,22 @@ from .inventory import record_material_consumption_to_general_ledger
 logger = logging.getLogger(__name__)
 
 
+def _catat_aktivitas_order(job, user, tindakan, keterangan):
+    """Catat OrderActivityLog — hanya berlaku untuk job dari alur order/WA.
+
+    Job yang lahir dari POS (`pos_sale_item` terisi) tidak punya `Order`
+    induk untuk dicatat, jadi dilewati diam-diam alih-alih crash.
+    """
+    if not job.order_item_id:
+        return
+    OrderActivityLog.objects.create(
+        order=job.order_item.order,
+        user=user,
+        tindakan=tindakan,
+        keterangan=keterangan,
+    )
+
+
 def deduct_job_materials_if_needed(job, user):
     """
     Mengurangi stok bahan baku. Prioritas pertama menggunakan sistem Bill of Materials (BoM).
@@ -30,17 +46,35 @@ def deduct_job_materials_if_needed(job, user):
     marker = f"Job #{job.id}"
     if RestockHistory.objects.filter(keterangan__icontains=marker).exists():
         return
-        
+
+    # Pemotongan BoM otomatis butuh field khusus OrderItem (bahan, luas) yang
+    # tidak punya padanan di POSSaleItem. Job dari POS dilewati di sini —
+    # staff tetap bisa input manual lewat JobMaterialDeductView.
+    if not job.order_item_id:
+        return
+
     order_item = job.order_item
-    
-    # 1. Cari ProductPrice & BoM
-    product = ProductPrice.objects.filter(nama_produk=order_item.jenis_produk, material=order_item.bahan).first()
-    if not product:
-        product = ProductPrice.objects.filter(nama_produk=order_item.jenis_produk).first()
-        
+
+    # 1. Cari BoM — utamakan tautan Product/Variant NYATA di order_item kalau
+    # ada (mis. order dari katalog WA, lihat T-720), baru fallback ke
+    # pencocokan teks bebas jenis_produk/bahan via ProductPrice legacy untuk
+    # order lama/custom yang tidak punya FK produk sama sekali.
     bom = None
-    if product:
-        bom = BillOfMaterials.objects.filter(product=product).first()
+    if order_item.product_id:
+        bom = BillOfMaterials.objects.filter(
+            product_id=order_item.product_id, variant_id=order_item.variant_id,
+        ).first()
+        if not bom and order_item.variant_id:
+            bom = BillOfMaterials.objects.filter(
+                product_id=order_item.product_id, variant__isnull=True,
+            ).first()
+
+    if not bom:
+        product = ProductPrice.objects.filter(nama_produk=order_item.jenis_produk, material=order_item.bahan).first()
+        if not product:
+            product = ProductPrice.objects.filter(nama_produk=order_item.jenis_produk).first()
+        if product:
+            bom = BillOfMaterials.objects.filter(product_price=product).first()
         
     if bom:
         # Gunakan pemotongan otomatis berbasis BoM
@@ -79,7 +113,10 @@ def deduct_job_materials_if_needed(job, user):
                 item.save()
                 
                 # Catat ke Buku Besar
-                record_material_consumption_to_general_ledger(item, qty_needed, job)
+                record_material_consumption_to_general_ledger(
+                    item, qty_needed, ref_no=marker,
+                    keterangan_konteks=f"Order {order_item.order_id} - {marker}", source_id=job.id,
+                )
         return
 
     # 2. Fallback: Gunakan pemotongan manual dari catatan_staff
@@ -136,7 +173,10 @@ def deduct_job_materials_if_needed(job, user):
             item.save()
             
             # Catat ke Buku Besar
-            record_material_consumption_to_general_ledger(item, qty, job)
+            record_material_consumption_to_general_ledger(
+                item, qty, ref_no=marker,
+                keterangan_konteks=f"Order {order_item.order_id} - {marker}", source_id=job.id,
+            )
 
 
 class JobMaterialDeductView(APIView):
@@ -203,7 +243,15 @@ class JobMaterialDeductView(APIView):
 
                 # Konsumsi manual harus mengikuti jalur jurnal yang sama
                 # dengan pemakaian BoM; jangan biarkan stok berubah tanpa HPP.
-                record_material_consumption_to_general_ledger(item, qty, job)
+                # Job dari POS tidak punya order_item (lihat
+                # deduct_job_materials_if_needed) — konteks fallback ke
+                # "Job #<id>" saja spy tidak crash akses order_item.order.id
+                # yang None (bug ditemukan user 2026-08-15).
+                marker = f"Job #{job_id}"
+                konteks = f"Order {job.order_item.order_id} - {marker}" if job.order_item_id else marker
+                record_material_consumption_to_general_ledger(
+                    item, qty, ref_no=marker, keterangan_konteks=konteks, source_id=job.id,
+                )
 
                 deducted.append({
                     'item_id':  item.id,
@@ -228,7 +276,10 @@ class JobBoardViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def perform_update(self, serializer):
         # Ambil status sebelum update
-        old_instance = self.get_queryset().select_for_update().get(pk=serializer.instance.pk)
+        # Jangan lock hasil ``select_related`` dari get_queryset(): kedua FK
+        # sumber SPK nullable (order_item/pos_sale_item), sehingga PostgreSQL
+        # menolak FOR UPDATE pada outer join saat staff menyimpan draf.
+        old_instance = JobBoard.objects.select_for_update(of=('self',)).get(pk=serializer.instance.pk)
         old_status = old_instance.status_pekerjaan
         new_status = serializer.validated_data.get('status_pekerjaan', old_status)
 
@@ -262,32 +313,26 @@ class JobBoardViewSet(viewsets.ModelViewSet):
                 job.waktu_mulai = None
                 job.waktu_selesai = None
                 job.save()
-                
-                # Catat OrderActivityLog
+
                 tahap_nama = job.tahap.nama if job.tahap else "Tahap Awal"
-                OrderActivityLog.objects.create(
-                    order=job.order_item.order,
-                    user=user,
-                    tindakan="RESET_JOB",
-                    keterangan=f"Pengerjaan item '{job.order_item.jenis_produk}' pada tahap '{tahap_nama}' dikembalikan ke Antrean"
+                _catat_aktivitas_order(
+                    job, user, "RESET_JOB",
+                    f"Pengerjaan item '{job.nama_produk}' pada tahap '{tahap_nama}' dikembalikan ke Antrean"
                 )
-            
+
             # 2. Mulai Dikerjakan
             elif new_status == 'dikerjakan':
                 if not job.waktu_mulai:
                     job.waktu_mulai = timezone.now()
                 job.waktu_selesai = None
                 job.save()
-                
-                # Catat OrderActivityLog
+
                 tahap_nama = job.tahap.nama if job.tahap else "Tahap Awal"
-                OrderActivityLog.objects.create(
-                    order=job.order_item.order,
-                    user=user,
-                    tindakan="START_JOB",
-                    keterangan=f"Staff '{user.username}' mulai memproses pengerjaan item '{job.order_item.jenis_produk}' pada tahap '{tahap_nama}'"
+                _catat_aktivitas_order(
+                    job, user, "START_JOB",
+                    f"Staff '{user.username}' mulai memproses pengerjaan item '{job.nama_produk}' pada tahap '{tahap_nama}'"
                 )
-                
+
             # 3. Selesai Sukses
             elif new_status == 'selesai':
                 if not job.waktu_selesai:
@@ -297,37 +342,36 @@ class JobBoardViewSet(viewsets.ModelViewSet):
                 job.otp_requested = False
                 job.otp_sent = False
                 job.save()
-                
-                # Catat OrderActivityLog
+
                 tahap_nama = job.tahap.nama if job.tahap else "Tahap Awal"
-                OrderActivityLog.objects.create(
-                    order=job.order_item.order,
-                    user=user,
-                    tindakan="COMPLETE_JOB",
-                    keterangan=f"Staff '{user.username}' berhasil menyelesaikan pengerjaan item '{job.order_item.jenis_produk}' pada tahap '{tahap_nama}'"
+                _catat_aktivitas_order(
+                    job, user, "COMPLETE_JOB",
+                    f"Staff '{user.username}' berhasil menyelesaikan pengerjaan item '{job.nama_produk}' pada tahap '{tahap_nama}'"
                 )
-                
+
                 # Potong stok bahan otomatis
                 deduct_job_materials_if_needed(job, user)
-                
-                # Cek kelengkapan pesanan secara global
-                order = job.order_item.order
-                active_jobs_exist = JobBoard.objects.filter(
-                    order_item__order=order,
-                    status_pekerjaan__in=['antrean', 'dikerjakan', 'kendala']
-                ).exists()
-                if not active_jobs_exist:
-                    order.status_global = 'ready'
-                    order._current_user = user
-                    order.save()
-                    
-                    OrderActivityLog.objects.create(
-                        order=order,
-                        user=user,
-                        tindakan="READY_ORDER",
-                        keterangan="Semua item selesai diproduksi. Status pesanan diubah otomatis menjadi 'Siap Diambil'."
-                    )
-            
+
+                # Cek kelengkapan pesanan secara global — hanya berlaku untuk
+                # job dari alur order (job POS tidak punya Order induk)
+                if job.order_item_id:
+                    order = job.order_item.order
+                    active_jobs_exist = JobBoard.objects.filter(
+                        order_item__order=order,
+                        status_pekerjaan__in=['antrean', 'dikerjakan', 'kendala']
+                    ).exists()
+                    if not active_jobs_exist:
+                        order.status_global = 'ready'
+                        order._current_user = user
+                        order.save()
+
+                        OrderActivityLog.objects.create(
+                            order=order,
+                            user=user,
+                            tindakan="READY_ORDER",
+                            keterangan="Semua item selesai diproduksi. Status pesanan diubah otomatis menjadi 'Siap Diambil'."
+                        )
+
             # 4. Gagal / Batal
             elif new_status in ('gagal', 'batal'):
                 if not job.waktu_selesai:
@@ -337,28 +381,22 @@ class JobBoardViewSet(viewsets.ModelViewSet):
                 job.otp_requested = False
                 job.otp_sent = False
                 job.save()
-                
-                # Catat OrderActivityLog
+
                 tahap_nama = job.tahap.nama if job.tahap else "Tahap Awal"
-                OrderActivityLog.objects.create(
-                    order=job.order_item.order,
-                    user=user,
-                    tindakan="FAIL_JOB",
-                    keterangan=f"Pengerjaan item '{job.order_item.jenis_produk}' pada tahap '{tahap_nama}' gagal/dibatalkan (Status: {job.get_status_pekerjaan_display()})"
+                _catat_aktivitas_order(
+                    job, user, "FAIL_JOB",
+                    f"Pengerjaan item '{job.nama_produk}' pada tahap '{tahap_nama}' gagal/dibatalkan (Status: {job.get_status_pekerjaan_display()})"
                 )
-                
+
             # 5. Kendala
             elif new_status == 'kendala':
                 job.waktu_selesai = None
                 job.save()
-                
-                # Catat OrderActivityLog
+
                 tahap_nama = job.tahap.nama if job.tahap else "Tahap Awal"
-                OrderActivityLog.objects.create(
-                    order=job.order_item.order,
-                    user=user,
-                    tindakan="CONSTRAINT_JOB",
-                    keterangan=f"Pengerjaan item '{job.order_item.jenis_produk}' pada tahap '{tahap_nama}' mengalami kendala"
+                _catat_aktivitas_order(
+                    job, user, "CONSTRAINT_JOB",
+                    f"Pengerjaan item '{job.nama_produk}' pada tahap '{tahap_nama}' mengalami kendala"
                 )
 
     def get_queryset(self):
@@ -400,15 +438,12 @@ class JobBoardViewSet(viewsets.ModelViewSet):
         job.status_pekerjaan = 'antrean'
         job.save()
 
-        # Catat di OrderActivityLog
         tahap_nama = job.tahap.nama if job.tahap else "Tahap Awal"
-        OrderActivityLog.objects.create(
-            order=job.order_item.order,
-            user=user,
-            tindakan="CLAIM_JOB",
-            keterangan=f"Staff '{user.username}' mengambil/mengklaim item '{job.order_item.jenis_produk}' pada tahap '{tahap_nama}'"
+        _catat_aktivitas_order(
+            job, user, "CLAIM_JOB",
+            f"Staff '{user.username}' mengambil/mengklaim item '{job.nama_produk}' pada tahap '{tahap_nama}'"
         )
-        
+
         return Response({
             'message': 'Pekerjaan berhasil diklaim.',
             'job': JobBoardSerializer(job).data
@@ -434,15 +469,12 @@ class JobBoardViewSet(viewsets.ModelViewSet):
         job.waktu_mulai = timezone.now()
         job.save()
 
-        # Catat di OrderActivityLog
         tahap_nama = job.tahap.nama if job.tahap else "Tahap Awal"
-        OrderActivityLog.objects.create(
-            order=job.order_item.order,
-            user=user,
-            tindakan="START_JOB",
-            keterangan=f"Staff '{user.username}' mulai memproses pengerjaan item '{job.order_item.jenis_produk}' pada tahap '{tahap_nama}'"
+        _catat_aktivitas_order(
+            job, user, "START_JOB",
+            f"Staff '{user.username}' mulai memproses pengerjaan item '{job.nama_produk}' pada tahap '{tahap_nama}'"
         )
-        
+
         return Response({
             'message': 'Pekerjaan dimulai.',
             'job': JobBoardSerializer(job).data
@@ -472,37 +504,36 @@ class JobBoardViewSet(viewsets.ModelViewSet):
         job.otp_sent = False
         job.save()
 
-        # Catat di OrderActivityLog
         tahap_nama = job.tahap.nama if job.tahap else "Tahap Awal"
-        OrderActivityLog.objects.create(
-            order=job.order_item.order,
-            user=user,
-            tindakan="COMPLETE_JOB",
-            keterangan=f"Staff '{user.username}' berhasil menyelesaikan pengerjaan item '{job.order_item.jenis_produk}' pada tahap '{tahap_nama}'"
+        _catat_aktivitas_order(
+            job, user, "COMPLETE_JOB",
+            f"Staff '{user.username}' berhasil menyelesaikan pengerjaan item '{job.nama_produk}' pada tahap '{tahap_nama}'"
         )
-        
+
         # Potong bahan otomatis ke inventori
         deduct_job_materials_if_needed(job, user)
-        
-        # Cek apakah seluruh job dari semua item dalam pesanan ini sudah selesai
-        order = job.order_item.order
-        active_jobs_exist = JobBoard.objects.filter(
-            order_item__order=order,
-            status_pekerjaan__in=['antrean', 'dikerjakan', 'kendala']
-        ).exists()
 
-        if not active_jobs_exist:
-            order.status_global = 'ready'
-            order._current_user = user
-            order.save()
-            
-            OrderActivityLog.objects.create(
-                order=order,
-                user=user,
-                tindakan="READY_ORDER",
-                keterangan="Semua item selesai diproduksi. Status pesanan diubah otomatis menjadi 'Siap Diambil'."
-            )
-            
+        # Cek apakah seluruh job dari semua item dalam pesanan ini sudah selesai
+        # — hanya berlaku untuk job dari alur order (job POS tidak punya Order induk)
+        if job.order_item_id:
+            order = job.order_item.order
+            active_jobs_exist = JobBoard.objects.filter(
+                order_item__order=order,
+                status_pekerjaan__in=['antrean', 'dikerjakan', 'kendala']
+            ).exists()
+
+            if not active_jobs_exist:
+                order.status_global = 'ready'
+                order._current_user = user
+                order.save()
+
+                OrderActivityLog.objects.create(
+                    order=order,
+                    user=user,
+                    tindakan="READY_ORDER",
+                    keterangan="Semua item selesai diproduksi. Status pesanan diubah otomatis menjadi 'Siap Diambil'."
+                )
+
         return Response({
             'message': 'Pekerjaan berhasil diselesaikan.',
             'job': JobBoardSerializer(job).data

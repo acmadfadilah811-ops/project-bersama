@@ -52,18 +52,26 @@ export default function useProductionData() {
 
   // Fetch metadata needed for forwarding/assigning
   const fetchMetadata = useCallback(async () => {
-    try {
-      const [resTahap, resStaff, resInv] = await Promise.all([
+    const [resTahap, resStaff, resInv] = await Promise.allSettled([
         apiClient.get('/tahap-proses/'),
         apiClient.get('/users/?role=staff'),
         apiClient.get('/inventory/'),
-      ]);
-      setTahapList(Array.isArray(resTahap.data) ? resTahap.data : (resTahap.data?.results || []));
-      setStaffList(Array.isArray(resStaff.data) ? resStaff.data : (resStaff.data?.results || []));
-      setInventory(Array.isArray(resInv.data) ? resInv.data : (resInv.data?.results || []));
-    } catch (err) {
-      console.error('Failed to fetch metadata:', err);
-    }
+    ]);
+
+    const dataOrEmpty = (result) =>
+      result.status === 'fulfilled'
+        ? (Array.isArray(result.value.data) ? result.value.data : (result.value.data?.results || []))
+        : [];
+
+    // Staff memang tidak boleh membaca daftar seluruh staff. Kegagalan 403
+    // itu tidak boleh ikut mengosongkan daftar tahap/divisi tujuan.
+    setTahapList(dataOrEmpty(resTahap));
+    setStaffList(dataOrEmpty(resStaff));
+    setInventory(dataOrEmpty(resInv));
+
+    [resTahap, resStaff, resInv]
+      .filter((result) => result.status === 'rejected')
+      .forEach((result) => console.error('Failed to fetch production metadata:', result.reason));
   }, []);
 
   // Fetch Admin panels data (Only core jobs and inventory)
@@ -112,17 +120,30 @@ export default function useProductionData() {
   }, []);
 
   // Actions
-  const claimJob = async (jobId) => {
-    try {
-      const res = await apiClient.post(`/jobs/${jobId}/claim/`);
-      await fetchJobs();
-      // Append log locally
-      addLocalLog(`Pekerjaan #${jobId} diklaim oleh Anda.`);
-      return { ok: true, data: res.data };
-    } catch (err) {
-      const errorMsg = err.response?.data?.error || 'Gagal mengklaim pekerjaan.';
-      return { ok: false, error: errorMsg };
+  // Klaim semua job sekaligus dalam satu order/transaksi — sebelumnya staff
+  // harus klaim satu-satu per item (tiap baris qty/finishing berbeda jadi
+  // JobBoard terpisah di server), padahal buat staff itu tetap satu
+  // pekerjaan/satu order yang sama (bug ditemukan 2026-08-13). Tidak ada
+  // endpoint bulk baru di server — cukup panggil endpoint claim yang sama
+  // beberapa kali lalu refetch sekali di akhir.
+  const claimJobs = async (jobIds) => {
+    const hasil = await Promise.allSettled(jobIds.map((id) => apiClient.post(`/jobs/${id}/claim/`)));
+    const gagal = hasil.filter((r) => r.status === 'rejected');
+    await fetchJobs();
+    if (gagal.length === 0) {
+      addLocalLog(`${jobIds.length} pekerjaan dalam satu order diklaim oleh Anda.`);
+      return { ok: true };
     }
+    if (gagal.length < jobIds.length) {
+      addLocalLog(`${jobIds.length - gagal.length}/${jobIds.length} pekerjaan dalam satu order diklaim oleh Anda.`);
+    }
+    const pesanPertama = gagal[0]?.reason?.response?.data?.error || 'Gagal mengklaim pekerjaan.';
+    return {
+      ok: false,
+      error: gagal.length === jobIds.length
+        ? pesanPertama
+        : `${gagal.length} dari ${jobIds.length} item gagal diklaim: ${pesanPertama}`,
+    };
   };
 
   const startJob = async (jobId) => {
@@ -199,7 +220,7 @@ export default function useProductionData() {
     fetchCustomers,
     fetchPricelists,
     fetchDivisions,
-    claimJob,
+    claimJobs,
     startJob,
     completeJob,
     forwardJob,

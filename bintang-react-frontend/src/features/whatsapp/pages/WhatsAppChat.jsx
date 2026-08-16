@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Search, Send, User, Loader, RefreshCw, Phone, MessageSquare, Clock, Paperclip, FileText, X } from 'lucide-react';
+import { Search, Send, User, Loader, RefreshCw, Phone, MessageSquare, Clock, Paperclip, FileText, X, ToggleLeft, ToggleRight, Menu } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import { playMessage } from '../../../utils/notificationSounds';
 import { useDynamicIsland } from '../../../context/DynamicIslandContext';
 
-export default function WhatsAppChat() {
+export default function WhatsAppChat({ onToggleSidebar }) {
   const [searchParams] = useSearchParams();
   const targetNumber = searchParams.get('number');
   const { triggerNotification } = useDynamicIsland();
@@ -13,6 +13,8 @@ export default function WhatsAppChat() {
   const [chats, setChats] = useState([]);
   const [activeChat, setActiveChat] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [contactData, setContactData] = useState(null);
+  const [togglingHandover, setTogglingHandover] = useState(false);
   const [newMessage, setNewMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [loadingChats, setLoadingChats] = useState(true);
@@ -77,6 +79,7 @@ export default function WhatsAppChat() {
           autoSelectedRef.current = true;
           setActiveChat(matchingChat);
           fetchMessages(matchingChat.id, true);
+          fetchContactData(matchingChat.id, getChatName(matchingChat));
         }
       }
     } catch (error) {
@@ -135,7 +138,58 @@ export default function WhatsAppChat() {
 
   const handleSelectChat = (chat) => {
     setActiveChat(chat);
+    setContactData(null); // hindari sekejap menampilkan status bot kontak sebelumnya
     fetchMessages(chat.id, true);
+    fetchContactData(chat.id, getChatName(chat));
+  };
+
+  // Status "Ambil Alih Chat" (handover_to_staff) — dibaca dari Contact yang
+  // sama dipakai Antrean WA (WaOrderQueue.jsx), supaya kasir bisa mematikan
+  // bot langsung dari sini, bukan cuma dari layar verifikasi order. Banyak
+  // chat WA belum pernah jadi Order (satu-satunya jalur Contact biasanya
+  // dibuat otomatis) — kalau belum ada, buat record minimal di sini supaya
+  // toggle-nya tetap bisa dipakai untuk percakapan apa pun.
+  const fetchContactData = async (chatId, chatNama) => {
+    const number = (chatId || '').split('@')[0];
+    if (!number) {
+      setContactData(null);
+      return;
+    }
+    try {
+      const res = await apiClient.get(`/contacts/${encodeURIComponent(number)}/`);
+      setContactData(res.data);
+    } catch (error) {
+      if (error?.response?.status === 404) {
+        try {
+          const created = await apiClient.post('/contacts/', {
+            nomor_wa: number,
+            nama: chatNama || number,
+          });
+          setContactData(created.data);
+        } catch (createError) {
+          setContactData(null);
+        }
+      } else {
+        setContactData(null);
+      }
+    }
+  };
+
+  const handleToggleHandover = async () => {
+    if (!contactData || togglingHandover) return;
+    const newStatus = !contactData.handover_to_staff;
+    setTogglingHandover(true);
+    try {
+      const res = await apiClient.patch(`/contacts/${encodeURIComponent(contactData.nomor_wa)}/`, {
+        handover_to_staff: newStatus,
+      });
+      setContactData(res.data);
+    } catch (error) {
+      console.error('Error updating handover status:', error);
+      alert('Status pengambilalihan percakapan gagal diperbarui. Silakan coba kembali.');
+    } finally {
+      setTogglingHandover(false);
+    }
   };
 
   const handleSendMessage = async (e) => {
@@ -265,10 +319,20 @@ export default function WhatsAppChat() {
   });
 
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)] bg-slate-50 rounded-2xl overflow-hidden shadow-sm border border-slate-200">
+    <div className="flex flex-col h-full bg-slate-50 overflow-hidden">
       {/* Top action bar */}
       <div className="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center shrink-0">
         <div className="flex items-center gap-2.5">
+          {onToggleSidebar && (
+            <button
+              type="button"
+              onClick={onToggleSidebar}
+              className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-700 transition-colors cursor-pointer -ml-1"
+              title="Toggle Menu"
+            >
+              <Menu size={20} />
+            </button>
+          )}
           <div className="bg-emerald-50 text-emerald-600 p-2 rounded-xl">
             <MessageSquare size={22} className="stroke-[2.5px]" />
           </div>
@@ -378,6 +442,32 @@ export default function WhatsAppChat() {
                     </div>
                   </div>
                 </div>
+
+                {/* Ambil Alih Chat — matikan bot WA sementara supaya kasir
+                    bisa balas manual tanpa bentrok dengan auto-reply AI. */}
+                {contactData && (
+                  <div className="flex items-center gap-2.5 px-3 py-2 bg-slate-50 rounded-xl border border-slate-200">
+                    <div className="text-right">
+                      <p className="text-[10px] font-extrabold text-slate-700 leading-tight">
+                        {contactData.handover_to_staff ? 'Bot WA nonaktif' : 'Bot WA aktif'}
+                      </p>
+                      <p className="text-[9px] text-slate-400 font-semibold leading-tight">Ambil alih chat manual</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleToggleHandover}
+                      disabled={togglingHandover}
+                      className="text-indigo-600 hover:text-indigo-800 transition-all cursor-pointer disabled:opacity-50"
+                      title={contactData.handover_to_staff ? 'Aktifkan kembali bot WA' : 'Matikan bot WA sementara'}
+                    >
+                      {contactData.handover_to_staff ? (
+                        <ToggleRight size={30} className="text-indigo-600" />
+                      ) : (
+                        <ToggleLeft size={30} className="text-slate-400" />
+                      )}
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Message History list */}

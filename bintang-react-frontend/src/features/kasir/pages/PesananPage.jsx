@@ -13,10 +13,10 @@ export default function PesananPage({ onToggleSidebar }) {
 
       <div className="flex-1 overflow-y-auto p-6">
         <div className="mb-5 print:hidden">
-          <h1 className="text-xl font-black text-slate-800">Pesanan Produksi</h1>
+          <h1 className="text-xl font-black text-slate-800">Pesanan & Pelunasan</h1>
           <p className="text-xs font-semibold text-slate-500 mt-0.5">
-            Pesanan yang siap diambil beserta progres pengerjaan tiap divisi. Klik pesanan yang
-            masih diproses untuk melihat rinciannya.
+            Terima pelunasan dari daftar pesanan kasir, lalu pantau pesanan yang siap diambil
+            beserta progres pengerjaan tiap divisi.
           </p>
         </div>
 

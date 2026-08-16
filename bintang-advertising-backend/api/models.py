@@ -365,6 +365,16 @@ class PengembalianOrder(models.Model):
     )
     dibuat_pada = models.DateTimeField(auto_now_add=True)
     diperbarui_pada = models.DateTimeField(auto_now=True)
+    # Stok hanya boleh dikembalikan sekali, ketika status retur dikonfirmasi.
+    # Penanda ini membuat PATCH ulang/idempotent tidak menggandakan stok.
+    stok_dikembalikan_pada = models.DateTimeField(null=True, blank=True)
+    stok_dikembalikan_oleh = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='pengembalian_stok_dikonfirmasi',
+    )
 
     class Meta:
         verbose_name = "Pengembalian Order"
@@ -394,6 +404,88 @@ class OrderActivityLog(models.Model):
         username = self.user.username if self.user else "System"
         return f"[{self.tindakan}] {username} - {self.order.id} ({self.waktu:%Y-%m-%d %H:%M})"
 
+
+class OrderPayment(models.Model):
+    """Riwayat setiap penerimaan pembayaran Order/Invoice.
+
+    ``Order.dp_dibayar`` tetap dipertahankan sebagai saldo agregat cepat,
+    sedangkan model ini adalah sumber riwayat nominal, metode, waktu, kasir,
+    dan shift untuk laporan pembayaran serta rekonsiliasi kas.
+    """
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='payments')
+    activity_log = models.OneToOneField(
+        OrderActivityLog, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='payment_record',
+    )
+    shift = models.ForeignKey(
+        'SaldoKasHarian', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='order_payments',
+    )
+    jumlah = models.PositiveIntegerField()
+    metode_pembayaran = models.CharField(max_length=50, default='tunai')
+    referensi_pembayaran = models.CharField(max_length=255, blank=True, default='')
+    idempotency_key = models.CharField(max_length=64, null=True, blank=True, unique=True)
+    is_dp = models.BooleanField(default=False)
+    dibuat_oleh = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='order_payments_dibuat',
+    )
+    dibuat_pada = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-dibuat_pada', '-id']
+        indexes = [
+            models.Index(fields=['order', '-dibuat_pada'], name='idx_orderpay_order_time'),
+            models.Index(fields=['shift', '-dibuat_pada'], name='idx_orderpay_shift_time'),
+        ]
+
+    def __str__(self):
+        return f'Pembayaran {self.order_id}: {self.jumlah}'
+
+
+class OrderVoidRequest(models.Model):
+    """Permintaan kasir untuk membatalkan Order — butuh persetujuan OTP owner.
+
+    Kasir tidak lagi bisa memanggil /orders/{id}/batalkan/ langsung (lihat
+    api/services/order_void_otp.py) — dia harus mengajukan permintaan di sini
+    dulu, owner menyetujui lewat Dashboard (yang men-generate `otp_code`),
+    baru kasir bisa menyelesaikan pembatalan dengan kode itu. Owner/manager/
+    admin tetap bisa langsung /batalkan/ tanpa alur ini (instruksi user
+    2026-08-14, keamanan supaya kasir tidak bisa membatalkan order sendiri).
+    """
+    STATUS_CHOICES = (
+        ('pending', 'Menunggu Persetujuan'),
+        ('disetujui', 'Disetujui'),
+        ('ditolak', 'Ditolak'),
+        ('digunakan', 'Sudah Digunakan'),
+    )
+
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='void_requests')
+    diminta_oleh = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, related_name='void_requests_diminta',
+    )
+    alasan = models.TextField()
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default='pending', db_index=True)
+    otp_code = models.CharField(max_length=6, blank=True, default='')
+    disetujui_oleh = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='void_requests_disetujui',
+    )
+    alasan_tolak = models.TextField(blank=True, default='')
+    dibuat_pada = models.DateTimeField(auto_now_add=True)
+    disetujui_pada = models.DateTimeField(null=True, blank=True)
+    kadaluarsa_pada = models.DateTimeField(null=True, blank=True)
+    digunakan_pada = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-dibuat_pada']
+        indexes = [
+            models.Index(fields=['order', 'status'], name='idx_ovr_order_status'),
+        ]
+
+    def __str__(self):
+        return f'VoidRequest#{self.pk} order={self.order_id} status={self.status}'
+
+
 # ---------------------------------------------------------
 # 6. DETAIL ITEM PESANAN (MENDUKUNG 1 ID NOTA BANYAK ITEM)
 # ---------------------------------------------------------
@@ -415,6 +507,12 @@ class OrderItem(models.Model):
         'ProductVariant', on_delete=models.PROTECT, null=True, blank=True,
         related_name='order_items',
     )
+    # Berbeda dari product: satu baris ini menjual paket master. Nama paket
+    # tetap disimpan di jenis_produk sebagai snapshot historis.
+    paket = models.ForeignKey(
+        'ProductPackage', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='order_items', db_index=True,
+    )
 
     # TAMBAHAN FIELD MODUL 1: KALKULATOR PERCETAKAN
     panjang = models.FloatField(default=0.0, help_text="Panjang cetakan dalam meter")
@@ -433,6 +531,10 @@ class OrderItem(models.Model):
     gdrive_customer_link = models.URLField(max_length=500, null=True, blank=True)
     desain_susulan = models.BooleanField(default=False, help_text="Apakah file desain ini dikirim susulan oleh customer")
     keterangan_detail = models.TextField(null=True, blank=True, help_text="Keterangan khusus/detail cetak dari CS")
+    stok_dikurangi = models.BooleanField(
+        default=False,
+        help_text="Sudah pernah dipotong dari stok (M8/FIFO) — cegah dobel potong kalau item ini diedit ulang.",
+    )
 
     class Meta:
         indexes = [
@@ -444,6 +546,12 @@ class OrderItem(models.Model):
 
     def save(self, *args, **kwargs):
         from django.db import transaction
+        # Qty <= 0 tidak boleh pernah tersimpan — mencemari pencatatan
+        # inventori/akuntansi & pergerakan stok (baris penjualan/pesanan
+        # kosong tapi tetap tercatat). Dicek di sini (bukan cuma serializer)
+        # supaya semua jalur (form WA, order manual, admin) ikut terlindungi.
+        if self.qty is None or self.qty < 1:
+            raise ValueError(f"Qty '{self.jenis_produk or 'item'}' harus minimal 1, bukan {self.qty}.")
         # Auto kalkulasi luas m2 dari P x L sebelum disimpan ke database
         self.luas = round(self.panjang * self.lebar, 4)
         is_new = not self.pk
@@ -678,6 +786,11 @@ class InventoryItem(models.Model):
     min_stok      = models.FloatField(default=0.0)
     cost_per_unit = models.FloatField(default=0.0)
     supplier      = models.CharField(max_length=100, default='Unknown', db_index=True)
+    # Tautan opsional ke Product katalog asli — dipakai saat bahan baku untuk
+    # resep produk (BoM) dipilih lewat pencarian Produk (bukan diketik manual
+    # di menu "Bahan Baku"), supaya item yang sama tidak dibuat dobel setiap
+    # kali dipilih ulang.
+    product       = models.ForeignKey('Product', null=True, blank=True, on_delete=models.SET_NULL, related_name='inventory_items')
 
     class Meta:
         indexes = [
@@ -917,12 +1030,52 @@ class CustomerActivity(models.Model):
 # 13. MRP: BILL OF MATERIALS (BOM)
 # ---------------------------------------------------------
 class BillOfMaterials(models.Model):
-    product = models.OneToOneField(ProductPrice, on_delete=models.CASCADE, related_name='bom', help_text="Produk yang dirujuk")
+    # `product_price` = tautan LAMA ke ProductPrice (legacy) — dipertahankan
+    # nullable supaya deduct_job_materials_if_needed() (JobBoard dari Order
+    # lama, dicocokkan dari teks bebas OrderItem.jenis_produk/bahan) tetap
+    # jalan tanpa berubah untuk data lama.
+    # `product`/`variant` = tautan BARU ke katalog Product/ProductVariant
+    # asli (product_models) — dipakai UI "Tambah Bahan" di detail produk.
+    # Sebelum ini, UI itu menyimpan lewat product_price yang dicocokkan
+    # HANYA dari string nama produk, jadi bahan yang ditambahkan tidak
+    # pernah benar-benar terhubung ke Product asli maupun ikut potong stok
+    # otomatis untuk produk POS (bug ditemukan & diperbaiki 2026-08-12).
+    product_price = models.OneToOneField(
+        ProductPrice, on_delete=models.CASCADE, related_name='bom',
+        null=True, blank=True, help_text="[Legacy] Produk lama yang dirujuk",
+    )
+    product = models.ForeignKey(
+        'Product', on_delete=models.CASCADE, null=True, blank=True,
+        related_name='bom_list', db_index=True,
+    )
+    variant = models.ForeignKey(
+        'ProductVariant', on_delete=models.CASCADE, null=True, blank=True,
+        related_name='bom_list',
+    )
     nama = models.CharField(max_length=100)
     keterangan = models.TextField(blank=True, null=True)
 
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['product', 'variant'],
+                condition=models.Q(product__isnull=False) & models.Q(variant__isnull=False),
+                name='unique_bom_per_product_variant',
+            ),
+            models.UniqueConstraint(
+                fields=['product'],
+                condition=models.Q(product__isnull=False) & models.Q(variant__isnull=True),
+                name='unique_bom_per_product_no_variant',
+            ),
+        ]
+
     def __str__(self):
-        return f"BoM: {self.product.nama_produk} ({self.product.material or ''})"
+        if self.product_id:
+            label = self.product.nama + (f" ({self.variant.nama_varian})" if self.variant_id else "")
+            return f"BoM: {label}"
+        if self.product_price_id:
+            return f"BoM: {self.product_price.nama_produk} ({self.product_price.material or ''})"
+        return f"BoM: {self.nama}"
 
 
 class BoMItem(models.Model):

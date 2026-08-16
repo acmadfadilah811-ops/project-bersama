@@ -102,6 +102,11 @@ class Product(models.Model):
     tidak_tersedia_offline_pos = models.BooleanField(default=False, help_text="Sembunyikan dari POS")
     butuh_pengiriman = models.BooleanField(default=True)
     pesanan_no_seri = models.BooleanField(default=False, help_text="Pesanan disertai pengisian No Seri/IMEI")
+    # Dipakai bot WA (form order) untuk menentukan apakah kolom Bahan/Material
+    # & Finishing wajib diisi pelanggan — default True (perilaku lama untuk
+    # semua produk cetak), matikan manual untuk produk yang tidak relevan.
+    butuh_bahan = models.BooleanField(default=True, help_text="Wajib isi Bahan/Material saat order via WA")
+    butuh_finishing = models.BooleanField(default=True, help_text="Wajib isi Finishing saat order via WA")
 
     kategori_unggulan = models.BooleanField(default=False)
     kategori_sale = models.BooleanField(default=False)
@@ -208,6 +213,35 @@ class Addon(models.Model):
     def __str__(self):
         return self.nama
 
+
+class SaleItemAddon(models.Model):
+    """Addon terpilih pada satu baris item penjualan — pola dual-FK sama
+    seperti JobBoard (pos_sale_item/order_item, lihat api/models.py) supaya
+    satu model melayani kedua sumber transaksi kasir tanpa duplikasi."""
+    pos_sale_item = models.ForeignKey('POSSaleItem', on_delete=models.CASCADE, null=True, blank=True, related_name='addons')
+    order_item = models.ForeignKey('OrderItem', on_delete=models.CASCADE, null=True, blank=True, related_name='addons')
+    addon = models.ForeignKey(Addon, on_delete=models.SET_NULL, null=True, blank=True, related_name='sale_item_addons')
+    nama_snapshot = models.CharField(max_length=255)
+    harga_snapshot = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="Harga addon per unit qty item induk, saat dipilih")
+    qty = models.DecimalField(max_digits=10, decimal_places=2, default=1, help_text="Disamakan dengan qty item induk")
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="harga_snapshot * qty")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                name='saleitemaddon_tepat_satu_sumber',
+                check=(
+                    models.Q(pos_sale_item__isnull=False, order_item__isnull=True)
+                    | models.Q(pos_sale_item__isnull=True, order_item__isnull=False)
+                ),
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.nama_snapshot} x {self.qty}"
+
+
 class Specification(models.Model):
     nama = models.CharField(max_length=255)
     tipe = models.CharField(max_length=50, blank=True, null=True)
@@ -257,6 +291,10 @@ class ProductStockMovement(models.Model):
     pos_sale = models.ForeignKey(
         'POSSale', on_delete=models.SET_NULL, null=True, blank=True, related_name='stock_movements',
         help_text="Transaksi POS sumber mutasi ini (tipe='penjualan'/'pengembalian') — dipakai T-107 untuk agregasi HPP per sale.",
+    )
+    order = models.ForeignKey(
+        'Order', on_delete=models.SET_NULL, null=True, blank=True, related_name='stock_movements',
+        help_text="Order (DP dari kasir) sumber mutasi ini (tipe='penjualan'/'pengembalian').",
     )
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
@@ -483,6 +521,11 @@ class Purchase(models.Model):
         ('tunda', 'Tunda'),        # barang belum sampai
         ('diterima', 'Diterima'),  # barang sampai -> stok bertambah
     ]
+    DELIVERY_CHOICES = [
+        ('tunda', 'Tunda'),
+        ('terkirim', 'Terkirim'),
+        ('dikirim', 'Dikirim'),
+    ]
     PAYMENT_CHOICES = [
         ('belum', 'Belum Bayar'),
         ('sebagian', 'Sebagian'),  # DP / cicilan
@@ -501,6 +544,10 @@ class Purchase(models.Model):
 
     # Dimensi 1: penerimaan barang
     receive_status = models.CharField(max_length=20, choices=RECEIVE_CHOICES, default='tunda')
+    delivery_status = models.CharField(
+        max_length=20, choices=DELIVERY_CHOICES, default='tunda',
+        help_text='Tahap pengiriman sebelum barang diterima.',
+    )
     tanggal_diterima = models.DateField(null=True, blank=True)
     no_terima = models.CharField(max_length=100, blank=True, default='')
     penerima_nama = models.CharField(max_length=255, blank=True, default='', help_text='Nama akun pengguna yang menerima barang')
@@ -508,6 +555,12 @@ class Purchase(models.Model):
 
     # Dimensi 2: pembayaran (diturunkan dari PurchasePayment)
     payment_status = models.CharField(max_length=20, choices=PAYMENT_CHOICES, default='belum')
+    # Penanda tampilan dari operator. Bukan pembayaran nyata dan tidak boleh
+    # memengaruhi total_dibayar, payment_status, maupun jurnal.
+    payment_marked_paid = models.BooleanField(
+        default=False,
+        help_text='Penanda administratif pembayaran; tidak membuat pembayaran atau jurnal.',
+    )
 
     # Retur
     is_retur = models.BooleanField(default=False)
@@ -647,9 +700,20 @@ class StockLayerConsumption(models.Model):
 
 
 class PurchasePayment(models.Model):
+    class Jenis(models.TextChoices):
+        ADVANCE = 'advance', 'Down Payment'
+        SETTLEMENT = 'settlement', 'Pelunasan'
+
     purchase = models.ForeignKey(Purchase, on_delete=models.CASCADE, related_name='payments')
     tanggal = models.DateField()
     nominal = models.DecimalField(max_digits=14, decimal_places=2)
+    payment_account = models.ForeignKey(
+        'accounting.Account', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='purchase_payments',
+    )
+    jenis = models.CharField(max_length=15, choices=Jenis.choices, default=Jenis.SETTLEMENT)
+    payment_account_code_snapshot = models.CharField(max_length=20, blank=True, default='')
+    payment_account_name_snapshot = models.CharField(max_length=255, blank=True, default='')
     metode = models.CharField(max_length=50, blank=True, default='')
     catatan = models.CharField(max_length=255, blank=True, default='')
     dibuat_oleh = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='purchase_payments')

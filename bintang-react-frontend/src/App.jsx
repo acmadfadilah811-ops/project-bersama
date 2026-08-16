@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AlertCircle, CheckCircle, Info, X } from 'lucide-react';
 import { AuthProvider } from './context/AuthContext';
 
@@ -27,7 +27,6 @@ import Reports from './features/reports/pages/Reports';
 import Komplain from './features/komplain/pages/Komplain';
 import { useAuth } from './context/AuthContext';
 import ProductionApp from './features/production/pages/ProductionApp';
-import WhatsAppChat from './features/whatsapp/pages/WhatsAppChat';
 import UploadDesain from './features/orders/pages/UploadDesain';
 import ProductInventoryApp from './features/inventory/pages/ProductInventoryApp';
 import CustomerSupplierApp from './features/customerSupplier/pages/CustomerSupplierApp';
@@ -45,6 +44,13 @@ function HomeRedirect() {
   if (role === 'staff') return <Navigate to="/staff-dashboard" replace />;
   if (role === 'kasir') return <Navigate to="/kasir" replace />;
   return <Navigate to="/dashboard" replace />;
+}
+
+// WA Live dipindah ke Kasir — pertahankan query string (mis. ?number=...)
+// dari tautan/bookmark lama, `<Navigate to="path">` polos tidak membawanya.
+function WaLiveRedirect() {
+  const location = useLocation();
+  return <Navigate to={`/kasir/wa-live${location.search}`} replace />;
 }
 
 // Komponen routing dashboard berdasarkan role
@@ -139,7 +145,10 @@ function App() {
                 <Route path="/product-inventory/*" element={<ProductInventoryApp />} />
                 <Route path="/customer-supplier/*" element={<CustomerSupplierApp />} />
                 <Route path="/attendance" element={<Attendance />} />
-                <Route path="/whatsapp-chat" element={<WhatsAppChat />} />
+                {/* Dipindah ke Kasir supaya role kasir (yang tadinya tidak
+                    punya akses sama sekali) ikut bisa buka WA Live — redirect
+                    dipertahankan untuk tautan/bookmark lama. */}
+                <Route path="/whatsapp-chat" element={<WaLiveRedirect />} />
                 <Route path="/komplain" element={<Komplain />} />
 
                 {/* Marketing */}

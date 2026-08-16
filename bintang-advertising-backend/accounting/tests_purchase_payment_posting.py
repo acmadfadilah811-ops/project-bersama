@@ -5,7 +5,7 @@ from django.test import TestCase
 
 from api.product_models import Purchase, PurchasePayment
 
-from .models import Account, AccountClassification, JournalEntry
+from .models import Account, AccountClassification, AccountingSettings, JournalEntry
 from .services.purchase_posting import (
     post_purchase_payment_journal,
     reverse_purchase_payment_journal,
@@ -19,9 +19,19 @@ class PurchasePaymentPostingTests(TestCase):
         self.cash = Account.objects.create(
             code='11101', name='Kas Test', account_type='asset', classification=asset,
         )
-        Account.objects.create(
+        payable = Account.objects.create(
             code='21000', name='Hutang Dagang Test', account_type='liability', classification=liability,
         )
+        advance = Account.objects.create(
+            code='11710', name='Uang Muka Pembelian Test', account_type='asset', classification=asset,
+        )
+        AccountingSettings.objects.create(
+            accounting_start_date=date(2026, 7, 1),
+            purchase_inventory_account=self.cash,
+            purchase_payable_account=payable,
+            purchase_advance_account=advance,
+        )
+        self.advance = advance
         purchase = Purchase.objects.create(nomor='PO-PAYMENT-TEST', tanggal=date(2026, 7, 29))
         self.payment = PurchasePayment.objects.create(
             purchase=purchase,
@@ -44,3 +54,12 @@ class PurchasePaymentPostingTests(TestCase):
         self.assertEqual(JournalEntry.objects.count(), 2)
         self.assertEqual(sum(line.debit for line in reversal.lines.all()), Decimal('250000'))
         self.assertEqual(sum(line.kredit for line in reversal.lines.all()), Decimal('250000'))
+
+    def test_advance_uses_advance_account_and_remains_balanced(self):
+        self.payment.jenis = PurchasePayment.Jenis.ADVANCE
+        self.payment.save(update_fields=['jenis'])
+
+        entry = post_purchase_payment_journal(self.payment, self.cash)
+
+        self.assertTrue(entry.lines.filter(account=self.advance, debit=Decimal('250000')).exists())
+        self.assertEqual(sum(line.debit for line in entry.lines.all()), sum(line.kredit for line in entry.lines.all()))

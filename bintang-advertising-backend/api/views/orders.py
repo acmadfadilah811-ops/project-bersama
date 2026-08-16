@@ -11,6 +11,7 @@ from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser
 from rest_framework.exceptions import ValidationError
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.db import transaction
 from django.db.models import Q, Count, Sum
 from django.http import HttpResponse
@@ -18,7 +19,8 @@ from django.http import HttpResponse
 
 from .. import spk
 from ..models import (
-    Order, OrderItem, JobBoard, CustomUser, Contact, OrderActivityLog, TahapProses, PengembalianOrder
+    Order, OrderItem, JobBoard, CustomUser, Contact, OrderActivityLog, TahapProses,
+    PengembalianOrder, OrderPayment, SaldoKasHarian,
 )
 from ..serializers import (
     OrderSerializer, OrderItemSerializer, JobBoardSerializer, PengembalianOrderSerializer
@@ -29,6 +31,31 @@ from users.models import SecurityAuditLog
 from .jobs import deduct_job_materials_if_needed
 
 logger = logging.getLogger(__name__)
+
+
+def _active_shift_for(user):
+    """Shift terbuka kasir saat pembayaran dicatat, bila ada."""
+    if not user or not getattr(user, 'pk', None):
+        return None
+    return SaldoKasHarian.objects.filter(
+        kasir=user, waktu_tutup__isnull=True,
+    ).order_by('-waktu_buka', '-id').first()
+
+
+def _record_order_payment(*, order, activity_log, actor, jumlah, metode, referensi='',
+                          idempotency_key=None, is_dp=False):
+    """Simpan peristiwa pembayaran tanpa mengubah saldo agregat pada Order."""
+    return OrderPayment.objects.create(
+        order=order,
+        activity_log=activity_log,
+        shift=_active_shift_for(actor),
+        jumlah=jumlah,
+        metode_pembayaran=(metode or 'tunai')[:50],
+        referensi_pembayaran=(referensi or '')[:255],
+        idempotency_key=idempotency_key or None,
+        is_dp=is_dp,
+        dibuat_oleh=actor,
+    )
 
 
 class OrderViewSet(viewsets.ModelViewSet):
@@ -51,6 +78,8 @@ class OrderViewSet(viewsets.ModelViewSet):
             # OrderSerializer menyertakan activity_logs beserta user tiap log —
             # penyumbang query terbesar bila tidak di-prefetch.
             'activity_logs__user',
+            'payments__dibuat_oleh',
+            'payments__shift',
         ).order_by('-waktu')
         
         # ✅ Filter by nomor_wa if provided in query params (optimasi query detail customer)
@@ -201,6 +230,11 @@ class OrderViewSet(viewsets.ModelViewSet):
                 tindakan='PAYMENT',
                 keterangan=f'DP awal {instance.dp_dibayar} [dp-create]',
             )
+            _record_order_payment(
+                order=instance, activity_log=_dp_log, actor=self.request.user,
+                jumlah=instance.dp_dibayar, metode=instance.metode_pembayaran,
+                referensi=instance.referensi_pembayaran, is_dp=True,
+            )
             _post_order_payment(
                 order=instance,
                 activity_log=_dp_log,
@@ -208,6 +242,364 @@ class OrderViewSet(viewsets.ModelViewSet):
                 jumlah_bayar=_Decimal(str(instance.dp_dibayar)),
                 is_dp=True,
             )
+
+    @action(detail=False, methods=['post'], url_path='checkout-pos',
+            permission_classes=[IsOwnerManagerAdminOrKasir])
+    @transaction.atomic
+    def checkout_pos(self, request):
+        """Buat order dari keranjang POS, terima DP, dan terbitkan SPK dalam satu transaksi.
+
+        Berbeda dengan ``POST /orders/`` lama (header lalu item terpisah), endpoint
+        ini menjaga order, item, pembayaran, jurnal, dan JobBoard tetap atomik.
+        DP tetap merupakan nominal pembayaran; metode seperti tunai/QRIS/transfer
+        adalah kanal pembayaran.
+        """
+        from decimal import Decimal
+        from django.contrib.auth import get_user_model
+        from ..product_models import Product, ProductVariant, ProductStockMovement
+        from ..services.package_sales import resolve_package_for_sale
+        from .. import pos_settings, stock_fifo
+        from ..services.addon_sales import apply_addons, resolve_addons
+        from accounting.services.order_posting import (
+            post_order_payment_journal,
+            resolve_and_assign_order_payment_method,
+        )
+
+        if request.user.role not in ('owner', 'manager', 'admin', 'kasir'):
+            return Response({'error': 'Anda tidak memiliki izin membuat order dari kasir.'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        raw_key = str(request.data.get('idempotency_key') or '').strip()
+        try:
+            checkout_key = uuid.UUID(raw_key)
+        except (ValueError, AttributeError):
+            return Response({'error': 'idempotency_key UUID wajib diisi.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # ID deterministik membuat klik ulang/timeout tidak menciptakan order kedua.
+        order_id = f'POS-ORD-{checkout_key.hex.upper()}'
+        existing = Order.objects.filter(pk=order_id).first()
+        if existing:
+            return Response(OrderSerializer(existing, context={'request': request}).data,
+                            status=status.HTTP_200_OK)
+
+        nama = str(request.data.get('nama') or '').strip()
+        nomor_wa = str(request.data.get('nomor_wa') or '').strip()
+        if not nama:
+            return Response({'error': 'Nama pelanggan wajib diisi untuk transaksi DP.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        import re
+        if not re.match(r'^\+?\d{8,15}$', re.sub(r'[\s\-()]+', '', nomor_wa)):
+            return Response({'error': 'Nomor WhatsApp pelanggan tidak valid.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            dilayani_oleh_id = int(request.data.get('dilayani_oleh_id'))
+        except (TypeError, ValueError):
+            return Response({'error': 'Karyawan yang melayani wajib dipilih.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        dilayani_oleh = get_user_model().objects.filter(pk=dilayani_oleh_id, is_active=True).first()
+        if not dilayani_oleh:
+            return Response({'error': 'Karyawan yang melayani tidak valid atau nonaktif.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        items_data = request.data.get('items') or []
+        if not isinstance(items_data, list) or not items_data:
+            return Response({'error': 'Keranjang pesanan tidak boleh kosong.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            diskon_persen = float(request.data.get('diskon_persen') or 0)
+        except (TypeError, ValueError):
+            return Response({'error': 'Diskon pesanan tidak valid.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not 0 <= diskon_persen <= 100:
+            return Response({'error': 'Diskon pesanan harus antara 0 sampai 100.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if diskon_persen:
+            return Response({
+                'error': 'Diskon manual tidak diizinkan. Gunakan kupon atau Diskon Penjualan yang aktif di Marketing.',
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        metode_diskon = str(request.data.get('metode_diskon') or 'tidak_ada').strip()
+        if metode_diskon not in ('tidak_ada', 'kupon', 'otomatis'):
+            return Response({'error': 'Metode diskon tidak valid.'}, status=status.HTTP_400_BAD_REQUEST)
+        kupon_kode = str(request.data.get('kupon_kode') or '').strip()
+        if metode_diskon == 'kupon' and not kupon_kode:
+            return Response({'error': 'Kode kupon wajib dipilih dari Diskon Pesanan.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        due_date_raw = str(request.data.get('jatuh_tempo') or '').strip()
+        due_date = parse_date(due_date_raw) if due_date_raw else None
+        if not due_date:
+            return Response({'error': 'Jatuh tempo wajib diisi untuk transaksi DP.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if due_date < timezone.localdate():
+            return Response({'error': 'Jatuh tempo tidak boleh sebelum hari ini.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        order = Order.objects.create(
+            id=order_id,
+            nama=nama,
+            nomor_wa=nomor_wa,
+            sumber='pos',
+            status_global='review',
+            catatan_pelanggan=str(request.data.get('catatan') or '')[:2000],
+            metode_pembayaran=str(request.data.get('metode_pembayaran') or 'tunai')[:20],
+            diskon_persen=0,
+            metode_diskon=metode_diskon,
+            jatuh_tempo=due_date,
+            dilayani_oleh=dilayani_oleh,
+            dp_dibayar=0,
+        )
+        order._current_user = request.user
+
+        # Pelacakan stok — dikumpulkan sepanjang loop item (termasuk komponen
+        # paket) lalu divalidasi & dikurangi sekaligus setelah semua item
+        # tersimpan, mengikuti pola create_sale() di pos_services.py (M8:
+        # mutasi stok hanya lewat service FIFO resmi, bukan langsung di view).
+        stock_requested = {}
+        stock_owners = {}
+        stock_lines = []
+
+        for raw_item in items_data:
+            try:
+                qty = int(raw_item.get('qty') or 0)
+                harga_satuan = int(raw_item.get('harga_satuan') or 0)
+            except (TypeError, ValueError):
+                raise ValidationError({'error': 'Qty atau harga item tidak valid.'})
+            if qty <= 0 or harga_satuan < 0:
+                raise ValidationError({'error': 'Qty harus lebih dari nol dan harga tidak boleh negatif.'})
+
+            product = None
+            variant = None
+            package = None
+            item_addons = []
+            addon_total = Decimal('0')
+            package_id = raw_item.get('package_id') or raw_item.get('paket_id')
+            if package_id:
+                package, package_qty, package_price = resolve_package_for_sale(
+                    package_id, qty, channel='pos', lock=True,
+                )
+                qty = int(package_qty)
+                harga_satuan = int(package_price)
+                # Paket tidak punya stok sendiri — mutasi dihitung dari komponen
+                # master paket, sama seperti create_sale() di pos_services.py.
+                for component in package.items.all():
+                    component_product = Product.objects.select_for_update().get(pk=component.product_id)
+                    component_variant = None
+                    if component.variant_id:
+                        component_variant = ProductVariant.objects.select_for_update().filter(
+                            pk=component.variant_id, product=component_product,
+                        ).first()
+                        if not component_variant:
+                            raise ValidationError({'error': f"Komponen varian paket '{package.nama}' tidak valid."})
+                    component_qty = Decimal(str(qty)) * Decimal(str(component.qty))
+                    key = (component_product.id, component_variant.id if component_variant else None)
+                    stock_requested[key] = stock_requested.get(key, Decimal('0')) + component_qty
+                    stock_owners[key] = (component_product, component_variant)
+                    stock_lines.append((component_product, component_variant, component_qty, package.nama))
+            elif raw_item.get('product_id'):
+                product = Product.objects.select_for_update().filter(pk=raw_item['product_id']).first()
+                if not product:
+                    raise ValidationError({'error': 'Produk pada keranjang tidak ditemukan.'})
+                if raw_item.get('variant_id'):
+                    variant = ProductVariant.objects.select_for_update().filter(pk=raw_item['variant_id'], product=product).first()
+                    if not variant:
+                        raise ValidationError({'error': 'Varian produk pada keranjang tidak valid.'})
+                # Harga katalog dihitung server; harga kustom hanya diizinkan untuk
+                # item yang memang membawa spesifikasi kalkulator cetak.
+                if not raw_item.get('is_custom_priced'):
+                    harga_satuan = int(variant.harga_jual_toko if variant and variant.harga_jual_toko is not None else product.harga_jual_toko or 0)
+                qty_decimal = Decimal(str(qty))
+                key = (product.id, variant.id if variant else None)
+                stock_requested[key] = stock_requested.get(key, Decimal('0')) + qty_decimal
+                stock_owners[key] = (product, variant)
+                stock_lines.append((product, variant, qty_decimal, None))
+                # Addon: harga & qty SELALU dihitung ulang dari Addon.harga di
+                # server (M6); qty per addon default ikut qty item induk kalau
+                # klien cuma kirim daftar ID polos (kompatibel mundur).
+                item_addons = resolve_addons(
+                    raw_item.get('addons') or raw_item.get('addon_ids'), product, default_qty=qty_decimal,
+                )
+                addon_total = sum((Decimal(str(a.harga or 0)) * q for a, q in item_addons), Decimal('0'))
+
+            detail = raw_item.get('detail') if isinstance(raw_item.get('detail'), dict) else {}
+            item = OrderItem(
+                order=order,
+                jenis_produk=str(
+                    getattr(package, 'nama', None) or raw_item.get('nama') or getattr(product, 'nama', None) or 'Item Kustom'
+                )[:100],
+                product=product,
+                variant=variant,
+                paket=package,
+                panjang=float(raw_item.get('panjang') or 0),
+                lebar=float(raw_item.get('lebar') or 0),
+                harga_per_m2=int(raw_item.get('harga_per_m2') or 0),
+                qty=qty,
+                harga_jual=harga_satuan * qty + int(addon_total),
+                detail=[detail] if detail else [],
+                keterangan_detail=str(raw_item.get('catatan') or '')[:2000],
+                # Stok komponen paket dipotong lewat produk komponennya (bukan
+                # field product milik OrderItem ini), jadi flag ini hanya untuk
+                # item produk langsung — supaya OrderItemSerializer tidak ikut
+                # memotong stok lagi kalau item ini diedit lewat /order-items/.
+                stok_dikurangi=bool(product and not package and product.lacak_inventori and pos_settings.pos_mengurangi_stok()),
+            )
+            item._current_user = request.user
+            item.save()
+            if item_addons:
+                apply_addons(
+                    addons=item_addons, user=request.user, tanggal=timezone.localdate(),
+                    order_item=item, order=order, deduct_stock=pos_settings.pos_mengurangi_stok(),
+                )
+
+        if pos_settings.pos_mengurangi_stok():
+            for key, total_qty in stock_requested.items():
+                stock_product, stock_variant = stock_owners[key]
+                owner = stock_variant or stock_product
+                if stock_product.lacak_inventori and total_qty > Decimal(str(owner.qty_stok or 0)):
+                    raise ValidationError({'error': f"Stok '{owner}' tidak mencukupi untuk pesanan ini."})
+            now_date = timezone.localdate()
+            for stock_product, stock_variant, stock_qty, package_name in stock_lines:
+                if not stock_product.lacak_inventori:
+                    continue
+                owner = stock_variant or stock_product
+                start = owner.qty_stok
+                owner.qty_stok = start - stock_qty
+                owner.save(update_fields=['qty_stok'])
+                suffix = f' - Paket {package_name}' if package_name else ''
+                movement = ProductStockMovement.objects.create(
+                    product=stock_product, variant=stock_variant, user=request.user, tipe='penjualan',
+                    qty=stock_qty, stok_awal=start, stok_akhir=owner.qty_stok, order=order,
+                    catatan=f'Order POS {order.id}{suffix}', tanggal=now_date,
+                )
+                stock_fifo.consume_layers(stock_product, stock_variant, stock_qty, movement=movement)
+
+        # Item.save menghitung subtotal; simpan header sekali agar diskon dan sisa
+        # tagihan dihitung dari seluruh keranjang sebelum nominal DP divalidasi.
+        order.refresh_from_db()
+        order._current_user = request.user
+        order.save()
+        order.refresh_from_db()
+
+        # Terapkan ulang aturan Marketing di server. Nilai preview UI tidak
+        # dipercaya: kupon, syarat pelanggan/produk, dan kuota harus valid saat
+        # transaksi benar-benar disimpan.
+        from ..marketing_models import CouponUsage, KANAL_POS
+        from ..promo_engine import BarisKeranjang, KonteksPromo, evaluate_coupon_code, evaluate_sales_discount
+        customer = Contact.objects.filter(nomor_wa=order.nomor_wa).first()
+        baris_promo = []
+        for item in order.items.all():
+            qty_decimal = Decimal(str(item.qty or 1))
+            line_total = Decimal(str(item.harga_jual or 0))
+            unit_price = line_total / qty_decimal if qty_decimal else Decimal('0')
+            baris_promo.append(BarisKeranjang(
+                product=item.product,
+                variant=item.variant,
+                package=item.paket,
+                qty=qty_decimal,
+                harga=unit_price,
+                subtotal=line_total,
+            ))
+        konteks_promo = KonteksPromo(
+            baris=baris_promo,
+            subtotal=Decimal(str(order.total_harga or 0)),
+            pelanggan=customer,
+            kanal=KANAL_POS,
+        )
+        if metode_diskon == 'kupon':
+            hasil_kupon = evaluate_coupon_code(kupon_kode, konteks_promo)
+            if not hasil_kupon.ok:
+                raise ValidationError({'error': f'Kupon ditolak: {hasil_kupon.alasan}'})
+            order.kupon = hasil_kupon.kupon
+            order.diskon_kupon = int(round(hasil_kupon.diskon))
+            order._current_user = request.user
+            order.save()
+            CouponUsage.objects.create(
+                kupon=hasil_kupon.kupon,
+                pelanggan=customer,
+                order=order,
+                nilai_diskon=hasil_kupon.diskon,
+                tanggal=timezone.localdate(),
+                kanal=KANAL_POS,
+            )
+            hasil_kupon.kupon.penggunaan_count = CouponUsage.objects.filter(kupon=hasil_kupon.kupon).count()
+            hasil_kupon.kupon.save(update_fields=['penggunaan_count'])
+            # Model Order membaca CouponUsage sebagai sumber historis diskon.
+            order._current_user = request.user
+            order.save()
+        elif metode_diskon == 'otomatis':
+            diskon_otomatis, _aturan = evaluate_sales_discount(konteks_promo)
+            order.diskon_otomatis = int(round(diskon_otomatis))
+            order._current_user = request.user
+            order.save()
+        order.refresh_from_db()
+
+        try:
+            jumlah_bayar = int(request.data.get('jumlah_bayar') or 0)
+        except (TypeError, ValueError):
+            raise ValidationError({'error': 'Nominal pembayaran tidak valid.'})
+        if jumlah_bayar <= 0 or jumlah_bayar > order.sisa_tagihan:
+            raise ValidationError({'error': 'Nominal DP harus lebih dari nol dan tidak melebihi total tagihan.'})
+
+        order.dp_dibayar = jumlah_bayar
+        order._current_user = request.user
+        order.save()
+        resolve_and_assign_order_payment_method(order, order.metode_pembayaran)
+        order.save(update_fields=['accounting_payment_method', 'settlement_status'])
+        payment_log = OrderActivityLog.objects.create(
+            order=order,
+            user=request.user,
+            tindakan='PAYMENT',
+            keterangan=f'Pembayaran POS {jumlah_bayar} [{checkout_key}]',
+        )
+        _record_order_payment(
+            order=order, activity_log=payment_log, actor=request.user,
+            jumlah=jumlah_bayar, metode=order.metode_pembayaran,
+            referensi=order.referensi_pembayaran, idempotency_key=str(checkout_key),
+            is_dp=jumlah_bayar < order.total_harga,
+        )
+        post_order_payment_journal(
+            order=order,
+            activity_log=payment_log,
+            actor=request.user,
+            jumlah_bayar=Decimal(str(jumlah_bayar)),
+            is_dp=jumlah_bayar < order.total_harga,
+        )
+
+        spk_payload = request.data.get('spk')
+        if not isinstance(spk_payload, dict):
+            raise ValidationError({'error': 'Tujuan divisi dan deadline SPK wajib diisi.'})
+        try:
+            staff = spk.resolve_staff(spk_payload.get('staff_id'), pemohon=request.user)
+            deadline = spk.resolve_deadline(spk_payload.get('deadline'))
+            if not deadline:
+                raise spk.SpkError('Deadline SPK wajib diisi.')
+            tahap = spk.resolve_tahap(
+                tahap_id=spk_payload.get('tahap_id'),
+                divisi_id=spk_payload.get('divisi_id'),
+                staff=staff,
+            )
+            jobs = spk.terbitkan(order.items.all(), field='order_item', tahap=tahap, staff=staff, deadline=deadline)
+        except spk.SpkError as exc:
+            raise ValidationError({'error': exc.pesan})
+
+        order.status_global = 'desain' if spk.is_divisi_desain(staff, tahap) else 'proses'
+        order._current_user = request.user
+        order.save()
+        OrderActivityLog.objects.create(
+            order=order,
+            user=request.user,
+            tindakan='TERBITKAN_SPK',
+            keterangan=f"SPK POS diterbitkan ke {spk.nama_target(staff, tahap)}.",
+        )
+        # Invoice DP harus dikirim setelah seluruh transaksi (termasuk jurnal dan
+        # SPK) committed. Gangguan gateway tidak boleh membatalkan order.
+        from ..services.order_invoice_whatsapp import jadwalkan_invoice_dp_otomatis
+        jadwalkan_invoice_dp_otomatis(order.id)
+        payload = OrderSerializer(order, context={'request': request}).data
+        payload['jobs'] = jobs
+        return Response(payload, status=status.HTTP_201_CREATED)
 
     def _ensure_write_role(self):
         if self.request.user.role not in ('owner', 'manager', 'admin', 'kasir'):
@@ -484,6 +876,10 @@ class OrderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='bayar')
     @transaction.atomic
     def bayar(self, request, pk=None):
+        # Penerimaan pembayaran adalah tugas owner/manager/admin/kasir. Tanpa
+        # guard ini endpoint aksi DRF melewati perform_update dan staff
+        # produksi yang login dapat mencatat pelunasan langsung lewat API.
+        self._ensure_write_role()
         order = Order.objects.select_for_update().get(pk=pk)
         idem = str(request.data.get('idempotency_key') or '').strip()
         if idem and OrderActivityLog.objects.filter(order=order, tindakan='PAYMENT', keterangan__contains='[' + idem + ']').exists():
@@ -521,6 +917,11 @@ class OrderViewSet(viewsets.ModelViewSet):
         order._current_user = request.user
         order.save()
         payment_log = OrderActivityLog.objects.create(order=order, user=request.user, tindakan='PAYMENT', keterangan='Pembayaran %s [%s]' % (jumlah_bayar, idem or 'no-key'))
+        _record_order_payment(
+            order=order, activity_log=payment_log, actor=request.user,
+            jumlah=jumlah_bayar, metode=metode, referensi=referensi,
+            idempotency_key=idem or None, is_dp=order.dp_dibayar < order.total_harga,
+        )
 
         # T-202: satu-satunya writer jurnal pembayaran Order.
         from decimal import Decimal as _Decimal
@@ -596,46 +997,75 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         return Response(OrderSerializer(order, context={'request': request}).data, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'], url_path='minta-otp-void')
+    def minta_otp_void(self, request, pk=None):
+        """
+        POST /api/orders/{id}/minta-otp-void/
+        Kasir mengajukan permintaan pembatalan — perlu persetujuan OTP owner
+        (lihat api/services/order_void_otp.py) sebelum /batalkan/ bisa
+        dipanggil. Owner/manager/admin tidak perlu endpoint ini, mereka bisa
+        langsung /batalkan/.
+        """
+        self._ensure_write_role()
+        try:
+            order = Order.objects.get(pk=pk)
+        except Order.DoesNotExist:
+            return Response({'error': 'Pesanan tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
+
+        alasan = str(request.data.get('alasan') or '').strip()
+
+        from ..services.order_void_otp import ajukan_permintaan_void, VoidOtpError
+        try:
+            void_request = ajukan_permintaan_void(order=order, kasir=request.user, alasan=alasan)
+        except VoidOtpError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        from ..serializers import OrderVoidRequestSerializer
+        return Response(
+            OrderVoidRequestSerializer(void_request, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
     @action(detail=True, methods=['post'], url_path='batalkan')
     @transaction.atomic
     def batalkan(self, request, pk=None):
         """
         POST /api/orders/{id}/batalkan/
-        Aksi dedicated untuk membatalkan pesanan.
+        Aksi dedicated untuk membatalkan pesanan. Logic sesungguhnya ada di
+        api/services/order_actions.py::batalkan_order() — dipakai bareng oleh
+        endpoint ini dan bot WhatsApp (lihat api/views/whatsapp.py).
+
+        Role di luar owner/manager/admin (kasir) wajib menyertakan
+        `void_request_id` + `otp_code` dari permintaan yang sudah disetujui
+        owner lewat /minta-otp-void/ (instruksi user 2026-08-14 — kasir tidak
+        boleh membatalkan order tanpa persetujuan).
         """
         self._ensure_write_role()
         try:
-            order = Order.objects.select_for_update().get(pk=pk)
+            order = Order.objects.get(pk=pk)
         except Order.DoesNotExist:
             return Response({'error': 'Pesanan tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
 
-        if order.status_global == 'batal':
-            return Response({'error': 'Pesanan sudah berstatus dibatalkan.'}, status=status.HTTP_400_BAD_REQUEST)
-        if order.status_global == 'selesai':
-            return Response({'error': 'Pesanan yang sudah selesai tidak dapat dibatalkan langsung. Gunakan alur Retur.'}, status=status.HTTP_400_BAD_REQUEST)
-
         alasan = str(request.data.get('alasan') or request.data.get('alasan_pembatalan') or '').strip()
-        old_status = order.status_global
-        order.status_global = 'batal'
-        order._current_user = request.user
-        order.save()
 
-        keterangan_log = f'Status pesanan diubah dari [{old_status}] menjadi [batal]'
-        if alasan:
-            keterangan_log += f'. Alasan: {alasan}'
+        from ..services.order_void_otp import ROLE_BYPASS_OTP, VoidOtpError, verifikasi_dan_gunakan_otp
+        if request.user.role not in ROLE_BYPASS_OTP:
+            try:
+                void_request = verifikasi_dan_gunakan_otp(
+                    order=order, kasir=request.user,
+                    void_request_id=request.data.get('void_request_id'),
+                    otp_code=request.data.get('otp_code'),
+                )
+            except VoidOtpError as e:
+                return Response({'error': str(e)}, status=status.HTTP_403_FORBIDDEN)
+            if not alasan:
+                alasan = void_request.alasan
 
-        OrderActivityLog.objects.create(
-            order=order,
-            user=request.user,
-            tindakan='CANCEL',
-            keterangan=keterangan_log
-        )
-
-        # M5: jangan tangkap exception di sini — seluruh aksi ini @transaction.atomic,
-        # kalau posting jurnal pembalik gagal, status Order & activity log di atas
-        # harus ikut rollback juga, bukan cuma jurnalnya yang diam-diam tidak terposting.
-        from accounting.services.order_posting import post_order_reversal_journal
-        post_order_reversal_journal(order=order, actor=request.user, description_prefix="Pembatalan Order")
+        from ..services.order_actions import batalkan_order, BatalkanOrderError
+        try:
+            order = batalkan_order(order, actor=request.user, alasan=alasan)
+        except BatalkanOrderError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(OrderSerializer(order, context={'request': request}).data, status=status.HTTP_200_OK)
 
@@ -689,6 +1119,10 @@ class OrderViewSet(viewsets.ModelViewSet):
             nominal_refund=nominal_refund,
             dibuat_oleh=request.user
         )
+
+        if retur_obj.status == 'Dikonfirmasi':
+            from ..services.order_return_inventory import restore_stock_for_confirmed_return
+            restore_stock_for_confirmed_return(retur=retur_obj, actor=request.user)
 
         OrderActivityLog.objects.create(
             order=order,
@@ -1099,6 +1533,12 @@ class ForwardJobView(APIView):
         tahap_id     = request.data.get('tahap_id')
         pic_staff_id = request.data.get('pic_staff_id')
 
+        if aksi not in ('forward', 'selesai'):
+            return Response(
+                {'error': 'Aksi tidak valid. Gunakan "forward" atau "selesai".'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # Guard: jangan proses job yang sudah selesai/gagal (mencegah duplikasi)
         if job.status_pekerjaan in ('selesai', 'gagal'):
             return Response(
@@ -1120,6 +1560,18 @@ class ForwardJobView(APIView):
                 tahap_baru = TahapProses.objects.get(pk=tahap_id)
             except TahapProses.DoesNotExist:
                 return Response({'error': 'Tahap tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
+
+        # SPK dapat berasal dari OrderItem atau POSSaleItem. Penerusan harus
+        # mempertahankan sumber yang sama agar job POS tidak crash/kehilangan
+        # relasi ketika dikirim ke tahap atau divisi berikutnya.
+        if job.order_item_id:
+            source_field = 'order_item'
+            source_object = job.order_item
+        elif job.pos_sale_item_id:
+            source_field = 'pos_sale_item'
+            source_object = job.pos_sale_item
+        else:
+            return Response({'error': 'Sumber SPK tidak valid.'}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
             # Tandai job saat ini sebagai SELESAI
@@ -1148,7 +1600,7 @@ class ForwardJobView(APIView):
 
                 # Cek apakah sudah ada job untuk tahap ini di order item yang sama
                 existing = JobBoard.objects.filter(
-                    order_item=job.order_item, tahap=tahap_baru
+                    **{source_field: source_object, 'tahap': tahap_baru}
                 ).first()
 
                 if existing:
@@ -1171,7 +1623,7 @@ class ForwardJobView(APIView):
                 else:
                     # Buat job baru
                     new_job = JobBoard(
-                        order_item      = job.order_item,
+                        **{source_field: source_object},
                         tahap           = tahap_baru,
                         status_pekerjaan = 'antrean',
                         catatan_staff   = catatan_sebelumnya
@@ -1191,22 +1643,26 @@ class ForwardJobView(APIView):
 
             elif aksi == 'selesai':
                 # Cek apakah seluruh job dari semua item dalam pesanan ini sudah selesai
-                order = job.order_item.order
-                active_jobs_exist = JobBoard.objects.filter(
-                    order_item__order=order,
-                    status_pekerjaan__in=['antrean', 'dikerjakan', 'kendala']
-                ).exists()
+                if job.order_item_id:
+                    order = job.order_item.order
+                    active_jobs_exist = JobBoard.objects.filter(
+                        order_item__order=order,
+                        status_pekerjaan__in=['antrean', 'dikerjakan', 'kendala']
+                    ).exists()
 
-                if not active_jobs_exist:
-                    order.status_global = 'ready'
-                    order.save()
+                    if not active_jobs_exist:
+                        order.status_global = 'ready'
+                        order.save()
+
+                    return Response(
+                        {'message': 'Job ditandai selesai. Tidak ada tahap lanjutan.' + (' Order secara global telah siap diambil (READY).' if not active_jobs_exist else '')},
+                        status=status.HTTP_200_OK
+                    )
 
                 return Response(
-                    {'message': 'Job ditandai selesai. Tidak ada tahap lanjutan.' + (' Order secara global telah siap diambil (READY).' if not active_jobs_exist else '')},
+                    {'message': 'Job POS ditandai selesai. Tidak ada tahap lanjutan.'},
                     status=status.HTTP_200_OK
                 )
-
-            return Response({'error': 'Aksi tidak valid. Gunakan "forward" atau "selesai".'}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class PengembalianOrderViewSet(viewsets.ModelViewSet):
@@ -1239,6 +1695,7 @@ class PengembalianOrderViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(order_id=order_id)
         return queryset
 
+    @transaction.atomic
     def perform_update(self, serializer):
         self._ensure_write_role()
         instance = serializer.instance
@@ -1255,5 +1712,14 @@ class PengembalianOrderViewSet(viewsets.ModelViewSet):
             if not is_unconfirm_toggle:
                 from rest_framework.exceptions import ValidationError
                 raise ValidationError('Return yang sudah Dikonfirmasi/Batal terkunci dan tidak dapat diubah.')
-        serializer.save()
+        old_status = instance.status
+        target_status = serializer.validated_data.get('status', old_status)
+        if old_status == 'Dikonfirmasi' and target_status == 'Tunda':
+            from ..services.order_return_inventory import reverse_stock_for_unconfirmed_return
+            reverse_stock_for_unconfirmed_return(retur=instance, actor=self.request.user)
+
+        updated = serializer.save()
+        if old_status != 'Dikonfirmasi' and target_status == 'Dikonfirmasi':
+            from ..services.order_return_inventory import restore_stock_for_confirmed_return
+            restore_stock_for_confirmed_return(retur=updated, actor=self.request.user)
 

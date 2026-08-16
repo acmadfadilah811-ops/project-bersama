@@ -57,6 +57,7 @@ ACCOUNTS = [
     ("11500", "Peralatan", "Perlengkapan", AccountType.ASSET, False, ""),
     ("11600", "Akumulasi penyusutan peralatan", "Akumulasi penyusutan perlengkapan", AccountType.ASSET, True, ""),
     ("11700", "Beban dibayar dimuka", "Harta lancar lainnya", AccountType.ASSET, False, ""),
+    ("11710", "Uang muka pembelian", "Harta lancar lainnya", AccountType.ASSET, False, ""),
     ("11750", "PPN Masukan", "Harta lancar lainnya", AccountType.ASSET, False, ""),
     ("12000", "Aset Tetap", "Aktiva Tetap", AccountType.ASSET, False, ""),
     ("13000", "Aset tak berwujud", "Aset Tak Berwujud", AccountType.ASSET, False, ""),
@@ -146,3 +147,18 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS(
                 f"AccountingSettings.opening_balance_equity_account diarahkan ke {opening_account}."
             ))
+
+        if settings_row:
+            mapping_defaults = {
+                "purchase_inventory_account": Account.objects.filter(code="11400", is_active=True).first(),
+                "purchase_payable_account": Account.objects.filter(code="21000", is_active=True).first(),
+                "purchase_advance_account": Account.objects.filter(code="11710", is_active=True).first(),
+            }
+            update_fields = []
+            for field, account in mapping_defaults.items():
+                if account and not getattr(settings_row, f"{field}_id"):
+                    setattr(settings_row, field, account)
+                    update_fields.append(field)
+            if update_fields:
+                settings_row.save(update_fields=update_fields)
+                self.stdout.write(self.style.SUCCESS("Mapping akun Pembelian standar telah disiapkan."))

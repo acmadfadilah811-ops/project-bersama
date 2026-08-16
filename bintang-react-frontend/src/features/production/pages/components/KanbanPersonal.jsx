@@ -1,5 +1,31 @@
-import { Play, CheckCircle2, Clock, FileText } from 'lucide-react';
+import { Play, CheckCircle2, Clock, FileText, Layers } from 'lucide-react';
 import DeadlineBadge from '../../components/DeadlineBadge';
+
+// Kelompokkan job per order/transaksi asal (sumber + nomor_sumber) — dipakai
+// bareng di tiap kolom kanban supaya 1 order dengan beberapa item (yang tadi
+// sudah diklaim jadi satu lewat ClaimPool) tidak balik terpisah jadi kartu
+// lepas-lepas satu-satu di sini (bug ditemukan 2026-08-14, padanan grouping
+// yang sudah dipakai di ClaimPool.jsx). Kalau item-item order yang sama
+// kebetulan beda status_pekerjaan (mis. satu sudah dikerjakan, satu masih
+// antrean), masing-masing tetap muncul di kolom statusnya sendiri — grouping
+// ini hanya menyatukan yang sekolom saja.
+function groupByOrder(items) {
+  const map = new Map();
+  items.forEach((job) => {
+    const key = `${job.sumber || 'order'}-${job.nomor_sumber || job.id}`;
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        sumber: job.sumber,
+        nomorSumber: job.nomor_sumber,
+        pelangganNama: job.pelanggan_nama,
+        jobs: [],
+      });
+    }
+    map.get(key).jobs.push(job);
+  });
+  return [...map.values()];
+}
 
 export default function KanbanPersonal({ jobs, onSelectJob, onStart, onComplete }) {
   // Group jobs by status
@@ -34,6 +60,10 @@ export default function KanbanPersonal({ jobs, onSelectJob, onStart, onComplete 
     },
   };
 
+  const groupedColumns = Object.fromEntries(
+    Object.entries(columns).map(([key, col]) => [key, groupByOrder(col.items)])
+  );
+
   return (
     <div className="space-y-4">
       <div>
@@ -67,111 +97,141 @@ export default function KanbanPersonal({ jobs, onSelectJob, onStart, onComplete 
               </span>
             </div>
 
-            {/* Column Items */}
+            {/* Column Items — dikelompokkan per order/transaksi */}
             <div className="space-y-3 flex-1 overflow-y-auto max-h-[500px]">
-              {col.items.length === 0 ? (
+              {groupedColumns[colKey].length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-slate-400 text-[10px] font-medium border border-dashed border-slate-200 rounded-lg">
                   <Clock size={16} className="text-slate-300 mb-1" />
                   Kosong
                 </div>
               ) : (
-                col.items.map((job) => {
-                  const item = job.order_item_detail || {};
-                  return (
-                    <div
-                      key={job.id}
-                      onClick={() => onSelectJob(job)}
-                      className="bg-white border border-slate-200 hover:border-indigo-400 rounded-lg p-2.5 shadow-xs hover:shadow-sm transition-all cursor-pointer group"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        {/* Kiri: Tahap & ID */}
+                groupedColumns[colKey].map((grup) => (
+                  <div
+                    key={grup.key}
+                    className="bg-white border border-slate-200 hover:border-indigo-300 rounded-lg shadow-xs hover:shadow-sm transition-all overflow-hidden"
+                  >
+                    {/* Group Header — identitas order/transaksi asal, cuma
+                        tampil kalau order ini punya lebih dari 1 item supaya
+                        pekerjaan tunggal tidak kelihatan berbeda dari sebelumnya. */}
+                    {grup.jobs.length > 1 && (
+                      <div className="px-2.5 py-1.5 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 uppercase tracking-wider shrink-0">
-                            {job.tahap_nama}
+                          <span
+                            className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 ${
+                              grup.sumber === 'pos' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'
+                            }`}
+                          >
+                            {grup.sumber === 'pos' ? 'POS' : 'Order'}
                           </span>
-                          <span className="text-[10px] font-bold text-slate-400 shrink-0">#{job.id}</span>
+                          <span className="text-[10.5px] font-extrabold text-slate-800 truncate">{grup.nomorSumber}</span>
                         </div>
-                        
-                        {/* Kanan: Qty & Biaya Desain */}
-                        <div className="flex items-center gap-1.5 shrink-0 text-[10px] text-slate-500 font-bold">
-                          <span>
-                            Qty: <strong className="text-slate-700">{item.qty || 1}</strong>
-                          </span>
-                          {job.biaya_desain > 0 && (
-                            <>
-                              <span className="text-slate-350 text-slate-300">·</span>
-                              <span className="text-emerald-600 font-extrabold">
-                                Rp{job.biaya_desain.toLocaleString()}
+                        <span className="flex items-center gap-1 text-[9px] font-bold text-slate-400 shrink-0">
+                          <Layers size={10} /> {grup.jobs.length} item
+                        </span>
+                      </div>
+                    )}
+
+                    <div className={grup.jobs.length > 1 ? 'divide-y divide-slate-100' : ''}>
+                      {grup.jobs.map((job) => {
+                        const item = job.order_item_detail || {};
+                        return (
+                          <div
+                            key={job.id}
+                            onClick={() => onSelectJob(job)}
+                            className="p-2.5 cursor-pointer group"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              {/* Kiri: Tahap & ID */}
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 uppercase tracking-wider shrink-0">
+                                  {job.tahap_nama}
+                                </span>
+                                <span className="text-[10px] font-bold text-slate-400 shrink-0">#{job.id}</span>
+                              </div>
+
+                              {/* Kanan: Qty & Biaya Desain */}
+                              <div className="flex items-center gap-1.5 shrink-0 text-[10px] text-slate-500 font-bold">
+                                <span>
+                                  Qty: <strong className="text-slate-700">{item.qty || 1}</strong>
+                                </span>
+                                {job.biaya_desain > 0 && (
+                                  <>
+                                    <span className="text-slate-350 text-slate-300">·</span>
+                                    <span className="text-emerald-600 font-extrabold">
+                                      Rp{job.biaya_desain.toLocaleString()}
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                            <div className="mt-1.5"><DeadlineBadge deadline={job.deadline} /></div>
+
+                            {/* Baris Tengah: Nama Pelanggan & Nama Produk */}
+                            <div className="mt-1.5 flex items-baseline gap-1.5 min-w-0">
+                              <span className="text-[11px] font-black text-slate-800 truncate" title={job.pelanggan_nama || 'Umum'}>
+                                {job.pelanggan_nama || 'Umum'}
                               </span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      <div className="mt-1.5"><DeadlineBadge deadline={job.deadline} /></div>
+                              <span className="text-[10px] text-slate-300 shrink-0">—</span>
+                              <span className="text-[10px] font-semibold text-slate-500 truncate group-hover:text-indigo-600 transition-colors" title={item.jenis_produk || 'Produk'}>
+                                {item.jenis_produk || 'Produk'}
+                              </span>
+                            </div>
 
-                      {/* Baris Tengah: Nama Pelanggan & Nama Produk */}
-                      <div className="mt-1.5 flex items-baseline gap-1.5 min-w-0">
-                        <span className="text-[11px] font-black text-slate-800 truncate" title={job.pelanggan_nama || 'Umum'}>
-                          {job.pelanggan_nama || 'Umum'}
-                        </span>
-                        <span className="text-[10px] text-slate-300 shrink-0">—</span>
-                        <span className="text-[10px] font-semibold text-slate-500 truncate group-hover:text-indigo-600 transition-colors" title={item.jenis_produk || 'Produk'}>
-                          {item.jenis_produk || 'Produk'}
-                        </span>
-                      </div>
+                            {/* Quick Action Shortcuts inside Kanban Card */}
+                            <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onSelectJob(job);
+                                }}
+                                className="flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-500"
+                              >
+                                <FileText size={12} />
+                                Buka Workspace
+                              </button>
 
-                      {/* Quick Action Shortcuts inside Kanban Card */}
-                      <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onSelectJob(job);
-                          }}
-                          className="flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-500"
-                        >
-                          <FileText size={12} />
-                          Buka Workspace
-                        </button>
+                              {colKey === 'todo' && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onStart(job.id);
+                                  }}
+                                  className="flex items-center gap-0.5 px-2.5 py-1 rounded bg-amber-500 hover:bg-amber-400 text-white text-[9px] font-extrabold shadow-sm"
+                                >
+                                  <Play size={10} fill="white" />
+                                  Mulai
+                                </button>
+                              )}
 
-                        {colKey === 'todo' && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onStart(job.id);
-                            }}
-                            className="flex items-center gap-0.5 px-2.5 py-1 rounded bg-amber-500 hover:bg-amber-400 text-white text-[9px] font-extrabold shadow-sm"
-                          >
-                            <Play size={10} fill="white" />
-                            Mulai
-                          </button>
-                        )}
+                              {colKey === 'progress' && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onComplete(job); // Pass whole job to open Forward modal directly
+                                  }}
+                                  className="flex items-center gap-0.5 px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[9px] font-extrabold shadow-sm"
+                                >
+                                  <CheckCircle2 size={10} />
+                                  Selesai
+                                </button>
+                              )}
 
-                        {colKey === 'progress' && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onComplete(job); // Pass whole job to open Forward modal directly
-                            }}
-                            className="flex items-center gap-0.5 px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[9px] font-extrabold shadow-sm"
-                          >
-                            <CheckCircle2 size={10} />
-                            Selesai
-                          </button>
-                        )}
-
-                        {colKey === 'failed' && (
-                          <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded shadow-2xs ${
-                            job.status_pekerjaan === 'gagal' ? 'bg-rose-100 text-rose-700' :
-                            job.status_pekerjaan === 'batal' ? 'bg-slate-100 text-slate-700' :
-                            'bg-amber-100 text-amber-700'
-                          }`}>
-                            {job.status_pekerjaan === 'gagal' ? 'Gagal' : job.status_pekerjaan === 'batal' ? 'Batal' : 'Kendala'}
-                          </span>
-                        )}
-                      </div>
+                              {colKey === 'failed' && (
+                                <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded shadow-2xs ${
+                                  job.status_pekerjaan === 'gagal' ? 'bg-rose-100 text-rose-700' :
+                                  job.status_pekerjaan === 'batal' ? 'bg-slate-100 text-slate-700' :
+                                  'bg-amber-100 text-amber-700'
+                                }`}>
+                                  {job.status_pekerjaan === 'gagal' ? 'Gagal' : job.status_pekerjaan === 'batal' ? 'Batal' : 'Kendala'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })
+                  </div>
+                ))
               )}
             </div>
           </div>

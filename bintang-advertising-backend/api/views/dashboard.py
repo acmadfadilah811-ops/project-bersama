@@ -9,6 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from ..permissions import IsOwnerOrManager
 
 from ..models import Order, OrderItem, JobBoard, CustomUser, InventoryItem
+from ..pos_models import POSSale
 
 class DashboardView(APIView):
     permission_classes = [IsOwnerOrManager]
@@ -37,11 +38,27 @@ class DashboardView(APIView):
         total_order_hari_ini = Order.objects.filter(waktu__gte=today_start, waktu__lt=today_end).count()
         total_order_bulan_ini = Order.objects.filter(waktu__gte=month_start, waktu__lte=month_end).count()
 
-        # --- Omset Bulan Ini ---
-        omset_bulan_ini = OrderItem.objects.filter(
-            order__waktu__gte=month_start,
-            order__waktu__lte=month_end
-        ).aggregate(total=Sum('harga_jual'))['total'] or 0
+        # --- Omset ---
+        # Omset = penjualan dari SEMUA kanal kasir, bukan cuma pesanan (Order):
+        # - OrderItem: pesanan WA/DP, TAPI order yang dibatalkan bukan penjualan
+        #   nyata jadi dikeluarkan dari total.
+        # - POSSale: transaksi kasir langsung (walk-in) yang tidak pernah
+        #   tertaut ke Order sama sekali — sebelumnya tidak pernah ikut
+        #   terhitung di sini sehingga omset dashboard selalu lebih kecil dari
+        #   omset nyata begitu ada transaksi POS.
+        def _omset_periode(start, end):
+            order_total = OrderItem.objects.filter(
+                order__waktu__gte=start,
+                order__waktu__lte=end,
+            ).exclude(order__status_global='batal').aggregate(total=Sum('harga_jual'))['total'] or 0
+            pos_total = POSSale.objects.filter(
+                status='paid',
+                created_at__gte=start,
+                created_at__lte=end,
+            ).aggregate(total=Sum('total'))['total'] or 0
+            return order_total + pos_total
+
+        omset_bulan_ini = _omset_periode(month_start, month_end)
 
         # --- Omset 6 Bulan Terakhir (Untuk Grafik) ---
         omset_6_bulan = []
@@ -51,22 +68,17 @@ class DashboardView(APIView):
             if target_month <= 0:
                 target_month += 12
                 target_year -= 1
-                
+
             # Tentukan rentang waktu untuk bulan target
             m_start = now.replace(year=target_year, month=target_month, day=1, hour=0, minute=0, second=0, microsecond=0)
             _, m_last_day = calendar.monthrange(target_year, target_month)
             m_end = now.replace(year=target_year, month=target_month, day=m_last_day, hour=23, minute=59, second=59, microsecond=999999)
 
             nama_bulan = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agt", "Sep", "Okt", "Nov", "Des"][target_month - 1]
-            
-            total = OrderItem.objects.filter(
-                order__waktu__gte=m_start,
-                order__waktu__lte=m_end
-            ).aggregate(t=Sum('harga_jual'))['t'] or 0
-            
+
             omset_6_bulan.append({
                 'bulan': f"{nama_bulan}",
-                'total': total
+                'total': _omset_periode(m_start, m_end)
             })
 
         # --- Distribusi Status Order ---

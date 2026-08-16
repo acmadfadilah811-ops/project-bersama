@@ -42,7 +42,11 @@ export default function RingkasanPesananCard({ order, items, canEdit, onOrderCha
   const [showDiskon, setShowDiskon] = useState(false);
   const [showBayar, setShowBayar] = useState(false);
 
-  const subtotal = items.reduce((sum, it) => sum + (it.qty ?? 1) * (it.harga_jual ?? 0), 0);
+  // `harga_jual` sudah total per baris (backend: harga_jual = harga_satuan *
+  // qty) — jangan dikali qty lagi atau Subtotal/Diskon di ringkasan ini
+  // meleset (bug nyata: order qty 10 pernah tampil Rp25.100.000, padahal
+  // seharusnya Rp2.510.000).
+  const subtotal = items.reduce((sum, it) => sum + (it.harga_jual ?? 0), 0);
   const totalHarga = order.total_harga ?? subtotal;
   const dpDibayar = order.dp_dibayar ?? 0;
   const sisaTagihan = order.sisa_tagihan ?? Math.max(0, totalHarga - dpDibayar);

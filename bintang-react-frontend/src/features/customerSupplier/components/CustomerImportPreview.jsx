@@ -19,6 +19,10 @@ const PREVIEW_COLUMNS = [
   { key: 'notes', label: 'Catatan' },
   { key: 'is_frozen', label: 'Bekukan' },
   { key: 'accept_newsletter', label: 'Buletin' },
+  // Opsional — tidak ada di template Olsera standar, tapi ikut ditampilkan
+  // kalau ada di file (mis. import data lama dengan histori tanggal).
+  { key: 'join_date', label: 'Tgl Gabung' },
+  { key: 'last_transaction_date', label: 'Transaksi Terakhir' },
 ];
 
 /** Tabel pratinjau isi CSV pelanggan + daftar masalahnya. Murni tampilan. */

@@ -84,11 +84,20 @@ def resolve(product, kode, qty, harga_satuan=None, variant=None):
       uom_konverter : faktor konversi
       uom_qty       : qty asli sesuai satuan yang dipilih
 
-    Bila UOM nonaktif / kode kosong / satuan tak dikenal, nilai dikembalikan
-    apa adanya dengan konverter 1 — jadi pemanggil tidak perlu bercabang.
+    Bila UOM nonaktif (global ATAU per-produk) / kode kosong / satuan tak
+    dikenal, nilai dikembalikan apa adanya dengan konverter 1 — jadi
+    pemanggil tidak perlu bercabang.
+
+    Gate per-produk (`product.uom_enabled`) sebelumnya diabaikan di sini —
+    toggle "Aktifkan Satuan/UOM" per produk (tab Satuan) tersimpan tapi
+    hanya gerbang global (`is_uom_enabled()`) yang benar-benar dicek, jadi
+    kalau global aktif, produk dengan toggle-nya sendiri mati (default)
+    tetap bisa dikonversi lewat caller yang mengirim `kode` langsung tanpa
+    lewat UI POS (mis. import CSV stock-in/out/opname). Sekarang keduanya
+    wajib aktif (bug ditemukan & diperbaiki 2026-08-13).
     """
     qty = _dec(qty, Decimal('0'))
-    unit = find_unit(product, kode, variant) if (kode and is_uom_enabled()) else None
+    unit = find_unit(product, kode, variant) if (kode and is_uom_enabled() and product.uom_enabled) else None
 
     if unit is None:
         return {

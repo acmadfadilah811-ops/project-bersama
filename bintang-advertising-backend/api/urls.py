@@ -22,6 +22,7 @@ router.register(r'users', views.CustomUserViewSet)
 router.register(r'contacts', views.ContactViewSet)
 router.register(r'orders',      views.OrderViewSet,    basename='order')
 router.register(r'order-items', views.OrderItemViewSet)
+router.register(r'order-void-requests', views.OrderVoidRequestViewSet, basename='order-void-request')
 router.register(r'pengembalian', views.PengembalianOrderViewSet, basename='pengembalian')
 router.register(r'jobs',        views.JobBoardViewSet, basename='job')
 
@@ -84,6 +85,7 @@ router.register(r'suppliers', customer_views.SupplierViewSet, basename='supplier
 from . import executive_dashboard_views
 from . import pos_views
 router.register(r'pos/sales', pos_views.POSSaleViewSet, basename='pos-sale')
+router.register(r'pos-void-requests', views.POSVoidRequestViewSet, basename='pos-void-request')
 
 
 urlpatterns = [
@@ -97,6 +99,7 @@ urlpatterns = [
     path('executive-dashboard/', executive_dashboard_views.ExecutiveDashboardView.as_view(), name='executive-dashboard'),
     path('executive-dashboard/export/', executive_dashboard_views.ExecutiveDashboardExportView.as_view(), name='executive-dashboard-export'),
     path('auth/create-user/', CreateUserView.as_view(), name='create_user'),
+    path('orders/<str:order_id>/invoice-whatsapp/', views.OrderInvoiceWhatsAppView.as_view(), name='order-invoice-whatsapp'),
     path('orders/<str:order_id>/assign/', AssignOrderView.as_view(), name='assign_order'),
     path('jobs/<int:job_id>/forward/', ForwardJobView.as_view(), name='forward_job'),
     path('jobs/<int:job_id>/use-materials/', JobMaterialDeductView.as_view(), name='job-use-materials'),
@@ -126,6 +129,11 @@ urlpatterns = [
     path('reports/<str:report_id>/export/', ReportExportView.as_view(), name='report-export'),
     path('reports/<str:report_id>/', ReportDataView.as_view(), name='report-data'),
 
+    # Laporan generik — HARUS setelah route reports/ yang spesifik di atas,
+    # karena <str:report_id> akan menangkap segmen apa pun.
+    path('reports/<str:report_id>/export/', ReportExportView.as_view(), name='report-export'),
+    path('reports/<str:report_id>/', ReportDataView.as_view(), name='report-data'),
+
     # Explicit restock URL — standalone APIView, tidak pakai @action ViewSet
     path('inventory/<str:pk>/restock/', InventoryRestockView.as_view(), name='inventory-restock'),
     
@@ -135,11 +143,13 @@ urlpatterns = [
     # Webhook Bot WA (Evolution API)
     path('webhook/evolution/', EvolutionWebhookView.as_view(), name='webhook-evolution'),
 
+    # Webhook Bot WA (Local Baileys Gateway)
+    path('wa/webhook/', views.WAWebhookView.as_view(), name='webhook-wa'),
+
     # Business Settings (mirip OrgSettings di Django CRM)
     path('business-settings/', BusinessSettingsView.as_view(), name='business-settings'),
     path('integrations/qz/certificate/', QZCertificateView.as_view(), name='qz-certificate'),
     path('integrations/qz/sign/', QZSignView.as_view(), name='qz-sign'),
-    
     # WhatsApp Chat Integration
     path('whatsapp/status/', views.WhatsAppStatusView.as_view(), name='whatsapp-status'),
     path('whatsapp/chats/', views.WhatsAppChatsView.as_view(), name='whatsapp-chats'),

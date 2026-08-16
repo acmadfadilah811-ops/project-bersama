@@ -38,8 +38,13 @@ class OrderReversalTestCase(TestCase):
             is_cash=True,
         )
 
+        # role='owner' (bukan 'kasir') — sejak fitur OTP void kasir
+        # (api/services/order_void_otp.py, 2026-08-14), kasir tidak bisa lagi
+        # /batalkan/ langsung tanpa persetujuan OTP owner. Test ini menguji
+        # jurnal pembalik, bukan gate permission, jadi otentikasi sebagai
+        # role yang tetap bisa langsung /batalkan/ (ROLE_BYPASS_OTP).
         self.user = CustomUser.objects.create_user(
-            username="kasir_reversal", password="password123", role="kasir", nip="NIP-REV-001"
+            username="owner_reversal", password="password123", role="owner", nip="NIP-REV-001"
         )
         self.settings_row = AccountingSettings.objects.create(
             accounting_start_date=timezone.localdate(),

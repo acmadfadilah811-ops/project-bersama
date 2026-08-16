@@ -25,6 +25,11 @@ import {
   Settings,
   ClipboardList,
   ChevronDown,
+  CheckCircle2,
+  XCircle,
+  ShieldAlert,
+  KeyRound,
+  History,
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -43,6 +48,13 @@ export default function Dashboard() {
   const [unlockRequests, setUnlockRequests] = useState([]);
   const [activeTab, setActiveTab] = useState('finansial');
   const [complaints, setComplaints] = useState([]);
+
+  // Permintaan void Order dari kasir — butuh persetujuan OTP owner sebelum
+  // kasir bisa membatalkan pesanan (instruksi user 2026-08-14, keamanan
+  // supaya kasir tidak bisa membatalkan order seenaknya).
+  const [voidRequests, setVoidRequests] = useState([]);
+  const [voidActionLoading, setVoidActionLoading] = useState(false);
+  const [voidHistory, setVoidHistory] = useState([]);
 
   // Staff States (untuk staff biasa)
   const [personalAttendance, setPersonalAttendance] = useState(null);
@@ -85,6 +97,12 @@ export default function Dashboard() {
       await fetchPersonalAttendance();
     } catch (err) {
       alert(err.response?.data?.detail || 'Gagal melakukan Clock-In');
+      // Status terkunci di Layout.jsx cuma dicek sekali saat halaman dimuat.
+      // Kalau batas waktu baru lewat setelah halaman ini terbuka, reload
+      // supaya Layout.jsx cek ulang dan tampilkan layar "Ajukan Izin".
+      if (err.response?.status === 403) {
+        window.location.reload();
+      }
     } finally {
       setActionLoading(false);
     }
@@ -148,6 +166,106 @@ export default function Dashboard() {
     }
   };
 
+  const handleUnlockAction = async (id, action) => {
+    try {
+      setActionLoading(true);
+      await apiClient.post(`/hr/unlock-requests/${id}/${action}/`);
+      await fetchSessionData();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Gagal memproses permohonan');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const fetchVoidRequests = useCallback(async () => {
+    if (!isPrivileged) return;
+    try {
+      const [resOrder, resPos] = await Promise.all([
+        apiClient.get('/order-void-requests/', { params: { status: 'pending' } }),
+        apiClient.get('/pos-void-requests/', { params: { status: 'pending' } }),
+      ]);
+      const orderList = (Array.isArray(resOrder.data) ? resOrder.data : resOrder.data?.results || [])
+        .map((r) => ({ ...r, _tipe: 'order' }));
+      const posList = (Array.isArray(resPos.data) ? resPos.data : resPos.data?.results || [])
+        .map((r) => ({ ...r, _tipe: 'pos' }));
+      setVoidRequests(
+        [...orderList, ...posList].sort((a, b) => new Date(b.dibuat_pada) - new Date(a.dibuat_pada))
+      );
+    } catch (err) {
+      console.error('Gagal mengambil permintaan void:', err);
+    }
+  }, [isPrivileged]);
+
+  const voidEndpoint = (req) => (req._tipe === 'pos' ? '/pos-void-requests/' : '/order-void-requests/');
+
+  // Histori permintaan void/pembatalan yang sudah diproses (disetujui,
+  // digunakan, ditolak, atau disetujui tapi kadaluarsa) — supaya owner bisa
+  // audit siapa mengajukan, siapa memutuskan, dan alasannya, tidak cuma
+  // lihat yang masih pending seperti fetchVoidRequests di atas.
+  const fetchVoidHistory = useCallback(async () => {
+    if (!isPrivileged) return;
+    try {
+      const [resOrder, resPos] = await Promise.all([
+        apiClient.get('/order-void-requests/'),
+        apiClient.get('/pos-void-requests/'),
+      ]);
+      const orderList = (Array.isArray(resOrder.data) ? resOrder.data : resOrder.data?.results || [])
+        .map((r) => ({ ...r, _tipe: 'order' }));
+      const posList = (Array.isArray(resPos.data) ? resPos.data : resPos.data?.results || [])
+        .map((r) => ({ ...r, _tipe: 'pos' }));
+      setVoidHistory(
+        [...orderList, ...posList]
+          .filter((r) => r.status !== 'pending')
+          .sort((a, b) => new Date(b.dibuat_pada) - new Date(a.dibuat_pada))
+          .slice(0, 100)
+      );
+    } catch (err) {
+      console.error('Gagal mengambil histori void:', err);
+    }
+  }, [isPrivileged]);
+
+  const formatWaktuVoid = (iso) => {
+    if (!iso) return null;
+    return new Date(iso).toLocaleString('id-ID', {
+      day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+  };
+
+  const voidHistoryStatusInfo = (req) => {
+    if (req.status === 'ditolak') return { label: 'Ditolak', cls: 'bg-rose-100 text-rose-700' };
+    if (req.status === 'digunakan') return { label: 'Selesai (dipakai)', cls: 'bg-emerald-100 text-emerald-700' };
+    if (req.status === 'disetujui' && req.kadaluarsa) return { label: 'Disetujui (kadaluarsa)', cls: 'bg-slate-200 text-slate-600' };
+    if (req.status === 'disetujui') return { label: 'Disetujui (menunggu kasir)', cls: 'bg-amber-100 text-amber-700' };
+    return { label: req.status, cls: 'bg-slate-200 text-slate-600' };
+  };
+
+  const handleVoidSetujui = async (req) => {
+    setVoidActionLoading(true);
+    try {
+      const res = await apiClient.post(`${voidEndpoint(req)}${req.id}/setujui/`);
+      alert(`Disetujui. Kode OTP: ${res.data.otp_code} (berlaku 15 menit, otomatis terisi di layar kasir).`);
+      await Promise.all([fetchVoidRequests(), fetchVoidHistory()]);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Gagal menyetujui permintaan void.');
+    } finally {
+      setVoidActionLoading(false);
+    }
+  };
+
+  const handleVoidTolak = async (req) => {
+    const alasanTolak = window.prompt('Alasan menolak permintaan void ini (opsional):', '') || '';
+    setVoidActionLoading(true);
+    try {
+      await apiClient.post(`${voidEndpoint(req)}${req.id}/tolak/`, { alasan_tolak: alasanTolak });
+      await Promise.all([fetchVoidRequests(), fetchVoidHistory()]);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Gagal menolak permintaan void.');
+    } finally {
+      setVoidActionLoading(false);
+    }
+  };
+
   useEffect(() => {
     Promise.all([apiClient.get('/dashboard/'), apiClient.get('/users/online/')])
       .then(([dashRes, staffRes]) => {
@@ -161,12 +279,28 @@ export default function Dashboard() {
       fetchPersonalAttendance();
     } else {
       fetchSessionData();
+      fetchVoidRequests();
+      fetchVoidHistory();
       apiClient.get('/komplain/')
         .then((res) => setComplaints(res.data))
         .catch((err) => console.error('Gagal mengambil komplain:', err));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPrivileged, fetchSessionData]);
+  }, [isPrivileged, fetchSessionData, fetchVoidRequests, fetchVoidHistory]);
+
+  // Polling permohonan izin & void order — tanpa ini, permohonan baru dari
+  // staff/kasir tidak pernah muncul sampai owner reload manual.
+  useEffect(() => {
+    if (!isPrivileged) return;
+    const interval = setInterval(() => {
+      apiClient
+        .get('/hr/unlock-requests/')
+        .then((res) => setUnlockRequests(res.data))
+        .catch(() => {});
+      fetchVoidRequests();
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [isPrivileged, fetchVoidRequests]);
 
   const formatRupiah = (angka) =>
     new Intl.NumberFormat('id-ID', {
@@ -190,7 +324,10 @@ export default function Dashboard() {
   // ── DRAFT STAFF VIEW ───────────────────────────────────────────
   if (!isPrivileged) {
     const absensi = personalAttendance?.absensi_hari_ini;
-    const sudahAbsen = absensi && absensi.status !== 'belum_absen';
+    // Cek jam_masuk, bukan status — izin keterlambatan yang disetujui mengubah
+    // status jadi 'terlambat' tapi jam_masuk tetap kosong sampai staff benar-benar
+    // klik Clock In (lihat StaffDashboard.jsx untuk detail).
+    const sudahAbsen = Boolean(absensi?.jam_masuk);
     return (
       <div className="space-y-6 w-full max-w-7xl mx-auto px-4">
         {/* Banner */}
@@ -227,14 +364,14 @@ export default function Dashboard() {
                   </p>
                   <h3
                     className={`text-lg font-black mt-1 uppercase ${
-                      !absensi || absensi.status === 'belum_absen'
+                      !sudahAbsen
                         ? 'text-amber-600'
                         : absensi.jam_keluar
                           ? 'text-slate-500'
                           : 'text-emerald-600'
                     }`}
                   >
-                    {!absensi || absensi.status === 'belum_absen' ? 'Belum Masuk' : absensi.status}
+                    {!sudahAbsen ? 'Belum Masuk' : absensi.status}
                   </h3>
                 </div>
                 {absensi?.jam_masuk && (
@@ -264,14 +401,9 @@ export default function Dashboard() {
               </button>
               <button
                 onClick={handleClockOut}
-                disabled={
-                  !absensi ||
-                  absensi.status === 'belum_absen' ||
-                  absensi.jam_keluar ||
-                  actionLoading
-                }
+                disabled={!sudahAbsen || absensi?.jam_keluar || actionLoading}
                 className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer
-                  ${!absensi || absensi.status === 'belum_absen' || absensi.jam_keluar ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-rose-500 hover:bg-rose-600 text-white'}`}
+                  ${!sudahAbsen || absensi?.jam_keluar ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-rose-500 hover:bg-rose-600 text-white'}`}
               >
                 Clock Out
               </button>
@@ -521,6 +653,7 @@ export default function Dashboard() {
           { id: 'spk', label: 'Papan Kerja (SPK)', icon: ClipboardList },
           { id: 'presensi', label: 'Presensi Karyawan', icon: CalendarClock },
           { id: 'komplain', label: 'Komplain & Garansi', icon: AlertCircle },
+          { id: 'void', label: 'Permintaan Void', icon: ShieldAlert, badge: voidRequests.length },
         ].map((tab) => {
           const TabIcon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -537,6 +670,11 @@ export default function Dashboard() {
             >
               <TabIcon size={14} />
               {tab.label}
+              {!!tab.badge && (
+                <span className="bg-rose-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full">
+                  {tab.badge}
+                </span>
+              )}
             </button>
           );
         })}
@@ -1067,15 +1205,33 @@ export default function Dashboard() {
                   />
                 </button>
                 {expandedSection === 'unlock' && (
-                  <div className="px-4 py-3 space-y-2 bg-white border-t border-slate-100 max-h-[220px] overflow-y-auto custom-scrollbar">
+                  <div className="px-4 py-3 space-y-2 bg-white border-t border-slate-100 max-h-[260px] overflow-y-auto custom-scrollbar">
                     {unlockRequests.length > 0 ? (
-                      unlockRequests.map((req, idx) => (
-                        <div key={idx} className="flex items-start justify-between gap-2 bg-slate-50 border border-slate-100 rounded-lg p-2">
-                          <div className="min-w-0">
-                            <p className="text-[10px] font-bold text-slate-800 truncate">{req.staff_nama || 'Staff'}</p>
-                            <p className="text-[9px] text-slate-550 italic truncate">"{req.alasan}"</p>
+                      unlockRequests.map((req) => (
+                        <div key={req.id} className="flex flex-col gap-2 bg-slate-50 border border-slate-100 rounded-lg p-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-[10px] font-bold text-slate-800 truncate">{req.staff_nama || 'Staff'}</p>
+                              <p className="text-[9px] text-slate-550 italic truncate">"{req.alasan}"</p>
+                            </div>
+                            <span className="text-[8px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded font-black uppercase shrink-0">{req.status}</span>
                           </div>
-                          <span className="text-[8px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded font-black uppercase shrink-0">{req.status}</span>
+                          <div className="flex gap-1.5 pt-1.5 border-t border-slate-200/70">
+                            <button
+                              onClick={() => handleUnlockAction(req.id, 'approve')}
+                              disabled={actionLoading}
+                              className="flex-1 flex items-center justify-center gap-1 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded border border-emerald-200 text-[9px] font-bold transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                              <CheckCircle2 size={12} /> Setuju
+                            </button>
+                            <button
+                              onClick={() => handleUnlockAction(req.id, 'reject')}
+                              disabled={actionLoading}
+                              className="flex-1 flex items-center justify-center gap-1 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded border border-red-200 text-[9px] font-bold transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                              <XCircle size={12} /> Tolak
+                            </button>
+                          </div>
                         </div>
                       ))
                     ) : (
@@ -1151,6 +1307,138 @@ export default function Dashboard() {
                   })()}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 5: PERMINTAAN VOID ORDER (persetujuan OTP kasir) */}
+        {activeTab === 'void' && (
+          <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm">
+            <div className="border-b border-slate-50 pb-3 mb-4">
+              <h2 className="text-xs font-black uppercase tracking-wider text-slate-750 flex items-center gap-1.5">
+                <ShieldAlert size={14} className="text-rose-500" /> Permintaan Pembatalan/Void dari Kasir
+              </h2>
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                Kasir tidak bisa membatalkan pesanan atau void transaksi POS tanpa persetujuan Anda. Setujui
+                untuk membuat kode OTP yang otomatis muncul di layar kasir, atau tolak dengan alasan.
+              </p>
+            </div>
+
+            {voidRequests.length === 0 ? (
+              <p className="text-[11px] font-semibold text-slate-400 py-6 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                Tidak ada permintaan pembatalan yang menunggu persetujuan.
+              </p>
+            ) : (
+              <div className="space-y-2.5">
+                {voidRequests.map((req) => (
+                  <div
+                    key={`${req._tipe}-${req.id}`}
+                    className="flex flex-col gap-2.5 bg-rose-50/40 border border-rose-100 rounded-xl p-3.5 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[9px] font-black text-white bg-slate-700 px-1.5 py-0.5 rounded uppercase">
+                          {req._tipe === 'pos' ? 'POS' : 'Pesanan'}
+                        </span>
+                        <span className="text-xs font-black text-slate-800">
+                          {req._tipe === 'pos' ? req.sale_nomor || req.sale : req.order}
+                        </span>
+                        {(req.order_nama) && (
+                          <span className="text-[11px] font-semibold text-slate-500">&middot; {req.order_nama}</span>
+                        )}
+                        <span className="text-[9px] font-black text-rose-600 bg-rose-100 px-1.5 py-0.5 rounded uppercase">
+                          Kasir: {req.diminta_oleh_nama || '-'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 italic mt-1 truncate">"{req.alasan}"</p>
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      <button
+                        type="button"
+                        disabled={voidActionLoading}
+                        onClick={() => handleVoidSetujui(req)}
+                        className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[11px] font-black rounded-lg transition-colors cursor-pointer"
+                      >
+                        <KeyRound size={12} /> Setujui &amp; Buat OTP
+                      </button>
+                      <button
+                        type="button"
+                        disabled={voidActionLoading}
+                        onClick={() => handleVoidTolak(req)}
+                        className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white border border-rose-200 hover:bg-rose-50 disabled:opacity-50 text-rose-600 text-[11px] font-black rounded-lg transition-colors cursor-pointer"
+                      >
+                        <XCircle size={12} /> Tolak
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Histori permintaan yang sudah diproses — audit trail siapa
+                mengajukan, siapa memutuskan, dan alasannya. */}
+            <div className="border-t border-slate-100 mt-6 pt-4">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-750 flex items-center gap-1.5 mb-3">
+                <History size={14} className="text-slate-400" /> Histori Permintaan Void/Pembatalan
+              </h3>
+
+              {voidHistory.length === 0 ? (
+                <p className="text-[11px] font-semibold text-slate-400 py-6 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                  Belum ada histori permintaan yang diproses.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {voidHistory.map((req) => {
+                    const info = voidHistoryStatusInfo(req);
+                    return (
+                      <div
+                        key={`hist-${req._tipe}-${req.id}`}
+                        className="bg-slate-50/60 border border-slate-100 rounded-xl p-3"
+                      >
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[9px] font-black text-white bg-slate-500 px-1.5 py-0.5 rounded uppercase">
+                            {req._tipe === 'pos' ? 'POS' : 'Pesanan'}
+                          </span>
+                          <span className="text-xs font-black text-slate-800">
+                            {req._tipe === 'pos' ? req.sale_nomor || req.sale : req.order}
+                          </span>
+                          {req.order_nama && (
+                            <span className="text-[11px] font-semibold text-slate-500">&middot; {req.order_nama}</span>
+                          )}
+                          <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase ${info.cls}`}>
+                            {info.label}
+                          </span>
+                        </div>
+
+                        <p className="text-[11px] text-slate-600 mt-1.5">
+                          Diajukan oleh <span className="font-bold">{req.diminta_oleh_nama || '-'}</span>
+                          {' '}pada {formatWaktuVoid(req.dibuat_pada) || '-'} &mdash; alasan: <span className="italic">"{req.alasan}"</span>
+                        </p>
+
+                        {req.status === 'ditolak' && (
+                          <p className="text-[11px] text-rose-600 mt-1">
+                            Ditolak oleh <span className="font-bold">{req.disetujui_oleh_nama || '-'}</span>
+                            {req.alasan_tolak ? <>: <span className="italic">"{req.alasan_tolak}"</span></> : '.'}
+                          </p>
+                        )}
+
+                        {(req.status === 'disetujui' || req.status === 'digunakan') && (
+                          <p className="text-[11px] text-emerald-700 mt-1">
+                            Disetujui oleh <span className="font-bold">{req.disetujui_oleh_nama || '-'}</span>
+                            {' '}pada {formatWaktuVoid(req.disetujui_pada) || '-'}
+                          </p>
+                        )}
+
+                        {req.status === 'digunakan' && (
+                          <p className="text-[11px] text-slate-500 mt-1">
+                            {req._tipe === 'pos' ? 'Transaksi di-void' : 'Pesanan dibatalkan'} pada {formatWaktuVoid(req.digunakan_pada) || '-'}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}

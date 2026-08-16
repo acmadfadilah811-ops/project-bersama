@@ -37,6 +37,7 @@ class RingkasanShiftSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'tanggal', 'kasir', 'mulai', 'berakhir', 'expected', 'aktual', 'selisih',
             'rincian_tersedia', 'kas_awal', 'penjualan_tunai', 'kas_masuk', 'kas_keluar',
+            'rincian_metode', 'keterangan',
         ]
 
     def get_kasir_nama(self, obj):

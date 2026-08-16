@@ -68,6 +68,20 @@ class CustomerImportWilayahTest(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertEqual(Customer.objects.get(nama='Bella').provinsi, '')
 
+    def test_tanggal_gabung_dan_transaksi_terakhir_opsional(self):
+        # Kolom tambahan (tidak ada di template Olsera standar) untuk import data
+        # lama — dipakai kalau ada, dibiarkan kosong kalau tidak.
+        res = self._import(csv_file(
+            HEADER_OLSERA + ',join_date,last_transaction_date',
+            'CUS0010,,Rian,r@c.com,628111,Jl. Merpati 1,50123,M,1988-01-01,,0,'
+            'Solo,Laweyan,,0,0,,2019-07-19,2026-08-04',
+        ))
+
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        rian = Customer.objects.get(nama='Rian')
+        self.assertEqual(str(rian.tanggal_bergabung), '2019-07-19')
+        self.assertEqual(str(rian.transaksi_terakhir), '2026-08-04')
+
     def test_country_dan_province_dipakai_bila_kolomnya_ada(self):
         res = self._import(csv_file(
             HEADER_OLSERA + ',country,province',

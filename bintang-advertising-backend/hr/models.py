@@ -9,6 +9,7 @@ from django.db import models
 class Absensi(models.Model):
     STATUS_CHOICES = [
         ("hadir", "Hadir"),
+        ("terlambat", "Terlambat"),
         ("izin", "Izin"),
         ("sakit", "Sakit"),
         ("alpha", "Alpha"),
@@ -320,4 +321,3 @@ class SlipGaji(models.Model):
 
     def __str__(self):
         return f"Slip Gaji {self.staff.username} — {self.bulan}/{self.tahun} ({self.get_status_display()})"
-

@@ -190,6 +190,11 @@ export default function CustomerDetailPage({
               <DetailRow label="Batas Kredit/Hutang" value={formatCurrency(c.batas_kredit)} />
               <DetailRow label="Perusahaan" value={c.nama_perusahaan} />
               <DetailRow label="Terima Buletin Berkala" value={c.terima_buletin ? 'Ya' : 'Tidak'} />
+              {/* Beda dari "Tanggal Aktif" di tabel (= created_at, kapan record
+                  dibuat di sistem ini). Ini histori sesungguhnya — manual atau
+                  dari import data lama (mis. migrasi dari Olsera). */}
+              <DetailRow label="Tanggal Gabung" value={formatDisplayDate(c.tanggal_bergabung)} />
+              <DetailRow label="Transaksi Terakhir" value={formatDisplayDate(c.transaksi_terakhir)} />
             </div>
           </div>
 

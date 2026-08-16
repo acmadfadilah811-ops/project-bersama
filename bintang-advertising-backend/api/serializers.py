@@ -1,4 +1,5 @@
 import logging
+from decimal import Decimal, ROUND_HALF_UP
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -7,8 +8,10 @@ from .models import (
     InventoryItem, RestockHistory, ProductPrice, SystemConfig, FAQ,
     OrderActivityLog, KomplainOrder, KomplainLog, CustomerActivity,
     BillOfMaterials, BoMItem, ShiftTiming, POSAntrianDevice, SaldoKasHarian,
-    RingkasanShift, POSPaymentMethod, PengembalianOrder
+    RingkasanShift, POSPaymentMethod, PengembalianOrder, OrderPayment,
+    OrderVoidRequest
 )
+from .product_serializers import SaleItemAddonSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +25,32 @@ class PengembalianOrderSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'order', 'order_nama', 'tanggal_pengembalian', 'status',
             'catatan', 'nominal_refund', 'dibuat_oleh', 'dibuat_oleh_nama',
-            'dibuat_pada', 'diperbarui_pada'
+            'dibuat_pada', 'diperbarui_pada', 'stok_dikembalikan_pada',
+            'stok_dikembalikan_oleh',
         ]
-        read_only_fields = ['id', 'dibuat_pada', 'diperbarui_pada']
+        read_only_fields = [
+            'id', 'dibuat_pada', 'diperbarui_pada',
+            'stok_dikembalikan_pada', 'stok_dikembalikan_oleh',
+        ]
+
+    def get_dibuat_oleh_nama(self, obj):
+        if not obj.dibuat_oleh:
+            return None
+        return obj.dibuat_oleh.first_name or obj.dibuat_oleh.username
+
+
+class OrderPaymentSerializer(serializers.ModelSerializer):
+    dibuat_oleh_nama = serializers.SerializerMethodField()
+    shift_nama = serializers.ReadOnlyField(source='shift.shift')
+
+    class Meta:
+        model = OrderPayment
+        fields = [
+            'id', 'jumlah', 'metode_pembayaran', 'referensi_pembayaran',
+            'is_dp', 'shift', 'shift_nama', 'dibuat_oleh', 'dibuat_oleh_nama',
+            'dibuat_pada',
+        ]
+        read_only_fields = fields
 
     def get_dibuat_oleh_nama(self, obj):
         if not obj.dibuat_oleh:
@@ -210,9 +236,63 @@ class JobBoardSerializer(serializers.ModelSerializer):
             return f"{item.panjang} x {item.lebar} m"
         return "-"
 
+def _potong_stok_order_item(item, user):
+    """Potong stok (M8: lewat FIFO service resmi, bukan langsung qty_stok) saat
+    sebuah OrderItem BARU PERTAMA KALI tertaut ke Product langsung (bukan paket
+    — komponen paket dipotong lewat jalurnya sendiri di checkout_pos()).
+
+    Sebelum diperbaiki: order yang dibuat lewat form WA (`_simpan_order_dari_form`
+    di views/whatsapp.py) atau lewat endpoint /order-items/ generik TIDAK PERNAH
+    memotong stok sama sekali — hanya order dari checkout_pos() (alur DP kasir)
+    yang memotongnya. Fungsi ini menutup celah itu di satu tempat yang dipakai
+    bersama oleh create() dan update() serializer ini.
+
+    `stok_dikurangi` jadi penanda idempoten: begitu True, tidak pernah dipotong
+    ulang di sini lagi (mencegah dobel potong kalau item yang sama diedit lagi).
+    Perubahan qty/produk SETELAH pemotongan pertama SENGAJA tidak ikut
+    menyesuaikan stok otomatis di sini — rekonsiliasi delta yang aman perlu
+    desain terpisah; batasan ini didokumentasikan, bukan dilewatkan diam-diam.
+    """
+    if item.stok_dikurangi or not item.product_id or item.paket_id:
+        return
+    from . import pos_settings, stock_fifo
+    from .product_models import Product, ProductVariant, ProductStockMovement
+    from rest_framework.exceptions import ValidationError
+    from django.db import transaction
+    from django.utils import timezone as _tz
+
+    if not pos_settings.pos_mengurangi_stok():
+        return
+
+    with transaction.atomic():
+        product = Product.objects.select_for_update().get(pk=item.product_id)
+        if not product.lacak_inventori:
+            return
+        variant = (ProductVariant.objects.select_for_update().get(pk=item.variant_id)
+                   if item.variant_id else None)
+        owner = variant or product
+        qty = Decimal(str(item.qty or 0))
+        if qty <= 0:
+            return
+        if qty > Decimal(str(owner.qty_stok or 0)):
+            raise ValidationError({'error': f"Stok '{owner}' tidak mencukupi untuk item ini."})
+        start = owner.qty_stok
+        owner.qty_stok = start - qty
+        owner.save(update_fields=['qty_stok'])
+        movement = ProductStockMovement.objects.create(
+            product=product, variant=variant, user=user, tipe='penjualan',
+            qty=qty, stok_awal=start, stok_akhir=owner.qty_stok, order=item.order,
+            catatan=f'Order {item.order_id} — {item.jenis_produk}', tanggal=_tz.localdate(),
+        )
+        stock_fifo.consume_layers(product, variant, qty, movement=movement)
+        item.stok_dikurangi = True
+        item.save(update_fields=['stok_dikurangi'])
+
+
 # --- 4. Order Item Serializer (Detail Pecahan) ---
 class OrderItemSerializer(serializers.ModelSerializer):
     jobs = JobBoardSerializer(many=True, read_only=True) # Nested JobBoard
+    addons = SaleItemAddonSerializer(many=True, read_only=True)
     insentif = serializers.SerializerMethodField()
     biaya_desain = serializers.SerializerMethodField()
     # Turunan dari FK product (opsional) — dipakai layar pesanan & laporan penjualan.
@@ -221,11 +301,17 @@ class OrderItemSerializer(serializers.ModelSerializer):
     brand_nama = serializers.ReadOnlyField(source='product.brand.nama')
     kategori_nama = serializers.ReadOnlyField(source='product.kategori.nama')
     variant_nama = serializers.ReadOnlyField(source='variant.nama_varian')
+    paket_nama = serializers.ReadOnlyField(source='paket.nama')
+    paket_sku = serializers.ReadOnlyField(source='paket.sku')
 
     class Meta:
         model = OrderItem
         fields = '__all__'
-        read_only_fields = ['luas'] # Luas otomatis dihitung oleh backend, front-end dilarang kirim data ini
+        # Luas otomatis dihitung backend. stok_dikurangi HANYA boleh diset oleh
+        # server saat benar-benar memotong stok (lihat _potong_stok_order_item) —
+        # kalau writable, klien bisa kirim True untuk diam-diam melewati potong
+        # stok, atau False untuk memicu potong dobel.
+        read_only_fields = ['luas', 'stok_dikurangi']
 
     def get_insentif(self, obj):
         job = obj.jobs.first()
@@ -234,6 +320,29 @@ class OrderItemSerializer(serializers.ModelSerializer):
     def get_biaya_desain(self, obj):
         job = obj.jobs.first()
         return job.biaya_desain if job else 0
+
+    def validate(self, attrs):
+        """Paket WA/admin tidak boleh membawa harga yang ditentukan browser."""
+        qty = attrs.get('qty', getattr(self.instance, 'qty', 1))
+        if qty is None or qty < 1:
+            raise serializers.ValidationError({'qty': 'Qty harus minimal 1.'})
+
+        package = attrs.get('paket') or getattr(self.instance, 'paket', None)
+        if not package:
+            return attrs
+
+        order = attrs.get('order') or getattr(self.instance, 'order', None)
+        qty = attrs.get('qty', getattr(self.instance, 'qty', 1))
+        from .services.package_sales import resolve_package_for_sale
+        package, qty_decimal, unit_price = resolve_package_for_sale(
+            package.pk, qty, channel='wa' if getattr(order, 'sumber', '') == 'wa' else 'online',
+        )
+        attrs['paket'] = package
+        attrs['product'] = None
+        attrs['variant'] = None
+        attrs['jenis_produk'] = package.nama
+        attrs['harga_jual'] = int((unit_price * qty_decimal).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+        return attrs
 
     def create(self, validated_data):
         current_user = validated_data.pop('_current_user', None)
@@ -250,6 +359,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
         if current_user:
             instance._current_user = current_user
         instance.save()
+        _potong_stok_order_item(instance, current_user)
 
         # Create default job if needed
         from api.models import TahapProses, JobBoard
@@ -282,6 +392,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
         if current_user:
             instance._current_user = current_user
         instance.save()
+        _potong_stok_order_item(instance, current_user)
 
         if insentif_val is not None or biaya_desain_val is not None:
             jobs = instance.jobs.all()
@@ -328,6 +439,49 @@ class OrderActivityLogSerializer(serializers.ModelSerializer):
     def get_waktu_formatted(self, obj):
         return obj.waktu.strftime('%Y-%m-%d %H:%M:%S')
 
+
+class OrderVoidRequestSerializer(serializers.ModelSerializer):
+    diminta_oleh_nama = serializers.SerializerMethodField()
+    disetujui_oleh_nama = serializers.SerializerMethodField()
+    order_nama = serializers.ReadOnlyField(source='order.nama')
+    otp_code = serializers.SerializerMethodField()
+    kadaluarsa = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OrderVoidRequest
+        fields = [
+            'id', 'order', 'order_nama', 'diminta_oleh', 'diminta_oleh_nama',
+            'alasan', 'status', 'otp_code', 'disetujui_oleh', 'disetujui_oleh_nama',
+            'alasan_tolak', 'dibuat_pada', 'disetujui_pada', 'kadaluarsa_pada',
+            'digunakan_pada', 'kadaluarsa',
+        ]
+        read_only_fields = fields
+
+    def get_diminta_oleh_nama(self, obj):
+        return obj.diminta_oleh.username if obj.diminta_oleh else None
+
+    def get_disetujui_oleh_nama(self, obj):
+        return obj.disetujui_oleh.username if obj.disetujui_oleh else None
+
+    def get_kadaluarsa(self, obj):
+        from django.utils import timezone as _tz
+        return bool(obj.kadaluarsa_pada and _tz.now() > obj.kadaluarsa_pada)
+
+    def get_otp_code(self, obj):
+        # Kode cuma boleh terlihat owner/manager (approver) ATAU kasir yang
+        # mengajukan permintaan ini sendiri, dan hanya saat statusnya
+        # 'disetujui' & belum kadaluarsa — supaya role/kasir lain tidak bisa
+        # intip kode lewat endpoint list milik orang lain.
+        request = self.context.get('request')
+        user = getattr(request, 'user', None) if request else None
+        if not user or obj.status != 'disetujui' or self.get_kadaluarsa(obj):
+            return ''
+        if getattr(user, 'role', '') in ('owner', 'manager'):
+            return obj.otp_code
+        if obj.diminta_oleh_id == getattr(user, 'id', None):
+            return obj.otp_code
+        return ''
+
 # --- 4.5 Pengembalian Order Serializer (T-208 Revisi 2) ---
 class PengembalianOrderSerializer(serializers.ModelSerializer):
     dibuat_oleh_nama = serializers.SerializerMethodField()
@@ -351,6 +505,7 @@ class PengembalianOrderSerializer(serializers.ModelSerializer):
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
     activity_logs = OrderActivityLogSerializer(many=True, read_only=True)
+    payments = OrderPaymentSerializer(many=True, read_only=True)
     pengembalian_aktif = serializers.SerializerMethodField()
     daftar_pengembalian = PengembalianOrderSerializer(many=True, read_only=True)
     customer_total_spent = serializers.SerializerMethodField()
@@ -359,17 +514,20 @@ class OrderSerializer(serializers.ModelSerializer):
     margin_persen = serializers.SerializerMethodField()
     kupon_kode = serializers.CharField(write_only=True, required=False, allow_null=True)
     diskon_kupon = serializers.IntegerField(write_only=True, required=False, default=0)
+    diskon_total = serializers.SerializerMethodField()
     kupon_info = serializers.SerializerMethodField()
     dilayani_oleh_nama = serializers.SerializerMethodField()
+    kode_pelanggan = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
         fields = [
-            'id', 'waktu', 'nomor_wa', 'nama', 'status_global', 'catatan_pelanggan',
-            'items', 'activity_logs', 'dp_dibayar', 'diskon_persen', 'total_harga', 'sisa_tagihan', 'metode_pembayaran',
+            'id', 'waktu', 'nomor_wa', 'nama', 'kode_pelanggan', 'status_global', 'sumber', 'catatan_pelanggan',
+            'items', 'activity_logs', 'payments', 'dp_dibayar', 'diskon_persen', 'total_harga', 'sisa_tagihan', 'metode_pembayaran',
             'customer_total_spent', 'customer_total_orders',
             'hpp_bahan', 'margin_persen',
             'kupon_kode', 'diskon_kupon', 'kupon_info',
+            'diskon_total',
             'dilayani_oleh', 'dilayani_oleh_nama',
             'metode_diskon', 'diskon_otomatis',
             # Metadata & Pengiriman (T-209 Revisi 2)
@@ -380,10 +538,13 @@ class OrderSerializer(serializers.ModelSerializer):
             'pengembalian_aktif', 'daftar_pengembalian',
         ]
         extra_kwargs = {
-            'id': {'read_only': True},       
-            'waktu': {'required': False},    
+            'id': {'read_only': True},
+            'waktu': {'required': False},
             'total_harga': {'read_only': True},  # Biarkan backend yang menjumlahkan totalnya
             'sisa_tagihan': {'read_only': True}, # Backend auto kurang total dengan DP
+            # Provenans order (wa/pos/manual) hanya boleh diset server saat
+            # dibuat (form WA, checkout_pos, dst) — bukan dari payload klien.
+            'sumber': {'read_only': True},
         }
 
     def get_pengembalian_aktif(self, obj):
@@ -408,6 +569,18 @@ class OrderSerializer(serializers.ModelSerializer):
     def get_customer_total_orders(self, obj):
         contact = self._get_contact(obj.nomor_wa)
         return contact.total_order if contact else 0
+
+    def get_kode_pelanggan(self, obj):
+        """Kode member bila kontak WA ini sudah ditautkan ke pelanggan.
+
+        Nomor WhatsApp adalah data kontak, bukan kode pelanggan. Order dari WA
+        memang boleh belum tertaut ke master pelanggan, sehingga nilai kosong
+        sengaja dikirim sebagai kosong agar UI menampilkan tanda "-", bukan
+        mengisi kolom kode dengan data yang keliru.
+        """
+        contact = self._get_contact(obj.nomor_wa)
+        customer = getattr(contact, 'customer', None) if contact else None
+        return (getattr(customer, 'kode_pelanggan', '') or '').strip()
 
     def get_dilayani_oleh_nama(self, obj):
         u = obj.dilayani_oleh
@@ -506,6 +679,13 @@ class OrderSerializer(serializers.ModelSerializer):
             pass
         return None
 
+    def get_diskon_total(self, obj):
+        # Gunakan perhitungan invoice yang sama agar nilai pada respons kasir,
+        # cetak invoice, dan PDF WhatsApp tidak pernah berbeda (termasuk
+        # snapshot diskon item pada order lama).
+        from .services.order_invoice_whatsapp import hitung_ringkasan_invoice_dp
+        return hitung_ringkasan_invoice_dp(obj)['diskon_total']
+
     def create(self, validated_data):
         current_user = validated_data.pop('_current_user', None)
         validated_data.pop('kupon_kode', None)
@@ -522,14 +702,28 @@ class ContactSerializer(serializers.ModelSerializer):
     # Info akun member (Customer) yang tertaut — untuk loyalty point di POS.
     member_nama = serializers.ReadOnlyField(source='customer.nama')
     member_poin = serializers.SerializerMethodField()
+    # Tipe Pelanggan (Customer.customer_group) — sebelumnya tidak diekspos sama
+    # sekali di sini, jadi daftar pelanggan Kasir selalu tampil "Guest" walau
+    # akun member-nya sudah punya kategori (Agen/MOU/dst) di modul Pelanggan.
+    customer_group = serializers.SerializerMethodField()
+    customer_group_nama = serializers.SerializerMethodField()
 
     class Meta:
         model = Contact
         fields = ['nomor_wa', 'nama', 'total_order', 'total_spent', 'last_order', 'keterangan',
-                  'total_piutang', 'handover_to_staff', 'customer', 'member_nama', 'member_poin']
+                  'total_piutang', 'handover_to_staff', 'customer', 'member_nama', 'member_poin',
+                  'customer_group', 'customer_group_nama']
 
     def get_member_poin(self, obj):
         return obj.customer.loyalty_points if obj.customer_id else None
+
+    def get_customer_group(self, obj):
+        return obj.customer.customer_group_id if obj.customer_id else None
+
+    def get_customer_group_nama(self, obj):
+        if obj.customer_id and obj.customer.customer_group_id:
+            return obj.customer.customer_group.nama
+        return None
 
     def get_total_piutang(self, obj):
         if hasattr(obj, 'annotated_piutang'):

@@ -3,12 +3,12 @@ import io
 
 from django.contrib.auth.hashers import make_password
 from django.utils.dateparse import parse_date
-from rest_framework import viewsets
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from api.permissions import IsOwnerManagerAdminOrKasir, IsOwnerManagerAdminOrReadOnly
+from api.permissions import IsOwnerManagerAdminOrKasir
 
 from .customer_models import (
     CustomerGroup, Customer, CustomerNote, CustomerNoteEntry, CustomerNoteDocument,
@@ -237,6 +237,10 @@ class CustomerViewSet(ToggleStatusMixin, viewsets.ModelViewSet):
                     kota=(row.get('city') or '').strip(),
                     kecamatan=(row.get('subdistrict') or '').strip(),
                     nama_perusahaan=(row.get('company') or '').strip(),
+                    # Opsional — tidak ada di template Olsera, dibaca kalau kolomnya ada
+                    # (mis. import data lama yang punya histori tanggal gabung/transaksi).
+                    tanggal_bergabung=_parsed_date(row.get('join_date') or row.get('tanggal_gabung')),
+                    transaksi_terakhir=_parsed_date(row.get('last_transaction_date') or row.get('transaksi_terakhir')),
                     terima_buletin=_truthy(row.get('accept_newsletter')),
                     batas_kredit=float(row.get('credit_limit') or 0),
                     loyalty_points=int(float(row.get('loyalty_points') or 0)),
@@ -317,10 +321,45 @@ class CustomerReviewViewSet(viewsets.ModelViewSet):
 
 
 class SupplierViewSet(ToggleStatusMixin, viewsets.ModelViewSet):
-    """Supplier: Pelanggan & Supplier > Supplier."""
+    """Supplier: Pelanggan & Supplier > Supplier.
+
+    Kasir diizinkan create/update (bukan cuma baca) atas instruksi eksplisit
+    user 2026-08-10, supaya kasir bisa menambah supplier langsung dari Kasir
+    tanpa lewat modul Pelanggan & Supplier. Staff tetap diblokir penuh.
+
+    Tapi "Pengaturan Supplier" (akun_hutang/jatuh_tempo_hari, dipakai modul
+    Akuntansi) sengaja DIKUNCI dari kasir (instruksi user 2026-08-13) — dua
+    field itu ikut kebuka lewat permission umum di atas padahal harusnya
+    cuma Owner/Manager/Admin, karena satu ViewSet ini melayani baik CRUD
+    supplier dasar (boleh kasir) maupun setelan akuntansinya (bukan kasir).
+    """
     queryset = Supplier.objects.all()
     serializer_class = SupplierSerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminOrKasir]
+
+    _FIELD_PENGATURAN_TERKUNCI_KASIR = {'akun_hutang', 'jatuh_tempo_hari'}
+
+    def _tolak_jika_kasir_ubah_pengaturan(self, request):
+        if getattr(request.user, 'role', '') != 'kasir':
+            return None
+        if self._FIELD_PENGATURAN_TERKUNCI_KASIR & set(request.data.keys()):
+            return Response(
+                {'error': 'Kasir tidak diizinkan mengubah Pengaturan Supplier (akun hutang/jatuh tempo).'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return None
+
+    def update(self, request, *args, **kwargs):
+        tolak = self._tolak_jika_kasir_ubah_pengaturan(request)
+        return tolak if tolak is not None else super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        tolak = self._tolak_jika_kasir_ubah_pengaturan(request)
+        return tolak if tolak is not None else super().partial_update(request, *args, **kwargs)
+
+    def create(self, request, *args, **kwargs):
+        tolak = self._tolak_jika_kasir_ubah_pengaturan(request)
+        return tolak if tolak is not None else super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         serializer.save(dibuat_oleh=self.request.user)

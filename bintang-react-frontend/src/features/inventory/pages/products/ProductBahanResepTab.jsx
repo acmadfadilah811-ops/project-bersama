@@ -19,7 +19,7 @@ export default function ProductBahanResepTab({ product, onUpdated, storeName }) 
   const [isEditOpen, setIsEditOpen] = useState(false);
 
   // Form states for ADD modal
-  const [selectedVariantName, setSelectedVariantName] = useState('');
+  const [selectedVariantId, setSelectedVariantId] = useState(null);
   const [materialSearch, setMaterialSearch] = useState('');
   const [materialResults, setMaterialResults] = useState([]);
   const [selectedMaterial, setSelectedMaterial] = useState(null);
@@ -37,11 +37,14 @@ export default function ProductBahanResepTab({ product, onUpdated, storeName }) 
 
   const materialSearchRef = useRef(null);
 
-  // Fetch recipe / BOM data for this product
+  // Fetch recipe / BOM data for this product — pakai product_id (tautan
+  // Product asli), bukan cocokkan dari nama string (bug ditemukan &
+  // diperbaiki 2026-08-12: bahan yang ditambahkan sebelumnya tidak pernah
+  // benar-benar terhubung ke Product ini).
   const fetchBoms = async () => {
     setLoading(true);
     try {
-      const res = await apiClient.get(`/bom/?product_name=${encodeURIComponent(product.nama)}`);
+      const res = await apiClient.get(`/bom/?product_id=${product.id}`);
       setBoms(res.data.results || res.data || []);
       setError(null);
     } catch (err) {
@@ -54,9 +57,12 @@ export default function ProductBahanResepTab({ product, onUpdated, storeName }) 
 
   useEffect(() => {
     fetchBoms();
-  }, [product.nama]);
+  }, [product.id]);
 
-  // Debounced material/inventory item search for ADD modal
+  // Debounced material search for ADD modal — cari di katalog Produk (bukan
+  // InventoryItem, yang nyaris tidak pernah diisi di menu "Bahan Baku"),
+  // supaya ketik nama/kode bahan (mis. "IVORY 260GR") ketemu produk yang
+  // sudah ada di daftar Produk.
   useEffect(() => {
     if (materialSearch.trim().length === 0) {
       setMaterialResults([]);
@@ -65,11 +71,11 @@ export default function ProductBahanResepTab({ product, onUpdated, storeName }) 
     const delayDebounce = setTimeout(async () => {
       setSearchLoading(true);
       try {
-        const res = await apiClient.get(`/inventory/?search=${encodeURIComponent(materialSearch)}`);
+        const res = await apiClient.get(`/products/?search=${encodeURIComponent(materialSearch)}`);
         const items = res.data.results || res.data || [];
         setMaterialResults(items);
       } catch (err) {
-        console.error('[BahanResepTab] Error searching inventory:', err);
+        console.error('[BahanResepTab] Error searching products:', err);
       } finally {
         setSearchLoading(false);
       }
@@ -90,10 +96,13 @@ export default function ProductBahanResepTab({ product, onUpdated, storeName }) 
   }, []);
 
   // Helpers to structure data
-  // Get all unique rows (variants or product main if no variants)
+  // Get all unique rows (variants or product main if no variants). Setiap
+  // row bawa `id` varian NYATA (null utk baris utama tanpa varian) — dulu
+  // di sini cuma nama varian sebagai teks, dicocokkan ke BOM lewat string
+  // (bug ditemukan & diperbaiki 2026-08-12).
   const rows = product.has_variant && product.variants && product.variants.length > 0
-    ? product.variants.map(v => v.nama_varian)
-    : ['Utama'];
+    ? product.variants.map(v => ({ key: `v-${v.id}`, id: v.id, label: v.nama_varian }))
+    : [{ key: 'utama', id: null, label: product.nama }];
 
   // Total items/variants count
   const totalRowsCount = rows.length;
@@ -102,25 +111,18 @@ export default function ProductBahanResepTab({ product, onUpdated, storeName }) 
   const totalPages = Math.ceil(totalRowsCount / rowsPerPage);
   const paginatedRows = rows.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
 
-  const toggleExpand = (rowName) => {
+  const toggleExpand = (rowKey) => {
     setExpandedVariants(prev => ({
       ...prev,
-      [rowName]: !prev[rowName]
+      [rowKey]: !prev[rowKey]
     }));
   };
 
-  // Get matching BOM for a row
-  const getBomForRow = (rowName) => {
-    const variantName = rowName === 'Utama' ? null : rowName;
-    return boms.find(bom => {
-      const matchName = bom.product_material === variantName || 
-                        (!bom.product_material && !variantName);
-      return matchName;
-    });
-  };
+  // Get matching BOM for a row — cocokkan dari ID varian asli, bukan nama.
+  const getBomForRow = (row) => boms.find(bom => (bom.variant ?? null) === row.id);
 
-  const handleOpenAdd = (rowName = '') => {
-    setSelectedVariantName(rowName === 'Utama' ? 'Utama' : rowName || rows[0] || 'Utama');
+  const handleOpenAdd = (row = null) => {
+    setSelectedVariantId(row ? row.id : (rows[0] ? rows[0].id : null));
     setMaterialSearch('');
     setSelectedMaterial(null);
     setMaterialResults([]);
@@ -145,18 +147,19 @@ export default function ProductBahanResepTab({ product, onUpdated, storeName }) 
     setAddError(null);
 
     try {
-      // 1. Resolve or create BOM object
-      const vName = selectedVariantName === 'Utama' ? null : selectedVariantName;
+      // 1. Resolve or create BOM object — pakai product_id/variant_id asli
+      // (bukan nama), supaya benar-benar terhubung ke Product ini.
       const bomRes = await apiClient.post('/bom/get-or-create-for-product/', {
-        product_name: product.nama,
-        material: vName
+        product_id: product.id,
+        variant_id: selectedVariantId
       });
       const bomId = bomRes.data.id;
 
-      // 2. Add BOM Item
-      await apiClient.post('/bom-items/', {
+      // 2. Add BOM Item — selectedMaterial adalah Product (hasil pencarian
+      // katalog Produk), backend yang mengurus sinkronisasi ke InventoryItem.
+      await apiClient.post('/bom-items/create-from-product/', {
         bom: bomId,
-        inventory_item: selectedMaterial.id,
+        product_id: selectedMaterial.id,
         qty_required_per_unit: parsedQty
       });
 
@@ -164,7 +167,10 @@ export default function ProductBahanResepTab({ product, onUpdated, storeName }) 
       await fetchBoms();
       setIsAddOpen(false);
       // Auto-expand that variant row to show new ingredient
-      setExpandedVariants(prev => ({ ...prev, [selectedVariantName]: true }));
+      const openedRow = rows.find(row => row.id === selectedVariantId);
+      if (openedRow) {
+        setExpandedVariants(prev => ({ ...prev, [openedRow.key]: true }));
+      }
     } catch (err) {
       console.error('[BahanResepTab] Error adding item:', err);
       setAddError(err.response?.data?.error || 'Gagal menyimpan bahan ke resep.');
@@ -312,15 +318,15 @@ export default function ProductBahanResepTab({ product, onUpdated, storeName }) 
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {paginatedRows.map((rowName, idx) => {
-              const isExpanded = !!expandedVariants[rowName];
-              const bom = getBomForRow(rowName);
+            {paginatedRows.map((row, idx) => {
+              const isExpanded = !!expandedVariants[row.key];
+              const bom = getBomForRow(row);
               const items = bom?.items || [];
               const itemsCount = items.length;
 
               return (
                 <div
-                  key={rowName}
+                  key={row.key}
                   style={{
                     borderBottom: idx === paginatedRows.length - 1 ? 'none' : '1px solid #f1f5f9',
                     display: 'flex',
@@ -329,7 +335,7 @@ export default function ProductBahanResepTab({ product, onUpdated, storeName }) 
                 >
                   {/* Variant Row Header */}
                   <div
-                    onClick={() => toggleExpand(rowName)}
+                    onClick={() => toggleExpand(row.key)}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -348,7 +354,7 @@ export default function ProductBahanResepTab({ product, onUpdated, storeName }) 
                         <ChevronRight size={18} style={{ color: '#64748b' }} />
                       )}
                       <span style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>
-                        {rowName === 'Utama' ? product.nama : rowName}
+                        {row.label}
                       </span>
                     </div>
 
@@ -369,7 +375,7 @@ export default function ProductBahanResepTab({ product, onUpdated, storeName }) 
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleOpenAdd(rowName);
+                          handleOpenAdd(row);
                         }}
                         style={{
                           border: '1px solid #026da7',
@@ -572,8 +578,8 @@ export default function ProductBahanResepTab({ product, onUpdated, storeName }) 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <label style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>Terapkan ke varian</label>
                 <select
-                  value={selectedVariantName}
-                  onChange={(e) => setSelectedVariantName(e.target.value)}
+                  value={selectedVariantId ?? ''}
+                  onChange={(e) => setSelectedVariantId(e.target.value === '' ? null : Number(e.target.value))}
                   style={{
                     padding: '8px 12px',
                     border: '1px solid #cbd5e1',
@@ -584,8 +590,8 @@ export default function ProductBahanResepTab({ product, onUpdated, storeName }) 
                   }}
                 >
                   {rows.map(row => (
-                    <option key={row} value={row}>
-                      {row === 'Utama' ? product.nama : row}
+                    <option key={row.key} value={row.id ?? ''}>
+                      {row.label}
                     </option>
                   ))}
                 </select>
@@ -681,7 +687,7 @@ export default function ProductBahanResepTab({ product, onUpdated, storeName }) 
                         >
                           <div style={{ fontWeight: 600, color: '#334155' }}>{item.nama}</div>
                           <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                            Kategori: {item.kategori} | Stok: {item.stok} {item.satuan}
+                            SKU: {item.sku || '-'} | Stok: {item.qty_stok} {item.satuan}
                           </div>
                         </div>
                       ))

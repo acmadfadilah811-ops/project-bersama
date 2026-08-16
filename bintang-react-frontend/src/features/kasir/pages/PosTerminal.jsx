@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useKasir } from '../context/KasirContext';
 import apiClient from '../../../api/apiClient';
+import { fetchAllPages } from '../../../utils/paginatedApi';
 import { notifyApiError, notifyError, notifySuccess } from '../../../utils/notify';
 import { useAuth } from '../../../context/AuthContext';
 import { getPrintErrorMessage, printReceiptAfterRender } from '../../printing/services/printService';
@@ -24,6 +25,41 @@ import PosShareWaPanel from '../components/PosShareWaPanel';
 import PaymentProcessModal from '../components/PaymentProcessModal';
 import PaymentSuccessModal from '../components/PaymentSuccessModal';
 import ReceiptPrint from '../components/ReceiptPrint';
+import SpkPublishModal from '../components/SpkPublishModal';
+
+const makeCheckoutKey = () => {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  const suffix = `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`.replace(/[^a-f0-9]/g, '').padEnd(12, '0').slice(-12);
+  return `00000000-0000-4000-8000-${suffix}`;
+};
+
+const itemReceiptNote = (item) => {
+  const rows = [];
+  if (item.tipeHitung === 'meteran') rows.push(`Ukuran ${item.panjang || 0} m × ${item.lebar || 0} m`);
+  if (item.finishingJenis && item.finishingJenis !== 'Polosan') {
+    rows.push(`Finishing: ${item.finishingJenis}${Number(item.finishingBiaya || 0) > 0 ? ` (Rp ${Number(item.finishingBiaya).toLocaleString('id-ID')})` : ''}`);
+  }
+  if (Number(item.diskon || 0) > 0) {
+    rows.push(`Diskon item: ${item.diskonTipe === 'percent' ? `${item.diskon}%` : `Rp ${Number(item.diskon).toLocaleString('id-ID')}`}`);
+  }
+  if (item.catatan) rows.push(item.catatan);
+  return rows.join(' | ');
+};
+
+const itemBeforeDiscountTotal = (item) => {
+  const qty = Number(item.qty) || 1;
+  const finalTotal = Math.round(Number(item.hargaTotal ?? (item.harga * qty)) || 0);
+  const calculatedBeforeDiscount = Math.round(
+    (Number(item.harga || 0) + Number(item.finishingBiaya || 0)) * qty,
+  );
+  return Math.max(finalTotal, calculatedBeforeDiscount);
+};
+
+const itemDiscountTotal = (item) => {
+  const qty = Number(item.qty) || 1;
+  const finalTotal = Math.round(Number(item.hargaTotal ?? (item.harga * qty)) || 0);
+  return Math.max(0, itemBeforeDiscountTotal(item) - finalTotal);
+};
 
 export default function PosTerminal({ onToggleSidebar }) {
   const navigate = useNavigate();
@@ -31,16 +67,16 @@ export default function PosTerminal({ onToggleSidebar }) {
   const {
     cart,
     addToCart,
+    addPackageToCart,
     removeFromCart,
     removeItemsFromCart,
-    updateCartItem,
+    upsertCartItems,
     clearCart,
     selectedContact,
     setSelectedContact,
     selectedPelayanId,
     setSelectedPelayanId,
     discountPercent,
-    setDiscountPercent,
     selectedCoupon,
     setSelectedCoupon,
     metodeDiskon,
@@ -71,6 +107,7 @@ export default function PosTerminal({ onToggleSidebar }) {
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [pendingPayment, setPendingPayment] = useState(null);
   const [lastTransaction, setLastTransaction] = useState(null);
   const [checkReceipt, setCheckReceipt] = useState(null);
   const [availableCoupons, setAvailableCoupons] = useState([]);
@@ -81,6 +118,7 @@ export default function PosTerminal({ onToggleSidebar }) {
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [products, setProducts] = useState([]);
+  const [packages, setPackages] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [staffList, setStaffList] = useState([]);
   const [loyaltyRedemptions, setLoyaltyRedemptions] = useState([]);
@@ -138,6 +176,21 @@ export default function PosTerminal({ onToggleSidebar }) {
     })();
   }, []);
 
+  // Fetch Addons — harga tetap dihitung ulang di server (M6), ini hanya
+  // untuk menampilkan pilihan & estimasi harga ke kasir.
+  const [addons, setAddons] = useState([]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiClient.get('/addons/');
+        const list = res.data?.results || res.data || [];
+        setAddons(list.filter((a) => a.is_active));
+      } catch (err) {
+        setAddons([]);
+      }
+    })();
+  }, []);
+
   // Fetch Real Staff / Employee List from Backend (/pos/sales/staff-list/)
   useEffect(() => {
     (async () => {
@@ -164,6 +217,7 @@ export default function PosTerminal({ onToggleSidebar }) {
         pelanggan: selectedContact ? selectedContact.nomor_wa : null,
         items: cart.map((it) => ({
           product_id: it.product ? it.product.id : null,
+          package_id: it.paket ? it.paket.id : null,
           harga: it.harga,
           qty: it.qty,
         })),
@@ -184,21 +238,33 @@ export default function PosTerminal({ onToggleSidebar }) {
   useEffect(() => {
     const delayDebounce = setTimeout(async () => {
       try {
-        const params = { is_active: true, page: 1, page_size: 1000 };
+        const params = { is_active: true };
         if (selectedCategory && selectedCategory !== 'all') {
           params.kategori = selectedCategory;
         }
         if (searchTerm) {
           params.search = searchTerm;
         }
-        const res = await apiClient.get('/products/', { params });
-        setProducts(res.data?.results || res.data || []);
+        const data = await fetchAllPages('/products/', { params });
+        setProducts(data);
       } catch {
         setProducts([]);
       }
     }, 300);
     return () => clearTimeout(delayDebounce);
   }, [selectedCategory, searchTerm]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiClient.get('/product-packages/', { params: { page: 1, page_size: 1000 } });
+        const list = res.data?.results || res.data || [];
+        setPackages(list.filter((item) => item.publikasi && item.tampil_pos && !item.habis_stok));
+      } catch {
+        setPackages([]);
+      }
+    })();
+  }, []);
 
   // Handle adding product from catalog -> opens smart calculator detail panel
   const handleAddToCartFromCatalog = (product) => {
@@ -212,6 +278,11 @@ export default function PosTerminal({ onToggleSidebar }) {
     setRightPanelMode('itemDetail');
   };
 
+  const handleAddPackageFromCatalog = (paket) => {
+    addPackageToCart(paket);
+    setRightPanelMode('catalog');
+  };
+
   // Handle selecting item from cart -> show PosItemDetailPanel (SS 4)
   const handleSelectItem = (item) => {
     if (selectedCartItemKey === item.key && rightPanelMode === 'itemDetail') {
@@ -223,26 +294,24 @@ export default function PosTerminal({ onToggleSidebar }) {
     }
   };
 
-  // Handle save / update existing item from PosItemDetailPanel (SS 4) —
-  // simpan SELURUH hasil kalkulator (meteran/finishing/diskon/hargaTotal),
-  // bukan cuma qty & catatan seperti sebelumnya.
-  const handleSaveItemDetail = (key, updatedData) => {
-    if (updatedData.qty <= 0) {
-      removeFromCart(key);
-    } else {
-      updateCartItem(key, updatedData);
-    }
+  // Handle save / update item(s) from PosItemDetailPanel (SS 4) — simpan
+  // SELURUH hasil kalkulator (meteran/finishing/diskon/hargaTotal). Produk
+  // meteran dengan beberapa ukuran berbeda (mis. Banner 2x3m + 1x1m dalam
+  // satu produk) mengirim beberapa baris sekaligus — baris pertama menimpa
+  // item asal (key sama), baris berikutnya jadi baris cart baru terpisah.
+  const handleSaveItemDetail = (itemDataList) => {
+    const list = Array.isArray(itemDataList) ? itemDataList : [itemDataList];
+    const toRemove = list.filter((data) => data.qty <= 0);
+    const toKeep = list.filter((data) => data.qty > 0);
+    toRemove.forEach((data) => removeFromCart(data.key));
+    if (toKeep.length > 0) upsertCartItems(toKeep);
     setSelectedCartItemKey(null);
     setRightPanelMode('catalog');
   };
 
-  // Handle "+ Tambah Ke Pesanan" from PosItemDetailPanel -> saves item & returns to catalog for item #2, #3, etc.
-  const handleAddMoreToOrder = (itemData) => {
-    if (itemData.key) {
-      handleSaveItemDetail(itemData.key, itemData);
-    }
-    setSelectedCartItemKey(null);
-    setRightPanelMode('catalog');
+  // Handle "+ Tambah Ke Pesanan" from PosItemDetailPanel -> saves item(s) & returns to catalog for item #2, #3, etc.
+  const handleAddMoreToOrder = (itemDataList) => {
+    handleSaveItemDetail(itemDataList);
   };
 
   // Handle delete item from PosItemDetailPanel (SS 4)
@@ -293,6 +362,45 @@ export default function PosTerminal({ onToggleSidebar }) {
     // `contact.customer`. Tanpa pengecekan ini, PATCH ke /contacts/ akan
     // sukses tapi DRF diam-diam membuang field yang tidak dikenal.
     try {
+      if (!targetCustomer) {
+        // Pelanggan benar-benar baru (bukan edit): nama+gender+telepon wajib
+        // diisi di form supaya bisa dipakai untuk Order/DP. Buat akun Customer
+        // (pembawa gender) lalu Contact (identitas nomor_wa yang dipakai
+        // Order/DP) sekaligus ditautkan — sebelumnya cabang ini cuma menaruh
+        // nama di state lokal tanpa pernah tersimpan ke server.
+        const nomorBersih = (updatedData.telepon || '').replace(/[\s\-()]+/g, '');
+        if (!/^\+?\d{8,15}$/.test(nomorBersih)) {
+          alert('Nomor HP tidak valid. Gunakan format angka 8-15 digit (boleh diawali +).');
+          return;
+        }
+        const custRes = await apiClient.post('/customers/', {
+          nama: updatedData.nama,
+          customer_group: updatedData.tipe_pelanggan || null,
+          jenis_kelamin: updatedData.gender === 'Female' ? 'P' : 'L',
+          handphone: nomorBersih,
+          email: updatedData.email,
+          tanggal_lahir: updatedData.tanggal_lahir || null,
+          alamat: updatedData.alamat,
+          negara: updatedData.negara,
+          provinsi: updatedData.provinsi,
+          kota: updatedData.kota,
+          kecamatan: updatedData.kecamatan,
+          kode_pos: updatedData.kode_pos,
+          kode_pelanggan: updatedData.no_keanggotaan,
+          catatan: updatedData.catatan,
+        });
+        const contactRes = await apiClient.post('/contacts/', {
+          nomor_wa: nomorBersih,
+          nama: updatedData.nama,
+          customer: custRes.data.id,
+        });
+        setSelectedContact(contactRes.data);
+        fetchContacts();
+        setShowEditModal(false);
+        notifySuccess('Pelanggan baru tersimpan', `${updatedData.nama} siap dipakai untuk transaksi, termasuk DP.`);
+        return;
+      }
+
       let customerId = targetCustomer?.customer || null;
       if (targetCustomer?.nomor_wa) {
         const res = await apiClient.patch(
@@ -309,6 +417,7 @@ export default function PosTerminal({ onToggleSidebar }) {
 
       if (customerId) {
         await apiClient.patch(`/customers/${customerId}/`, {
+          customer_group: updatedData.tipe_pelanggan || null,
           email: updatedData.email,
           handphone: updatedData.telepon,
           tanggal_lahir: updatedData.tanggal_lahir || null,
@@ -336,37 +445,50 @@ export default function PosTerminal({ onToggleSidebar }) {
     }
   };
 
-  const handleConfirmPayment = async (paymentData) => {
+  const executeLunasPayment = async (paymentData, spkPayload) => {
     try {
       // Kontrak nyata endpoint: lihat api/pos_services.py create_sale() — field
       // dan nama harus persis cocok, DRF diam-diam membuang key yang tidak
       // dikenal (tidak error), jadi payload yang salah nama akan "sukses" tapi
       // tidak menyimpan apa pun.
       const res = await apiClient.post('/pos/sales/', {
-        // Item hasil kalkulator meteran/finishing/diskon (isCustomPriced)
-        // WAJIB dikirim tanpa product_id — server selalu menghitung ulang
-        // harga dari Product.harga_jual_toko untuk item ber-product_id (M6),
-        // jadi hasil kalkulator hanya benar-benar tertagih lewat jalur item
-        // custom (lihat PosItemDetailPanel.isCustomPriced).
+        // Item dengan product_id (termasuk hasil kalkulator meteran/finishing)
+        // SELALU dikirim dengan product_id-nya — server yang menghitung ulang
+        // harganya lewat product_pricing.hitung_harga (M6), bukan dipercaya
+        // dari `harga` di sini. product_id cuma null untuk item kustom murni
+        // (tanpa dasar produk katalog sama sekali, lihat PosCatalog "Item Kustom").
         items: cart.map((it) => {
-          if (it.isCustomPriced) {
+          if (it.paket) {
+            return {
+              package_id: it.paket.id,
+              qty: it.qty,
+              nama: it.nama,
+              catatan: itemReceiptNote(it),
+            };
+          }
+          if (!it.product?.id) {
             const qty = Number(it.qty) || 1;
             return {
               product_id: null,
               qty,
               harga: Math.round(Number(it.hargaTotal ?? it.harga * qty) / qty),
               nama: it.nama,
-              catatan: it.catatan,
+              catatan: itemReceiptNote(it),
             };
           }
+          const isMeteran = Number(it.panjang) > 0 && Number(it.lebar) > 0;
           return {
-            product_id: it.product?.id || null,
+            product_id: it.product.id,
             variant_id: it.variant?.id || null,
             qty: it.qty,
             uom_kode: it.uomKode || undefined,
-            harga: it.harga,
+            panjang: isMeteran ? it.panjang : undefined,
+            lebar: isMeteran ? it.lebar : undefined,
+            finishing_biaya: it.finishingBiaya || undefined,
             nama: it.nama,
-            catatan: it.catatan,
+            catatan: itemReceiptNote(it),
+            addons: (it.addonIds || []).map((id) => ({ id, qty: it.addonQty?.[id] || 1 })),
+            serial_numbers: (it.serialNumbers && it.serialNumbers.length) ? it.serialNumbers : undefined,
           };
         }),
         status: 'paid',
@@ -380,6 +502,7 @@ export default function PosTerminal({ onToggleSidebar }) {
         metode_diskon: metodeDiskon,
         kupon_kode: selectedCoupon?.kode || undefined,
         loyalty_redemption_id: selectedRedemption?.id || undefined,
+        spk: spkPayload,
       });
 
       setLastTransaction({
@@ -392,13 +515,124 @@ export default function PosTerminal({ onToggleSidebar }) {
         payAmount: Number(res.data.dibayar),
         changeAmount: Number(res.data.kembalian),
         method: res.data.metode_bayar,
-        items: [...cart],
+        items: cart.map((item) => ({
+          ...item,
+          nama_snapshot: item.nama,
+          harga_snapshot: Math.round(Number(item.hargaTotal ?? (item.harga * item.qty)) / (Number(item.qty) || 1)),
+          subtotal: Number(item.hargaTotal ?? (item.harga * item.qty)),
+          catatan: itemReceiptNote(item),
+        })),
       });
 
       setShowPaymentModal(false);
+      setPendingPayment(null);
       setShowSuccessModal(true);
     } catch (err) {
       notifyApiError(err, 'Pembayaran gagal disimpan. Transaksi belum tercatat — periksa pesan error dan coba lagi.');
+      throw err;
+    }
+  };
+
+  const handleConfirmPayment = (paymentData) => {
+    if (paymentData.paymentType === 'dp') {
+      if (!selectedContact?.nama || !selectedContact?.nomor_wa) {
+        notifyError('Data pelanggan diperlukan', 'Pilih pelanggan beserta nomor WhatsApp sebelum menerima DP.');
+        return;
+      }
+      if (!selectedPelayanId) {
+        notifyError('Karyawan diperlukan', 'Pilih karyawan yang melayani sebelum menerima DP.');
+        return;
+      }
+    }
+    setPendingPayment({ ...paymentData, checkoutKey: makeCheckoutKey() });
+    setShowPaymentModal(false);
+  };
+
+  const handlePublishSpkAndCheckout = async (spkPayload) => {
+    if (!pendingPayment) return;
+    if (pendingPayment.paymentType !== 'dp') {
+      return executeLunasPayment(pendingPayment, spkPayload);
+    }
+
+    const items = cart.map((item) => {
+      const qty = Number(item.qty) || 1;
+      const hargaSatuan = Math.round(Number(item.hargaTotal ?? (item.harga * qty)) / qty);
+      const hargaSebelumDiskon = itemBeforeDiscountTotal(item);
+        return {
+          package_id: item.paket?.id || null,
+          product_id: item.product?.id || null,
+        variant_id: item.variant?.id || null,
+        qty,
+        harga_satuan: hargaSatuan,
+        nama: item.nama,
+        is_custom_priced: Boolean(item.isCustomPriced),
+        addon_ids: item.addonIds || [],
+        panjang: item.panjang || 0,
+        lebar: item.lebar || 0,
+        harga_per_m2: item.hargaPerM2 || 0,
+        catatan: itemReceiptNote(item),
+        detail: {
+          tipe_hitung: item.tipeHitung || 'pcs',
+          finishing: item.finishingJenis || 'Polosan',
+          biaya_finishing: Number(item.finishingBiaya || 0),
+          diskon: Number(item.diskon || 0),
+          tipe_diskon: item.diskonTipe || 'percent',
+          harga_sebelum_diskon: hargaSebelumDiskon,
+          diskon_nominal: itemDiscountTotal(item),
+          catatan: item.catatan || '',
+        },
+      };
+    });
+
+    try {
+      const res = await apiClient.post('/orders/checkout-pos/', {
+        idempotency_key: pendingPayment.checkoutKey,
+        nama: selectedContact.nama,
+        nomor_wa: selectedContact.nomor_wa,
+        items,
+        jumlah_bayar: Math.round(pendingPayment.payAmount),
+        metode_pembayaran: pendingPayment.method,
+        diskon_persen: discountPercent,
+        metode_diskon: metodeDiskon,
+        kupon_kode: selectedCoupon?.kode || undefined,
+        catatan: cartNotes,
+        jatuh_tempo: pendingPayment.dueDate,
+        dilayani_oleh_id: selectedPelayanId,
+        spk: spkPayload,
+      });
+      const order = res.data;
+      setLastTransaction({
+        ...order,
+        isOrderReceipt: true,
+        nomor: order.id,
+        created_at: order.waktu,
+        pelanggan_name: order.nama,
+        customerName: order.nama,
+        customerPhone: order.nomor_wa,
+        total: Number(order.total_harga),
+        totalAmount: Number(order.total_harga),
+        subtotal: Number(order.items?.reduce((sum, item) => sum + Number(item.harga_jual || 0), 0) || 0),
+        dibayar: Number(order.dp_dibayar),
+        payAmount: Number(order.dp_dibayar),
+        kembalian: 0,
+        changeAmount: 0,
+        metode_bayar: order.metode_pembayaran,
+        method: order.metode_pembayaran,
+        sisa_tagihan: Number(order.sisa_tagihan),
+        catatan: order.catatan_pelanggan || cartNotes,
+        items: cart.map((item) => ({
+          ...item,
+          nama_snapshot: item.nama,
+          harga_snapshot: Math.round(Number(item.hargaTotal ?? (item.harga * item.qty)) / (Number(item.qty) || 1)),
+          subtotal: Number(item.hargaTotal ?? (item.harga * item.qty)),
+          catatan: itemReceiptNote(item),
+        })),
+      });
+      setPendingPayment(null);
+      setShowSuccessModal(true);
+    } catch (err) {
+      notifyApiError(err, 'Pembayaran atau penerbitan SPK gagal. Transaksi tidak disimpan â€” periksa pesan error dan coba lagi.');
+      throw err;
     }
   };
 
@@ -534,10 +768,12 @@ export default function PosTerminal({ onToggleSidebar }) {
         ) : rightPanelMode === 'itemDetail' && selectedCartItem ? (
           <PosItemDetailPanel
             item={selectedCartItem}
+            addons={addons}
             onSave={handleSaveItemDetail}
             onAddMoreToOrder={handleAddMoreToOrder}
             onDelete={handleDeleteItemDetail}
             onSplitBill={() => setIsSplitModalOpen(true)}
+            onDiscountClick={() => setShowDiscountModal(true)}
             onClose={() => {
               setSelectedCartItemKey(null);
               setRightPanelMode('catalog');
@@ -546,8 +782,10 @@ export default function PosTerminal({ onToggleSidebar }) {
         ) : (
           <PosCatalogPanel
             products={products}
+            packages={packages}
             categories={categories}
             onAddToCart={handleAddToCartFromCatalog}
+            onAddPackage={handleAddPackageFromCatalog}
             searchTerm={searchTerm}
             setSearchTerm={setSearchTerm}
             selectedCategory={selectedCategory}
@@ -565,7 +803,7 @@ export default function PosTerminal({ onToggleSidebar }) {
 
       <CustomerEditModal
         isOpen={showEditModal}
-        contact={targetCustomer || selectedContact}
+        contact={targetCustomer}
         contacts={contacts}
         onSave={handleSaveEditCustomer}
         onClose={() => setShowEditModal(false)}
@@ -604,13 +842,7 @@ export default function PosTerminal({ onToggleSidebar }) {
         onClose={() => setShowDiscountModal(false)}
         availableCoupons={availableCoupons}
         selectedCoupon={selectedCoupon}
-        discountPercent={discountPercent}
         onApplyCoupon={handleApplyCoupon}
-        onApplyManualDiscount={(pct) => {
-          setDiscountPercent(pct);
-          setMetodeDiskon('tidak_ada');
-          setSelectedCoupon(null);
-        }}
         onRemoveCoupon={() => {
           setSelectedCoupon(null);
           setMetodeDiskon('tidak_ada');
@@ -654,12 +886,34 @@ export default function PosTerminal({ onToggleSidebar }) {
         isOpen={showPaymentModal}
         onClose={() => setShowPaymentModal(false)}
         totalAmount={getTotal()}
+        subtotalAmount={Number(getSubtotal()) + cart.reduce((sum, item) => sum + itemDiscountTotal(item), 0)}
+        discountAmount={cart.reduce((sum, item) => sum + itemDiscountTotal(item), 0) + Math.max(0, Number(getSubtotal()) + Number(getTaxAmount()) - Number(getTotal()))}
         onConfirmPayment={handleConfirmPayment}
       />
 
+      {pendingPayment && (
+        <SpkPublishModal
+          judul="Tujuan SPK Produksi"
+          keterangan={pendingPayment.paymentType === 'dp'
+            ? 'DP akan dicatat dan SPK langsung masuk ke antrean global divisi yang dipilih.'
+            : 'Pembayaran lunas dan SPK akan disimpan bersamaan ke antrean global divisi yang dipilih.'}
+          onClose={() => {
+            setPendingPayment(null);
+            setShowPaymentModal(true);
+          }}
+          onTerbitkan={handlePublishSpkAndCheckout}
+        />
+      )}
+
       <PaymentSuccessModal
         isOpen={showSuccessModal}
-        onClose={() => setShowSuccessModal(false)}
+        // Tombol "X" (onClose) dulu cuma menutup popup tanpa reset
+        // keranjang/pelanggan/diskon — beda dari tombol "+ Baru" (onNewOrder)
+        // yang sudah benar. Akibatnya kalau kasir tutup popup pakai "X",
+        // terminal tetap menampilkan sisa transaksi yang baru selesai,
+        // bukan kembali default (bug ditemukan 2026-08-13). Disamakan:
+        // keduanya sekarang reset penuh lewat handleNewOrder.
+        onClose={handleNewOrder}
         transactionData={lastTransaction}
         onNewOrder={handleNewOrder}
       />

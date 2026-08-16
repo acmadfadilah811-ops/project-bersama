@@ -28,7 +28,8 @@ export default function CaraPembayaranStep({ caraPembayaran, onNext }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between relative">
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="relative">
           <button
             type="button"
@@ -62,34 +63,41 @@ export default function CaraPembayaranStep({ caraPembayaran, onNext }) {
           </button>
         )}
 
+        </div>
+
         {hasSelection && aturAkunOpen && (
-          <div className="flex items-center gap-2">
-            <select
-              value={aturAkunAccountId}
-              onChange={(e) => setAturAkunAccountId(e.target.value)}
-              className="px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-800 text-xs font-semibold focus:bg-white focus:border-[#0088E8] outline-none"
-            >
-              {cashBankAccounts.map((acc) => (
-                <option key={acc.id} value={acc.account}>
-                  {acc.account_code} {acc.account_name}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={cancelAturAkun}
-              className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-600 font-bold text-xs hover:bg-slate-50 cursor-pointer"
-            >
-              Batal
-            </button>
-            <button
-              type="button"
-              onClick={submitAturAkun}
-              disabled={saving}
-              className="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs cursor-pointer disabled:opacity-50"
-            >
-              {saving ? 'Menyimpan...' : 'Perbarui'}
-            </button>
+          <div className="flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-3 sm:flex-row sm:items-end">
+            <label className="block min-w-0 flex-1">
+              <span className="mb-1.5 block text-xs font-bold text-slate-700">Akun pembayaran untuk metode terpilih</span>
+              <select
+                value={aturAkunAccountId}
+                onChange={(e) => setAturAkunAccountId(e.target.value)}
+                className="w-full min-w-[16rem] px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-800 text-xs font-semibold focus:border-[#0088E8] outline-none"
+              >
+                {cashBankAccounts.map((acc) => (
+                  <option key={acc.id} value={acc.account}>
+                    {acc.account_code} {acc.account_name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex shrink-0 gap-2">
+              <button
+                type="button"
+                onClick={cancelAturAkun}
+                className="px-4 py-2 rounded-lg border border-slate-300 bg-white text-slate-600 font-bold text-xs hover:bg-slate-50 cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={submitAturAkun}
+                disabled={saving}
+                className="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs cursor-pointer disabled:opacity-50"
+              >
+                {saving ? 'Menyimpan...' : 'Perbarui'}
+              </button>
+            </div>
           </div>
         )}
       </div>

@@ -9,7 +9,8 @@ Menjaga dua hal yang sebelumnya rusak diam-diam:
 from django.urls import reverse
 from rest_framework.test import APITestCase
 
-from .models import CustomUser, Divisi, JobBoard, Order, OrderItem, TahapProses
+from .customer_models import Customer
+from .models import Contact, CustomUser, Divisi, JobBoard, Order, OrderItem, TahapProses
 
 
 class OrderFilterTest(APITestCase):
@@ -34,6 +35,10 @@ class OrderFilterTest(APITestCase):
             id='ORD-WA-1', nama='Sari', nomor_wa='628333',
             status_global='review', sumber='wa',
         )
+        Order.objects.create(
+            id='ORD-WA-PROSES-1', nama='Rina', nomor_wa='628444',
+            status_global='proses', sumber='wa',
+        )
 
     def _list(self, params):
         self.client.force_authenticate(user=self.kasir)
@@ -42,7 +47,7 @@ class OrderFilterTest(APITestCase):
     def test_kasir_melihat_semua_order(self):
         res = self._list({})
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(len(res.data), 3)
+        self.assertEqual(len(res.data), 4)
 
     def test_filter_status_global(self):
         res = self._list({'status_global': 'ready'})
@@ -53,11 +58,18 @@ class OrderFilterTest(APITestCase):
         res = self._list({'status_global': 'review', 'sumber': 'wa'})
         self.assertEqual([o['id'] for o in res.data], ['ORD-WA-1'])
 
+    def test_filter_semua_pesanan_whatsapp_tanpa_status(self):
+        res = self._list({'sumber': 'wa'})
+        self.assertEqual(
+            [o['id'] for o in res.data],
+            ['ORD-WA-PROSES-1', 'ORD-WA-1'],
+        )
+
     def test_status_tidak_valid_diabaikan(self):
         """Nilai ngawur tidak boleh menyaring apa pun, juga tidak boleh error."""
         res = self._list({'status_global': 'bukan-status'})
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(len(res.data), 3)
+        self.assertEqual(len(res.data), 4)
 
     def test_staff_produksi_tetap_terbatas(self):
         """Pelonggaran untuk kasir tidak boleh ikut melonggarkan staff."""
@@ -65,6 +77,29 @@ class OrderFilterTest(APITestCase):
         res = self.client.get(reverse('order-list'))
         self.assertEqual(res.status_code, 200)
         self.assertEqual(len(res.data), 0)
+
+    def test_serializer_kode_pelanggan_tidak_menggunakan_nomor_whatsapp(self):
+        customer = Customer.objects.create(nama='Member Sari', kode_pelanggan='PLG-001')
+        Contact.objects.update_or_create(
+            nomor_wa='628333', defaults={'nama': 'Sari', 'customer': customer},
+        )
+
+        res = self._list({'status_global': 'review', 'sumber': 'wa'})
+
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data[0]['kode_pelanggan'], 'PLG-001')
+        self.assertEqual(res.data[0]['nomor_wa'], '628333')
+
+    def test_staff_tidak_boleh_mencatat_pembayaran(self):
+        self.client.force_authenticate(user=self.staff)
+
+        res = self.client.post(
+            reverse('order-detail', args=['ORD-READY-1']) + 'bayar/',
+            {'jumlah_bayar': 1000, 'metode_pembayaran': 'tunai'},
+            format='json',
+        )
+
+        self.assertEqual(res.status_code, 403)
 
 
 class KasirAntreanWaTest(APITestCase):
@@ -111,6 +146,18 @@ class KasirAntreanWaTest(APITestCase):
         self.assertEqual(res.status_code, 200)
         self.order.refresh_from_db()
         self.assertEqual(self.order.nama, 'Sari Dewi')
+
+    def test_kasir_mencatat_staff_pelayan_pada_order_wa(self):
+        res = self.client.patch(
+            reverse('order-detail', args=[self.order.id]),
+            {'dilayani_oleh': self.kasir.id},
+            format='json',
+        )
+
+        self.assertEqual(res.status_code, 200, res.data)
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.dilayani_oleh_id, self.kasir.id)
+        self.assertEqual(res.data['dilayani_oleh_nama'], self.kasir.username)
 
     def test_kasir_menerbitkan_spk_ke_divisi(self):
         res = self.client.post(

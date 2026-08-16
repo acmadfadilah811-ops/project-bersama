@@ -7,9 +7,12 @@ kalkulasi payroll yang berat.
 from rest_framework.test import APITestCase
 from rest_framework import status
 from django.contrib.auth import get_user_model
+from datetime import timedelta
+from django.utils import timezone
 
-from api.models import Divisi
-from hr.models import Akun, SlipGaji, TransaksiBukuBesar
+from api.models import Divisi, SystemConfig
+from hr.models import Akun, Absensi, DailyAttendanceSession, SlipGaji, TransaksiBukuBesar, UnlockRequest
+from hr.views import get_or_create_daily_session
 
 User = get_user_model()
 
@@ -72,6 +75,124 @@ class HrPermissionTests(APITestCase):
         resp = self.client.get("/api/hr/slip-gaji/?bulan=7&tahun=2026")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertEqual(len(self._rows(resp)), 2)
+
+
+class UnlockRequestAttendanceTests(APITestCase):
+    def setUp(self):
+        self.divisi = Divisi.objects.create(nama="Operator Izin")
+        self.owner = User.objects.create_user(username="owner_izin", password="password123", role="owner")
+        self.staff = User.objects.create_user(username="staff_izin", password="password123", role="staff", divisi=self.divisi)
+        now = timezone.now()
+        self.sesi = DailyAttendanceSession.objects.create(
+            tanggal=timezone.localdate(),
+            waktu_mulai=now - timedelta(hours=2),
+            batas_maksimal=now - timedelta(hours=1),
+            is_active=True,
+        )
+
+    def test_approval_membuka_papan_dan_mencatat_terlambat(self):
+        request_izin = UnlockRequest.objects.create(
+            staff=self.staff, sesi=self.sesi, alasan="Terlambat karena keperluan keluarga"
+        )
+
+        self.client.force_authenticate(self.owner)
+        response = self.client.post(f"/api/hr/unlock-requests/{request_izin.id}/approve/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+
+        absensi = Absensi.objects.get(staff=self.staff, tanggal=self.sesi.tanggal)
+        self.assertEqual(absensi.status, "terlambat")
+        self.assertIsNone(absensi.jam_masuk)
+        self.assertTrue(absensi.workspace_unlocked)
+        self.assertIn("Terlambat karena keperluan keluarga", absensi.catatan)
+        self.assertIn("owner_izin", absensi.catatan)
+
+        self.client.force_authenticate(self.staff)
+        papan_kerja = self.client.get("/api/jobs/")
+        self.assertEqual(papan_kerja.status_code, status.HTTP_200_OK, papan_kerja.content)
+
+    def test_clock_in_setelah_keterlambatan_approved_melengkapi_jam_masuk(self):
+        request_izin = UnlockRequest.objects.create(
+            staff=self.staff, sesi=self.sesi, alasan="Terlambat"
+        )
+        self.client.force_authenticate(self.owner)
+        self.client.post(f"/api/hr/unlock-requests/{request_izin.id}/approve/")
+
+        self.client.force_authenticate(self.staff)
+        response = self.client.post("/api/hr/absensi/clock-in/", {"catatan": "Sudah tiba"}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.content)
+        absensi = Absensi.objects.get(staff=self.staff, tanggal=self.sesi.tanggal)
+        self.assertIsNotNone(absensi.jam_masuk)
+        self.assertEqual(absensi.status, "terlambat")
+        self.assertIn("Sudah tiba", absensi.catatan)
+
+
+class AttendanceSessionScheduleTests(APITestCase):
+    """Jadwal absensi 'Terapkan Jadwal Ini Setiap Hari' harus tersimpan di
+    database (SystemConfig), bukan file lokal container — file lokal ikut
+    hilang setiap kali backend di-deploy ulang (image baru), sehingga jadwal
+    berulang gagal diam-diam dan owner harus buka sesi manual tiap hari."""
+
+    def setUp(self):
+        self.owner = User.objects.create_user(username="owner_sesi", password="password123", role="owner")
+        self.client.force_authenticate(self.owner)
+
+    def test_repeat_daily_tersimpan_di_systemconfig(self):
+        response = self.client.post(
+            "/api/hr/attendance-session/",
+            {"waktu_mulai": "08:00", "batas_maksimal": "08:30", "repeat_daily": True},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        self.assertEqual(SystemConfig.objects.get(key="payroll_jam_masuk").value, "08:00")
+        self.assertEqual(SystemConfig.objects.get(key="payroll_toleransi_menit").value, "30")
+
+    def test_sesi_besok_otomatis_terbentuk_dari_systemconfig_walau_sesi_hari_ini_dihapus(self):
+        """Simulasikan 'hari berikutnya' setelah jadwal berulang diaktifkan:
+        tidak ada DailyAttendanceSession untuk tanggal tsb sama sekali (persis
+        seperti setelah backend di-deploy ulang), tapi sesi tetap harus
+        terbentuk otomatis dari SystemConfig — bukan menunggu dibuka manual."""
+        self.client.post(
+            "/api/hr/attendance-session/",
+            {"waktu_mulai": "09:00", "batas_maksimal": "09:15", "repeat_daily": True},
+            format="json",
+        )
+        DailyAttendanceSession.objects.all().delete()
+
+        sesi = get_or_create_daily_session()
+        self.assertIsNotNone(sesi)
+        self.assertEqual(sesi.batas_maksimal - sesi.waktu_mulai, timedelta(minutes=15))
+
+    def test_matikan_repeat_daily_menghapus_systemconfig(self):
+        self.client.post(
+            "/api/hr/attendance-session/",
+            {"waktu_mulai": "08:00", "batas_maksimal": "08:30", "repeat_daily": True},
+            format="json",
+        )
+        response = self.client.post(
+            "/api/hr/attendance-session/",
+            {"waktu_mulai": "08:00", "batas_maksimal": "08:30", "repeat_daily": False},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        self.assertFalse(SystemConfig.objects.filter(key="payroll_jam_masuk").exists())
+        self.assertFalse(SystemConfig.objects.filter(key="payroll_toleransi_menit").exists())
+
+    def test_get_melaporkan_repeat_daily_benar(self):
+        self.client.post(
+            "/api/hr/attendance-session/",
+            {"waktu_mulai": "08:00", "batas_maksimal": "08:30", "repeat_daily": True},
+            format="json",
+        )
+        response = self.client.get("/api/hr/attendance-session/")
+        self.assertTrue(response.data["repeat_daily"])
+
+    def test_batas_maksimal_harus_setelah_waktu_mulai(self):
+        response = self.client.post(
+            "/api/hr/attendance-session/",
+            {"waktu_mulai": "09:00", "batas_maksimal": "08:00", "repeat_daily": False},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
 
 class LegacyLedgerFrozenTests(APITestCase):

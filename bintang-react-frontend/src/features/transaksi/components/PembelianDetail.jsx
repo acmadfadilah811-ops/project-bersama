@@ -18,8 +18,8 @@ export default function PembelianDetail({ docId, detailMode = 'butuh-diproses', 
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
   const [isPayOpen, setIsPayOpen] = useState(false);
   const [logs, setLogs] = useState([]);
-  const [togglingPayment, setTogglingPayment] = useState(false);
   const [removingPaymentId, setRemovingPaymentId] = useState(null);
+  const [togglingPaymentMark, setTogglingPaymentMark] = useState(false);
 
   // Modals for Diskon, Pajak, Pengiriman (Presisi SS No 1-4)
   const [showDiskonModal, setShowDiskonModal] = useState(false);
@@ -146,21 +146,22 @@ export default function PembelianDetail({ docId, detailMode = 'butuh-diproses', 
   const sisa = Math.max(0, totalDitagihkan - jumlahTerbayar);
 
   const hasProducts = Boolean(doc?.items && doc.items.length > 0);
-  const hasReception = Boolean((doc?.no_terima && doc?.tanggal_diterima) || doc?.receive_status === 'diterima');
-  const canTogglePayment = hasProducts && hasReception && isDraft;
+  const hasActualPayment = jumlahTerbayar > 0 || doc?.payment_status !== 'belum';
+  const canTogglePayment = hasProducts && isDraft && !hasActualPayment;
   const isLunas = doc?.payment_status === 'lunas';
+  const isMarkedPaid = Boolean(doc?.payment_marked_paid);
+  const isPaidLabel = isLunas || isMarkedPaid;
 
   const handleTogglePayment = async () => {
-    if (!canTogglePayment || togglingPayment) return;
-    setTogglingPayment(true);
+    if (!canTogglePayment || togglingPaymentMark) return;
+    setTogglingPaymentMark(true);
     try {
-      const targetStatus = isLunas ? 'belum' : 'lunas';
-      await apiClient.post(`/purchases/${docId}/workflow/toggle-payment/`, { target_status: targetStatus });
+      await apiClient.post(`/purchases/${docId}/workflow/toggle-payment/`);
       await refreshAll();
     } catch (err) {
-      alert(err.response?.data?.error || err.response?.data?.detail || 'Gagal mengubah status pembayaran.');
+      alert(err.response?.data?.error || 'Gagal mengubah penanda pembayaran.');
     } finally {
-      setTogglingPayment(false);
+      setTogglingPaymentMark(false);
     }
   };
 
@@ -177,6 +178,8 @@ export default function PembelianDetail({ docId, detailMode = 'butuh-diproses', 
     if (doc.status === 'batal') return 'Batal';
     if (doc.status === 'selesai') return 'Selesai';
     if (doc.receive_status === 'diterima') return 'Diterima';
+    if (doc.delivery_status === 'terkirim') return 'Terkirim';
+    if (doc.delivery_status === 'dikirim') return 'Dikirim';
     return 'Tunda';
   };
 
@@ -219,32 +222,32 @@ export default function PembelianDetail({ docId, detailMode = 'butuh-diproses', 
         </div>
       ) : (
         <div className={`flex items-center justify-between px-5 py-3 rounded-xl text-white shadow-2xs transition-colors duration-300 ${
-          isLunas ? 'bg-emerald-600' : doc.payment_status === 'sebagian' ? 'bg-amber-500' : 'bg-rose-600'
+          isPaidLabel ? 'bg-emerald-600' : doc.payment_status === 'sebagian' ? 'bg-amber-500' : 'bg-rose-600'
         }`}>
           <div className="flex items-center gap-2 font-bold text-xs">
-            <span>{isLunas ? '✔️ Sudah Dibayar' : doc.payment_status === 'sebagian' ? '◐ Bayar Sebagian' : '❌ Belum Dibayar'}</span>
+            <span>{isPaidLabel ? '✔️ Sudah Dibayar' : doc.payment_status === 'sebagian' ? '◐ Bayar Sebagian' : '❌ Belum Dibayar'}</span>
           </div>
 
           {/* Toggle Switch di sebelah kanan (posisi bekas nominal) */}
           <div className="flex items-center gap-2">
             <button
               type="button"
-              disabled={togglingPayment}
-              onClick={() => {
-                if (!canTogglePayment) {
-                  alert('Toggle pembayaran aktif setelah produk dan informasi penerimaan terisi.');
-                  return;
-                }
-                handleTogglePayment();
-              }}
-              title={!canTogglePayment ? 'Toggle aktif setelah produk & info penerimaan terisi' : 'Ubah status pembayaran'}
+              onClick={handleTogglePayment}
+              disabled={!canTogglePayment || togglingPaymentMark}
+              title={hasActualPayment
+                ? 'Pembayaran nyata diubah melalui Pengaturan Pembayaran'
+                : !hasProducts
+                  ? 'Tambahkan produk sebelum mengubah penanda pembayaran'
+                  : !isDraft
+                    ? 'Penanda pembayaran hanya dapat diubah saat pembelian diproses'
+                    : 'Ubah penanda Sudah Dibayar / Belum Dibayar'}
               className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 focus:outline-none border border-white/30 ${
-                isLunas ? 'bg-emerald-500' : 'bg-rose-500'
-              } ${!canTogglePayment ? 'opacity-50 cursor-pointer' : 'cursor-pointer hover:opacity-90'}`}
+                isPaidLabel ? 'bg-emerald-500' : 'bg-rose-500'
+              } ${!canTogglePayment || togglingPaymentMark ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-90'}`}
             >
               <span
                 className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition duration-200 shadow-xs ${
-                  isLunas ? 'translate-x-4.5' : 'translate-x-0.5'
+                  isPaidLabel ? 'translate-x-4.5' : 'translate-x-0.5'
                 }`}
               />
             </button>
@@ -380,6 +383,7 @@ export default function PembelianDetail({ docId, detailMode = 'butuh-diproses', 
       {isPayOpen && (
         <PembelianPembayaranModal
           sisa={sisa}
+          isAdvance={doc.receive_status !== 'diterima'}
           onClose={() => setIsPayOpen(false)}
           onSave={handleAddPayment}
         />

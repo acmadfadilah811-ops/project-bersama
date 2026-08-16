@@ -56,8 +56,13 @@ class IsClockedIn(BasePermission):
     """
     Memvalidasi status clock-in staff.
     - Owner, Manager, Admin di-bypass (selalu True).
-    - Staff harus clock-in hari ini (tanggal hari ini di Absensi, jam_masuk not null).
-      Jika sudah check-out (jam_keluar not null), hanya diperbolehkan jika workspace_unlocked = True.
+    - Staff harus mempunyai absensi hari ini dan clock-in.
+    - Pengecualian yang eksplisit: owner/manager dapat menyetujui
+      keterlambatan. Persetujuan itu menandai ``workspace_unlocked`` pada
+      absensi staff, sehingga papan kerja dapat dibuka tanpa mengubah status
+      terlambat menjadi hadir.
+    - Jika sudah check-out (jam_keluar not null), hanya diperbolehkan jika
+      workspace_unlocked = True.
     """
     def has_permission(self, request, view):
         user = request.user
@@ -74,7 +79,10 @@ class IsClockedIn(BasePermission):
         if not absensi:
             return False
             
-        if not absensi.jam_masuk:
+        # Persetujuan keterlambatan adalah otorisasi eksplisit dari
+        # owner/manager. Jangan memaksa jam_masuk diisi sebagai "hadir", karena
+        # catatan kehadirannya tetap harus tercatat sebagai terlambat.
+        if not absensi.jam_masuk and not absensi.workspace_unlocked:
             return False
             
         # If they clocked out, they cannot access unless the workspace was explicitly unlocked by management

@@ -82,7 +82,7 @@ export default function PosCustomerListPanel({
         {displayList.map((customer) => {
           const id = customer.id || customer.nomor_wa || customer.nama;
           const isDropdownOpen = openDropdownId === id;
-          const isHighlight = customer.isHighlight || customer.tipe_pelanggan?.includes('gold');
+          const isHighlight = customer.isHighlight || customer.customer_group_nama?.toLowerCase().includes('gold');
 
           // Initials calculation
           const nameStr = customer.nama || customer.name || 'Customer';
@@ -123,7 +123,7 @@ export default function PosCustomerListPanel({
                     E. {customer.email || '-'} P.{customer.telepon || customer.nomor_wa || '-'}
                   </div>
                   <div className="text-[10px] text-slate-500 font-medium mt-0.5">
-                    {customer.tipe_pelanggan || 'Guest'}
+                    {customer.customer_group_nama || 'Guest'}
                   </div>
                 </div>
               </div>

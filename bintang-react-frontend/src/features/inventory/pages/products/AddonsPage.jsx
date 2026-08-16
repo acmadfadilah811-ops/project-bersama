@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Plus, Search, Trash2, ArrowLeft } from 'lucide-react';
 import DataTable from '../components/DataTable';
 import apiClient from '../../../../api/apiClient';
+import { fetchAllPages } from '../../../../utils/paginatedApi';
 
 const formatToIDR = (num) => {
   if (num === null || num === undefined) return 'IDR 0';
@@ -60,8 +61,8 @@ export function AddonsPage({ onToggleCreate }) {
 
   const fetchProducts = async () => {
     try {
-      const res = await apiClient.get('/products/', { params: { page: 1, page_size: 1000 } });
-      setAvailableProducts(Array.isArray(res.data) ? res.data : res.data?.results || []);
+      const data = await fetchAllPages('/products/');
+      setAvailableProducts(data);
     } catch (err) {
       console.error('Error fetching available products:', err);
     }
@@ -69,7 +70,7 @@ export function AddonsPage({ onToggleCreate }) {
 
   const fetchCategories = async () => {
     try {
-      const res = await apiClient.get('/categories/');
+      const res = await apiClient.get('/product-categories/');
       setCategories(Array.isArray(res.data) ? res.data : res.data?.results || []);
     } catch (err) {
       console.error('Error fetching categories:', err);

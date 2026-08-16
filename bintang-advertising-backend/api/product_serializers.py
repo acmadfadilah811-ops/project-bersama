@@ -4,7 +4,7 @@ from rest_framework import serializers
 from .product_models import (
     ProductCategory, Brand, SpecialType, Collection,
     Product, ProductVariant, ProductPackage, ProductPackageItem,
-    Addon, Specification, ProductSpecValue, ProductImage, ProductStockMovement,
+    Addon, SaleItemAddon, Specification, ProductSpecValue, ProductImage, ProductStockMovement,
     StockInDocument, StockInDocumentItem, StockOutDocument, StockOutDocumentItem,
     StockProductionDocument, StockProductionDocumentItem,
     StockOpnameDocument, StockOpnameDocumentItem,
@@ -65,12 +65,24 @@ class ProductSpecValueSerializer(serializers.ModelSerializer):
 
 class ProductSerializer(serializers.ModelSerializer):
     fotos = ProductImageSerializer(many=True, read_only=True)
+    foto_url = serializers.SerializerMethodField()
     variants = ProductVariantSerializer(many=True, read_only=True)
     specifications = ProductSpecValueSerializer(many=True, read_only=True)
     kategori_nama = serializers.ReadOnlyField(source='kategori.nama')
     brand_nama = serializers.ReadOnlyField(source='brand.nama')
     koleksi_nama = serializers.ReadOnlyField(source='koleksi.nama')
     related_products_details = serializers.SerializerMethodField()
+
+    @staticmethod
+    def _foto_url(obj):
+        fotos = obj.fotos.all()
+        foto_utama = next((foto for foto in fotos if foto.is_primary), None)
+        foto = foto_utama or next(iter(fotos), None)
+        return foto.foto.url if foto and foto.foto else None
+
+    def get_foto_url(self, obj):
+        """URL gambar utama untuk konsumen katalog seperti POS kasir."""
+        return self._foto_url(obj)
 
     def get_related_products_details(self, obj):
         ids = obj.related_product_ids
@@ -80,9 +92,6 @@ class ProductSerializer(serializers.ModelSerializer):
         related_prods = Product.objects.filter(id__in=ids, is_active=True)
         details = []
         for p in related_prods:
-            foto_url = None
-            if p.fotos.exists():
-                foto_url = p.fotos.first().foto.url
             details.append({
                 "id": p.id,
                 "nama": p.nama,
@@ -90,7 +99,7 @@ class ProductSerializer(serializers.ModelSerializer):
                 "barcode": p.barcode,
                 "harga_jual_toko": float(p.harga_jual_toko),
                 "has_variant": p.has_variant,
-                "foto_url": foto_url
+                "foto_url": self._foto_url(p)
             })
         return details
 
@@ -205,6 +214,13 @@ class AddonSerializer(serializers.ModelSerializer):
     def get_applies_to_category_names(self, obj):
         return [c.nama for c in obj.applies_to_categories.all()]
 
+
+class SaleItemAddonSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SaleItemAddon
+        fields = ['id', 'addon', 'nama_snapshot', 'harga_snapshot', 'qty', 'subtotal']
+
+
 class ProductStockMovementSerializer(serializers.ModelSerializer):
     product_nama = serializers.ReadOnlyField(source='product.nama')
     variant_nama = serializers.ReadOnlyField(source='variant.nama_varian')
@@ -310,7 +326,7 @@ class PurchaseSerializer(serializers.ModelSerializer):
         model = Purchase
         fields = '__all__'
         read_only_fields = [
-            'nomor', 'status', 'payment_status', 'receive_status',
+              'nomor', 'status', 'payment_status', 'payment_marked_paid', 'receive_status',
             'tanggal_diterima', 'no_terima', 'is_retur', 'retur_ref', 'dibuat_oleh',
         ]
 

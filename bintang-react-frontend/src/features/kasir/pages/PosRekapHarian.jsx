@@ -8,6 +8,7 @@ import {
   Calendar,
   Receipt,
   Coins,
+  Menu,
 } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 
@@ -18,7 +19,7 @@ import apiClient from '../../../api/apiClient';
  * (CashTransaction). Angka modal/HPP dihitung server dari satuan DASAR, jadi
  * aman untuk item yang memakai UOM maupun stok FIFO.
  */
-export default function PosRekapHarian() {
+export default function PosRekapHarian({ onToggleSidebar }) {
   const todayStr = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD lokal
   const [tanggal, setTanggal] = useState(todayStr);
   const [data, setData] = useState(null);
@@ -86,11 +87,23 @@ export default function PosRekapHarian() {
     <div className="flex-1 p-6 overflow-y-auto w-full max-w-6xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 pb-2 border-b border-slate-200">
-        <div>
-          <h4 className="font-extrabold text-slate-800 text-lg">Rekap Harian</h4>
-          <p className="text-xs text-slate-500 font-semibold font-mono uppercase tracking-wider">
-            Pemasukan &amp; Pengeluaran Kas
-          </p>
+        <div className="flex items-center gap-2.5">
+          {onToggleSidebar && (
+            <button
+              type="button"
+              onClick={onToggleSidebar}
+              className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-700 transition-colors cursor-pointer -ml-1"
+              title="Toggle Menu"
+            >
+              <Menu size={20} />
+            </button>
+          )}
+          <div>
+            <h4 className="font-extrabold text-slate-800 text-lg">Rekap Harian</h4>
+            <p className="text-xs text-slate-500 font-semibold font-mono uppercase tracking-wider">
+              Pemasukan &amp; Pengeluaran Kas
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">

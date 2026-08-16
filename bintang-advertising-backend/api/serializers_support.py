@@ -72,10 +72,24 @@ class BoMItemSerializer(serializers.ModelSerializer):
 
 
 class BillOfMaterialsSerializer(serializers.ModelSerializer):
-    product_nama = serializers.ReadOnlyField(source='product.nama_produk')
-    product_material = serializers.ReadOnlyField(source='product.material')
+    # `product` sekarang FK ke Product asli (product_models); `product_price`
+    # dipertahankan sebagai tautan legacy (lihat migration 0114). Kedua
+    # method field ini menangani baris lama (cuma product_price terisi) dan
+    # baris baru (product terisi) supaya frontend tidak perlu tahu bedanya.
+    product_nama = serializers.SerializerMethodField()
+    variant_nama = serializers.SerializerMethodField()
     items = BoMItemSerializer(many=True, read_only=True)
 
     class Meta:
         model = BillOfMaterials
         fields = '__all__'
+
+    def get_product_nama(self, obj):
+        if obj.product_id:
+            return obj.product.nama
+        if obj.product_price_id:
+            return obj.product_price.nama_produk
+        return None
+
+    def get_variant_nama(self, obj):
+        return obj.variant.nama_varian if obj.variant_id else None

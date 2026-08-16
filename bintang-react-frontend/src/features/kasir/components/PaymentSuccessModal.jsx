@@ -15,11 +15,21 @@ import {
 const toReceipt = (transactionData) => {
   if (!transactionData) return null;
   const total = Number(transactionData.total ?? transactionData.totalAmount ?? 0);
+  const fallbackDiscount = [
+    transactionData.diskon,
+    transactionData.diskon_manual,
+    transactionData.diskon_kupon,
+    transactionData.diskon_promo,
+    transactionData.diskon_penjualan,
+    transactionData.diskon_otomatis,
+    transactionData.diskon_loyalti,
+  ].reduce((sum, value) => sum + Number(value || 0), 0);
   return {
     ...transactionData,
     nomor: transactionData.nomor || transactionData.refCode || '-',
     pelanggan_name: transactionData.pelanggan_name || transactionData.customerName || 'Pelanggan umum',
     subtotal: transactionData.subtotal ?? total,
+    diskon: Number(transactionData.diskon_total ?? fallbackDiscount),
     total: transactionData.total ?? total,
     dibayar: transactionData.dibayar ?? transactionData.payAmount ?? total,
     kembalian: transactionData.kembalian ?? transactionData.changeAmount ?? 0,
@@ -47,7 +57,7 @@ export default function PaymentSuccessModal({
   }, [isOpen, transactionData]);
 
   React.useEffect(() => {
-    if (!isOpen || !transactionData?.id || !shouldAutoPrintPosReceipt(businessSettings)) return;
+    if (!isOpen || transactionData?.isOrderReceipt || !transactionData?.id || !shouldAutoPrintPosReceipt(businessSettings)) return;
     if (autoPrintedSaleId.current === transactionData.id) return;
     autoPrintedSaleId.current = transactionData.id;
     void printReceiptAfterRender({ receipt, businessSettings }).catch((error) => {
@@ -61,6 +71,12 @@ export default function PaymentSuccessModal({
   const customerName = receipt?.pelanggan_name || 'Pelanggan umum';
   const totalAmount = Number(transactionData?.total ?? transactionData?.totalAmount ?? 0);
   const changeAmount = Number(transactionData?.kembalian ?? transactionData?.changeAmount ?? 0);
+  const isOrderReceipt = Boolean(transactionData?.isOrderReceipt);
+  // Untuk order DP, "dibayar" adalah nominal DP yang benar-benar diterima —
+  // beda dari totalAmount (nilai order penuh). Sisa tagihan dipakai supaya
+  // kasir & pelanggan langsung tahu berapa yang belum dilunasi.
+  const paidAmount = Number(transactionData?.dibayar ?? transactionData?.payAmount ?? totalAmount);
+  const sisaTagihan = Number(transactionData?.sisa_tagihan ?? 0);
 
   const handleSendWa = async () => {
     if (!transactionData?.id) {
@@ -83,10 +99,6 @@ export default function PaymentSuccessModal({
     } finally {
       setSendingWa(false);
     }
-  };
-
-  const handleKirimSpk = () => {
-    alert(`SPK (Surat Perintah Kerja) untuk transaksi ${refCode} berhasil dikirim ke Tim Produksi & WhatsApp.`);
   };
 
   const handlePrintReceipt = async () => {
@@ -133,28 +145,40 @@ export default function PaymentSuccessModal({
           Pelanggan: <span className="text-white">{customerName}</span>
         </div>
 
-        {/* Total Pembayaran & Kembalian SS */}
+        {/* Total Pembayaran & Kembalian/Sisa Tagihan SS */}
         <div className="flex items-center gap-12 text-center mb-6">
           <div>
-            <span className="text-xs font-medium text-white/70 block mb-0.5">Total Pembayaran</span>
+            <span className="text-xs font-medium text-white/70 block mb-0.5">
+              {isOrderReceipt ? 'DP Dibayar' : 'Total Pembayaran'}
+            </span>
             <span className="text-2xl font-black text-white">
-              {Math.round(totalAmount).toLocaleString('id-ID')}
+              {Math.round(isOrderReceipt ? paidAmount : totalAmount).toLocaleString('id-ID')}
             </span>
           </div>
           <div>
-            <span className="text-xs font-medium text-white/70 block mb-0.5">Kembalian</span>
-            <span className="text-2xl font-black text-white">
-              {Math.round(changeAmount).toLocaleString('id-ID')}
+            <span className="text-xs font-medium text-white/70 block mb-0.5">
+              {isOrderReceipt ? 'Sisa Tagihan' : 'Kembalian'}
+            </span>
+            <span className={`text-2xl font-black ${isOrderReceipt && sisaTagihan > 0 ? 'text-rose-400' : 'text-white'}`}>
+              {isOrderReceipt
+                ? (sisaTagihan > 0 ? Math.round(sisaTagihan).toLocaleString('id-ID') : 'LUNAS')
+                : Math.round(changeAmount).toLocaleString('id-ID')}
             </span>
           </div>
         </div>
 
         {/* Send Inputs: Email & WhatsApp Resi SS */}
         <div className="w-full max-w-md space-y-3 mb-8">
-          <ReceiptEmailField saleId={transactionData?.id} initialEmail={transactionData?.customerEmail} />
+          {!isOrderReceipt && <ReceiptEmailField saleId={transactionData?.id} initialEmail={transactionData?.customerEmail} />}
+
+          {isOrderReceipt && (
+            <div className="rounded-lg border border-emerald-300/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
+              Invoice DP dijadwalkan otomatis ke WhatsApp pelanggan setelah transaksi tersimpan.
+            </div>
+          )}
 
           {/* SMS / WhatsApp Resi Input */}
-          <div>
+          {!isOrderReceipt && <div>
             <label className="text-[10px] font-medium text-white/60 block mb-0.5">SMS/WhatsApp Resi</label>
             <div className="flex items-center border-b border-white/30 pb-1">
               <input
@@ -174,7 +198,7 @@ export default function PaymentSuccessModal({
                 <Send size={15} />
               </button>
             </div>
-          </div>
+          </div>}
         </div>
 
         {/* Action Buttons Row SS */}
@@ -230,17 +254,17 @@ export default function PaymentSuccessModal({
             className="px-4 py-3 rounded-lg bg-[#0088FF] hover:bg-blue-600 text-white font-extrabold text-xs flex items-center gap-2 shadow-lg shadow-blue-500/20 transition-all cursor-pointer"
           >
             <Printer size={16} />
-            <span>Cetak Resi</span>
+            <span>{isOrderReceipt ? 'Cetak Invoice' : 'Cetak Resi'}</span>
           </button>
 
-          {/* Kirim SPK (New Requested Button - Teal/Purple) */}
           <button
             type="button"
-            onClick={handleKirimSpk}
-            className="px-4 py-3 rounded-lg bg-[#00A896] hover:bg-teal-700 text-white font-extrabold text-xs flex items-center gap-2 shadow-lg shadow-teal-500/20 transition-all cursor-pointer"
+            disabled
+            title="SPK sudah diterbitkan ke antrean divisi saat transaksi disimpan."
+            className="px-4 py-3 rounded-lg bg-teal-700/80 text-white font-extrabold text-xs flex items-center gap-2 shadow-lg shadow-teal-500/20 cursor-default"
           >
-            <Send size={16} />
-            <span>Kirim SPK</span>
+            <CheckCircle2 size={16} />
+            <span>SPK Diterbitkan</span>
           </button>
 
           {/* + Baru (Green Button) SS */}

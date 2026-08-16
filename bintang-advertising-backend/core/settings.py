@@ -43,8 +43,9 @@ _allowed = os.getenv('ALLOWED_HOSTS', '')
 if not _allowed and not DEBUG:
     raise RuntimeError('ALLOWED_HOSTS wajib diisi di production.')
 ALLOWED_HOSTS = [h.strip() for h in _allowed.split(',') if h.strip()]
-if '.trycloudflare.com' not in ALLOWED_HOSTS:
-    ALLOWED_HOSTS.append('.trycloudflare.com')
+for _internal in ['backend', '127.0.0.1', 'localhost', 'frontend', '.trycloudflare.com']:
+    if _internal not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(_internal)
 if DEBUG and 'testserver' not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append('testserver')
 
@@ -371,8 +372,13 @@ if not DEBUG:
     # Memberi tahu Django bahwa proxy Nginx sudah menangani HTTPS
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     
-    # Memaksa koneksi HTTPS di production
+    # Memaksa koneksi HTTPS di production (kecuali internal webhook & health)
     SECURE_SSL_REDIRECT = True
+    SECURE_REDIRECT_EXEMPT = [
+        r'^api/webhook/',
+        r'^api/health/',
+        r'^wa/webhook/',
+    ]
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     

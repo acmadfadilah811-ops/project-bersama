@@ -27,57 +27,35 @@ class IsOwnerOrManagerPerm(IsOwnerOrManager):
 
 
 def get_or_create_daily_session():
-    import os
-    import json
-    from django.conf import settings
     from datetime import datetime, timedelta
     from api.models import SystemConfig
-    
+
     today = timezone.localdate()
     sesi = DailyAttendanceSession.objects.filter(tanggal=today).first()
     if not sesi:
-        # Coba baca dari SystemConfig terlebih dahulu
+        # Jadwal berulang ("Terapkan Jadwal Ini Setiap Hari") disimpan di
+        # SystemConfig (database) — BUKAN file di disk container. File lokal
+        # ikut hilang setiap kali backend di-build ulang (image baru), sehingga
+        # "repeat_daily" gagal diam-diam dan sesi harus dibuka manual tiap hari.
         try:
             jam_masuk_str = SystemConfig.objects.get(key="payroll_jam_masuk").value
             toleransi_str = SystemConfig.objects.get(key="payroll_toleransi_menit").value
             toleransi_menit = int(toleransi_str)
-            
+
             mulai_time_obj = datetime.strptime(jam_masuk_str, "%H:%M").time()
             waktu_mulai = timezone.make_aware(datetime.combine(today, mulai_time_obj))
             batas_maksimal = waktu_mulai + timedelta(minutes=toleransi_menit)
-            
+
             sesi = DailyAttendanceSession.objects.create(
                 tanggal=today,
                 waktu_mulai=waktu_mulai,
                 batas_maksimal=batas_maksimal,
                 is_active=True
             )
-            return sesi
-        except Exception:
+        except SystemConfig.DoesNotExist:
             pass
-
-        # Fallback ke file JSON schedule lama jika SystemConfig belum terkonfigurasi/error
-        config_path = os.path.join(settings.BASE_DIR, "hr_attendance_schedule.json")
-        if os.path.exists(config_path):
-            try:
-                with open(config_path, "r") as f:
-                    config = json.load(f)
-                
-                if config.get("repeat_daily", False):
-                    mulai_time_obj = datetime.strptime(config["waktu_mulai"], "%H:%M").time()
-                    waktu_mulai = timezone.make_aware(datetime.combine(today, mulai_time_obj))
-                    
-                    batas_time_obj = datetime.strptime(config["batas_maksimal"], "%H:%M").time()
-                    batas_maksimal = timezone.make_aware(datetime.combine(today, batas_time_obj))
-                    
-                    sesi = DailyAttendanceSession.objects.create(
-                        tanggal=today,
-                        waktu_mulai=waktu_mulai,
-                        batas_maksimal=batas_maksimal,
-                        is_active=True
-                    )
-            except Exception as e:
-                logger.error(f"Error auto-creating session from schedule: {e}", exc_info=True)
+        except Exception as e:
+            logger.error(f"Error auto-creating session from SystemConfig: {e}", exc_info=True)
     return sesi
 
 
@@ -166,7 +144,7 @@ class ClockInView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # 2. Cek Batas Maksimal & Izin Keterlambatan
+        # 2. Cek batas maksimal dan persetujuan keterlambatan.
         if now > session.batas_maksimal:
             # Cek apakah punya UnlockRequest yang di-approve hari ini
             approved_request = UnlockRequest.objects.filter(
@@ -179,9 +157,11 @@ class ClockInView(APIView):
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
-        # 3. Cek apakah sudah clock-in
+        # 3. Cek apakah sudah clock-in. Absensi ``izin`` yang dibuat saat
+        #    permintaan buka akses disetujui belum memiliki jam_masuk, sehingga
+        #    staff tetap boleh mencatat waktu masuk sebenarnya di sini.
         existing = Absensi.objects.filter(staff=request.user, tanggal=today).first()
-        if existing and existing.status != "alpha":
+        if existing and existing.jam_masuk:
             return Response(
                 {
                     "detail": "Anda sudah clock-in hari ini.",
@@ -194,15 +174,18 @@ class ClockInView(APIView):
         # 4. Buat / Update Absensi
         status_hadir = "hadir"
         if now > session.batas_maksimal:
-            status_hadir = "izin" # Bisa disesuaikan jika terlambat dihitung izin/terlambat
+            status_hadir = "terlambat"
 
-        if existing and existing.status == "alpha":
+        if existing:
             absensi = existing
             absensi.jam_masuk = now
-            absensi.status = status_hadir
+            # Persetujuan keterlambatan tetap berstatus terlambat; clock-in
+            # hanya melengkapi jam masuk nyata, bukan mengubah klasifikasinya.
+            if absensi.status == "alpha":
+                absensi.status = status_hadir
             if request.data.get("catatan"):
-                absensi.catatan = request.data["catatan"]
-            absensi.save()
+                absensi.catatan = (absensi.catatan + " | " + request.data["catatan"]).strip(" |")
+            absensi.save(update_fields=["jam_masuk", "status", "catatan"])
         else:
             absensi = Absensi.objects.create(
                 staff=request.user,
@@ -733,22 +716,17 @@ class AttendanceSessionManagerView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        from api.models import SystemConfig
+
         sesi = get_or_create_daily_session()
+        # repeat_daily aktif kalau jadwalnya sudah tersimpan di SystemConfig
+        # (lihat get_or_create_daily_session dan .post() di bawah).
+        repeat_daily = SystemConfig.objects.filter(
+            key__in=["payroll_jam_masuk", "payroll_toleransi_menit"]
+        ).count() == 2
+
         if not sesi:
-            return Response({"is_active": False, "detail": "Belum ada sesi hari ini."})
-            
-        import os
-        import json
-        from django.conf import settings
-        config_path = os.path.join(settings.BASE_DIR, "hr_attendance_schedule.json")
-        repeat_daily = False
-        if os.path.exists(config_path):
-            try:
-                with open(config_path, "r") as f:
-                    config = json.load(f)
-                repeat_daily = config.get("repeat_daily", False)
-            except Exception:
-                pass
+            return Response({"is_active": False, "detail": "Belum ada sesi hari ini.", "repeat_daily": repeat_daily})
 
         return Response({
             "is_active": sesi.is_active,
@@ -758,43 +736,50 @@ class AttendanceSessionManagerView(APIView):
         })
 
     def post(self, request):
+        from api.models import SystemConfig
+
         if request.user.role not in ("owner", "manager"):
             return Response({"detail": "Hanya Owner/Manager yang bisa memulai sesi."}, status=403)
-        
+
         batas_waktu_str = request.data.get("batas_maksimal") # Format HH:MM
         waktu_mulai_str = request.data.get("waktu_mulai") # Format HH:MM
         repeat_daily = request.data.get("repeat_daily", False)
-        
+
         if not batas_waktu_str or not waktu_mulai_str:
             return Response({"detail": "waktu_mulai dan batas_maksimal wajib diisi (HH:MM)."}, status=400)
-            
+
         today = timezone.localdate()
-        
+
         # Parse waktu_mulai dan batas_maksimal
         from datetime import datetime
         try:
             mulai_time_obj = datetime.strptime(waktu_mulai_str, "%H:%M").time()
             waktu_mulai = timezone.make_aware(datetime.combine(today, mulai_time_obj))
-            
+
             batas_time_obj = datetime.strptime(batas_waktu_str, "%H:%M").time()
             batas_maksimal = timezone.make_aware(datetime.combine(today, batas_time_obj))
         except ValueError:
             return Response({"detail": "Format waktu salah. Gunakan HH:MM"}, status=400)
 
-        # Simpan config schedule jika repeat_daily=True/False
-        import os
-        import json
-        from django.conf import settings
-        config_path = os.path.join(settings.BASE_DIR, "hr_attendance_schedule.json")
-        try:
-            with open(config_path, "w") as f:
-                json.dump({
-                    "waktu_mulai": waktu_mulai_str,
-                    "batas_maksimal": batas_waktu_str,
-                    "repeat_daily": repeat_daily
-                }, f)
-        except Exception as e:
-            logger.error(f"Error writing attendance schedule json: {e}", exc_info=True)
+        if batas_maksimal <= waktu_mulai:
+            return Response({"detail": "Batas telat harus setelah jam mulai."}, status=400)
+
+        # Jadwal berulang disimpan di SystemConfig (database) supaya bertahan
+        # lintas deploy — bukan file di disk container (lihat
+        # get_or_create_daily_session). toleransi_menit dihitung dari selisih
+        # jam mulai dan batas telat.
+        if repeat_daily:
+            toleransi_menit = round((batas_maksimal - waktu_mulai).total_seconds() / 60)
+            SystemConfig.objects.update_or_create(
+                key="payroll_jam_masuk", defaults={"value": waktu_mulai_str},
+            )
+            SystemConfig.objects.update_or_create(
+                key="payroll_toleransi_menit", defaults={"value": str(toleransi_menit)},
+            )
+        else:
+            SystemConfig.objects.filter(
+                key__in=["payroll_jam_masuk", "payroll_toleransi_menit"]
+            ).delete()
 
         sesi = DailyAttendanceSession.objects.filter(tanggal=today).first()
         if sesi:
@@ -860,8 +845,8 @@ class NotifyLateStaffView(APIView):
                 )
                 
                 # Send WhatsApp message
-                if staff.no_wa:
-                    clean_number = staff.no_wa.replace('+', '').replace(' ', '').replace('-', '')
+                if staff.no_hp:
+                    clean_number = staff.no_hp.replace('+', '').replace(' ', '').replace('-', '')
                     msg = (
                         f"Halo {staff.get_full_name() or staff.username},\n\n"
                         f"Anda terdeteksi belum melakukan absensi masuk (Clock-in) untuk hari ini "
@@ -924,7 +909,7 @@ class UnlockRequestManagerView(APIView):
                 "id": r.id,
                 "staff": r.staff.username,
                 "staff_nama": r.staff.get_full_name(),
-                "staff_no_wa": r.staff.no_wa,
+                "staff_no_wa": r.staff.no_hp,
                 "alasan": r.alasan,
                 "waktu_request": r.waktu_request,
                 "status": r.status
@@ -957,6 +942,29 @@ class UnlockRequestActionView(APIView):
             req.direspon_oleh = request.user
             req.waktu_respon = timezone.now()
             req.save()
+
+            if action == "approve":
+                # Approval keterlambatan adalah keputusan akses, bukan
+                # clock-in palsu.
+                # Pastikan setiap staff mempunyai rekam absensi untuk tanggal
+                # sesi, beri status terlambat jika sebelumnya alpha, dan tandai
+                # workspace secara eksplisit terbuka.
+                absensi, _ = Absensi.objects.select_for_update().get_or_create(
+                    staff=req.staff,
+                    tanggal=req.sesi.tanggal,
+                    defaults={"status": "terlambat"},
+                )
+                if absensi.status == "alpha":
+                    absensi.status = "terlambat"
+                approver = request.user.get_full_name() or request.user.username
+                keterangan = (
+                    f"Keterlambatan disetujui oleh {approver} pada "
+                    f"{req.waktu_respon.strftime('%H:%M')}. Alasan: {req.alasan}"
+                )
+                if keterangan not in absensi.catatan:
+                    absensi.catatan = (absensi.catatan + " | " + keterangan).strip(" |")
+                absensi.workspace_unlocked = True
+                absensi.save(update_fields=["status", "workspace_unlocked", "catatan"])
         
         return Response({"detail": f"Permintaan berhasil di-{action}.", "status": req.status})
 

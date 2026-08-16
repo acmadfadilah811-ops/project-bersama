@@ -51,6 +51,7 @@ from .opening_balance import OpeningBalanceSubmitView
 from .settlement import SettlementConfirmView, SettlementListView
 from .transfer_modal import TransferModalCreateView, TransferModalListView
 from .settings import (
+    AccountingBootstrapDefaultCoaView,
     AccountingCompleteSetupView,
     AccountingLifecycleLogListView,
     POSPostingSettingsAuditLogListView,
@@ -119,6 +120,7 @@ __all__ = [
     "TransferModalCreateView",
     "OpeningBalanceSubmitView",
     "AccountingSettingsView",
+    "AccountingBootstrapDefaultCoaView",
     "AccountingCompleteSetupView",
     "AccountingLifecycleLogListView",
     "POSPostingSettingsAuditLogListView",

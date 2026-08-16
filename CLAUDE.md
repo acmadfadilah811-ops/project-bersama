@@ -16,3 +16,4 @@ Rules:
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+- Kalau node count graph terlihat menyusut tiba-tiba atau kehilangan cakupan salah satu subfolder (mis. `bintang-react-frontend/` hilang) — `graphify update .` pakai manifest+scan inkremental yang kadang skip file non-Python di subfolder terpisah. Perbaikan: `graphify extract . --code-only` (scan ulang seluruh tree, AST lokal, tanpa API key) lalu `graphify cluster-only .`, dijalankan dari root `C:\bintang-project` — bukan `update .` biasa.

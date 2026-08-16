@@ -40,8 +40,8 @@ export default function getPenjualanColumns({
     },
     { key: 'jatuhTempo', label: 'Jatuh Tempo', render: (row) => <span className="text-slate-500">{row.jatuh_tempo || '-'}</span> },
     { key: 'pelanggan', label: 'Pelanggan', render: (row) => <span className="font-semibold text-slate-700">{row.nama}</span> },
-    { key: 'kodePelanggan', label: 'Kode Pelanggan', render: (row) => <span className="font-mono text-slate-400">{row.nomor_wa || '-'}</span> },
-    { key: 'tujuan', label: 'Tujuan Pengiriman', render: (row) => <span className="truncate max-w-[150px] block text-slate-500" title={row.catatan_pelanggan}>{row.catatan_pelanggan || '-'}</span> },
+    { key: 'kodePelanggan', label: 'Kode Pelanggan', render: (row) => <span className="font-mono text-slate-400">{row.kode_pelanggan || '-'}</span> },
+    { key: 'tujuan', label: 'Tujuan Pengiriman', render: (row) => <span className="truncate max-w-[150px] block text-slate-500" title={row.alamat_pelanggan}>{row.alamat_pelanggan || '-'}</span> },
     { key: 'total', label: 'Total', render: (row) => <span className="font-bold text-slate-800">Rp {row.total_harga?.toLocaleString('id-ID')}</span> },
     { key: 'sisa', label: 'Sisa Pembayaran', render: (row) => <span className={`font-bold ${row.sisa_tagihan > 0 ? 'text-rose-600' : 'text-slate-500'}`}>Rp {row.sisa_tagihan?.toLocaleString('id-ID')}</span> },
     {

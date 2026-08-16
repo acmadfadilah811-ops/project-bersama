@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
+from django.core.cache import cache
 from django.db.models import Sum, Count, Max, Avg, OuterRef, Subquery, Q
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
@@ -69,7 +70,7 @@ class ContactViewSet(viewsets.ModelViewSet):
             total=Sum('sisa_tagihan')
         ).values('total')[:1]
 
-        qs = Contact.objects.annotate(
+        qs = Contact.objects.select_related('customer__customer_group').annotate(
             annotated_piutang=Coalesce(Subquery(orders_subquery), 0)
         )
 
@@ -89,6 +90,26 @@ class ContactViewSet(viewsets.ModelViewSet):
             qs = qs.filter(annotated_piutang__gt=0)
 
         return qs.order_by('-total_spent', '-total_order')
+
+    def perform_update(self, serializer):
+        """Toggle handover_to_staff harus benar-benar menyala/mati.
+
+        Bot WA dicek lewat DUA gerbang terpisah — `Contact.handover_to_staff`
+        (DB, diset toggle ini) DAN cache `wa_handover_{nomor}` (auto-set 15
+        menit tiap kali staff balas chat manual/kirim resi — lihat
+        views/whatsapp.py & pos_views.py). Keduanya di-OR: bot nonaktif kalau
+        SALAH SATU aktif. Sebelum perbaikan ini, toggle "aktifkan lagi" cuma
+        mematikan flag DB, tapi cache 15-menitnya tetap menyala kalau staff
+        baru saja balas manual — makanya bot kelihatan "tidak mau aktif lagi"
+        walau toggle sudah dinyalakan balik. Toggle mati HARUS ikut hapus cache.
+        """
+        instance = serializer.save()
+        if 'handover_to_staff' in serializer.validated_data:
+            cache_key = f"wa_handover_{instance.nomor_wa}"
+            if instance.handover_to_staff:
+                cache.set(cache_key, True, timeout=900)
+            else:
+                cache.delete(cache_key)
 
     @action(detail=False, methods=['post'], url_path='sync')
     def sync(self, request):

@@ -1,7 +1,10 @@
 import { useState, useRef } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import { useAuth } from '../../../context/AuthContext';
 
 export default function AccountingSecondarySidebar({ activeSubMenu, onSelectMenu }) {
+  const { user } = useAuth();
+  const isKasir = user?.role?.toLowerCase() === 'kasir';
   const [openDropdowns, setOpenDropdowns] = useState({
     jurnal: false,
     kasBank: false,
@@ -124,7 +127,11 @@ export default function AccountingSecondarySidebar({ activeSubMenu, onSelectMenu
       isGroup: true,
       subItems: [
         { id: 'hutang-semua', label: 'Semua Hutang' },
-        { id: 'hutang-supplier', label: 'Pengaturan Supplier' },
+        // Disembunyikan dari kasir (instruksi user 2026-08-13) — kasir
+        // tidak diizinkan ubah akun_hutang/jatuh_tempo supplier (backend
+        // sudah menolak juga, lihat SupplierViewSet), jadi menu ini cuma
+        // membingungkan kalau tetap tampil.
+        ...(isKasir ? [] : [{ id: 'hutang-supplier', label: 'Pengaturan Supplier' }]),
         { id: 'hutang-simpanan-pelanggan', label: 'Simpanan Pelanggan' }
       ],
     },

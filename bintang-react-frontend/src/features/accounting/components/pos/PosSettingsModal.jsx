@@ -34,7 +34,7 @@ export default function PosSettingsModal({ isOpen, onClose }) {
         setSettings(currentSettings);
         setAccounts(responseList(accountsRes.data));
         setMethods(responseList(methodsRes.data));
-        setEditingDefaults(!POS_ACCOUNT_FIELDS.some(({ key }) => currentSettings[key]));
+        setEditingDefaults(POS_ACCOUNT_FIELDS.some(({ key, required }) => required && !currentSettings[key]));
       })
       .catch((error) => {
         if (!cancelled) notifyApiError(error, 'Gagal memuat Pengaturan POS');
@@ -65,8 +65,8 @@ export default function PosSettingsModal({ isOpen, onClose }) {
   };
   const save = async () => {
     const missingRequired = POS_ACCOUNT_FIELDS.some(({ key, required }) => required && !settings[key]);
-    if (missingRequired) {
-      notify({ type: 'warning', title: 'Pengaturan Tidak Lengkap', message: 'Pengiriman, pembulatan, dan pembayaran unik wajib dipilih.' });
+    if (settings.pos_auto_post_enabled && missingRequired) {
+      notify({ type: 'warning', title: 'Pengaturan Tidak Lengkap', message: 'Pilih akun Pendapatan POS, HPP, dan Persediaan sebelum menyimpan.' });
       return;
     }
     setSaving(true);

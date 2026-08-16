@@ -9,6 +9,7 @@ Menambah laporan baru = tambah satu handler di sini + satu baris `dataSource`
 di definisi frontend. Endpoint data dan export otomatis ikut bekerja.
 """
 import io
+import math
 
 import openpyxl
 from django.db.models import Q
@@ -22,10 +23,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .export_views import IgnoreFormatContentNegotiation
-from .models import Order
+from .models import Order, OrderActivityLog
 from .pos_models import POSSale
 from .product_models import (
-    Product, ProductStockMovement,
+    Product, ProductPackage, ProductStockMovement,
     StockInDocument, StockInDocumentItem,
     StockOutDocument, StockOutDocumentItem,
     StockOpnameDocument, StockOpnameDocumentItem,
@@ -735,7 +736,7 @@ def rpt_value_pergerakan(params):
 def _orders_in_range(params):
     qs = Order.objects.exclude(status_global='batal').select_related('dilayani_oleh').prefetch_related(
         'items__product__brand', 'items__product__kategori',
-        'items__product__koleksi', 'items__variant')
+        'items__product__koleksi', 'items__variant', 'items__paket')
     if params['start']:
         qs = qs.filter(waktu__date__gte=params['start'])
     if params['end']:
@@ -745,7 +746,7 @@ def _orders_in_range(params):
 
 def _pos_sales_in_range(params):
     qs = POSSale.objects.filter(status='paid').select_related('kasir', 'pelanggan', 'dilayani_oleh').prefetch_related(
-        'items__product__brand', 'items__product__kategori', 'items__product__koleksi', 'items__variant')
+        'items__product__brand', 'items__product__kategori', 'items__product__koleksi', 'items__variant', 'items__paket')
     if params['start']:
         qs = qs.filter(created_at__date__gte=params['start'])
     if params['end']:
@@ -817,8 +818,107 @@ def _sale_lines(params):
                 # "Dilayani oleh" = karyawan pelayan (service order); fallback ke
                 # kasir bila transaksi lama belum mengisi pelayan.
                 'dilayani_oleh': _nama_user(s.dilayani_oleh) or (s.kasir.username if s.kasir else ''),
+                # No. Seri yang benar-benar terjual di baris ini (produk dengan
+                # pesanan_no_seri=True) — kosong utk Order/WA, belum ada alur
+                # pemilihan seri di kanal itu.
+                'no_seri': ', '.join(it.serial_numbers) if it.serial_numbers else '',
             })
     return lines
+
+
+def _package_sale_lines(params):
+    """Baris paket lintas pesanan WA/admin dan transaksi POS.
+
+    Nama yang ditampilkan berasal dari snapshot baris transaksi, sehingga
+    laporan historis tetap terbaca walau nama paket master kemudian diubah.
+    """
+    rows = []
+    for order in _orders_in_range(params):
+        for item in order.items.all():
+            if not item.paket_id:
+                continue
+            rows.append({
+                'paket': item.paket,
+                'nama': item.jenis_produk or item.paket.nama,
+                'qty': _num(item.qty),
+                'jumlah': _num(item.harga_jual),
+                'no_pesanan': str(order.id),
+                'tanggal_jual': order.waktu.date().isoformat() if order.waktu else '',
+                'pelayan_pos': _nama_user(order.dilayani_oleh),
+            })
+    for sale in _pos_sales_in_range(params):
+        for item in sale.items.all():
+            if not item.paket_id:
+                continue
+            rows.append({
+                'paket': item.paket,
+                'nama': item.nama_snapshot or item.paket.nama,
+                'qty': _num(item.qty),
+                'jumlah': _num(item.subtotal),
+                'no_pesanan': sale.nomor,
+                'tanggal_jual': sale.created_at.date().isoformat() if sale.created_at else '',
+                'pelayan_pos': _nama_user(sale.dilayani_oleh) or _nama_user(sale.kasir),
+            })
+    return rows
+
+
+@report('penjualan-paket', 'Penjualan Paket', [
+    ('nama', 'Nama', 'text'), ('qty_jual', 'Qty Terjual', 'qty'),
+    ('total_jual', 'Total Penjualan', 'money'),
+])
+def rpt_penjualan_paket(params):
+    grouped = {}
+    for line in _package_sale_lines(params):
+        key = line['paket'].pk
+        row = grouped.setdefault(key, {'nama': line['nama'], 'qty_jual': 0.0, 'total_jual': 0.0})
+        row['qty_jual'] += line['qty']
+        row['total_jual'] += line['jumlah']
+    rows = sorted(grouped.values(), key=lambda row: row['nama'].lower())
+    return {'rows': rows, 'summary': {'rows': [{
+        'qty_jual': sum(row['qty_jual'] for row in rows),
+        'total_jual': sum(row['total_jual'] for row in rows),
+    }]}}
+
+
+@report('rincian-paket', 'Rincian Penjualan Paket', [
+    ('no_pesanan', 'No. Pesanan', 'text'), ('tanggal_jual', 'Tanggal Jual', 'date'),
+    ('pelayan_pos', 'Pelayan (POS)', 'text'), ('nama_paket', 'Nama Paket Produk', 'text'),
+    ('qty', 'Qty', 'qty'), ('jumlah', 'Jumlah', 'money'),
+])
+def rpt_rincian_paket(params):
+    rows = [
+        {
+            'no_pesanan': line['no_pesanan'], 'tanggal_jual': line['tanggal_jual'],
+            'pelayan_pos': line['pelayan_pos'], 'nama_paket': line['nama'],
+            'qty': line['qty'], 'jumlah': line['jumlah'],
+        }
+        for line in _package_sale_lines(params)
+    ]
+    rows.sort(key=lambda row: (row['tanggal_jual'], row['no_pesanan']), reverse=True)
+    return {'rows': rows, 'summary': {'rows': [{
+        'qty': sum(row['qty'] for row in rows), 'jumlah': sum(row['jumlah'] for row in rows),
+    }]}}
+
+
+@report('sisa-paket', 'Sisa Stok Paket', [
+    ('nama', 'Nama', 'text'), ('qty', 'Qty', 'qty'),
+])
+def rpt_sisa_paket(params):
+    rows = []
+    packages = ProductPackage.objects.prefetch_related('items__product', 'items__variant').order_by('nama')
+    for package in packages:
+        availability = []
+        for component in package.items.all():
+            product = component.product
+            if not product.lacak_inventori:
+                continue
+            owner = component.variant or product
+            per_package = max(1, int(component.qty or 1))
+            availability.append(math.floor(float(owner.qty_stok or 0) / per_package))
+        # Komponen non-inventori tidak membatasi ketersediaan paket. Nilai null
+        # berarti paket dapat dijual tanpa batas stok sistem, bukan stok nol.
+        rows.append({'nama': package.nama, 'qty': min(availability) if availability else None})
+    return {'rows': rows}
 
 
 def _group_sales(params, keyfn, labelfn):
@@ -1041,7 +1141,10 @@ def rpt_rincian_penjualan(params):
     for o in _orders_in_range(params):
         modal = sum(_num(i.biaya_bahan) for i in o.items.all())
         total = _num(o.total_harga)
-        diskon = total * _num(o.diskon_persen) / 100.0
+        # Total Order sudah bersih setelah kupon/diskon penjualan. Selisih dari
+        # subtotal item adalah fakta diskon yang benar-benar tercatat.
+        subtotal_item = sum(_num(i.harga_jual) for i in o.items.all())
+        diskon = max(0.0, subtotal_item - total)
         rows.append({
             'no_pesanan': str(o.id),
             'tanggal': o.waktu.date().isoformat() if o.waktu else '',
@@ -1075,7 +1178,8 @@ def rpt_rincian_penjualan(params):
             'id_pelanggan': s.pelanggan.nomor_wa if s.pelanggan else '',
             'pembulatan': 0, 'total_penjualan': total, 'jumlah_ditebus': _num(s.dibayar),
             'pengiriman_pajak': _num(s.pajak), 'modal_produk': modal, 'laba': total - modal,
-            'biaya_layanan': 0, 'tambahan_pembayaran': 0, 'diskon': _num(s.diskon),
+            'biaya_layanan': 0, 'tambahan_pembayaran': 0,
+            'diskon': _num(s.diskon) + _num(s.diskon_kupon) + _num(s.diskon_penjualan) + _num(s.diskon_loyalti),
             'tebus_deposit': 0, 'pengunjung': 0,
             'sumber': 'POS',
             'waktu': s.created_at.strftime('%Y-%m-%d %H:%M') if s.created_at else '',
@@ -1086,7 +1190,7 @@ def rpt_rincian_penjualan(params):
         })
         t_total += total
         t_modal += modal
-        t_diskon += _num(s.diskon)
+        t_diskon += _num(s.diskon) + _num(s.diskon_kupon) + _num(s.diskon_penjualan) + _num(s.diskon_loyalti)
         t_pajak += _num(s.pajak)
     rows.sort(key=lambda r: r['tanggal'], reverse=True)
     return {
@@ -1236,7 +1340,7 @@ def rpt_item_penjualan(params):
             'grup_item': (p.kategori.nama if p and p.kategori else ''),
             'item': ln['nama'],
             'sku_item': ((v.sku if v and v.sku else (p.sku if p else '')) or ''),
-            'no_seri': '',
+            'no_seri': ln.get('no_seri', ''),
             'pelanggan': ln['pelanggan'],
             'id_pelanggan': ln.get('id_pelanggan', ''),
             'qty': qty, 'uom': ln.get('uom', ''),
@@ -1264,6 +1368,58 @@ def rpt_item_penjualan(params):
             {'label': 'Total Penjualan', 'value': t_total, 'type': 'money'},
             {'label': 'Modal Produk', 'value': t_modal, 'type': 'money'},
             {'label': 'Total Laba', 'value': t_total - t_modal, 'type': 'money'},
+        ]},
+    }
+
+
+@report('addon-item-penjualan', 'Add-on Item Penjualan berdasarkan Tanggal', [
+    ('no_pesanan', 'No. Pesanan', 'text'), ('tanggal', 'Tanggal', 'date'),
+    ('penjualan_oleh', 'Penjualan Oleh', 'text'), ('addon', 'Add-On', 'text'),
+    ('qty', 'Qty', 'qty'), ('mata_uang', 'Mata Uang', 'text'),
+    ('total_penjualan', 'Total Penjualan', 'money'),
+])
+def rpt_addon_item_penjualan(params):
+    """Baris addon terpilih per item penjualan (Order + POS), dari SaleItemAddon
+    — satu baris per addon per item (bukan agregat per nota)."""
+    rows = []
+    t_qty = t_total = 0.0
+    for o in _orders_in_range(params):
+        tgl = o.waktu.date() if o.waktu else None
+        for it in o.items.all():
+            for link in it.addons.all():
+                qty = _num(link.qty)
+                total = _num(link.subtotal)
+                rows.append({
+                    'no_pesanan': str(o.id),
+                    'tanggal': tgl.isoformat() if tgl else '',
+                    'penjualan_oleh': _nama_user(o.dilayani_oleh),
+                    'addon': link.nama_snapshot, 'qty': qty,
+                    'mata_uang': 'IDR', 'total_penjualan': total,
+                })
+                t_qty += qty
+                t_total += total
+    for s in _pos_sales_in_range(params):
+        tgl = s.created_at.date() if s.created_at else None
+        for it in s.items.all():
+            for link in it.addons.all():
+                qty = _num(link.qty)
+                total = _num(link.subtotal)
+                rows.append({
+                    'no_pesanan': s.nomor,
+                    'tanggal': tgl.isoformat() if tgl else '',
+                    'penjualan_oleh': s.kasir.username if s.kasir else '',
+                    'addon': link.nama_snapshot, 'qty': qty,
+                    'mata_uang': 'IDR', 'total_penjualan': total,
+                })
+                t_qty += qty
+                t_total += total
+    rows.sort(key=lambda r: r['tanggal'], reverse=True)
+    return {
+        'rows': rows,
+        'summary': {'type': 'grid', 'items': [
+            {'label': 'Mata Uang', 'value': 'IDR', 'type': 'text'},
+            {'label': 'Total Penjualan', 'value': t_total, 'type': 'money'},
+            {'label': 'Qty', 'value': t_qty, 'type': 'qty'},
         ]},
     }
 
@@ -1393,9 +1549,23 @@ def rpt_pelunasan_kredit(params):
     ('akun_bank', 'Akun Bank', 'text'), ('jumlah', 'Jumlah', 'money'),
 ])
 def rpt_ringkasan_metode(params):
-    """Kolom 'Akun Bank' selalu kosong: sistem belum punya model rekening bank."""
+    """Rekap berdasarkan peristiwa pembayaran, bukan metode terakhir Order."""
+    from .models import OrderPayment
+
     agg = {}
-    for o in _orders_in_range(params):
+    payments = OrderPayment.objects.all()
+    if params['start']:
+        payments = payments.filter(dibuat_pada__date__gte=params['start'])
+    if params['end']:
+        payments = payments.filter(dibuat_pada__date__lte=params['end'])
+    paid_order_ids = set(payments.values_list('order_id', flat=True))
+    for payment in payments:
+        k = (payment.metode_pembayaran or 'tunai').lower()
+        agg[k] = agg.get(k, 0.0) + _num(payment.jumlah)
+
+    # Data historis sebelum model OrderPayment diperkenalkan tetap tampil
+    # menggunakan agregat lama, tetapi transaksi baru selalu memakai blok di atas.
+    for o in _orders_in_range(params).exclude(pk__in=paid_order_ids):
         k = (o.metode_pembayaran or 'tunai').lower()
         agg[k] = agg.get(k, 0.0) + _num(o.dp_dibayar)
     for s in _pos_sales_in_range(params):
@@ -1442,6 +1612,48 @@ def rpt_ringkasan_diskon(params):
     } for g in agg.values()]
 
     # Diskon manual POS (diluar kupon) — nota dengan POSSale.diskon > 0.
+    # Diskon Penjualan otomatis disimpan langsung pada transaksi, bukan di
+    # CouponUsage. Kelompokkan berdasarkan aturan Marketing jika masih ada.
+    auto = {}
+    for s in _pos_sales_in_range(params):
+        nilai = _num(s.diskon_penjualan)
+        if nilai <= 0:
+            continue
+        rule_id = s.sales_discount_id or '-'
+        key = ('POS', f'AUTO-{rule_id}')
+        g = auto.setdefault(key, {
+            'sumber': 'POS', 'kode_diskon': f'AUTO-{rule_id}',
+            'nama_diskon': 'Diskon Penjualan Otomatis', 'jumlah_diskon': 0.0, 'qty_pesanan': 0,
+        })
+        g['jumlah_diskon'] += nilai
+        g['qty_pesanan'] += 1
+
+    # Order (termasuk DP kasir) menyimpan nominal diskon otomatis. Untuk kupon
+    # lama yang belum memiliki CouponUsage, gunakan snapshot pada Order sebagai
+    # fallback agar laporan tidak kehilangan transaksi historis.
+    order_coupon_usage_ids = set(cu.filter(order_id__isnull=False).values_list('order_id', flat=True))
+    for o in _orders_in_range(params):
+        otomatis = _num(o.diskon_otomatis)
+        if otomatis > 0:
+            key = ('Order', 'AUTO-ORDER')
+            g = auto.setdefault(key, {
+                'sumber': 'Order', 'kode_diskon': 'AUTO-ORDER',
+                'nama_diskon': 'Diskon Penjualan Otomatis', 'jumlah_diskon': 0.0, 'qty_pesanan': 0,
+            })
+            g['jumlah_diskon'] += otomatis
+            g['qty_pesanan'] += 1
+        if o.kupon_id and o.id not in order_coupon_usage_ids and _num(o.diskon_kupon) > 0:
+            key = ('Order', o.kupon.kode)
+            g = auto.setdefault(key, {
+                'sumber': 'Order', 'kode_diskon': o.kupon.kode,
+                'nama_diskon': o.kupon.judul, 'jumlah_diskon': 0.0, 'qty_pesanan': 0,
+            })
+            g['jumlah_diskon'] += _num(o.diskon_kupon)
+            g['qty_pesanan'] += 1
+    rows.extend(auto.values())
+
+    # Diskon manual lama tetap terlihat sebagai riwayat, tetapi transaksi baru
+    # ditolak di service POS dan tidak dapat lagi membuat baris ini.
     man_total, man_qty = 0.0, 0
     for s in _pos_sales_in_range(params):
         if _num(s.diskon) > 0:
@@ -1449,7 +1661,7 @@ def rpt_ringkasan_diskon(params):
             man_qty += 1
     if man_total > 0:
         rows.append({
-            'sumber': 'POS', 'kode_diskon': '-', 'nama_diskon': 'Diskon Manual',
+            'sumber': 'POS', 'kode_diskon': '-', 'nama_diskon': 'Diskon Manual (Riwayat)',
             'jumlah_diskon': man_total, 'qty_pesanan': man_qty,
         })
 
@@ -1472,9 +1684,15 @@ def rpt_pesanan_dibatalkan(params):
     agg = {}
     oq = Order.objects.filter(status_global='batal')
     if params['start']:
-        oq = oq.filter(waktu__date__gte=params['start'])
+        cancelled_ids = OrderActivityLog.objects.filter(
+            tindakan='CANCEL', waktu__date__gte=params['start'],
+        ).values('order_id')
+        oq = oq.filter(pk__in=cancelled_ids)
     if params['end']:
-        oq = oq.filter(waktu__date__lte=params['end'])
+        cancelled_ids = OrderActivityLog.objects.filter(
+            tindakan='CANCEL', waktu__date__lte=params['end'],
+        ).values('order_id')
+        oq = oq.filter(pk__in=cancelled_ids)
     for o in oq:
         g = agg.setdefault('Order', {'total': 0.0, 'qty': 0})
         g['total'] += _num(o.total_harga)
@@ -1482,9 +1700,9 @@ def rpt_pesanan_dibatalkan(params):
 
     pq = POSSale.objects.filter(status='void')
     if params['start']:
-        pq = pq.filter(created_at__date__gte=params['start'])
+        pq = pq.filter(voided_at__date__gte=params['start'])
     if params['end']:
-        pq = pq.filter(created_at__date__lte=params['end'])
+        pq = pq.filter(voided_at__date__lte=params['end'])
     for s in pq:
         g = agg.setdefault('POS', {'total': 0.0, 'qty': 0})
         g['total'] += _num(s.total)
@@ -1617,17 +1835,39 @@ def rpt_ringkasan_loyalti(params):
     ('total_pembayaran', 'Total Pembayaran', 'money'),
 ])
 def rpt_pembayaran_lunas(params):
+    from .models import OrderPayment
+
     rows = []
     t_jual = t_bayar = 0.0
-    for o in _orders_in_range(params):
+    payments = OrderPayment.objects.select_related('order').order_by('order_id', '-dibuat_pada')
+    if params['start']:
+        payments = payments.filter(dibuat_pada__date__gte=params['start'])
+    if params['end']:
+        payments = payments.filter(dibuat_pada__date__lte=params['end'])
+    latest_paid_in_range = {}
+    for payment in payments:
+        latest_paid_in_range.setdefault(payment.order_id, payment)
+
+    # Filter berdasarkan tanggal pelunasan aktual bila ada riwayat pembayaran.
+    orders = list(_orders_in_range(params).exclude(payments__isnull=False))
+    orders.extend(payment.order for payment in latest_paid_in_range.values())
+    seen_order_ids = set()
+    for o in orders:
+        if o.pk in seen_order_ids:
+            continue
+        seen_order_ids.add(o.pk)
         if _num(o.sisa_tagihan) > 0:
             continue
         total = _num(o.total_harga)
+        payment = latest_paid_in_range.get(o.pk)
         rows.append({
             'no_pesanan': str(o.id),
-            'tanggal_pembayaran': o.waktu.date().isoformat() if o.waktu else '',
+            'tanggal_pembayaran': (
+                payment.dibuat_pada.date().isoformat() if payment else
+                (o.waktu.date().isoformat() if o.waktu else '')
+            ),
             'pelanggan': o.nama or '', 'id_pelanggan': o.nomor_wa or '',
-            'cara_pembayaran': o.metode_pembayaran or '',
+            'cara_pembayaran': (payment.metode_pembayaran if payment else o.metode_pembayaran) or '',
             'sumber_pesanan': (o.get_sumber_display() if hasattr(o, 'get_sumber_display') else (o.sumber or '')),
             'total_penjualan': total, 'total_pembayaran': _num(o.dp_dibayar),
         })
@@ -1662,9 +1902,15 @@ def rpt_pembayaran_lunas(params):
     ('telah_dibayar', 'Telah Dibayar', 'money'), ('sisa', 'Sisa Tagihan', 'money'),
 ])
 def rpt_pembayaran_belum_lunas(params):
+    from .models import OrderPayment
+
     rows = []
     t_sisa = 0.0
-    for o in _orders_in_range(params):
+    orders = list(_orders_in_range(params))
+    latest_by_order = {}
+    for payment in OrderPayment.objects.filter(order_id__in=[o.pk for o in orders]).order_by('order_id', '-dibuat_pada'):
+        latest_by_order.setdefault(payment.order_id, payment)
+    for o in orders:
         sisa = _num(o.sisa_tagihan)
         if sisa <= 0:
             continue
@@ -1674,7 +1920,7 @@ def rpt_pembayaran_belum_lunas(params):
             'waktu': o.waktu.strftime('%Y-%m-%d %H:%M') if o.waktu else '',
             'sumber_pesanan': (o.get_sumber_display() if hasattr(o, 'get_sumber_display') else (o.sumber or '')),
             'pelanggan': o.nama or '', 'id_pelanggan': o.nomor_wa or '',
-            'cara_pembayaran': o.metode_pembayaran or '',
+            'cara_pembayaran': (latest_by_order.get(o.pk).metode_pembayaran if o.pk in latest_by_order else o.metode_pembayaran) or '',
             'total_penjualan': _num(o.total_harga), 'telah_dibayar': _num(o.dp_dibayar),
             'sisa': sisa,
         })

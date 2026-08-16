@@ -152,7 +152,10 @@ export default function AdminDashboard() {
   };
 
   const absensiHariIni = personalAttendance?.absensi_hari_ini;
-  const sudahClockIn = absensiHariIni && absensiHariIni.status !== 'belum_absen';
+  // Cek jam_masuk, bukan status — izin keterlambatan yang disetujui mengubah
+  // status jadi 'terlambat' tapi jam_masuk tetap kosong sampai staff benar-benar
+  // klik Clock In (lihat StaffDashboard.jsx untuk detail).
+  const sudahClockIn = Boolean(absensiHariIni?.jam_masuk);
   const sudahClockOut = !!absensiHariIni?.jam_keluar;
 
   // Stat cards

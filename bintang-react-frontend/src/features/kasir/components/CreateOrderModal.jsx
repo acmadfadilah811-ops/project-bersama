@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { User, Phone, Plus, Trash2, ShoppingCart, ShoppingBag, Send, FileText, X, AlertTriangle, Search } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
+import { fetchAllPages } from '../../../utils/paginatedApi';
 import ProductMasterPicker from '../../orders/components/ProductMasterPicker';
 import SpkPublishModal from './SpkPublishModal';
 import NumericInput from '../../../components/NumericInput';
@@ -181,8 +182,8 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
         if (searchTerm) {
           params.search = searchTerm;
         }
-        const res = await apiClient.get('/products/', { params });
-        setProducts(res.data?.results || res.data || []);
+        const data = await fetchAllPages('/products/', { params });
+        setProducts(data);
       } catch (err) {
         console.error('Error fetching products:', err);
       } finally {

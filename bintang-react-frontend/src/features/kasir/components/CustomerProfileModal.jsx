@@ -55,7 +55,7 @@ export default function CustomerProfileModal({ isOpen, contact, onClose }) {
             <div className="space-y-4">
               <div className="border-b border-slate-200 pb-1">
                 <label className="text-[10px] font-medium text-slate-400 block">Tipe Pelanggan</label>
-                <div className="font-semibold text-slate-800 mt-0.5">{data.tipe_pelanggan || data.kategori || 'Guest'}</div>
+                <div className="font-semibold text-slate-800 mt-0.5">{data.customer_group_nama || 'Guest'}</div>
               </div>
 
               <div className="border-b border-slate-200 pb-1">

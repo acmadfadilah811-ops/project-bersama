@@ -17,7 +17,7 @@ import { useAuth } from '../../../context/AuthContext';
  * tertentu adalah wewenang kepala divisi/manager. Pembatasan ini juga
  * ditegakkan backend di api/spk.py — UI hanya menyembunyikan opsinya.
  */
-export default function SpkPublishModal({ judul, keterangan, onTerbitkan, onClose }) {
+export default function SpkPublishModal({ judul, keterangan, onTerbitkan, onClose, wajib = false }) {
   const { user } = useAuth();
   const bolehPilihStaff = (user?.role || '').toLowerCase() !== 'kasir';
 
@@ -98,16 +98,18 @@ export default function SpkPublishModal({ judul, keterangan, onTerbitkan, onClos
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,.45)', backdropFilter: 'blur(4px)' }} />
+        <div onClick={wajib ? undefined : onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,.45)', backdropFilter: 'blur(4px)' }} />
       <div style={{ position: 'relative', width: '100%', maxWidth: 460, background: '#fff', borderRadius: 16, overflow: 'hidden', boxShadow: '0 20px 25px -5px rgba(0,0,0,.1)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px', borderBottom: '1px solid #f1f5f9' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
             <Factory size={18} style={{ color: '#2783de' }} />
             <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: '#1e293b' }}>{judul || 'Terbitkan SPK Produksi'}</h3>
           </div>
-          <button type="button" onClick={onClose} style={{ border: 0, background: 'transparent', color: '#64748b', cursor: 'pointer' }}>
-            <X size={18} />
-          </button>
+          {!wajib && (
+            <button type="button" onClick={onClose} style={{ border: 0, background: 'transparent', color: '#64748b', cursor: 'pointer' }}>
+              <X size={18} />
+            </button>
+          )}
         </div>
 
         <div style={{ padding: '18px 22px' }}>
@@ -188,10 +190,12 @@ export default function SpkPublishModal({ judul, keterangan, onTerbitkan, onClos
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 9, padding: '14px 22px', borderTop: '1px solid #f1f5f9' }}>
-          <button type="button" onClick={onClose}
-            style={{ padding: '9px 15px', border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', color: '#475569', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-            Nanti saja
-          </button>
+          {!wajib && (
+            <button type="button" onClick={onClose}
+              style={{ padding: '9px 15px', border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', color: '#475569', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+              Nanti saja
+            </button>
+          )}
           <button type="button" onClick={kirim} disabled={!bisaKirim || mengirim || memuat}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 15px', border: 0, borderRadius: 8, background: bisaKirim && !mengirim ? '#2783de' : '#cbd5e1', color: '#fff', fontSize: 13, fontWeight: 700, cursor: bisaKirim && !mengirim ? 'pointer' : 'default' }}>
             {mengirim && <Loader2 size={14} className="animate-spin" />}

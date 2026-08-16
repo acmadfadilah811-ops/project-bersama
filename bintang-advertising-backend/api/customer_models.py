@@ -38,6 +38,8 @@ class Customer(models.Model):
     terima_buletin = models.BooleanField(default=False)
     bekukan = models.BooleanField(default=False, help_text="Bekukan: pelanggan tidak bisa dipilih di POS")
     tanggal_berakhir = models.DateField(null=True, blank=True, help_text="Masa berlaku membership, kosongkan jika tidak ada")
+    tanggal_bergabung = models.DateField(null=True, blank=True, help_text="Tanggal pelanggan pertama bergabung — manual atau dari import data lama, beda dari created_at (kapan record dibuat di sistem ini)")
+    transaksi_terakhir = models.DateField(null=True, blank=True, help_text="Tanggal transaksi terakhir tercatat — termasuk histori sebelum migrasi sistem, diisi manual/import")
     catatan = models.TextField(blank=True, default='')
     alamat = models.TextField(blank=True, default='')
     negara = models.CharField(max_length=100, blank=True, default='')

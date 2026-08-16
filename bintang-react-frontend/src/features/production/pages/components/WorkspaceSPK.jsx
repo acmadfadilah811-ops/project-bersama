@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Play, CheckCircle, Save, Trash, ChevronLeft, Download, Printer, RefreshCw, Plus, Search, AlertTriangle } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
 import KomplainModal from '../../../orders/components/KomplainModal';
+import DeadlineBadge from '../../components/DeadlineBadge';
 
 const getKonsepDesain = (detail) => {
   if (!detail) return null;
@@ -366,6 +367,21 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
                 <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
                   2
                 </td>
+                <td className="bg-[#eef6ff] px-2 font-extrabold text-sky-700 border border-[#ccc] uppercase">
+                  DEADLINE PENYELESAIAN
+                </td>
+                <td colSpan={3} className="px-2 border border-[#ccc] bg-sky-50/30">
+                  {job.deadline ? (
+                    <DeadlineBadge deadline={job.deadline} />
+                  ) : (
+                    <span className="text-slate-400 italic">Belum ditentukan oleh manajer</span>
+                  )}
+                </td>
+              </tr>
+              <tr className="h-7 hover:bg-slate-50/30">
+                <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
+                  3
+                </td>
                 <td className="bg-[#f9f9f9] px-2 font-extrabold text-slate-500 border border-[#ccc] uppercase">
                   NAMA PRODUK
                 </td>
@@ -379,7 +395,7 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
               </tr>
               <tr className="h-7 hover:bg-slate-50/30">
                 <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                  3
+                  4
                 </td>
                 <td className="bg-[#f9f9f9] px-2 font-extrabold text-slate-500 border border-[#ccc] uppercase">
                   UKURAN
@@ -396,7 +412,7 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
               </tr>
               <tr className="h-7 hover:bg-slate-50/30">
                 <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                  4
+                  5
                 </td>
                 <td className="bg-[#f9f9f9] px-2 font-extrabold text-slate-500 border border-[#ccc] uppercase">
                   BIAYA DESAIN (Rp)
@@ -428,7 +444,7 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
                     <>
                       <tr className="bg-indigo-50/10">
                         <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                          5a
+                          6a
                         </td>
                         <td className="bg-[#e8eaf6] px-2 font-extrabold text-indigo-900 border border-[#ccc] uppercase">
                           KONSEP DESAIN (TULISAN)
@@ -439,7 +455,7 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
                       </tr>
                       <tr className="bg-indigo-50/10">
                         <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                          5b
+                          6b
                         </td>
                         <td className="bg-[#e8eaf6] px-2 font-extrabold text-indigo-900 border border-[#ccc] uppercase">
                           WARNA DOMINAN
@@ -456,7 +472,7 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
                       </tr>
                       <tr className="bg-indigo-50/10">
                         <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                          5c
+                          6c
                         </td>
                         <td className="bg-[#e8eaf6] px-2 font-extrabold text-indigo-900 border border-[#ccc] uppercase">
                           BENTUK / LAYOUT
@@ -479,7 +495,7 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
                 return (
                   <tr className="h-14 hover:bg-slate-50/30">
                     <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                      5
+                      6
                     </td>
                     <td className="bg-[#f9f9f9] px-2 font-extrabold text-slate-500 border border-[#ccc] uppercase">
                       {label}
@@ -495,7 +511,7 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
               })()}
               <tr className="h-8 hover:bg-slate-50/30">
                 <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                  6
+                  7
                 </td>
                 <td className="bg-[#e1f5fe] px-2 font-extrabold text-indigo-700 border border-[#ccc] uppercase">
                   DRIVE OUTPUT LINK
@@ -512,7 +528,7 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
               </tr>
               <tr className="h-10 hover:bg-slate-50/30">
                 <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                  7
+                  8
                 </td>
                 <td className="bg-[#e8f5e9] px-2 font-extrabold text-[#2e7d32] border border-[#ccc] uppercase">
                   CATATAN TAMBAHAN STAFF
@@ -529,7 +545,7 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
               </tr>
               <tr className="hover:bg-slate-50/30">
                 <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                  8
+                  9
                 </td>
                 <td className="bg-rose-50 px-2 font-extrabold text-rose-800 border border-[#ccc] uppercase align-top py-2">
                   RIWAYAT KOMPLAIN

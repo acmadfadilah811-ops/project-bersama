@@ -11,16 +11,18 @@ from rest_framework.response import Response
 from decimal import Decimal
 from .pos_models import POSSale, POSSaleItem
 from .pos_serializers import POSSaleSerializer
-from .models import SaldoKasHarian, Contact
+from .models import SaldoKasHarian, Contact, OrderPayment
 from .product_models import Product, ProductVariant, ProductStockMovement
 from . import stock_fifo
 from . import uom
 from . import pos_settings
 from . import spk
-from .permissions import IsOwnerManagerAdminOrKasir, IsStrictOwnerOrManager
+from .permissions import IsOwnerManagerAdminOrKasir
 from .throttles import PasskeyRateThrottle
 from .pos_services import create_sale, void_sale
-from .whatsapp_client import whatsapp_client
+from .services.pos_receipt_whatsapp import (
+    format_waktu_dokumen, hitung_total_diskon_resi, kirim_resi_pos_whatsapp,
+)
 
 class POSSaleViewSet(viewsets.ModelViewSet):
     queryset = POSSale.objects.all().order_by('-created_at')
@@ -119,12 +121,20 @@ class POSSaleViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='rekap-harian')
     def rekap_harian(self, request):
-        """GET /api/pos/sales/rekap-harian/?tanggal=YYYY-MM-DD[&kasir=<id>]
+        """GET /api/pos/sales/rekap-harian/?tanggal=YYYY-MM-DD[&kasir=<id>][&shift=<id>]
 
         Rekap kas harian untuk tab Pemasukan/Pengeluaran di kasir. Menggabungkan:
-        - Pemasukan: penjualan POS lunas (per metode bayar) + Pendapatan lain
+        - Pemasukan: penjualan POS lunas (per metode bayar) + DP/pelunasan Order
+          yang dicatat kasir (OrderPayment) + Pendapatan lain
           (CashTransaction arah='pendapatan').
         - Pengeluaran: CashTransaction arah='pengeluaran' (per tipe transaksi).
+
+        OrderPayment WAJIB ikut dihitung di sini — endpoint ini adalah sumber
+        angka "Total Diharapkan" yang tampil live di layar Shift (PosShift.jsx)
+        maupun Ringkasan Shift v2, dan HARUS sinkron dengan
+        calculate_shift_cash_summary() yang dipakai saat shift ditutup
+        (SaldoKasHarianViewSet.close()) — kalau tidak, kasir akan melihat
+        selisih tak terduga saat tutup shift walau uang di laci sudah benar.
 
         Aman UOM & FIFO: modal dihitung dari qty SATUAN DASAR (POSSaleItem.qty)
         dikali harga_beli per satuan dasar — tidak menyentuh qty/harga UOM
@@ -136,10 +146,17 @@ class POSSaleViewSet(viewsets.ModelViewSet):
 
         tgl = parse_date(request.query_params.get('tanggal') or '') or timezone.localdate()
         kasir_id = request.query_params.get('kasir')
+        shift_id = request.query_params.get('shift')
 
         # --- Pemasukan dari penjualan POS ---
-        sales = (POSSale.objects.filter(status='paid', created_at__date=tgl)
-                 .prefetch_related('items__product'))
+        sales = POSSale.objects.filter(status='paid').prefetch_related('items__product')
+        if shift_id:
+            # Layar Shift harus menampilkan transaksi dari shift aktif saja.
+            # Filter tanggal akan mencampurkan transaksi shift sebelumnya bila
+            # kasir membuka shift baru pada hari yang sama.
+            sales = sales.filter(shift_id=shift_id)
+        else:
+            sales = sales.filter(created_at__date=tgl)
         if kasir_id:
             sales = sales.filter(kasir_id=kasir_id)
 
@@ -157,9 +174,28 @@ class POSSaleViewSet(viewsets.ModelViewSet):
                 if it.product:
                     total_modal += (it.product.harga_beli or Decimal('0')) * (it.qty or Decimal('0'))
 
+        # --- Pemasukan dari DP/pelunasan Order (uang fisik di laci juga) ---
+        order_payments = OrderPayment.objects.all()
+        if shift_id:
+            order_payments = order_payments.filter(shift_id=shift_id)
+        else:
+            order_payments = order_payments.filter(dibuat_pada__date=tgl)
+        if kasir_id:
+            order_payments = order_payments.filter(dibuat_oleh_id=kasir_id)
+
+        for p in order_payments:
+            jumlah = Decimal(str(p.jumlah or 0))
+            total_penjualan += jumlah
+            jumlah_transaksi += 1
+            metode = p.metode_pembayaran or 'tunai'
+            per_metode[metode] = per_metode.get(metode, Decimal('0')) + jumlah
+
         # --- Pendapatan/Pengeluaran lain (CashTransaction) ---
-        ct = (CashTransaction.objects.filter(waktu__date=tgl)
-              .select_related('tipe_transaksi', 'staff'))
+        ct = CashTransaction.objects.select_related('tipe_transaksi', 'staff')
+        if shift_id:
+            ct = ct.filter(shift_id=shift_id)
+        else:
+            ct = ct.filter(waktu__date=tgl)
         if kasir_id:
             ct = ct.filter(staff_id=kasir_id)
 
@@ -269,9 +305,101 @@ class POSSaleViewSet(viewsets.ModelViewSet):
         sale = create_sale(user=request.user, data=request.data)
         return Response(self.get_serializer(sale).data, status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsStrictOwnerOrManager])
+    @action(detail=True, methods=['post'], permission_classes=[IsOwnerManagerAdminOrKasir])
+    @transaction.atomic
     def void(self, request, pk=None):
+        """
+        POST /api/pos/sales/{id}/void/
+        Owner/manager/admin bisa langsung void. Kasir (2026-08-14, sama
+        seperti Order — lihat OrderViewSet.batalkan) wajib menyertakan
+        `void_request_id` + `otp_code` dari permintaan yang sudah disetujui
+        owner lewat /minta-otp-void/.
+        """
+        from .services.pos_void_otp import ROLE_BYPASS_OTP, PosVoidOtpError, verifikasi_dan_gunakan_otp
+        if request.user.role not in ROLE_BYPASS_OTP:
+            sale_obj = self.get_object()
+            try:
+                verifikasi_dan_gunakan_otp(
+                    sale=sale_obj, kasir=request.user,
+                    void_request_id=request.data.get('void_request_id'),
+                    otp_code=request.data.get('otp_code'),
+                )
+            except PosVoidOtpError as e:
+                return Response({'error': str(e)}, status=status.HTTP_403_FORBIDDEN)
+
         sale = void_sale(sale_id=pk, user=request.user)
+        return Response(self.get_serializer(sale).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='minta-otp-void')
+    def minta_otp_void(self, request, pk=None):
+        """
+        POST /api/pos/sales/{id}/minta-otp-void/
+        Kasir mengajukan permintaan void transaksi POS Lunas — perlu
+        persetujuan OTP owner (lihat api/services/pos_void_otp.py) sebelum
+        /void/ bisa dipanggil. Owner/manager/admin tidak perlu endpoint
+        ini, mereka bisa langsung /void/.
+        """
+        sale = self.get_object()
+        alasan = str(request.data.get('alasan') or '').strip()
+
+        from .services.pos_void_otp import ajukan_permintaan_void, PosVoidOtpError
+        try:
+            void_request = ajukan_permintaan_void(sale=sale, kasir=request.user, alasan=alasan)
+        except PosVoidOtpError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        from .pos_serializers import POSVoidRequestSerializer
+        return Response(
+            POSVoidRequestSerializer(void_request, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=False, methods=['get'])
+    def produksi(self, request):
+        """Transaksi POS Lunas yang punya SPK produksi (job dari pos_sale_item),
+        belum ditandai diambil pelanggan — padanan `/orders/?status_global=`
+        utk panel "Pesanan & Pelunasan" (SiapDiambilPanel.jsx). Status
+        'ready'/'proses' dihitung langsung dari status job saat request
+        (tidak disimpan), karena logic auto-ready di views/jobs.py sengaja
+        cuma menangani job asal order_item (bug ditemukan 2026-08-13 — job
+        POS sebelumnya tidak pernah punya representasi status siap-diambil
+        sama sekali).
+        """
+        status_produksi = request.query_params.get('status_produksi')
+        sales = (
+            self.get_queryset()
+            .filter(status='paid', diambil_pada__isnull=True, items__jobs__isnull=False)
+            .prefetch_related('items__jobs__tahap__divisi', 'items__jobs__pic_staff')
+            .distinct()
+        )
+        hasil = []
+        for sale in sales:
+            jobs = [job for item in sale.items.all() for job in item.jobs.all()]
+            if not jobs:
+                continue
+            aktif = any(j.status_pekerjaan in ('antrean', 'dikerjakan', 'kendala') for j in jobs)
+            computed_status = 'proses' if aktif else 'ready'
+            if status_produksi and computed_status != status_produksi:
+                continue
+            data = self.get_serializer(sale).data
+            data['status_produksi'] = computed_status
+            hasil.append(data)
+        return Response(hasil)
+
+    @action(detail=True, methods=['post'])
+    def selesaikan(self, request, pk=None):
+        """Tandai transaksi POS (dengan SPK) sudah diambil pelanggan —
+        padanan Order `/orders/{id}/selesaikan/`."""
+        sale = self.get_object()
+        if sale.diambil_pada:
+            return Response({'error': 'Pesanan ini sudah ditandai diambil sebelumnya.'}, status=status.HTTP_400_BAD_REQUEST)
+        jobs = [job for item in sale.items.all() for job in item.jobs.all()]
+        if not jobs:
+            return Response({'error': 'Transaksi ini tidak punya SPK produksi.'}, status=status.HTTP_400_BAD_REQUEST)
+        if any(j.status_pekerjaan in ('antrean', 'dikerjakan', 'kendala') for j in jobs):
+            return Response({'error': 'Masih ada job produksi yang belum selesai.'}, status=status.HTTP_400_BAD_REQUEST)
+        sale.diambil_pada = timezone.now()
+        sale.save(update_fields=['diambil_pada'])
         return Response(self.get_serializer(sale).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='email-resi',
@@ -304,10 +432,10 @@ class POSSaleViewSet(viewsets.ModelViewSet):
         message = (
             f"Terima kasih telah berbelanja.\n\n"
             f"Nomor: {sale.nomor}\n"
-            f"Tanggal: {sale.created_at.strftime('%d-%m-%Y %H:%M')}\n\n"
+            f"Tanggal: {format_waktu_dokumen(sale.created_at)}\n\n"
             f"{baris_item}\n\n"
             f"Subtotal: Rp {sale.subtotal:,.0f}\n"
-            f"Diskon: Rp {sale.diskon:,.0f}\n"
+            f"Diskon: Rp {hitung_total_diskon_resi(sale):,.0f}\n"
             f"Pajak: Rp {sale.pajak:,.0f}\n"
             f"Total: Rp {sale.total:,.0f}\n"
             f"Metode Bayar: {sale.metode_bayar}\n"
@@ -333,42 +461,22 @@ class POSSaleViewSet(viewsets.ModelViewSet):
         permintaan pengiriman.
         """
         sale = self.get_object()
-        number = re.sub(r'\D', '', str(request.data.get('number') or ''))
-        if number.startswith('0'):
-            number = f'62{number[1:]}'
-        elif number and not number.startswith('62'):
-            number = f'62{number}'
-
-        if not re.fullmatch(r'\d{8,15}', number):
+        result = kirim_resi_pos_whatsapp(
+            sale_id=sale.id,
+            number=request.data.get('number'),
+            otomatis=False,
+        )
+        if result['status'] == 'skipped' and result.get('reason') == 'invalid_number':
             return Response({'error': 'Nomor WhatsApp tidak valid.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        baris_item = '\n'.join(
-            f"- {it.nama_snapshot} x{it.qty} = Rp {it.subtotal:,.0f}"
-            for it in sale.items.all()
-        )
-        message = (
-            f"*Resi Transaksi {sale.nomor}*\n\n"
-            f"Tanggal: {sale.created_at.strftime('%d-%m-%Y %H:%M')}\n\n"
-            f"{baris_item}\n\n"
-            f"Subtotal: Rp {sale.subtotal:,.0f}\n"
-            f"Diskon: Rp {sale.diskon:,.0f}\n"
-            f"Pajak: Rp {sale.pajak:,.0f}\n"
-            f"*Total: Rp {sale.total:,.0f}*\n"
-            f"Metode Bayar: {sale.metode_bayar}\n"
-            f"Dibayar: Rp {sale.dibayar:,.0f}\n"
-            f"Kembalian: Rp {sale.kembalian:,.0f}\n\n"
-            "Terima kasih telah berbelanja."
-        )
-        result = whatsapp_client.send_text_message(number, message)
-        if not result:
+        if not result['ok']:
             return Response(
                 {'error': 'Gateway WhatsApp tidak dapat mengirim resi. Coba lagi nanti.'},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
         # Pesan manual dari kasir menahan auto-reply bot sementara untuk nomor ini.
-        cache.set(f"wa_handover_{number}", True, timeout=900)
-        return Response({'ok': True, 'message': f'Resi dikirim ke WhatsApp {number}.'})
+        cache.set(f"wa_handover_{result['number']}", True, timeout=900)
+        return Response({'ok': True, 'message': f"Resi dikirim ke WhatsApp {result['number']}."})
 
     @action(detail=True, methods=['post'], url_path='terbitkan-spk',
             permission_classes=[IsOwnerManagerAdminOrKasir])

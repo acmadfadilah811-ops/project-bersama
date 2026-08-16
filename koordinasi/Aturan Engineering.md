@@ -93,7 +93,7 @@ Aturan teknis yang **mengikat semua executor agent**. Setiap aturan punya ID (U1
 - **L2** — Posting jurnal tanpa lewat `create_journal_entry()`.
 - **L3** — Menambah pemakai baru ledger legacy `hr`.
 - **L4** — Implementasi duplikat dari fitur yang sudah ada.
-- **L5** — File melebihi hard limit: Python 400 / JSX 300 baris.
+- **L5** — File melebihi hard limit: 1000 baris (Python maupun JSX). *(Diperbarui 2026-08-01 oleh user — sebelumnya 400/300, direvisi jadi 1000 untuk keduanya.)*
 - **L6** — Uang dalam float.
 - **L7** — Edit/hapus jurnal `posted`.
 - **L8** — Endpoint tanpa permission server-side.
@@ -116,6 +116,7 @@ Ubah status task → `blocked`, tulis pertanyaan di note task, tandai di [[Agent
 - [ ] Scope persis sesuai note task (U1)
 - [ ] Bukti akar masalah / desain approved ada di note task (B1/F1)
 - [ ] Test baru lulus + suite area terkait lulus (T5)
+- [ ] Migration baru? Jalankan `manage.py showmigrations <app>` terhadap `db.sqlite3` dev asli (bukan cuma test suite — `manage.py test` selalu migrate DB sementara dari nol, jadi tidak membuktikan migration sudah diterapkan ke DB nyata; insiden 2026-07-30, T-623 lolos 5/5 test tapi fitur Aset 500 di app nyata karena migration belum ter-`migrate`)
 - [ ] Tidak melanggar satu pun L1–L10
 - [ ] Tidak ada file melebihi hard limit (L5)
 - [ ] Endpoint baru/berubah terdokumentasi di note task (F5)

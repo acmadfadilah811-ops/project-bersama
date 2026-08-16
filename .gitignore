@@ -6,3 +6,53 @@ graphify-out/
 
 # Hook Claude Code ini berisi path absolut khusus mesin lokal (C:/Users/USER/...) — tidak portable ke mesin lain.
 /.claude/settings.json
+
+# State/tool agent lokal — bukan bagian aplikasi, beda tiap mesin.
+.claude/
+.codex/
+.opencode/
+.tools/
+.docx-deps/
+__pycache__/
+
+# Secret & env lokal — JANGAN PERNAH masuk repo (repo GitHub project ini PUBLIC).
+# Isi sebenarnya cukup di-scp manual ke VPS, bukan lewat git pull (lihat koordinasi/Deploy VPS.md).
+.env
+.env.production
+
+# Script deploy VPS dengan password root plaintext tertanam — repo ini PUBLIC,
+# jangan sampai ke-commit. Kredensial ganti env var (pola check_backend_vps.py)
+# sebelum file ini boleh ikut git.
+/deploy_vps.py
+/check_vps_full.py
+bintang-advertising-backend/scripts/_find_vps.py
+bintang-advertising-backend/scripts/_vps_pull_backend.py
+
+# Binari & tooling tunnel lokal
+cloudflared.exe
+run_local_server.bat
+start_tunnel.bat
+backend_tunnel.log
+
+# Data pelanggan/bisnis mentah & dokumen hasil transaksi — bukan source code, jangan ke publik.
+Daftar Pelanggan Agen.xlsx
+Daftar Pelanggan MOU.xlsx
+Rincian Penjualan-*.xlsx
+agen_pelanggan_import.csv
+mou_pelanggan_import.csv
+produk - produk*.csv
+INVOICE_*.pdf
+RESI_*.pdf
+SPK_*.pdf
+#PRICELIST*
+PRICELIST_*.md
+Dokumentasi_Bintang_ERP*.pdf
+/deliverables/
+
+# WhatsApp gateway eksperimen terpisah (punya folder auth_info_baileys = sesi WA aktif,
+# dan node_modules) — belum bagian arsitektur deploy resmi (lihat koordinasi/Deploy VPS.md, pakai Evolution API).
+/wa-gateway/
+
+# n8n workflow export — di luar scope deploy inti backend/frontend.
+/automation-templates/
+n8n_*.json

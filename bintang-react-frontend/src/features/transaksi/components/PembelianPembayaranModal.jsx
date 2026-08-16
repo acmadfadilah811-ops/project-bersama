@@ -8,13 +8,12 @@ import apiClient from '../../../api/apiClient';
  * Mendukung Tanggal Pembayaran, Referensi Pembayaran, Payment Jurnal + Gear Button Atur Akun Drawer,
  * Total Pembayaran, dan Checkbox Down Payment (DP).
  */
-export default function PembelianPembayaranModal({ sisa = 0, onClose, onSave }) {
+export default function PembelianPembayaranModal({ sisa = 0, isAdvance = false, onClose, onSave }) {
   const today = new Date().toISOString().slice(0, 10);
   const [tanggal, setTanggal] = useState(today);
   const [referensi, setReferensi] = useState('');
   const [selectedJournal, setSelectedJournal] = useState('');
   const [nominal, setNominal] = useState(sisa > 0 ? String(sisa) : '0');
-  const [isDp, setIsDp] = useState(false);
 
   // Accounts list + Drawer state
   const [accounts, setAccounts] = useState([]);
@@ -27,7 +26,9 @@ export default function PembelianPembayaranModal({ sisa = 0, onClose, onSave }) 
     try {
       const { data } = await apiClient.get('/accounting/accounts/');
       const sourceAccounts = Array.isArray(data) ? data : [];
-      const cashBankAccounts = sourceAccounts.filter((account) => account.account_type === 'asset');
+      const cashBankAccounts = sourceAccounts.filter((account) => (
+        account.account_type === 'asset' && account.klasifikasi === 'Kas & Bank'
+      ));
       setAllAccounts(sourceAccounts);
       setAccounts(cashBankAccounts);
       setSelectedJournal((current) => (
@@ -65,7 +66,7 @@ export default function PembelianPembayaranModal({ sisa = 0, onClose, onSave }) 
         referensi_pembayaran: referensi.trim(),
         payment_jurnal: journalLabel,
         payment_account_id: selectedAccountObj?.id,
-        is_dp: isDp,
+        is_dp: isAdvance,
       });
     } finally {
       setSaving(false);
@@ -181,16 +182,9 @@ export default function PembelianPembayaranModal({ sisa = 0, onClose, onSave }) 
               </span>
             </div>
 
-            {/* Field 5: Checkbox Down Payment */}
-            <label className="flex items-center gap-2.5 cursor-pointer select-none pt-1">
-              <input
-                type="checkbox"
-                checked={isDp}
-                onChange={(e) => setIsDp(e.target.checked)}
-                className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-              />
-              <span className="text-xs font-bold text-slate-600">Simpan sebagai Down Payment (DP)</span>
-            </label>
+            <p className="text-xs font-semibold text-slate-600 bg-slate-50 rounded-lg px-3 py-2">
+              {isAdvance ? 'Pembayaran ini dicatat sebagai Down Payment karena barang belum diterima.' : 'Pembayaran ini dicatat sebagai pelunasan Hutang Dagang.'}
+            </p>
 
           </div>
         </div>

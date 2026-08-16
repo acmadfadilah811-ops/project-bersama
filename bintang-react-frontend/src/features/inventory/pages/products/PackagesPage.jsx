@@ -6,6 +6,7 @@ import { StatusBadge } from '../components/PageShell';
 import { formatCurrency } from '../productInventoryData';
 import { useAuth } from '../../../../context/AuthContext';
 import apiClient from '../../../../api/apiClient';
+import { fetchAllPages } from '../../../../utils/paginatedApi';
 
 const getFileSizeStr = (bytes) => {
   if (!bytes) return '0 B';
@@ -84,6 +85,10 @@ export function PackagesPage({ onToggleCreate }) {
   const [hargaJualOnline, setHargaJualOnline] = useState('Rp. 0,00');
   const [hargaJualToko, setHargaJualToko] = useState('Rp. 0,00');
   const [komisi, setKomisi] = useState('Rp. 0,00');
+  // Field harga mana yang sedang diketik user — dipakai untuk menampilkan
+  // angka polos (tanpa "Rp." dan suffix ",00") saat fokus, supaya user bisa
+  // langsung ketik angka baru tanpa harus menghapus "0" satu-satu dulu.
+  const [focusedPriceField, setFocusedPriceField] = useState(null);
   const [minimalPesanan, setMinimalPesanan] = useState(1);
   const [maksimalPesanan, setMaksimalPesanan] = useState(0);
   const [hargaDinamis, setHargaDinamis] = useState(false);
@@ -133,8 +138,8 @@ export function PackagesPage({ onToggleCreate }) {
 
   const fetchProducts = async () => {
     try {
-      const res = await apiClient.get('/products/', { params: { page: 1, page_size: 1000 } });
-      setAvailableProducts(Array.isArray(res.data) ? res.data : res.data?.results || []);
+      const data = await fetchAllPages('/products/');
+      setAvailableProducts(data);
     } catch (err) {
       console.error('Error fetching available products:', err);
     }
@@ -508,13 +513,32 @@ export function PackagesPage({ onToggleCreate }) {
     }
   };
 
+  // Nilai polos (cuma digit, tanpa "Rp."/titik ribuan/",00") untuk ditampilkan
+  // selagi field harga sedang difokus/diedit — lihat pemakaian di value=
+  // masing-masing input harga di bawah.
+  const rawDigitsForEdit = (formatted) => {
+    const n = parseRupiah(formatted);
+    return n ? String(n) : '';
+  };
+
   const handleCurrencyInputChange = (rawVal, setter) => {
-    let clean = rawVal.replace(/[^0-9]/g, '');
+    // Hanya bagian sebelum koma yang berisi digit signifikan — suffix ",00"
+    // adalah kosmetik (aplikasi ini tidak punya sen). Kalau seluruh string
+    // (termasuk "00" dari suffix) ikut di-strip-angka-lalu-di-parse ulang,
+    // nilai bisa menggelembung tiap kali user mengetik (mis. ngetik "5" lalu
+    // "0" bisa jadi 5.000, bukan 50) — itu penyebab utama input ini terasa
+    // "0 tidak bisa dihapus" / rawan salah ketik.
+    const integerPart = rawVal.split(',')[0] || '';
+    let clean = integerPart.replace(/[^0-9]/g, '').replace(/^0+(?=\d)/, '');
     if (!clean) {
-      setter('Rp. 0,00');
+      // Jangan mengembalikan "0" saat pengguna menghapus harga. Nilai nol
+      // tetap ditangani oleh parseRupiah() ketika form disimpan, tetapi input
+      // harus bisa dikosongkan agar harga baru dapat diketik tanpa menyisipkan
+      // angka nol di depan.
+      setter('');
       return;
     }
-    const formatted = new Intl.NumberFormat('id-ID').format(parseInt(clean));
+    const formatted = new Intl.NumberFormat('id-ID').format(parseInt(clean, 10));
     setter(`Rp. ${formatted},00`);
   };
 
@@ -861,22 +885,50 @@ export function PackagesPage({ onToggleCreate }) {
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                         <div>
                           <label className="form-group-label">Harga Beli</label>
-                          <input type="text" className="pi-input-text w-full" value={hargaBeli} onChange={(e) => handleCurrencyInputChange(e.target.value, setHargaBeli)} />
+                          <input
+                            type="text"
+                            className="pi-input-text w-full"
+                            value={focusedPriceField === 'hargaBeli' ? rawDigitsForEdit(hargaBeli) : hargaBeli}
+                            onFocus={() => setFocusedPriceField('hargaBeli')}
+                            onBlur={() => setFocusedPriceField(null)}
+                            onChange={(e) => handleCurrencyInputChange(e.target.value, setHargaBeli)}
+                          />
                         </div>
                         <div>
                           <label className="form-group-label">Harga Pasar</label>
-                          <input type="text" className="pi-input-text w-full" value={hargaPasar} onChange={(e) => handleCurrencyInputChange(e.target.value, setHargaPasar)} />
+                          <input
+                            type="text"
+                            className="pi-input-text w-full"
+                            value={focusedPriceField === 'hargaPasar' ? rawDigitsForEdit(hargaPasar) : hargaPasar}
+                            onFocus={() => setFocusedPriceField('hargaPasar')}
+                            onBlur={() => setFocusedPriceField(null)}
+                            onChange={(e) => handleCurrencyInputChange(e.target.value, setHargaPasar)}
+                          />
                         </div>
                       </div>
 
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                         <div>
                           <label className="form-group-label">Harga Jual Online</label>
-                          <input type="text" className="pi-input-text w-full" value={hargaJualOnline} onChange={(e) => handleCurrencyInputChange(e.target.value, setHargaJualOnline)} />
+                          <input
+                            type="text"
+                            className="pi-input-text w-full"
+                            value={focusedPriceField === 'hargaJualOnline' ? rawDigitsForEdit(hargaJualOnline) : hargaJualOnline}
+                            onFocus={() => setFocusedPriceField('hargaJualOnline')}
+                            onBlur={() => setFocusedPriceField(null)}
+                            onChange={(e) => handleCurrencyInputChange(e.target.value, setHargaJualOnline)}
+                          />
                         </div>
                         <div>
                           <label className="form-group-label">Harga Jual di Toko</label>
-                          <input type="text" className="pi-input-text w-full" value={hargaJualToko} onChange={(e) => handleCurrencyInputChange(e.target.value, setHargaJualToko)} />
+                          <input
+                            type="text"
+                            className="pi-input-text w-full"
+                            value={focusedPriceField === 'hargaJualToko' ? rawDigitsForEdit(hargaJualToko) : hargaJualToko}
+                            onFocus={() => setFocusedPriceField('hargaJualToko')}
+                            onBlur={() => setFocusedPriceField(null)}
+                            onChange={(e) => handleCurrencyInputChange(e.target.value, setHargaJualToko)}
+                          />
                         </div>
                       </div>
 
@@ -906,7 +958,14 @@ export function PackagesPage({ onToggleCreate }) {
 
                       <div>
                         <label className="form-group-label">Komisi</label>
-                        <input type="text" className="pi-input-text w-full" value={komisi} onChange={(e) => handleCurrencyInputChange(e.target.value, setKomisi)} />
+                        <input
+                          type="text"
+                          className="pi-input-text w-full"
+                          value={focusedPriceField === 'komisi' ? rawDigitsForEdit(komisi) : komisi}
+                          onFocus={() => setFocusedPriceField('komisi')}
+                          onBlur={() => setFocusedPriceField(null)}
+                          onChange={(e) => handleCurrencyInputChange(e.target.value, setKomisi)}
+                        />
                       </div>
 
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
@@ -1530,11 +1589,13 @@ export function PackagesPage({ onToggleCreate }) {
                     <span className="pi-row-desc">Biaya untuk membeli produk (modal)</span>
                   </div>
                   <div className="pi-row-input">
-                    <input 
-                      type="text" 
-                      className="pi-input-text w-full" 
-                      value={hargaBeli} 
-                      onChange={(e) => handleCurrencyInputChange(e.target.value, setHargaBeli)} 
+                    <input
+                      type="text"
+                      className="pi-input-text w-full"
+                      value={focusedPriceField === 'hargaBeli' ? rawDigitsForEdit(hargaBeli) : hargaBeli}
+                      onFocus={() => setFocusedPriceField('hargaBeli')}
+                      onBlur={() => setFocusedPriceField(null)}
+                      onChange={(e) => handleCurrencyInputChange(e.target.value, setHargaBeli)}
                     />
                   </div>
                 </div>
@@ -1545,11 +1606,13 @@ export function PackagesPage({ onToggleCreate }) {
                     <span className="pi-row-label">Harga Jual Online <span style={{ color: '#ef4444' }}>*</span></span>
                   </div>
                   <div className="pi-row-input">
-                    <input 
-                      type="text" 
-                      className="pi-input-text w-full" 
-                      value={hargaJualOnline} 
-                      onChange={(e) => handleCurrencyInputChange(e.target.value, setHargaJualOnline)} 
+                    <input
+                      type="text"
+                      className="pi-input-text w-full"
+                      value={focusedPriceField === 'hargaJualOnline' ? rawDigitsForEdit(hargaJualOnline) : hargaJualOnline}
+                      onFocus={() => setFocusedPriceField('hargaJualOnline')}
+                      onBlur={() => setFocusedPriceField(null)}
+                      onChange={(e) => handleCurrencyInputChange(e.target.value, setHargaJualOnline)}
                     />
                   </div>
                 </div>

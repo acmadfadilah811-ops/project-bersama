@@ -16,13 +16,14 @@ Aturan wajib untuk setiap agent (Claude Code, Antigravity, Cursor, dll.) yang me
    - `graphify query "<pertanyaan>"` untuk area yang disentuh
    - `graphify path "<A>" "<B>"` untuk relasi antar modul
    - [[Project Overview]] untuk peta besar
+   - **Kalau task-nya perlu deploy ke VPS**: baca [[Deploy VPS]] dulu — ada jebakan nyata (IP lama, arsitektur Docker Compose vs asumsi systemd, migration uncommitted, SQLite vs Postgres) yang sudah ketemu dan didokumentasikan di sana.
 
 ## 2. Saat kerja
 
 - **Patuhi [[Aturan Engineering]]** — aturan teknis ber-ID (U/B/F/M/API/DB/T/R/L/X); reviewer menolak task dengan menyebut ID yang dilanggar. Larangan keras L1–L10 tidak bisa dinego.
 - **Scope terkunci** pada task yang diklaim. Nemu masalah lain? Tulis sebagai task baru di backlog epik terkait — jangan dikerjakan sekalian.
 - Patuhi `bintang-advertising-backend/AGENTS.md` (berlaku juga untuk frontend):
-  - **No god files** — Python hard 400 baris, JSX hard 300 baris. Sentuh file oversized = extract, bukan extend.
+  - **No god files** — hard limit 1000 baris (Python maupun JSX, diperbarui 2026-08-01 dari 400/300). Sentuh file oversized = extract, bukan extend.
   - **No implementasi duplikat/paralel** — cek model & endpoint yang sudah ada sebelum bikin baru. Ingat 4 pasang modul mirip-tapi-beda di [[Project Overview]] §3.
   - **Authorization server-side** untuk setiap endpoint baru/berubah.
 - Hati-hati menyentuh god nodes ([[Project Overview]] §4): `apiClient`, `Order`, `Contact`, `CustomUser`, `IsOwnerOrManager`, `Product`, `JobBoard` — perubahan di sini menyebar luas.

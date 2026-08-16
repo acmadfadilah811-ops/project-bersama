@@ -273,7 +273,7 @@ export default function AttendanceSessionManager() {
                       <button
                         onClick={() => {
                           const cleanNumber = req.staff_no_wa.replace('+', '').replace(' ', '').replace('-', '');
-                          navigate(`/whatsapp-chat?number=${cleanNumber}`);
+                          navigate(`/kasir/wa-live?number=${cleanNumber}`);
                         }}
                         className="flex-1 flex items-center justify-center gap-1 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded border border-indigo-200 text-[10px] font-bold transition-colors cursor-pointer"
                         title="Chat Staff via WhatsApp"

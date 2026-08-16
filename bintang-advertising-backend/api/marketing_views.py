@@ -52,7 +52,7 @@ class SalesDiscountViewSet(viewsets.ModelViewSet):
         """
         from decimal import Decimal
         from .models import Contact
-        from .product_models import Product
+        from .product_models import Product, ProductPackage
         from .promo_engine import BarisKeranjang, KonteksPromo, evaluate_sales_discount
         from .marketing_models import KANAL_POS
 
@@ -65,9 +65,13 @@ class SalesDiscountViewSet(viewsets.ModelViewSet):
         for item in raw_items:
             pid = item.get('product_id') or item.get('product')
             prod = Product.objects.filter(pk=pid).first() if pid else None
+            package_id = item.get('package_id') or item.get('paket_id')
+            package = ProductPackage.objects.filter(pk=package_id).first() if package_id else None
             qty = Decimal(str(item.get('qty', 1) or 1))
             harga = Decimal(str(item.get('harga', 0) or 0))
-            baris.append(BarisKeranjang(product=prod, qty=qty, harga=harga, subtotal=harga * qty))
+            if package:
+                harga = Decimal(str(package.harga_jual_offline or 0))
+            baris.append(BarisKeranjang(product=prod, package=package, qty=qty, harga=harga, subtotal=harga * qty))
 
         konteks = KonteksPromo(
             baris=baris, subtotal=Decimal(str(subtotal or 0)), pelanggan=pelanggan, kanal=KANAL_POS,
@@ -112,7 +116,7 @@ class DiscountCouponViewSet(viewsets.ModelViewSet):
     def evaluate(self, request):
         from decimal import Decimal
         from .models import Contact
-        from .product_models import Product
+        from .product_models import Product, ProductPackage
         from .promo_engine import BarisKeranjang, KonteksPromo, evaluate_coupon_code
         from .marketing_models import KANAL_POS
 
@@ -129,10 +133,15 @@ class DiscountCouponViewSet(viewsets.ModelViewSet):
         for item in raw_items:
             pid = item.get('product_id') or item.get('product')
             prod = Product.objects.filter(pk=pid).first() if pid else None
+            package_id = item.get('package_id') or item.get('paket_id')
+            package = ProductPackage.objects.filter(pk=package_id).first() if package_id else None
             qty = Decimal(str(item.get('qty', 1) or 1))
             harga = Decimal(str(item.get('harga', 0) or 0))
+            if package:
+                harga = Decimal(str(package.harga_jual_offline or 0))
             baris.append(BarisKeranjang(
                 product=prod,
+                package=package,
                 qty=qty,
                 harga=harga,
                 subtotal=harga * qty
@@ -226,7 +235,7 @@ class PromoPreviewView(APIView):
     def post(self, request):
         from decimal import Decimal
         from .models import Contact
-        from .product_models import Product
+        from .product_models import Product, ProductPackage
         from .promo_engine import (
             BarisKeranjang, KonteksPromo,
             evaluate_coupon_code, evaluate_sales_discount,
@@ -243,11 +252,15 @@ class PromoPreviewView(APIView):
         for item in raw_items:
             pid = item.get('product_id') or item.get('product')
             prod = Product.objects.filter(pk=pid).first() if pid else None
+            package_id = item.get('package_id') or item.get('paket_id')
+            package = ProductPackage.objects.filter(pk=package_id).first() if package_id else None
             qty = Decimal(str(item.get('qty', 1) or 1))
             harga = Decimal(str(item.get('harga', 0) or 0))
-            if harga <= 0 and prod:
+            if package:
+                harga = Decimal(str(package.harga_jual_offline or 0))
+            elif harga <= 0 and prod:
                 harga = Decimal(str(prod.harga_jual_toko or 0))
-            baris.append(BarisKeranjang(product=prod, qty=qty, harga=harga,
+            baris.append(BarisKeranjang(product=prod, package=package, qty=qty, harga=harga,
                                        subtotal=harga * qty))
 
         ctx_subtotal = Decimal(str(subtotal or 0))

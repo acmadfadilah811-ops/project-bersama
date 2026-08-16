@@ -3,6 +3,7 @@ import { Search, ChevronDown, ChevronUp, MoreHorizontal, Printer, X, Plus, Trash
 import * as XLSX from 'xlsx';
 import { useAuth } from '../../../../context/AuthContext';
 import apiClient from '../../../../api/apiClient';
+import { fetchAllPages } from '../../../../utils/paginatedApi';
 import { getLogoUrl } from '../../../../utils/logo';
 import { nowTimeLocal, todayISO } from '../../../../utils/date';
 import { receivedByDisplay } from '../../../../utils/stockDocument';
@@ -315,8 +316,7 @@ export function StockOpnamePage({ onToggleCreate, viewState: propViewState }) {
         const params = {};
         if (addModalSearch) params.search = addModalSearch;
         if (addModalCategory) params.kategori = addModalCategory;
-        const res = await apiClient.get('/products/', { params });
-        const data = Array.isArray(res.data) ? res.data : res.data?.results || [];
+        const data = await fetchAllPages('/products/', { params });
         setAddModalResults(data);
       } catch (err) {
         console.error('[StockOpnamePage] search product error:', err);

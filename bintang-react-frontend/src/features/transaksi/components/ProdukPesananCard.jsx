@@ -15,7 +15,10 @@ function ItemRow({ item, idx, order, canEdit, editingId, setEditingId, editQty, 
   const namaProduk = item.jenis_produk || item.product_nama || item.nama_produk || item.nama || 'Produk Custom';
   const qty = item.qty ?? item.jumlah ?? 1;
   const harga = item.harga_jual ?? item.harga_satuan ?? item.harga ?? 0;
-  const rawSubtotal = qty * harga;
+  // `harga_jual` sudah total per baris (backend: harga_jual = harga_satuan *
+  // qty, lihat api/views/orders.py checkout_pos), BUKAN harga satuan — jangan
+  // dikali qty lagi di sini atau totalnya jadi qty kali lipat terlalu besar.
+  const rawSubtotal = harga;
   const diskonPersen = order?.diskon_persen ?? 0;
   const itemDiskon = Math.round(rawSubtotal * (diskonPersen / 100));
   const netSubtotal = rawSubtotal - itemDiskon;
@@ -98,7 +101,8 @@ export default function ProdukPesananCard({ orderId, order, items, canEdit = fal
   const [editHarga, setEditHarga] = useState('');
   const [busyId, setBusyId] = useState(null);
 
-  const subtotal = items.reduce((sum, it) => sum + (it.qty ?? 1) * (it.harga_jual ?? 0), 0);
+  // `harga_jual` sudah total per baris (bukan harga satuan) — jangan dikali qty lagi.
+  const subtotal = items.reduce((sum, it) => sum + (it.harga_jual ?? 0), 0);
 
   const handleSave = async (item) => {
     setBusyId(item.id);

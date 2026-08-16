@@ -6,7 +6,6 @@ export const MENU_FEATURES = [
   { id: 'orders', label: 'Pesanan (Orders)', path: '/orders' },
   { id: 'jobs', label: 'Papan Produksi (Jobs)', path: '/jobs' },
   { id: 'customers', label: 'Pelanggan (Customers)', path: '/customers' },
-  { id: 'whatsapp-chat', label: 'WhatsApp Chat', path: '/whatsapp-chat' },
   { id: 'attendance', label: 'Absensi (Attendance)', path: '/attendance' },
   { id: 'employees', label: 'Karyawan (Employees)', path: '/employees' },
   { id: 'payroll', label: 'Penggajian & BoM (Payroll)', path: '/payroll' },
@@ -25,11 +24,9 @@ export const MENU_FEATURES = [
 export const DEFAULT_PERMISSIONS = {
   owner: [
     'dashboard',
-    'kasir-pos',
     'orders',
     'jobs',
     'customers',
-    'whatsapp-chat',
     'attendance',
     'employees',
     'payroll',
@@ -46,11 +43,9 @@ export const DEFAULT_PERMISSIONS = {
   ],
   manager: [
     'dashboard',
-    'kasir-pos',
     'orders',
     'jobs',
     'customers',
-    'whatsapp-chat',
     'attendance',
     'employees',
     'payroll',
@@ -71,7 +66,6 @@ export const DEFAULT_PERMISSIONS = {
     'orders',
     'jobs',
     'customers',
-    'whatsapp-chat',
     'product-inventory',
     'customer-supplier',
     'inventory',
@@ -156,7 +150,12 @@ export function hasMenuAccess(role, featureId) {
   if (!role) return false;
   const currentRole = role.toLowerCase();
 
-  // Owner memiliki akses penuh tanpa kecuali
+  // Owner memiliki akses penuh ke seluruh menu, KECUALI Kasir (POS) — modul
+  // itu sengaja dikunci khusus akun kasir asli, tidak boleh dipakai owner
+  // ataupun manager (instruksi user 2026-08-14).
+  if (featureId === 'kasir-pos' && (currentRole === 'owner' || currentRole === 'manager')) return false;
+
+  // Owner memiliki akses penuh tanpa kecuali (di luar pengecualian di atas)
   if (currentRole === 'owner') return true;
 
   // Cek locked permissions terlebih dahulu

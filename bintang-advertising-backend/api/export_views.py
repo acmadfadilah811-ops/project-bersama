@@ -89,7 +89,8 @@ class ExportCustomersView(APIView):
                 'Kode Pelanggan', 'Nama', 'Tipe Pelanggan', 'Handphone', 'Email',
                 'Jenis Kelamin', 'Tanggal Lahir', 'Nama Perusahaan', 'Batas Kredit',
                 'Deposit', 'Loyalty Points', 'Terima Buletin', 'Status',
-                'Tanggal Berakhir', 'Alamat', 'Kota', 'Kecamatan', 'Kode Pos', 'Catatan',
+                'Tanggal Gabung', 'Transaksi Terakhir', 'Tanggal Berakhir',
+                'Alamat', 'Kota', 'Kecamatan', 'Kode Pos', 'Catatan',
             ]
             ws.append(headers)
 
@@ -109,6 +110,8 @@ class ExportCustomersView(APIView):
                     c.loyalty_points,
                     'Ya' if c.terima_buletin else 'Tidak',
                     'Dibekukan' if c.bekukan else 'Aktif',
+                    c.tanggal_bergabung.strftime('%Y-%m-%d') if c.tanggal_bergabung else '-',
+                    c.transaksi_terakhir.strftime('%Y-%m-%d') if c.transaksi_terakhir else '-',
                     c.tanggal_berakhir.strftime('%Y-%m-%d') if c.tanggal_berakhir else '-',
                     c.alamat,
                     c.kota,
@@ -727,7 +730,7 @@ class ExportProductsView(APIView):
                     str(p.harga_beli),
                     str(p.harga_jual_online),
                     str(p.harga_jual_toko),
-                    "0",  # market_price
+                    str(p.harga_pasar),
                     "",  # wholesale_group
                     "0",  # wholesale_price
                     "0",  # pos_sell_price_dynamic
@@ -735,7 +738,9 @@ class ExportProductsView(APIView):
                     str(p.qty_stok),
                     str(p.stok_minimum),
                     "0" if p.qty_stok > 0 else "1",
-                    "0",  # weight_kg
+                    # Product.berat sudah dalam kg (beda dari ProductVariant.berat
+                    # yang dalam gram — lihat komentar konversi /1000 di baris varian).
+                    str(float(p.berat or 0.0)),
                     "0",  # loyalty_points
                     "0",  # commission
                     "1" if p.is_active else "0",

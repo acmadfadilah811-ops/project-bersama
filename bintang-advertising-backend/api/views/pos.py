@@ -120,6 +120,8 @@ class SaldoKasHarianViewSet(viewsets.ModelViewSet):
             penjualan_tunai=rincian['penjualan_tunai'],
             kas_masuk=rincian['kas_masuk'],
             kas_keluar=rincian['kas_keluar'],
+            rincian_metode=rincian['rincian_metode'],
+            keterangan=shift.catatan,
         )
 
         return Response({

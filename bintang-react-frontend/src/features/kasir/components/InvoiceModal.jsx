@@ -1,4 +1,6 @@
-import { FileText, Printer, X } from 'lucide-react';
+import { useState } from 'react';
+import { FileText, MessageCircle, Printer, X } from 'lucide-react';
+import apiClient from '../../../api/apiClient';
 import OrderInvoicePrint from './OrderInvoicePrint';
 import { requestBrowserPrint } from '../../printing/services/printService';
 
@@ -11,7 +13,25 @@ import { requestBrowserPrint } from '../../printing/services/printService';
  * form pembayaran hanya untuk mencetak.
  */
 export default function InvoiceModal({ order, onClose }) {
+  const [sendingInvoice, setSendingInvoice] = useState(false);
+
   if (!order) return null;
+
+  const kirimInvoiceWa = async () => {
+    if (sendingInvoice) return;
+    setSendingInvoice(true);
+    try {
+      const { data } = await apiClient.post(`/orders/${order.id}/invoice-whatsapp/`);
+      alert(`Faktur terkirim ke WhatsApp ${data.number}.`);
+    } catch (err) {
+      const detail = err?.response?.data?.reason;
+      alert(detail === 'invalid_number'
+        ? 'Faktur tidak dikirim karena nomor WhatsApp pelanggan tidak valid.'
+        : 'Faktur gagal dikirim ke WhatsApp. Periksa koneksi gateway lalu coba lagi.');
+    } finally {
+      setSendingInvoice(false);
+    }
+  };
 
   const formatCurrency = (v) =>
     new Intl.NumberFormat('id-ID', {
@@ -69,8 +89,9 @@ export default function InvoiceModal({ order, onClose }) {
                     <tr key={it.id} className="border-t border-slate-100 text-[11px]">
                       <td className="px-3 py-2 font-bold text-slate-700">{it.jenis_produk}</td>
                       <td className="px-3 py-2 text-center font-semibold text-slate-600">{it.qty}</td>
+                      {/* harga_jual sudah total per baris (bukan harga satuan) — jangan dikali qty lagi */}
                       <td className="px-3 py-2 text-right font-black text-slate-800">
-                        {formatCurrency(Number(it.harga_jual || 0) * Number(it.qty || 1))}
+                        {formatCurrency(it.harga_jual)}
                       </td>
                     </tr>
                   ))}
@@ -112,6 +133,14 @@ export default function InvoiceModal({ order, onClose }) {
               className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-black text-xs rounded-xl flex items-center gap-1.5 cursor-pointer"
             >
               <Printer size={14} /> Cetak Faktur
+            </button>
+            <button
+              type="button"
+              onClick={kirimInvoiceWa}
+              disabled={sendingInvoice}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black text-xs rounded-xl flex items-center gap-1.5 cursor-pointer"
+            >
+              <MessageCircle size={14} /> {sendingInvoice ? 'Mengirim...' : 'Kirim Faktur WA'}
             </button>
           </div>
         </div>

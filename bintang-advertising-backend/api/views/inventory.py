@@ -20,20 +20,25 @@ from ..permissions import IsOwnerManagerAdminOrReadOnly, IsOwnerManagerOrAdmin, 
 logger = logging.getLogger(__name__)
 
 
-def record_material_consumption_to_general_ledger(inventory_item, qty, job):
+def record_material_consumption_to_general_ledger(inventory_item, qty, ref_no, keterangan_konteks, source_id=None):
     """
     Mencatat konsumsi bahan baku ke Buku Besar (Double-Entry Bookkeeping) sebagai Beban HPP.
+
+    Referensi generik (ref_no/keterangan_konteks/source_id), BUKAN objek `job`
+    spesifik lagi — dulu fungsi ini langsung akses `job.order_item.order.id`,
+    yang CRASH untuk job dari POS (order_item selalu None di situ, lihat
+    JobMaterialDeductView) & tidak bisa dipakai sama sekali dari
+    pos_services.create_sale untuk pemotongan BoM otomatis lewat kasir
+    (instruksi & bug ditemukan user 2026-08-15).
     """
     try:
         # Hitung nilai HPP (kuantitas * cost_per_unit)
         cost = qty * (inventory_item.cost_per_unit or 0.0)
         if cost <= 0:
             return
-            
-        ref_no = f"Job #{job.id}"
-        order_id = job.order_item.order.id
-        ket_tx = f"HPP Otomatis: {inventory_item.nama} ({qty} {inventory_item.satuan}) - Order {order_id} - Job {job.id}"
-        
+
+        ket_tx = f"HPP Otomatis: {inventory_item.nama} ({qty} {inventory_item.satuan}) - {keterangan_konteks}"
+
         # Forward to Official Double-Entry Ledger (accounting.JournalEntry)
         try:
             from accounting.models import Account, JournalEntry
@@ -54,13 +59,13 @@ def record_material_consumption_to_general_ledger(inventory_item, qty, job):
                     ],
                     description=ket_tx,
                     source_type=JournalEntry.SourceType.PRODUCTION,
-                    source_id=getattr(job, "id", None),
+                    source_id=source_id,
                 )
         except Exception as err:
             logger.error(f"Gagal mencatat JournalEntry HPP: {err}")
             raise
     except Exception as e:
-        logger.error(f"Gagal mencatat jurnal HPP otomatis untuk Job #{getattr(job, 'id', '?')}: {e}", exc_info=True)
+        logger.error(f"Gagal mencatat jurnal HPP otomatis ({ref_no}): {e}", exc_info=True)
         raise
 
 
@@ -232,30 +237,76 @@ class ProductPriceViewSet(viewsets.ModelViewSet):
 
 
 class BillOfMaterialsViewSet(viewsets.ModelViewSet):
-    queryset = BillOfMaterials.objects.select_related('product').prefetch_related('items__inventory_item').all()
+    queryset = BillOfMaterials.objects.select_related(
+        'product', 'variant', 'product_price',
+    ).prefetch_related('items__inventory_item').all()
     serializer_class = BillOfMaterialsSerializer
     permission_classes = [IsOwnerOrManager]
 
     def get_queryset(self):
         queryset = self.queryset
+        # `product_id`/`variant_id` = tautan BARU ke katalog Product asli
+        # (dipakai UI "Tambah Bahan" — bug ditemukan & diperbaiki 2026-08-12,
+        # lihat migration 0114). `product_name`/`material` = jalur LAMA via
+        # ProductPrice, dipertahankan untuk kompatibilitas caller lama
+        # (mis. import CSV yang cuma punya nama produk, bukan ID).
+        product_id = self.request.query_params.get('product_id')
+        if product_id:
+            queryset = queryset.filter(product_id=product_id)
+            variant_id = self.request.query_params.get('variant_id')
+            if variant_id is not None:
+                if variant_id == '' or variant_id.lower() == 'null':
+                    queryset = queryset.filter(variant__isnull=True)
+                else:
+                    queryset = queryset.filter(variant_id=variant_id)
+            return queryset
+
         product_name = self.request.query_params.get('product_name')
         if product_name:
-            queryset = queryset.filter(product__nama_produk=product_name)
+            queryset = queryset.filter(product_price__nama_produk=product_name)
         material = self.request.query_params.get('material')
         if material is not None:
             if material == '' or material.lower() == 'null':
-                queryset = queryset.filter(product__material__isnull=True) | queryset.filter(product__material='')
+                queryset = queryset.filter(product_price__material__isnull=True) | queryset.filter(product_price__material='')
             else:
-                queryset = queryset.filter(product__material=material)
+                queryset = queryset.filter(product_price__material=material)
         return queryset
 
     @action(detail=False, methods=['post'], url_path='get-or-create-for-product')
     def get_or_create_for_product(self, request):
+        product_id = request.data.get('product_id')
+        if product_id:
+            from ..product_models import Product, ProductVariant
+
+            try:
+                product_obj = Product.objects.get(pk=product_id)
+            except (Product.DoesNotExist, ValueError, TypeError):
+                return Response({'error': 'Produk tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
+
+            variant_id = request.data.get('variant_id')
+            variant_obj = None
+            if variant_id:
+                try:
+                    variant_obj = ProductVariant.objects.get(pk=variant_id, product=product_obj)
+                except (ProductVariant.DoesNotExist, ValueError, TypeError):
+                    return Response({'error': 'Varian tidak ditemukan untuk produk ini.'}, status=status.HTTP_404_NOT_FOUND)
+
+            with transaction.atomic():
+                bom_obj, created = BillOfMaterials.objects.get_or_create(
+                    product=product_obj,
+                    variant=variant_obj,
+                    defaults={'nama': f"BoM {product_obj.nama}" + (f" - {variant_obj.nama_varian}" if variant_obj else "")}
+                )
+            serializer = self.get_serializer(bom_obj)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        # Jalur lama (legacy ProductPrice, dicocokkan dari nama) — dipertahankan
+        # untuk caller yang belum kirim product_id (mis. import CSV).
         product_name = request.data.get('product_name')
         if not product_name:
-            return Response({'error': 'product_name wajib diisi'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'product_id atau product_name wajib diisi'}, status=status.HTTP_400_BAD_REQUEST)
         product_name = product_name.strip()
-        
+
         material = request.data.get('material')
         if material:
             material = material.strip()
@@ -263,7 +314,7 @@ class BillOfMaterialsViewSet(viewsets.ModelViewSet):
                 material = None
         else:
             material = None
-            
+
         with transaction.atomic():
             # Find or create ProductPrice
             product_price_obj = ProductPrice.objects.filter(nama_produk=product_name, material=material).first()
@@ -277,18 +328,81 @@ class BillOfMaterialsViewSet(viewsets.ModelViewSet):
                         material=material,
                         harga=0
                     )
-            
+
             # Find or create BillOfMaterials
             bom_obj, created = BillOfMaterials.objects.get_or_create(
-                product=product_price_obj,
+                product_price=product_price_obj,
                 defaults={'nama': f"BoM {product_price_obj.nama_produk}" + (f" - {product_price_obj.material}" if product_price_obj.material else "")}
             )
-            
+
         serializer = self.get_serializer(bom_obj)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+def _get_or_create_inventory_item_for_product(product):
+    """Cari/buat InventoryItem yang mewakili `product` sebagai bahan baku resep.
+
+    Bahan baku (mis. kertas Ivory) dikelola sebagai Product biasa di katalog
+    (1500+ item), bukan lewat menu "Bahan Baku" (InventoryItem) yang nyaris
+    tidak pernah diisi. Supaya pencarian bahan di resep bisa baca dari
+    katalog Produk tapi BoMItem tetap memakai FK InventoryItem yang sudah
+    ada (dipakai logic potong stok produksi di views/jobs.py), item
+    InventoryItem disinkron otomatis dari Product saat pertama kali dipilih.
+    """
+    existing = InventoryItem.objects.filter(product=product).first()
+    if existing:
+        return existing
+    kategori_nama = product.kategori.nama if product.kategori_id else 'Bahan Baku'
+    return InventoryItem.objects.create(
+        nama=product.nama,
+        satuan=product.satuan or 'pcs',
+        kategori=kategori_nama,
+        stok=0.0,
+        product=product,
+    )
 
 
 class BoMItemViewSet(viewsets.ModelViewSet):
     queryset = BoMItem.objects.select_related('bom', 'inventory_item').all()
     serializer_class = BoMItemSerializer
     permission_classes = [IsOwnerOrManager]
+
+    @action(detail=False, methods=['post'], url_path='create-from-product')
+    def create_from_product(self, request):
+        """Tambah/ubah item resep dari hasil pencarian Produk (bukan InventoryItem)."""
+        from ..product_models import Product
+
+        bom_id = request.data.get('bom')
+        product_id = request.data.get('product_id')
+        qty_raw = request.data.get('qty_required_per_unit')
+        if not bom_id or not product_id:
+            return Response({'error': 'bom dan product_id wajib diisi'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            qty = float(qty_raw)
+        except (TypeError, ValueError):
+            return Response({'error': 'qty_required_per_unit harus berupa angka'}, status=status.HTTP_400_BAD_REQUEST)
+        if qty <= 0:
+            return Response({'error': 'qty_required_per_unit harus lebih besar dari 0'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            bom_obj = BillOfMaterials.objects.get(pk=bom_id)
+        except (BillOfMaterials.DoesNotExist, ValueError, TypeError):
+            return Response({'error': 'Resep (BoM) tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            product_obj = Product.objects.get(pk=product_id)
+        except (Product.DoesNotExist, ValueError, TypeError):
+            return Response({'error': 'Produk bahan baku tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
+
+        with transaction.atomic():
+            inv_item = _get_or_create_inventory_item_for_product(product_obj)
+            bom_item_obj, created = BoMItem.objects.get_or_create(
+                bom=bom_obj,
+                inventory_item=inv_item,
+                defaults={'qty_required_per_unit': qty}
+            )
+            if not created:
+                bom_item_obj.qty_required_per_unit = qty
+                bom_item_obj.save()
+
+        serializer = self.get_serializer(bom_item_obj)
+        return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)

@@ -30,7 +30,7 @@ export default function PengaturanAwalWizard({ isOpen, onClose, onSetupComplete 
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 max-w-4xl w-full flex flex-col max-h-[90vh]">
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 max-w-6xl w-full flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between px-6 pt-5 pb-3">
           <h2 className="text-base font-bold text-slate-900">Pengaturan Awal</h2>
           <div className="flex items-center gap-2">

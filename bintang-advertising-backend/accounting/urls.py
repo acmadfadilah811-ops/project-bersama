@@ -9,6 +9,7 @@ from .views import (
     AccountImportPreviewView,
     AccountImportCommitView,
     StoreCopyPlaceholderView,
+    AccountingBootstrapDefaultCoaView,
     AccountingCompleteSetupView,
     AccountingLifecycleLogListView,
     POSPostingSettingsAuditLogListView,
@@ -167,6 +168,11 @@ urlpatterns = [
     path("transfer-modal/create/", TransferModalCreateView.as_view(), name="accounting-transfer-modal-create"),
     path("opening-balances/", OpeningBalanceSubmitView.as_view(), name="accounting-opening-balances"),
     path("settings/", AccountingSettingsView.as_view(), name="accounting-settings"),
+    path(
+        "settings/bootstrap-default-coa/",
+        AccountingBootstrapDefaultCoaView.as_view(),
+        name="accounting-settings-bootstrap-default-coa",
+    ),
     path(
         "settings/complete-setup/",
         AccountingCompleteSetupView.as_view(),

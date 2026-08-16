@@ -176,6 +176,18 @@ class AccountingSettings(models.Model):
             "jika ingin menyatukan omzet Order dan POS dalam satu akun."
         ),
     )
+    purchase_inventory_account = models.ForeignKey(
+        Account, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+        help_text="Akun Persediaan yang didebit saat Stok Masuk dari Pembelian diposting.",
+    )
+    purchase_payable_account = models.ForeignKey(
+        Account, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+        help_text="Akun Hutang Dagang yang dikredit saat Stok Masuk dari Pembelian diposting.",
+    )
+    purchase_advance_account = models.ForeignKey(
+        Account, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+        help_text="Akun Uang Muka Pembelian untuk DP sebelum barang diterima.",
+    )
 
     enable_product_account_group = models.BooleanField(
         default=False, help_text="Aktifkan pengelompokan akun berdasarkan grup produk (ProductAccountGroup).",

@@ -1,3 +1,5 @@
+import React from 'react';
+
 /**
  * Faktur untuk pesanan (Order), bukan nota POS.
  *
@@ -17,10 +19,9 @@ export default function OrderInvoicePrint({ order, dibayarSekarang, metode, sett
     }).format(val || 0);
 
   const items = order.items || [];
-  const subtotal = items.reduce(
-    (sum, it) => sum + Number(it.harga_jual || 0) * Number(it.qty || 1),
-    0
-  );
+  // harga_jual sudah total per baris (backend: harga_jual = harga_satuan *
+  // qty) — jangan dikali qty lagi atau subtotal/faktur jadi qty kali lipat.
+  const subtotal = items.reduce((sum, it) => sum + Number(it.harga_jual || 0), 0);
   const diskonNominal = (subtotal * Number(order.diskon_persen || 0)) / 100;
   const total = Number(order.total_harga || subtotal - diskonNominal);
 
@@ -77,17 +78,28 @@ export default function OrderInvoicePrint({ order, dibayarSekarang, metode, sett
         </thead>
         <tbody>
           {items.map((it) => (
-            <tr key={it.id} className="border-b border-slate-100">
-              <td className="py-2 font-semibold">{it.jenis_produk}</td>
-              <td className="py-2 text-center text-slate-600">
-                {Number(it.panjang || 0)} &times; {Number(it.lebar || 0)} m
-              </td>
-              <td className="py-2 text-center">{it.qty}</td>
-              <td className="py-2 text-right">{formatCurrency(it.harga_jual)}</td>
-              <td className="py-2 text-right font-semibold">
-                {formatCurrency(Number(it.harga_jual || 0) * Number(it.qty || 1))}
-              </td>
-            </tr>
+            <React.Fragment key={it.id}>
+              <tr className="border-b border-slate-100">
+                <td className="py-2 font-semibold">{it.jenis_produk}</td>
+                <td className="py-2 text-center text-slate-600">
+                  {Number(it.panjang || 0)} &times; {Number(it.lebar || 0)} m
+                </td>
+                <td className="py-2 text-center">{it.qty}</td>
+                <td className="py-2 text-right">
+                  {formatCurrency(Number(it.harga_jual || 0) / (Number(it.qty) || 1))}
+                </td>
+                <td className="py-2 text-right font-semibold">{formatCurrency(it.harga_jual)}</td>
+              </tr>
+              {(it.addons || []).map((addon) => (
+                <tr key={addon.id} className="text-slate-500">
+                  <td className="py-1 pl-3 text-[10px]" colSpan={3}>
+                    + {addon.nama_snapshot} &times; {addon.qty}
+                  </td>
+                  <td className="py-1 text-right text-[10px]">{formatCurrency(addon.harga_snapshot)}</td>
+                  <td className="py-1 text-right text-[10px]">{formatCurrency(addon.subtotal)}</td>
+                </tr>
+              ))}
+            </React.Fragment>
           ))}
         </tbody>
       </table>

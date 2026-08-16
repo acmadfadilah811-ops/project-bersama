@@ -57,6 +57,9 @@ export default function PosShift({ onToggleSidebar }) {
 
   // Close Shift Typed Cash Amount (SS 3)
   const [typedCloseCashStr, setTypedCloseCashStr] = useState('0');
+  // Keterangan penutupan shift (opsional) — dikirim sebagai `catatan` ke
+  // /saldo-kas-harian/{id}/close/, tampil di Ringkasan Shift V2.
+  const [closeKeterangan, setCloseKeterangan] = useState('');
 
   const kasirName = user?.nama_lengkap || `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || user?.username || '-';
   const awalDiLaci = Number(shiftAktif?.kas_awal || 0);
@@ -71,9 +74,14 @@ export default function PosShift({ onToggleSidebar }) {
   }, [shiftAktif, loadingShift]);
 
   const fetchRekapHarian = async () => {
+    if (!shiftAktif?.id) {
+      setPenjualanTunai(0);
+      setCashMovements([]);
+      return;
+    }
     try {
       const res = await apiClient.get('/pos/sales/rekap-harian/', {
-        params: { kasir: user?.id },
+        params: { kasir: user?.id, shift: shiftAktif.id },
       });
       const tunai = (res.data?.penjualan_per_metode || [])
         .filter((p) => isMetodeTunai(p.metode))
@@ -99,7 +107,7 @@ export default function PosShift({ onToggleSidebar }) {
       fetchRekapHarian();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode, user?.id]);
+  }, [viewMode, user?.id, shiftAktif?.id]);
 
   // Daftar Tipe Transaksi nyata (master) untuk dropdown modal Kas Masuk/Keluar.
   useEffect(() => {
@@ -254,11 +262,15 @@ export default function PosShift({ onToggleSidebar }) {
     try {
       await apiClient.post(`/saldo-kas-harian/${shiftAktif.id}/close/`, {
         kas_akhir: kasAkhir,
+        catatan: closeKeterangan.trim(),
       });
       setShowConfirmCloseModal(false);
       await checkActiveShift();
       setStartCashStr('0');
       setTypedCloseCashStr('0');
+      setCloseKeterangan('');
+      setPenjualanTunai(0);
+      setCashMovements([]);
       setViewMode('startShift');
       notifySuccess(
         'Shift berhasil ditutup',
@@ -386,28 +398,28 @@ export default function PosShift({ onToggleSidebar }) {
                   <span className="font-extrabold text-slate-900">{formatNumberDot(totalTunai)}</span>
                 </div>
 
-                <div className="pl-6 space-y-2.5 text-slate-600">
-                  <div className="flex justify-between items-center">
+                <div className="pl-6 border-l-2 border-slate-200 space-y-2.5 text-slate-600">
+                  <div className="flex justify-between items-center pb-2 border-b border-slate-100">
                     <span>Awal di Laci</span>
                     <span className="font-bold text-slate-800">{formatNumberDot(awalDiLaci)}</span>
                   </div>
 
-                  <div className="flex justify-between items-center">
-                    <span>Penjualan Tunai</span>
-                    <span className="font-bold text-slate-800">{formatNumberDot(penjualanTunai)}</span>
+                  <div className="flex justify-between items-center py-2 border-b border-emerald-100">
+                    <span className="text-emerald-700">+ Penjualan Tunai</span>
+                    <span className="font-bold text-emerald-700">+{formatNumberDot(penjualanTunai)}</span>
                   </div>
 
-                  <div className="flex justify-between items-center">
-                    <span>Pengembalian Tunai</span>
-                    <span className="font-bold text-slate-800">{formatNumberDot(pengembalianTunai)}</span>
+                  <div className="flex justify-between items-center py-2 border-b border-rose-100">
+                    <span className="text-rose-700">− Pengembalian Tunai</span>
+                    <span className="font-bold text-rose-700">−{formatNumberDot(pengembalianTunai)}</span>
                   </div>
 
-                  <div className="flex justify-between items-center">
-                    <span>Pembatalan Tunai</span>
-                    <span className="font-bold text-slate-800">{formatNumberDot(pembatalanTunai)}</span>
+                  <div className="flex justify-between items-center py-2 border-b border-rose-100">
+                    <span className="text-rose-700">− Pembatalan Tunai</span>
+                    <span className="font-bold text-rose-700">−{formatNumberDot(pembatalanTunai)}</span>
                   </div>
 
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-center pt-2">
                     <span>Kas Masuk-Keluar</span>
                     <span className="font-bold text-slate-800">{formatNumberDot(totalKasMasukOutNet)}</span>
                   </div>
@@ -727,6 +739,17 @@ export default function PosShift({ onToggleSidebar }) {
               <p className="text-xs font-bold text-slate-700">
                 Konfirmasi jumlah kas di laci : <span className="font-black text-slate-900">{typedCloseCashStr || formatNumberDot(totalDiharapkan)}</span> ?
               </p>
+
+              <div className="text-left">
+                <label className="text-[10px] font-bold text-slate-400 block mb-1">Keterangan (opsional)</label>
+                <textarea
+                  value={closeKeterangan}
+                  onChange={(e) => setCloseKeterangan(e.target.value)}
+                  placeholder="Mis. alasan selisih kas, catatan serah terima, dll."
+                  rows={3}
+                  className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+                />
+              </div>
 
               {/* Action Buttons SS 4 */}
               <div className="flex items-center justify-center gap-3 pt-2">

@@ -1,19 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { Banknote, QrCode, CreditCard, Wallet, X, CheckCircle2 } from 'lucide-react';
+import { todayISO } from '../../../utils/date';
 
 export default function PaymentProcessModal({
   isOpen,
   onClose,
   totalAmount = 0,
+  subtotalAmount = 0,
+  discountAmount = 0,
   onConfirmPayment,
 }) {
   const [selectedMethod, setSelectedMethod] = useState('CASH');
+  const [paymentType, setPaymentType] = useState('lunas');
   const [payAmountStr, setPayAmountStr] = useState('');
+  const [dueDate, setDueDate] = useState('');
 
   useEffect(() => {
     if (isOpen) {
       setPayAmountStr(String(Math.round(totalAmount)));
       setSelectedMethod('CASH');
+      setPaymentType('lunas');
+      setDueDate('');
     }
   }, [isOpen, totalAmount]);
 
@@ -59,14 +66,24 @@ export default function PaymentProcessModal({
   };
 
   const handlePaySubmit = () => {
-    if (currentPayAmount < totalAmount && selectedMethod === 'CASH') {
+    if (paymentType === 'lunas' && currentPayAmount < totalAmount) {
       alert(`Nominal pembayaran (Rp ${currentPayAmount.toLocaleString('id-ID')}) kurang dari total tagihan (Rp ${totalAmount.toLocaleString('id-ID')}).`);
+      return;
+    }
+    if (paymentType === 'dp' && (currentPayAmount <= 0 || currentPayAmount >= totalAmount)) {
+      alert('Nominal DP harus lebih dari Rp0 dan lebih kecil dari total tagihan. Untuk pembayaran penuh, pilih Lunas.');
+      return;
+    }
+    if (paymentType === 'dp' && !dueDate) {
+      alert('Jatuh tempo wajib diisi untuk transaksi DP/Uang Muka.');
       return;
     }
     onConfirmPayment({
       method: selectedMethod,
+      paymentType,
       payAmount: currentPayAmount,
       changeAmount,
+      dueDate: paymentType === 'dp' ? dueDate : null,
     });
   };
 
@@ -96,6 +113,45 @@ export default function PaymentProcessModal({
 
             {/* List of Payment Methods */}
             <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
+              <div className="grid grid-cols-2 gap-2 pb-1">
+                <button
+                  type="button"
+                  onClick={() => { setPaymentType('lunas'); setPayAmountStr(String(Math.round(totalAmount))); }}
+                  className={`rounded-lg px-2.5 py-2 text-xs font-extrabold border transition-all ${paymentType === 'lunas' ? 'bg-emerald-500 text-white border-emerald-300' : 'bg-white/10 text-white border-white/30 hover:bg-white/20'}`}
+                >
+                  Bayar Lunas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setPaymentType('dp'); setPayAmountStr(''); }}
+                  className={`rounded-lg px-2.5 py-2 text-xs font-extrabold border transition-all ${paymentType === 'dp' ? 'bg-amber-400 text-slate-900 border-amber-200' : 'bg-white/10 text-white border-white/30 hover:bg-white/20'}`}
+                >
+                  DP / Uang Muka
+                </button>
+              </div>
+              {paymentType === 'dp' && (
+                <div className="space-y-2 rounded-lg bg-amber-50 p-3 text-[11px] font-semibold text-amber-950">
+                  <p className="leading-relaxed">DP langsung menerbitkan SPK ke antrean divisi setelah tujuan dan deadline dipilih.</p>
+                  <div className="space-y-1 border-y border-amber-200 py-2 text-[11px]">
+                    <div className="flex justify-between"><span>Subtotal Item</span><span>Rp {Math.round(subtotalAmount).toLocaleString('id-ID')}</span></div>
+                    <div className="flex justify-between"><span>Diskon</span><span>-Rp {Math.round(discountAmount).toLocaleString('id-ID')}</span></div>
+                    <div className="flex justify-between font-extrabold"><span>Total Harga</span><span>Rp {Math.round(totalAmount).toLocaleString('id-ID')}</span></div>
+                    <div className="flex justify-between"><span>DP / Uang Muka</span><span>Rp {Math.round(currentPayAmount).toLocaleString('id-ID')}</span></div>
+                    <div className="flex justify-between"><span>Metode Pembayaran</span><span>{paymentMethods.find((item) => item.id === selectedMethod)?.label || selectedMethod}</span></div>
+                    <div className="flex justify-between font-extrabold text-amber-800"><span>Sisa Tagihan</span><span>Rp {Math.max(0, Math.round(totalAmount - currentPayAmount)).toLocaleString('id-ID')}</span></div>
+                  </div>
+                  <label className="block">
+                    <span className="mb-1 block font-extrabold">Jatuh Tempo</span>
+                    <input
+                      type="date"
+                      min={todayISO()}
+                      value={dueDate}
+                      onChange={(event) => setDueDate(event.target.value)}
+                      className="w-full rounded-md border border-amber-300 bg-white px-2 py-1.5 text-xs font-bold text-slate-800 outline-none focus:border-amber-500"
+                    />
+                  </label>
+                </div>
+              )}
               {paymentMethods.map((method) => {
                 const isSelected = selectedMethod === method.id;
 

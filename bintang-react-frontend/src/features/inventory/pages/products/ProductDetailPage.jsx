@@ -304,6 +304,7 @@ export default function ProductDetailPage({ product, onBack, onUpdated, categori
   // Inventori section edit states
   const [lacakInventoriEdit, setLacakInventoriEdit] = useState(false);
   const [stokMinimumEdit, setStokMinimumEdit] = useState(5);
+  const [onHoldQtyEdit, setOnHoldQtyEdit] = useState(0);
   const [satuanEdit, setSatuanEdit] = useState('pcs');
   const [stokKosongEdit, setStokKosongEdit] = useState(false);
 
@@ -638,6 +639,7 @@ export default function ProductDetailPage({ product, onBack, onUpdated, categori
   const startEditInventori = () => {
     setLacakInventoriEdit(!!product.lacak_inventori);
     setStokMinimumEdit(product.stok_minimum !== null && product.stok_minimum !== undefined ? product.stok_minimum : 5);
+    setOnHoldQtyEdit(product.on_hold_qty !== null && product.on_hold_qty !== undefined ? product.on_hold_qty : 0);
     setSatuanEdit(product.satuan || 'pcs');
     setStokKosongEdit(!!stokKosong);
     setEditingSection('inventori');
@@ -657,6 +659,7 @@ export default function ProductDetailPage({ product, onBack, onUpdated, categori
         if (stokKosongEdit) {
           payload.qty_stok = 0;
         }
+        payload.on_hold_qty = parseFloat(onHoldQtyEdit) || 0;
       }
 
       await apiClient.patch(`/products/${product.id}/`, payload);
@@ -1759,11 +1762,29 @@ export default function ProductDetailPage({ product, onBack, onUpdated, categori
 
                 {/* On hold qty */}
                 <div style={{ padding: '8px 0 10px 0' }}>
-                  <div style={{ fontSize: 13, color: '#64748b', marginBottom: 6 }}>On hold qty</div>
+                  <div style={{ fontSize: 13, color: '#64748b', marginBottom: 6 }}>
+                    On hold qty <span style={{ fontWeight: 400 }}>(cadangan, tidak ikut terjual — info saja, tidak memblokir kasir)</span>
+                  </div>
                   {hasVariant ? (
                     <InfoBox text="Refer Ke varian" />
                   ) : (
-                    <InfoBox text={String(product.on_hold_qty || 0)} />
+                    <input
+                      type="number"
+                      min="0"
+                      value={onHoldQtyEdit}
+                      onChange={(e) => setOnHoldQtyEdit(e.target.value)}
+                      style={{
+                        width: '100%',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: 6,
+                        padding: '8px 12px',
+                        fontSize: 13,
+                        color: '#334155',
+                        boxSizing: 'border-box',
+                        outline: 'none',
+                        background: '#fff'
+                      }}
+                    />
                   )}
                 </div>
 
@@ -1876,6 +1897,17 @@ export default function ProductDetailPage({ product, onBack, onUpdated, categori
                     <InfoBox text="Refer Ke varian" />
                   ) : (
                     <InfoBox text={String(product.qty_stok || 0)} />
+                  )}
+                </div>
+
+                {/* Stok Tersedia = Qty Stok - On hold qty. Info saja, tidak
+                    menghalangi kasir menjual sampai stok fisik habis. */}
+                <div style={{ padding: '8px 0 10px 0' }}>
+                  <div style={{ fontSize: 13, color: '#64748b', marginBottom: 6 }}>Stok Tersedia (di luar cadangan)</div>
+                  {hasVariant ? (
+                    <InfoBox text="Refer Ke varian" />
+                  ) : (
+                    <InfoBox text={String(Math.max(0, Number(product.qty_stok || 0) - Number(product.on_hold_qty || 0)))} />
                   )}
                 </div>
 

@@ -9,9 +9,60 @@ from . import pos_settings, stock_fifo, uom
 from .models import Contact, SaldoKasHarian
 from .pos_models import POSSale, POSSaleItem
 from .product_models import Product, ProductVariant, ProductStockMovement
+from .services.package_sales import resolve_package_for_sale
+from .services.addon_sales import apply_addons, resolve_addons
+from .services.product_pricing import hitung_harga as hitung_harga_produk, HargaProdukError
 
 MONEY = Decimal('0.01')
 QTY = Decimal('0.01')
+
+
+def _potong_bahan_baku_bom(product, variant, qty_base, sale, user):
+    """Potong stok bahan baku (Bill of Materials) otomatis begitu produk yang
+    PUNYA resep terjual lunas lewat kasir — sebelumnya BoM cuma dipotong
+    otomatis utk alur Order/cetak (deduct_job_materials_if_needed di
+    views/jobs.py), transaksi kasir langsung dilewati sama sekali (instruksi
+    user 2026-08-15). POSSaleItem tidak punya field luas/bahan seperti
+    OrderItem, jadi formulanya SELALU qty-based (qty terjual x
+    qty_required_per_unit per bahan) — tidak ada cabang per-m2. Independen
+    dari `product.lacak_inventori` (jasa yang finished-good-nya tidak
+    dihitung stok tetap boleh konsumsi bahan baku per transaksi)."""
+    from .models import BillOfMaterials, RestockHistory, InventoryItem
+    from .views.inventory import record_material_consumption_to_general_ledger
+
+    bom = BillOfMaterials.objects.filter(product_id=product.id, variant_id=variant.id if variant else None).first()
+    if not bom and variant:
+        bom = BillOfMaterials.objects.filter(product_id=product.id, variant__isnull=True).first()
+    if not bom:
+        return
+
+    marker = f"POS {sale.nomor} - Produk #{product.id}" + (f"/{variant.id}" if variant else "")
+    if RestockHistory.objects.filter(keterangan__icontains=marker).exists():
+        return
+
+    for bom_item in bom.items.select_related('inventory_item'):
+        item = InventoryItem.objects.select_for_update().get(pk=bom_item.inventory_item_id)
+        qty_needed = round(float(qty_base) * bom_item.qty_required_per_unit, 4)
+        if qty_needed <= 0:
+            continue
+        if qty_needed > item.stok:
+            raise ValidationError({'error': f"Stok bahan '{item.nama}' tidak mencukupi untuk {product.nama}."})
+
+        stok_awal = item.stok
+        stok_akhir = max(0.0, round(item.stok - qty_needed, 4))
+        RestockHistory.objects.create(
+            item=item, user=user, delta=-qty_needed,
+            stok_awal=stok_awal, stok_akhir=stok_akhir,
+            keterangan=f"Pemakaian BoM otomatis | {marker} | {bom.nama}",
+        )
+        item.stok = stok_akhir
+        item.save()
+
+        record_material_consumption_to_general_ledger(
+            item, qty_needed, ref_no=marker,
+            keterangan_konteks=f"Penjualan POS {sale.nomor} - {product.nama}",
+            source_id=sale.id,
+        )
 
 def money(value):
     try:
@@ -32,11 +83,6 @@ def _nomor():
     now = timezone.now()
     return f"POS-{now.strftime('%Y%m%d%H%M%S%f')}-{uuid.uuid4().hex[:6].upper()}"
 
-def _server_price(product, variant):
-    if variant and variant.harga_jual_toko is not None:
-        return money(variant.harga_jual_toko)
-    return money(product.harga_jual_toko)
-
 def create_sale(*, user, data):
     items = data.get('items') or []
     if not items:
@@ -50,6 +96,10 @@ def create_sale(*, user, data):
     discount_pct = percentage(data.get('diskon_persen', 0), 'diskon_persen')
     tax_pct = percentage(data.get('pajak_persen', 0), 'pajak_persen')
     paid = money(data.get('dibayar', 0))
+    if discount_pct:
+        raise ValidationError({
+            'error': 'Diskon manual tidak diizinkan. Gunakan kupon atau Diskon Penjualan yang aktif di Marketing.',
+        })
 
     with transaction.atomic():
         shift = (SaldoKasHarian.objects.select_for_update()
@@ -58,13 +108,75 @@ def create_sale(*, user, data):
         if pos_settings.wajib_shift_aktif() and shift is None:
             raise ValidationError({'error': 'Buka shift Anda sendiri sebelum transaksi.'})
 
+        customer = None
+        if data.get('pelanggan'):
+            customer = Contact.objects.filter(pk=data['pelanggan']).first()
+            if customer is None:
+                raise ValidationError({'error': 'Pelanggan tidak valid.'})
+        # Tipe Pelanggan (CustomerGroup) member yang tertaut — dipakai supaya
+        # tier harga per tipe pelanggan (mis. Reseller, Guest) benar-benar
+        # dipakai saat checkout, bukan cuma tersimpan (bug ditemukan
+        # 2026-08-13). Diresolusi di sini (sebelum loop harga item) karena
+        # harga per item dihitung di bawah, butuh nilai ini sebelum baris
+        # pertama diproses.
+        # "Guest" WAJIB ditautkan eksplisit ke Customer (kategori asli di
+        # menu Pelanggan & Supplier > Tipe Pelanggan, lihat migration
+        # 0117_seed_customer_group_guest) — bukan default diam-diam untuk
+        # transaksi tanpa pelanggan (instruksi user 2026-08-13, supaya tidak
+        # rancu dengan konvensi lama "Guest" = label tampilan utk pelanggan
+        # tanpa tipe, lihat CustomerEditModal.jsx). Tanpa tipe pelanggan
+        # tertaut = None, jatuh ke tier Umum seperti sebelumnya.
+        customer_group_nama = None
+        if customer and customer.customer_id and customer.customer.customer_group_id:
+            customer_group_nama = customer.customer.customer_group.nama
+
         prepared = []
         subtotal = Decimal('0')
         requested = {}
-        prepared = []
-        subtotal = Decimal('0')
-        requested = {}
+        stock_owners = {}
+        stock_lines = []
+        # No. Seri yang dipakai baris manapun di transaksi ini — product_id ->
+        # {no_seri terpilih}. Dipakai (a) cegah nomor seri sama dipilih dua
+        # kali dalam satu transaksi, (b) tandai "terjual" di pool
+        # Product.serial_numbers setelah `sale` (nomornya) terbentuk di bawah.
+        serial_pool_updates = {}
         for raw in items:
+            package_id = raw.get('package_id') or raw.get('paket_id')
+            if package_id:
+                package, qty_base, price_base = resolve_package_for_sale(
+                    package_id, raw.get('qty', 1), channel='pos', lock=True,
+                )
+                line_total = money(price_base * qty_base)
+                conversion = {
+                    'qty_dasar': qty_base,
+                    'harga_dasar': price_base,
+                    'uom_kode': '',
+                    'uom_konverter': Decimal('1'),
+                    'uom_qty': qty_base,
+                }
+                # Paket tidak mempunyai stok terpisah. Ketersediaan dan mutasi
+                # selalu dihitung dari seluruh komponen master paket.
+                for component in package.items.all():
+                    component_product = Product.objects.select_for_update().get(pk=component.product_id)
+                    component_variant = None
+                    if component.variant_id:
+                        component_variant = ProductVariant.objects.select_for_update().filter(
+                            pk=component.variant_id, product=component_product,
+                        ).first()
+                        if not component_variant:
+                            raise ValidationError({'error': f"Komponen varian paket '{package.nama}' tidak valid."})
+                    component_qty = (qty_base * Decimal(str(component.qty))).quantize(QTY)
+                    key = (component_product.id, component_variant.id if component_variant else None)
+                    requested[key] = requested.get(key, Decimal('0')) + component_qty
+                    stock_owners[key] = (component_product, component_variant)
+                    stock_lines.append((component_product, component_variant, component_qty, package.nama))
+                prepared.append((
+                    raw, None, None, conversion, qty_base, price_base, line_total, package.nama, package,
+                    [], 0.0, 0.0, Decimal('0'), [],
+                ))
+                subtotal += line_total
+                continue
+
             product_id = raw.get('product_id')
             if not product_id:
                 if pos_settings.ext('disable_add_custom_item'):
@@ -85,7 +197,10 @@ def create_sale(*, user, data):
                     'uom_konverter': Decimal('1'),
                     'uom_qty': qty_base,
                 }
-                prepared.append((raw, None, None, conversion, qty_base, price_base, line_total, item_nama))
+                prepared.append((
+                    raw, None, None, conversion, qty_base, price_base, line_total, item_nama, None,
+                    [], 0.0, 0.0, Decimal('0'), [],
+                ))
                 subtotal += line_total
                 continue
 
@@ -107,26 +222,88 @@ def create_sale(*, user, data):
                 raise ValidationError({'error': f"Qty {product.nama} harus lebih dari nol."})
             conversion = uom.resolve(product, raw.get('uom_kode'), input_qty, None, variant)
             qty_base = Decimal(str(conversion['qty_dasar'])).quantize(QTY)
-            price_base = _server_price(product, variant)
-            line_total = money(price_base * qty_base)
+
+            # Produk meteran (price_type='per_m2') & Finishing — sebelumnya item
+            # begini dikirim TANPA product_id sama sekali (dianggap item kustom),
+            # sehingga addon (wajib product) & potong stok otomatis tidak pernah
+            # jalan untuknya. Sekarang product/variant TETAP tertaut; harga tetap
+            # dihitung ulang di server (M6) lewat kalkulator resmi yang sama
+            # dipakai bot WA & Order DP — bukan dipercaya dari browser.
+            panjang = raw.get('panjang')
+            lebar = raw.get('lebar')
+            try:
+                finishing_biaya = money(raw.get('finishing_biaya', 0))
+            except ValidationError:
+                raise ValidationError({'error': f"Biaya finishing {product.nama} tidak valid."})
+            # Kasir bisa pakai mode "Meteran (P x L)" di Detail Item utk produk
+            # APA PUN, tidak cuma yang price_type='per_m2' di katalog (instruksi
+            # user 2026-08-12, sama seperti /products/:id/hitung-harga/ dipakai
+            # Antrean WA). Tanpa paksa_per_m2 di sini, produk 'flat' yang dipakai
+            # dgn ukuran akan dihitung ulang TANPA dikali luas saat checkout —
+            # beda dari harga yang kasir/pelanggan lihat di layar (bug uang).
+            paksa_per_m2 = bool(panjang) and bool(lebar) and product.price_type != 'per_m2'
+            try:
+                hasil_harga = hitung_harga_produk(
+                    product, qty=qty_base, panjang=panjang, lebar=lebar, variant=variant, kanal='toko',
+                    paksa_per_m2=paksa_per_m2, customer_group_nama=customer_group_nama,
+                )
+            except HargaProdukError as e:
+                raise ValidationError({'error': str(e)})
+            price_base = money(hasil_harga['harga_satuan'])
+
+            # No. Seri — produk dengan `pesanan_no_seri=True` wajib pilih 1
+            # nomor seri per unit dari pool Product.serial_numbers. Sebelum
+            # ini, nomor seri tersimpan di kartu produk tapi tidak pernah
+            # tercatat terjual (laporan "No. Seri" selalu kosong; bug
+            # ditemukan & diperbaiki 2026-08-13).
+            serial_numbers_line = []
+            if product.pesanan_no_seri:
+                seri_input = raw.get('serial_numbers') or []
+                if not isinstance(seri_input, list):
+                    raise ValidationError({'error': f"Nomor seri {product.nama} tidak valid."})
+                seri_input = [str(s).strip() for s in seri_input if str(s).strip()]
+                if qty_base != qty_base.to_integral_value():
+                    raise ValidationError({'error': f"Qty {product.nama} harus bilangan bulat karena produk ini wajib No. Seri."})
+                qty_int = int(qty_base)
+                if len(seri_input) != qty_int:
+                    raise ValidationError({'error': f"Pilih {qty_int} No. Seri untuk {product.nama} (qty {qty_int})."})
+                if len(set(seri_input)) != len(seri_input):
+                    raise ValidationError({'error': f"No. Seri untuk {product.nama} tidak boleh duplikat."})
+                pool = product.serial_numbers if isinstance(product.serial_numbers, list) else []
+                pool_by_no = {str(p.get('no_seri', '')).strip(): p for p in pool if isinstance(p, dict)}
+                sudah_dipilih = serial_pool_updates.get(product.id, set())
+                for no in seri_input:
+                    entry = pool_by_no.get(no)
+                    if entry is None:
+                        raise ValidationError({'error': f"No. Seri '{no}' tidak terdaftar untuk produk {product.nama}."})
+                    if entry.get('no_pesanan'):
+                        raise ValidationError({'error': f"No. Seri '{no}' sudah terjual (No. Pesanan {entry['no_pesanan']})."})
+                    if no in sudah_dipilih:
+                        raise ValidationError({'error': f"No. Seri '{no}' dipilih lebih dari sekali dalam transaksi ini."})
+                serial_pool_updates.setdefault(product.id, set()).update(seri_input)
+                serial_numbers_line = seri_input
+
+            # Addon: harga & qty SELALU dihitung ulang dari Addon.harga di server
+            # (M6), payload klien hanya berupa pilihan id + qty per addon.
+            item_addons = resolve_addons(raw.get('addons') or raw.get('addon_ids'), product, default_qty=qty_base)
+            addon_total = sum((Decimal(str(a.harga or 0)) * q for a, q in item_addons), Decimal('0'))
+            line_total = money(price_base * qty_base + finishing_biaya * qty_base + addon_total)
             key = (product.id, variant.id if variant else None)
             requested[key] = requested.get(key, Decimal('0')) + qty_base
-            prepared.append((raw, product, variant, conversion, qty_base, price_base, line_total, product.nama))
+            stock_owners[key] = (product, variant)
+            stock_lines.append((product, variant, qty_base, ''))
+            prepared.append((
+                raw, product, variant, conversion, qty_base, price_base, line_total, product.nama, None,
+                item_addons, float(panjang or 0), float(lebar or 0), finishing_biaya, serial_numbers_line,
+            ))
             subtotal += line_total
 
         if status_val == 'paid' and pos_settings.pos_mengurangi_stok():
-            for raw, product, variant, conversion, qty_base, price_base, line_total, item_nama in prepared:
-                if not product:
-                    continue
+            for key, total_qty in requested.items():
+                product, variant = stock_owners[key]
                 owner = variant or product
-                if product.lacak_inventori and requested.get((product.id, variant.id if variant else None), Decimal('0')) > Decimal(str(owner.qty_stok or 0)):
+                if product.lacak_inventori and total_qty > Decimal(str(owner.qty_stok or 0)):
                     raise ValidationError({'error': f"Stok '{owner}' tidak mencukupi."})
-
-        customer = None
-        if data.get('pelanggan'):
-            customer = Contact.objects.filter(pk=data['pelanggan']).first()
-            if customer is None:
-                raise ValidationError({'error': 'Pelanggan tidak valid.'})
 
         # Karyawan yang melayani (service order) — opsional, dipilih kasir.
         dilayani_oleh = None
@@ -145,9 +322,9 @@ def create_sale(*, user, data):
         from .promo_engine import BarisKeranjang, KonteksPromo, evaluate_coupon_code, evaluate_sales_discount
         from .marketing_models import KANAL_POS
         baris_promo = [
-            BarisKeranjang(product=p, variant=v, qty=qb, harga=pb, subtotal=lt)
-            for raw, p, v, conv, qb, pb, lt, item_nama in prepared
-            if p is not None
+            BarisKeranjang(product=p, variant=v, package=package, qty=qb, harga=pb, subtotal=lt)
+            for raw, p, v, conv, qb, pb, lt, item_nama, package, item_addons, pj, lb, fb, sn in prepared
+            if p is not None or package is not None
         ]
         konteks = KonteksPromo(baris=baris_promo, subtotal=subtotal, pelanggan=customer, kanal=KANAL_POS)
 
@@ -239,26 +416,85 @@ def create_sale(*, user, data):
             )
             kupon_obj.penggunaan_count = CouponUsage.objects.filter(kupon=kupon_obj).count()
             kupon_obj.save(update_fields=['penggunaan_count'])
-        for raw, product, variant, conversion, qty_base, price_base, line_total, item_nama in prepared:
-            POSSaleItem.objects.create(
-                sale=sale, product=product, variant=variant, nama_snapshot=item_nama,
+        for (raw, product, variant, conversion, qty_base, price_base, line_total, item_nama, package,
+             item_addons, panjang, lebar, finishing_biaya, serial_numbers_line) in prepared:
+            sale_item = POSSaleItem.objects.create(
+                sale=sale, product=product, variant=variant, paket=package, nama_snapshot=item_nama,
                 harga_snapshot=price_base, qty=qty_base, subtotal=line_total,
                 catatan=str(raw.get('catatan') or '')[:2000],
                 uom_kode=conversion['uom_kode'], uom_konverter=conversion['uom_konverter'],
                 uom_qty=conversion['uom_qty'],
                 uom_harga=(money(price_base * conversion['uom_konverter']) if conversion['uom_kode'] else None),
+                panjang=panjang, lebar=lebar, finishing_biaya=finishing_biaya,
+                serial_numbers=serial_numbers_line,
             )
-            if status_val == 'paid' and pos_settings.pos_mengurangi_stok() and product and product.lacak_inventori:
-                owner = variant or product
-                start = owner.qty_stok
-                owner.qty_stok = start - qty_base
-                owner.save(update_fields=['qty_stok'])
-                movement = ProductStockMovement.objects.create(
-                    product=product, variant=variant, user=user, tipe='penjualan', qty=qty_base,
-                    stok_awal=start, stok_akhir=owner.qty_stok, pos_sale=sale,
-                    catatan=f'Penjualan POS {sale.nomor}', tanggal=now,
+            if item_addons:
+                apply_addons(
+                    addons=item_addons, user=user, tanggal=now,
+                    pos_sale_item=sale_item, pos_sale=sale,
+                    deduct_stock=(status_val == 'paid' and pos_settings.pos_mengurangi_stok()),
                 )
-                stock_fifo.consume_layers(product, variant, qty_base, movement=movement)
+
+        # Tandai No. Seri yang terjual di transaksi ini supaya tidak bisa
+        # dipilih lagi di transaksi berikutnya (`entry['no_pesanan']` diisi
+        # nomor nota) — dilepas lagi kalau transaksi ini di-void (void_sale).
+        for product_id, terjual_set in serial_pool_updates.items():
+            prod = Product.objects.select_for_update().get(pk=product_id)
+            pool = prod.serial_numbers if isinstance(prod.serial_numbers, list) else []
+            berubah = False
+            for entry in pool:
+                if isinstance(entry, dict) and str(entry.get('no_seri', '')).strip() in terjual_set:
+                    entry['no_pesanan'] = sale.nomor
+                    berubah = True
+            if berubah:
+                prod.serial_numbers = pool
+                prod.save(update_fields=['serial_numbers'])
+
+        if status_val == 'paid' and pos_settings.pos_mengurangi_stok():
+            for product, variant, qty_base, package_name in stock_lines:
+                if product.lacak_inventori:
+                    owner = variant or product
+                    start = owner.qty_stok
+                    owner.qty_stok = start - qty_base
+                    owner.save(update_fields=['qty_stok'])
+                    suffix = f' - Paket {package_name}' if package_name else ''
+                    movement = ProductStockMovement.objects.create(
+                        product=product, variant=variant, user=user, tipe='penjualan', qty=qty_base,
+                        stok_awal=start, stok_akhir=owner.qty_stok, pos_sale=sale,
+                        catatan=f'Penjualan POS {sale.nomor}{suffix}', tanggal=now,
+                    )
+                    stock_fifo.consume_layers(product, variant, qty_base, movement=movement)
+
+                # Potong bahan baku (BoM) kalau produk ini punya resep —
+                # independen dari lacak_inventori (instruksi user 2026-08-15).
+                _potong_bahan_baku_bom(product, variant, qty_base, sale, user)
+
+        # SPK untuk transaksi lunas diterbitkan dalam transaksi database yang sama
+        # dengan nota POS. Targetnya selalu antrean divisi bagi akun kasir; aturan
+        # tersebut tetap dipusatkan di api.spk seperti alur Antrean WA.
+        spk_payload = data.get('spk')
+        if spk_payload is not None:
+            if status_val != 'paid':
+                raise ValidationError({'error': 'SPK hanya dapat diterbitkan untuk transaksi POS yang lunas.'})
+            if not isinstance(spk_payload, dict):
+                raise ValidationError({'error': 'Data tujuan SPK tidak valid.'})
+            from . import spk as spk_service
+            try:
+                staff = spk_service.resolve_staff(spk_payload.get('staff_id'), pemohon=user)
+                deadline = spk_service.resolve_deadline(spk_payload.get('deadline'))
+                if not deadline:
+                    raise spk_service.SpkError('Deadline SPK wajib diisi.')
+                tahap = spk_service.resolve_tahap(
+                    tahap_id=spk_payload.get('tahap_id'),
+                    divisi_id=spk_payload.get('divisi_id'),
+                    staff=staff,
+                )
+                spk_service.terbitkan(
+                    sale.items.all(), field='pos_sale_item', tahap=tahap, staff=staff,
+                    deadline=deadline,
+                )
+            except spk_service.SpkError as exc:
+                raise ValidationError({'error': exc.pesan})
 
         if status_val == 'paid':
             from . import loyalty as loyalty_svc
@@ -277,7 +513,11 @@ def create_sale(*, user, data):
                 poin_didapat = 0
                 boleh_earn = setting is not None and (loyalty_obj is None or setting.dapat_poin_saat_tebus)
                 if boleh_earn:
-                    earn_items = [(p, v, qb) for (raw, p, v, conv, qb, pb, lt) in prepared]
+                    earn_items = [
+                        (p, v, qb)
+                        for (raw, p, v, conv, qb, pb, lt, item_nama, package, item_addons, pj, lb, fb, sn) in prepared
+                        if p is not None
+                    ]
                     poin_didapat = loyalty_svc.earn_points(
                         customer=loyalty_customer, setting=setting, sale_total=total, items=earn_items,
                     )
@@ -297,6 +537,8 @@ def create_sale(*, user, data):
         if status_val == 'paid':
             from accounting.services.pos_posting import post_pos_sale_journal
             post_pos_sale_journal(sale, actor=user)
+            from .services.pos_receipt_whatsapp import jadwalkan_resi_pos_otomatis
+            jadwalkan_resi_pos_otomatis(sale.id)
 
         return sale
 
@@ -343,6 +585,8 @@ def void_sale(*, sale_id, user):
             raise ValidationError({'error': 'Transaksi sudah dibatalkan sebelumnya.'})
         if sale.settlement_status == 'settled':
             raise ValidationError({'error': 'Transaksi POS yang sudah ter-settle tidak dapat di-void secara langsung.'})
+        if sale.diambil_pada:
+            raise ValidationError({'error': 'Transaksi ini sudah ditandai diambil pelanggan, tidak dapat di-void.'})
         if sale.status == 'paid' and pos_settings.pos_mengurangi_stok():
             for item in sale.items.select_related('product', 'variant'):
                 if not item.product or not item.product.lacak_inventori:
@@ -371,6 +615,63 @@ def void_sale(*, sale_id, user):
                     stok_awal=start, stok_akhir=owner.qty_stok, hpp_total=restored_hpp,
                     catatan=f'Pembatalan POS (Void) {sale.nomor}', tanggal=timezone.localdate(),
                 )
+            # Stok bahan addon (linked_product) juga dipulihkan — independen dari
+            # `item.product.lacak_inventori` di atas, karena bahan addon adalah
+            # produk terpisah dari item induknya.
+            for sale_item in sale.items.all():
+                for addon_link in sale_item.addons.select_related('addon'):
+                    if not addon_link.addon_id or not addon_link.addon.linked_product_id:
+                        continue
+                    linked_product = Product.objects.select_for_update().get(pk=addon_link.addon.linked_product_id)
+                    if not linked_product.lacak_inventori:
+                        continue
+                    linked_variant = (
+                        ProductVariant.objects.select_for_update().get(pk=addon_link.addon.linked_variant_id)
+                        if addon_link.addon.linked_variant_id else None
+                    )
+                    consume_qty = Decimal(str(addon_link.addon.linked_qty or 0)) * addon_link.qty
+                    if consume_qty <= 0:
+                        continue
+                    owner = linked_variant or linked_product
+                    start = owner.qty_stok
+                    owner.qty_stok = start + consume_qty
+                    owner.save(update_fields=['qty_stok'])
+                    original = (ProductStockMovement.objects.filter(
+                        product=linked_product, variant=linked_variant, tipe='penjualan', pos_sale=sale,
+                        catatan=f"Addon '{addon_link.nama_snapshot}'",
+                    ).order_by('id').first())
+                    restored_hpp = Decimal('0')
+                    if original:
+                        for consumption in original.layer_consumptions.select_related('layer').all():
+                            restored_hpp += consumption.qty * consumption.harga_beli
+                            if consumption.layer_id:
+                                layer = consumption.layer
+                                layer.sisa_qty += consumption.qty
+                                layer.save(update_fields=['sisa_qty'])
+                    ProductStockMovement.objects.create(
+                        product=linked_product, variant=linked_variant, user=user, tipe='pengembalian',
+                        qty=consume_qty, stok_awal=start, stok_akhir=owner.qty_stok, hpp_total=restored_hpp,
+                        pos_sale=sale, catatan=f"Pembatalan POS (Void) Addon '{addon_link.nama_snapshot}' {sale.nomor}",
+                        tanggal=timezone.localdate(),
+                    )
+        # Lepas No. Seri yang tadinya ditandai terjual di transaksi ini,
+        # supaya bisa dipilih lagi di transaksi lain — independen dari
+        # setelan `pos_mengurangi_stok()` (No. Seri bukan soal qty stok).
+        for item in sale.items.all():
+            if not item.product_id or not item.serial_numbers:
+                continue
+            prod = Product.objects.select_for_update().get(pk=item.product_id)
+            pool = prod.serial_numbers if isinstance(prod.serial_numbers, list) else []
+            terjual_set = set(item.serial_numbers)
+            berubah = False
+            for entry in pool:
+                if isinstance(entry, dict) and str(entry.get('no_seri', '')).strip() in terjual_set:
+                    entry['no_pesanan'] = ''
+                    berubah = True
+            if berubah:
+                prod.serial_numbers = pool
+                prod.save(update_fields=['serial_numbers'])
+
         if sale.kupon:
             from .marketing_models import CouponUsage
             CouponUsage.objects.filter(pos_sale=sale).delete()
@@ -387,7 +688,9 @@ def void_sale(*, sale_id, user):
 
         sale.status = 'void'
         sale.settlement_status = 'void'
-        sale.save(update_fields=['status', 'settlement_status'])
+        sale.voided_at = timezone.now()
+        sale.voided_by = user
+        sale.save(update_fields=['status', 'settlement_status', 'voided_at', 'voided_by'])
 
         from accounting.services.pos_posting import post_pos_void_journal
         post_pos_void_journal(sale, actor=user)

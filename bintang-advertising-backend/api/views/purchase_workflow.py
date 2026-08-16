@@ -145,56 +145,32 @@ class PurchaseWorkflowView(APIView):
     @transaction.atomic
     def toggle_payment(self, request, purchase):
         user = _get_user(request)
-        purchase = Purchase.objects.select_for_update().prefetch_related('items', 'payments').get(pk=purchase.pk)
+        purchase = Purchase.objects.select_for_update().prefetch_related('items').get(pk=purchase.pk)
+        if purchase.status != 'draft':
+            return Response(
+                {'error': 'Penanda pembayaran hanya dapat diubah pada pembelian yang masih diproses.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         if not purchase.items.exists():
-            return Response({'error': 'Tambahkan minimal satu produk sebelum mengubah status pembayaran.'}, status=status.HTTP_400_BAD_REQUEST)
-        if not (purchase.no_terima and purchase.tanggal_diterima) and purchase.receive_status != 'diterima':
-            return Response({'error': 'Informasi penerimaan (No. Terima & Tanggal Terima) harus terisi terlebih dahulu.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'error': 'Tambahkan minimal satu produk sebelum mengubah penanda pembayaran.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if purchase.payments.exists():
+            return Response(
+                {'error': 'Pembelian sudah memiliki pembayaran nyata. Ubah melalui Pengaturan Pembayaran.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        target = request.data.get('target_status')
-        if target == 'lunas' or (not target and purchase.payment_status != 'lunas'):
-            sisa = purchase.total - purchase.total_dibayar
-            if sisa > 0:
-                from accounting.models import Account
-                from accounting.services.purchase_posting import post_purchase_payment_journal
-                from django.core.exceptions import ValidationError as DjangoValidationError
-                from ..product_models import PurchasePayment
-
-                cash_account = Account.objects.filter(code='11101', is_active=True).first()
-                if not cash_account:
-                    return Response({'error': 'COA 11101 (Kas) wajib tersedia untuk toggle pembayaran.'}, status=status.HTTP_400_BAD_REQUEST)
-                payment = PurchasePayment.objects.create(
-                    purchase=purchase,
-                    tanggal=timezone.localdate(),
-                    nominal=sisa,
-                    metode='Toggle Direct',
-                    catatan='Pelunasan via toggle pembayaran',
-                    dibuat_oleh=user
-                )
-                try:
-                    post_purchase_payment_journal(payment, cash_account, actor=user)
-                except DjangoValidationError as exc:
-                    raise ValidationError(getattr(exc, 'messages', [str(exc)])) from exc
-            purchase.recompute_payment_status()
-            catat_purchase(purchase, user, 'PAYMENT_TOGGLE', 'Status pembayaran diubah menjadi Sudah Dibayar (Lunas).')
-        else:
-            from accounting.services.purchase_posting import reverse_purchase_payment_journal
-            from django.core.exceptions import ValidationError as DjangoValidationError
-            from ..product_models import PurchasePayment
-
-            payments = list(PurchasePayment.objects.filter(purchase=purchase))
-            toggle_payments = [payment for payment in payments if payment.metode == 'Toggle Direct']
-            if not toggle_payments or len(toggle_payments) != len(payments):
-                return Response({'error': 'Status Belum Dibayar tidak dapat menghapus pembayaran manual. Hapus pembayaran tersebut satu per satu.'}, status=status.HTTP_400_BAD_REQUEST)
-            for payment in toggle_payments:
-                try:
-                    reverse_purchase_payment_journal(payment, actor=user)
-                except DjangoValidationError as exc:
-                    raise ValidationError(getattr(exc, 'messages', [str(exc)])) from exc
-                payment.delete()
-            purchase.recompute_payment_status()
-            catat_purchase(purchase, user, 'PAYMENT_TOGGLE', 'Status pembayaran diubah menjadi Belum Dibayar.')
-
+        purchase.payment_marked_paid = not purchase.payment_marked_paid
+        purchase.save(update_fields=['payment_marked_paid', 'updated_at'])
+        penanda = 'diaktifkan' if purchase.payment_marked_paid else 'dinonaktifkan'
+        catat_purchase(
+            purchase,
+            user,
+            'PAYMENT_MARKED' if purchase.payment_marked_paid else 'PAYMENT_MARK_CLEARED',
+            f'Penanda administratif pembayaran {penanda}; tidak ada pembayaran atau jurnal yang dibuat.',
+        )
         return Response(PurchaseSerializer(purchase).data)
 
     @transaction.atomic
@@ -206,12 +182,12 @@ class PurchaseWorkflowView(APIView):
             return Response({'error': 'status_pembelian wajib diisi.'}, status=status.HTTP_400_BAD_REQUEST)
 
         status_map = {
-            'Tunda': ('draft', 'tunda'),
-            'Terkirim': ('draft', 'tunda'),
-            'Dikirim': ('draft', 'tunda'),
-            'Diterima': ('draft', 'diterima'),
-            'Selesai': ('selesai', 'diterima'),
-            'Batal': ('batal', 'tunda' if purchase.receive_status != 'diterima' else 'diterima'),
+            'Tunda': ('draft', 'tunda', 'tunda'),
+            'Terkirim': ('draft', 'tunda', 'terkirim'),
+            'Dikirim': ('draft', 'tunda', 'dikirim'),
+            'Diterima': ('draft', 'diterima', None),
+            'Selesai': ('selesai', 'diterima', None),
+            'Batal': ('batal', 'tunda' if purchase.receive_status != 'diterima' else 'diterima', None),
         }
 
         if new_status not in status_map:
@@ -244,10 +220,12 @@ class PurchaseWorkflowView(APIView):
                     except ValidationError as exc:
                         return Response({'error': exc.detail[0] if isinstance(exc.detail, list) else str(exc.detail)}, status=status.HTTP_400_BAD_REQUEST)
 
-        doc_status, rec_status = status_map[new_status]
+        doc_status, rec_status, delivery_status = status_map[new_status]
         purchase.status = doc_status
         purchase.receive_status = rec_status
-        purchase.save(update_fields=['status', 'receive_status', 'updated_at'])
+        if delivery_status is not None:
+            purchase.delivery_status = delivery_status
+        purchase.save(update_fields=['status', 'receive_status', 'delivery_status', 'updated_at'])
         catat_purchase(purchase, user, 'STATUS_UPDATE', f'Status pembelian diperbarui menjadi: {new_status}.')
 
         return Response(PurchaseSerializer(purchase).data)

@@ -6,6 +6,7 @@ import {
   Package,
   PackageCheck,
   MessageCircle,
+  MessageSquare,
   History,
   Clock,
   LogOut,
@@ -19,6 +20,7 @@ import {
   ExternalLink,
   RefreshCw,
   Printer,
+  Users,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useKasir } from '../context/KasirContext';
@@ -66,8 +68,10 @@ export default function KasirSidebar({ isCollapsed, setIsCollapsed }) {
     { path: '/kasir/dashboard', label: 'Dashboard Kasir', icon: LayoutDashboard },
     { path: '/kasir/terminal', label: 'Terminal POS', icon: CreditCard, highlight: true },
     { path: '/kasir/produk', label: 'Katalog Produk', icon: Package },
-    { path: '/kasir/pesanan', label: 'Daftar Pesanan', icon: PackageCheck },
+    { path: '/kasir/pesanan', label: 'Pesanan & Pelunasan', icon: PackageCheck },
     { path: '/kasir/antrean-wa', label: 'Antrean WA', icon: MessageCircle, badge: waOrderCount },
+    { path: '/kasir/wa-live', label: 'WA Live', icon: MessageSquare },
+    { path: '/kasir/pelanggan-supplier', label: 'Pelanggan', icon: Users },
     { path: '/kasir/riwayat', label: 'Riwayat Transaksi', icon: History },
     { path: '/kasir/shift', label: 'Shift', icon: Clock },
     { path: '/kasir/pengaturan-cetak', label: 'Printer & Cetak', icon: Printer },

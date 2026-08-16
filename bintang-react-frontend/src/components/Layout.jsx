@@ -54,10 +54,9 @@ export default function Layout() {
     );
   }
 
-  // TEMPORARY BYPASS: Dibuka sementara untuk pengetesan/review log Papan Kerja
-  // if (statusTerkunci && statusTerkunci.is_locked) {
-  //   return <LockedScreen statusTerkunci={statusTerkunci} onRefresh={checkStatus} />;
-  // }
+  if (statusTerkunci && statusTerkunci.is_locked) {
+    return <LockedScreen statusTerkunci={statusTerkunci} onRefresh={checkStatus} />;
+  }
 
   const mobileMenuStaff = [
     { path: '/staff-dashboard', label: 'Dashboard', icon: LayoutDashboard },

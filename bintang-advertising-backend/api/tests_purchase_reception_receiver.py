@@ -6,7 +6,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from accounting.models import Account, AccountClassification, JournalEntry
+from accounting.models import Account, AccountClassification, AccountingSettings, JournalEntry
 
 from .product_models import Product, Purchase, PurchaseItem, StockInDocument, StockInDocumentItem
 
@@ -25,6 +25,17 @@ class PurchaseReceptionReceiverTests(APITestCase):
         purchase = Purchase.objects.create(nomor=nomor, tanggal=date(2026, 7, 29), dibuat_oleh=self.owner)
         PurchaseItem.objects.create(purchase=purchase, product=self.product, qty=Decimal('2'), harga_beli=Decimal('10000'))
         return purchase
+
+    def _configure_purchase_accounts(self, inventory, payable, advance):
+        settings, _ = AccountingSettings.objects.get_or_create(
+            defaults={'accounting_start_date': date(2026, 7, 1)},
+        )
+        settings.purchase_inventory_account = inventory
+        settings.purchase_payable_account = payable
+        settings.purchase_advance_account = advance
+        settings.save(update_fields=[
+            'purchase_inventory_account', 'purchase_payable_account', 'purchase_advance_account',
+        ])
 
     def test_owner_can_create_purchase_from_add_menu_payload(self):
         response = self.client.post(
@@ -66,10 +77,7 @@ class PurchaseReceptionReceiverTests(APITestCase):
         self.assertEqual(stock_document.nama_penerima, 'Gudang Utama')
 
     def test_post_stock_in_uses_standard_inventory_and_payable_coa(self):
-        asset, _ = AccountClassification.objects.get_or_create(name='Persediaan Test', defaults={'account_type': 'asset'})
-        liability, _ = AccountClassification.objects.get_or_create(name='Hutang Test', defaults={'account_type': 'liability'})
-        Account.objects.create(code='11400', name='Persediaan Test', account_type='asset', classification=asset)
-        Account.objects.create(code='21000', name='Hutang Dagang Test', account_type='liability', classification=liability)
+        self._seed_coa()
         document = StockInDocument.objects.create(nomor='IN-COA-TEST', tanggal=date(2026, 7, 29), dibuat_oleh=self.owner)
         StockInDocumentItem.objects.create(document=document, product=self.product, qty=Decimal('2'), harga_beli=Decimal('10000'))
 
@@ -82,10 +90,12 @@ class PurchaseReceptionReceiverTests(APITestCase):
         ).count(), 1)
 
     def test_remove_payment_recalculates_purchase_paid_total(self):
-        asset, _ = AccountClassification.objects.get_or_create(name='Kas Test', defaults={'account_type': 'asset'})
+        asset, _ = AccountClassification.objects.get_or_create(name='Kas & Bank', defaults={'account_type': 'asset'})
         liability, _ = AccountClassification.objects.get_or_create(name='Hutang Test', defaults={'account_type': 'liability'})
         cash = Account.objects.create(code='11101', name='Kas Test', account_type='asset', classification=asset)
-        Account.objects.create(code='21000', name='Hutang Dagang Test', account_type='liability', classification=liability)
+        payable = Account.objects.create(code='21000', name='Hutang Dagang Test', account_type='liability', classification=liability)
+        advance = Account.objects.create(code='11710', name='Uang Muka Pembelian', account_type='asset', classification=asset)
+        self._configure_purchase_accounts(cash, payable, advance)
         purchase = self._purchase('PO-HAPUS-BAYAR')
         added = self.client.post(
             f'/api/purchases/{purchase.id}/add-payment/',
@@ -105,11 +115,39 @@ class PurchaseReceptionReceiverTests(APITestCase):
         self.assertEqual(removed.data['total_dibayar'], 0)
         self.assertEqual(removed.data['payment_status'], 'belum')
 
+    def test_toggle_payment_only_updates_administrative_marker(self):
+        purchase = self._purchase('PO-PENANDA-BAYAR')
+
+        enabled = self.client.post(
+            f'/api/purchases/{purchase.id}/workflow/toggle-payment/', {}, format='json',
+        )
+
+        self.assertEqual(enabled.status_code, status.HTTP_200_OK, enabled.data)
+        self.assertTrue(enabled.data['payment_marked_paid'])
+        purchase.refresh_from_db()
+        self.assertTrue(purchase.payment_marked_paid)
+        self.assertEqual(purchase.payment_status, 'belum')
+        self.assertEqual(purchase.total_dibayar, Decimal('0'))
+        self.assertFalse(purchase.payments.exists())
+        self.assertFalse(JournalEntry.objects.exists())
+
+        disabled = self.client.post(
+            f'/api/purchases/{purchase.id}/workflow/toggle-payment/', {}, format='json',
+        )
+
+        self.assertEqual(disabled.status_code, status.HTTP_200_OK, disabled.data)
+        purchase.refresh_from_db()
+        self.assertFalse(purchase.payment_marked_paid)
+        self.assertEqual(purchase.payment_status, 'belum')
+        self.assertEqual(purchase.total_dibayar, Decimal('0'))
+
     def _seed_coa(self):
         asset, _ = AccountClassification.objects.get_or_create(name='Persediaan Test', defaults={'account_type': 'asset'})
         liability, _ = AccountClassification.objects.get_or_create(name='Hutang Test', defaults={'account_type': 'liability'})
-        Account.objects.get_or_create(code='11400', defaults={'name': 'Persediaan Test', 'account_type': 'asset', 'classification': asset})
-        Account.objects.get_or_create(code='21000', defaults={'name': 'Hutang Dagang Test', 'account_type': 'liability', 'classification': liability})
+        inventory, _ = Account.objects.get_or_create(code='11400', defaults={'name': 'Persediaan Test', 'account_type': 'asset', 'classification': asset})
+        payable, _ = Account.objects.get_or_create(code='21000', defaults={'name': 'Hutang Dagang Test', 'account_type': 'liability', 'classification': liability})
+        advance, _ = Account.objects.get_or_create(code='11710', defaults={'name': 'Uang Muka Pembelian', 'account_type': 'asset', 'classification': asset})
+        self._configure_purchase_accounts(inventory, payable, advance)
 
     def test_update_status_selesai_posts_stock_and_journal(self):
         """Bug: dropdown status 'Selesai' dulu hanya mengubah field status tanpa
@@ -192,6 +230,23 @@ class PurchaseReceptionReceiverTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         purchase.refresh_from_db()
         self.assertEqual(purchase.status, 'draft')
+
+    def test_update_status_delivery_stages_are_persisted(self):
+        purchase = self._purchase('PO-STATUS-KIRIM')
+
+        for selected_status, expected_delivery in [('Terkirim', 'terkirim'), ('Dikirim', 'dikirim')]:
+            response = self.client.post(
+                f'/api/purchases/{purchase.id}/workflow/update-status/',
+                {'status_pembelian': selected_status},
+                format='json',
+            )
+
+            self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+            self.assertEqual(response.data['delivery_status'], expected_delivery)
+            purchase.refresh_from_db()
+            self.assertEqual(purchase.delivery_status, expected_delivery)
+            self.assertEqual(purchase.status, 'draft')
+            self.assertEqual(purchase.receive_status, 'tunda')
 
     def test_update_status_batal_blocked_after_diterima(self):
         """Sudah diterima = stok/jurnal sudah berjalan; pembatalan wajib lewat

@@ -234,6 +234,7 @@ export const PENJUALAN_REPORTS = [
   {
     id: 'rincian-backdate',
     label: 'Rincian Penjualan Backdate',
+    unavailable: 'Sistem belum menyimpan tanggal transaksi dan waktu input sebagai dua nilai terpisah untuk Order, sehingga laporan backdate tidak dapat dibuat akurat.',
     toolbar: {
       paket: 'select',
       cari: false,
@@ -306,6 +307,7 @@ export const PENJUALAN_REPORTS = [
   {
     id: 'online-order',
     label: 'Rincian Penjualan - Online Order',
+    unavailable: 'Sumber transaksi belum memiliki penanda Online Order yang terpisah dari Order biasa.',
     toolbar: {
       paket: 'select',
       cari: false,
@@ -341,6 +343,7 @@ export const PENJUALAN_REPORTS = [
   {
     id: 'marketplace',
     label: 'Rincian Penjualan Marketplace',
+    unavailable: 'Marketplace, toko marketplace, biaya admin, dan ongkir marketplace belum dicatat pada transaksi.',
     toolbar: {
       paket: 'select',
       cari: false,
@@ -444,6 +447,7 @@ export const PENJUALAN_REPORTS = [
   {
     id: 'penjualan-deposit',
     label: 'Rincian penjualan deposit',
+    unavailable: 'Sistem menyimpan saldo deposit pelanggan, tetapi belum menyimpan mutasi pemakaian deposit per transaksi penjualan.',
     toolbar: TB,
     summary: {
       title: 'Ringkasan',
@@ -560,34 +564,27 @@ export const PENJUALAN_REPORTS = [
   },
   {
     id: 'item-koleksi',
+    dataSource: 'item-koleksi',
     label: 'Item Penjualan Berdasarkan Koleksi',
-    toolbar: {
-      paket: 'select',
-      cari: false,
-      selectOptions: ['Telah Bayar', '+Belum Bayar'],
-      selectDefault: 'Telah Bayar',
-    },
+    toolbar: TB,
     summary: {
       title: 'Ringkasan',
       columns: [
         { key: 'mata_uang', label: 'Mata Uang' },
         { key: 'total_penjualan', label: 'Total Penjualan', align: 'right' },
-        { key: 'modal_produk', label: 'Modal Produk', align: 'right' },
-        { key: 'laba', label: 'Laba', align: 'right' },
-        { key: 'total', label: 'Total', align: 'right' },
+        { key: 'qty_terjual', label: 'Qty Terjual', align: 'right' },
       ],
     },
     columns: [
+      { key: 'sumber', label: 'Sumber' },
       { key: 'no_pesanan', label: 'No. Pesanan' },
       { key: 'koleksi', label: 'Koleksi' },
-      { key: 'tanggal_jual', label: 'Tanggal Jual' },
+      { key: 'tanggal', label: 'Tanggal Jual' },
       { key: 'penjualan_oleh', label: 'Penjualan Oleh' },
       { key: 'item', label: 'Item' },
       qty,
       { key: 'pelanggan', label: 'Pelanggan' },
       { key: 'total_penjualan', label: 'Total Penjualan', align: 'right' },
-      { key: 'modal_produk', label: 'Modal Produk', align: 'right' },
-      { key: 'laba', label: 'Laba', align: 'right' },
     ],
   },
   {
@@ -617,6 +614,7 @@ export const PENJUALAN_REPORTS = [
   },
   {
     id: 'pelunasan-non-kredit',
+    dataSource: 'pelunasan-non-kredit',
     label: 'Item Penjualan berdasarkan Pelunasan Non Kredit',
     toolbar: TB,
     paginate: false,
@@ -625,7 +623,6 @@ export const PENJUALAN_REPORTS = [
       columns: [
         { key: 'mata_uang', label: 'Mata Uang' },
         { key: 'total_penjualan', label: 'Total Penjualan', align: 'right' },
-        { key: 'total', label: 'Total', align: 'right' },
       ],
     },
     columns: [
@@ -636,12 +633,12 @@ export const PENJUALAN_REPORTS = [
       qty,
       { key: 'total_penjualan', label: 'Total Penjualan', align: 'right' },
       { key: 'cara_pembayaran', label: 'Cara Pembayaran' },
-      { key: 'jumlah_terbayar', label: 'Jumlah Terbayar', align: 'right' },
     ],
   },
   {
     id: 'diskon-item-tanggal',
     label: 'Diskon Item Penjualan berdasarkan Tanggal',
+    unavailable: 'Diskon hanya tersimpan pada header transaksi; sistem belum mencatat diskon final per item sehingga alokasi per item tidak ditampilkan sebagai data aktual.',
     toolbar: {
       paket: 'select',
       cari: false,
@@ -671,6 +668,7 @@ export const PENJUALAN_REPORTS = [
   },
   {
     id: 'addon-item-tanggal',
+    dataSource: 'addon-item-penjualan',
     label: 'Add-on Item Penjualan berdasarkan Tanggal',
     toolbar: {
       paket: 'select',
@@ -726,18 +724,27 @@ export const PENJUALAN_REPORTS = [
   },
   {
     id: 'penjualan-penjual',
+    dataSource: 'penjualan-penjual',
     label: 'Penjualan berdasarkan Penjual',
-    toolbar: {
-      paket: 'select',
-      cari: false,
-      selectOptions: ['Telah Bayar', '+Belum Bayar'],
-      selectDefault: 'Telah Bayar',
+    toolbar: TB,
+    summary: {
+      title: 'Ringkasan',
+      columns: [
+        { key: 'mata_uang', label: 'Mata Uang' },
+        { key: 'qty_terjual', label: 'Qty Terjual', align: 'right' },
+        { key: 'total_penjualan', label: 'Total Penjualan', align: 'right' },
+      ],
     },
-    hideTable: true,
+    columns: [
+      { key: 'penjual', label: 'Penjual' },
+      { key: 'qty', label: 'Qty Terjual', align: 'right' },
+      { key: 'total_penjualan', label: 'Total Penjualan', align: 'right' },
+    ],
   },
   {
     id: 'penjualan-table',
     label: 'Penjualan berdasarkan nomor table',
+    unavailable: 'Nomor meja tidak disimpan pada transaksi POS.',
     toolbar: {
       paket: 'select',
       cari: false,
@@ -749,6 +756,7 @@ export const PENJUALAN_REPORTS = [
   {
     id: 'komisi-pelayan',
     label: 'Komisi berdasarkan Pelayan',
+    unavailable: 'Penerima dan nilai komisi pelayan belum direkam sebagai transaksi komisi.',
     toolbar: {
       paket: 'select',
       cari: false,
@@ -760,12 +768,14 @@ export const PENJUALAN_REPORTS = [
   {
     id: 'komisi-staff',
     label: 'Komisi berdasarkan staff',
+    unavailable: 'Penerima dan nilai komisi staf belum direkam sebagai transaksi komisi.',
     toolbar: TB,
     hideTable: true,
   },
   {
     id: 'penjualan-perangkat',
     label: 'Penjualan berdasarkan Perangkat',
+    unavailable: 'Perangkat POS belum ditautkan ke transaksi penjualan.',
     toolbar: {
       paket: 'select',
       cari: false,
@@ -787,13 +797,32 @@ export const PENJUALAN_REPORTS = [
   },
   {
     id: 'item-pelanggan',
+    dataSource: 'item-pelanggan',
     label: 'Item Penjualan Berdasarkan Pelanggan',
     toolbar: TB,
-    hideTable: true,
+    summary: {
+      title: 'Ringkasan',
+      columns: [
+        { key: 'mata_uang', label: 'Mata Uang' },
+        { key: 'qty_terjual', label: 'Qty Terjual', align: 'right' },
+        { key: 'total_penjualan', label: 'Total Penjualan', align: 'right' },
+      ],
+    },
+    columns: [
+      { key: 'sumber', label: 'Sumber' },
+      { key: 'no_pesanan', label: 'No. Pesanan' },
+      { key: 'tanggal', label: 'Tanggal' },
+      { key: 'id_pelanggan', label: 'ID Pelanggan' },
+      { key: 'pelanggan', label: 'Pelanggan' },
+      { key: 'item', label: 'Item' },
+      qty,
+      { key: 'total_penjualan', label: 'Total Penjualan', align: 'right' },
+    ],
   },
   {
     id: 'kota-pelanggan',
     label: 'Penjualan berdasarkan Kota Pelanggan',
+    unavailable: 'Alamat pelanggan pada Order tidak tersimpan sebagai wilayah terstruktur dan histori alamat pelanggan dapat berubah.',
     toolbar: {
       paket: 'select',
       cari: false,
@@ -819,6 +848,7 @@ export const PENJUALAN_REPORTS = [
   {
     id: 'kota-pengiriman',
     label: 'Penjualan berdasarkan Kota Pengiriman',
+    unavailable: 'Alamat pengiriman belum tersimpan sebagai kota/provinsi/kecamatan terstruktur pada transaksi.',
     toolbar: {
       paket: 'select',
       cari: false,
@@ -843,23 +873,19 @@ export const PENJUALAN_REPORTS = [
   },
   {
     id: 'ringkasan-diskon',
+    dataSource: 'ringkasan-diskon',
     label: 'Ringkasan Diskon',
-    toolbar: {
-      paket: 'select',
-      cari: false,
-      selectOptions: ['Telah Bayar', '+Belum Bayar'],
-      selectDefault: 'Telah Bayar',
-    },
+    toolbar: TB,
     summary: {
       title: 'Ringkasan',
       columns: [
         { key: 'mata_uang', label: 'Mata Uang' },
-        { key: 'total_jumlah_diskon', label: 'Total Jumlah Diskon', align: 'right' },
-        { key: 'total_qty', label: 'Total Qty', align: 'right' },
+        { key: 'total_diskon', label: 'Total Jumlah Diskon', align: 'right' },
+        { key: 'total_qty_pesanan', label: 'Total Qty', align: 'right' },
       ],
     },
     columns: [
-      { key: 'sumber_penjualan', label: 'Sumber Penjualan' },
+      { key: 'sumber', label: 'Sumber Penjualan' },
       { key: 'kode_diskon', label: 'Kode Diskon' },
       { key: 'nama_diskon', label: 'Nama Diskon' },
       { key: 'jumlah_diskon', label: 'Jumlah Diskon', align: 'right' },
@@ -947,21 +973,23 @@ export const PENJUALAN_REPORTS = [
   },
   {
     id: 'pelunasan-kredit-2',
+    dataSource: 'pelunasan-kredit',
     label: 'Pelunasan Kredit',
     toolbar: TB,
     summary: {
       title: 'Ringkasan',
       columns: [
         { key: 'mata_uang', label: 'Mata Uang' },
-        { key: 'total_pembayaran', label: 'Total Pembayaran', align: 'right' },
+        { key: 'total_terbayar', label: 'Total Pembayaran', align: 'right' },
       ],
     },
     columns: [
-      { key: 'diterima_oleh', label: 'Diterima Oleh' },
-      { key: 'tanggal_pembayaran', label: 'Tanggal Pembayaran' },
+      { key: 'tanggal', label: 'Tanggal' },
       { key: 'no_pesanan', label: 'No. Pesanan' },
+      { key: 'penjualan_oleh', label: 'Penjualan Oleh' },
+      { key: 'item', label: 'Item' },
       { key: 'cara_pembayaran', label: 'Cara Pembayaran' },
-      { key: 'total_pembayaran', label: 'Total Pembayaran', align: 'right' },
+      { key: 'jumlah_terbayar', label: 'Jumlah Terbayar', align: 'right' },
     ],
   },
   {
@@ -1031,23 +1059,19 @@ export const PENJUALAN_REPORTS = [
     id: 'pembatalan-penjualan',
     dataSource: 'pembatalan-penjualan',
     label: 'Rincian Pembatalan Penjualan',
-    toolbar: {
-      paket: 'select',
-      cari: false,
-      selectOptions: ['Telah Bayar', '+Belum Bayar'],
-      selectDefault: 'Telah Bayar',
-    },
+    toolbar: TB,
     summary: {
       title: 'Ringkasan',
       columns: [
         { key: 'mata_uang', label: 'Mata Uang' },
-        { key: 'total_penjualan', label: 'Total Penjualan', align: 'right' },
+        { key: 'jumlah', label: 'Jumlah Pembatalan', align: 'right' },
       ],
     },
     columns: [
+      { key: 'sumber', label: 'Sumber' },
       { key: 'no_pesanan', label: 'No. Pesanan' },
-      { key: 'tanggal_jual', label: 'Tanggal Jual' },
-      { key: 'penjualan_oleh', label: 'Penjualan Oleh' },
+      { key: 'tanggal_pembatalan', label: 'Tanggal Pembatalan' },
+      { key: 'dibatalkan_oleh', label: 'Dibatalkan Oleh' },
       { key: 'pelanggan', label: 'Pelanggan' },
       { key: 'jumlah', label: 'Jumlah', align: 'right' },
       { key: 'catatan', label: 'Catatan' },
@@ -1056,17 +1080,14 @@ export const PENJUALAN_REPORTS = [
   {
     id: 'pos-batal-belum-bayar',
     dataSource: 'pos-batal-belum-bayar',
-    label: 'Detail pos yang batal belum dibayar',
+    label: 'Detail POS Batal Belum Lunas',
     toolbar: TB,
     columns: [
-      { key: 'catatan', label: 'Catatan' },
-      { key: 'perangkat', label: 'Perangkat' },
-      { key: 'tanggal_jual', label: 'Tanggal Jual' },
+      { key: 'no_pesanan', label: 'No. Pesanan' },
+      { key: 'tanggal_pembatalan', label: 'Tanggal Pembatalan' },
       { key: 'id_pelanggan', label: 'ID Pelanggan' },
       { key: 'nama_pelanggan', label: 'Nama Pelanggan' },
-      { key: 'no_table', label: 'No. Table' },
-      { key: 'dilayani_oleh', label: 'Dilayani Oleh' },
-      { key: 'no_seri', label: 'No. Seri' },
+      { key: 'dibatalkan_oleh', label: 'Dibatalkan Oleh' },
       { key: 'item', label: 'Item' },
       qty,
       { key: 'total_pesanan', label: 'Total Pesanan', align: 'right' },
@@ -1082,7 +1103,6 @@ export const PENJUALAN_REPORTS = [
       columns: [
         { key: 'mata_uang', label: 'Mata Uang' },
         { key: 'total_pengembalian', label: 'Total Pengembalian', align: 'right' },
-        { key: 'modal_produk', label: 'Modal Produk', align: 'right' },
       ],
     },
     columns: [
@@ -1091,7 +1111,6 @@ export const PENJUALAN_REPORTS = [
       { key: 'diproses_oleh', label: 'Diproses Oleh' },
       { key: 'pelanggan', label: 'Pelanggan' },
       { key: 'jumlah', label: 'Jumlah', align: 'right' },
-      { key: 'modal_produk', label: 'Modal Produk', align: 'right' },
       { key: 'catatan', label: 'Catatan' },
     ],
   },
@@ -1134,12 +1153,7 @@ export const PENJUALAN_REPORTS = [
     id: 'item-dibatalkan',
     dataSource: 'item-dibatalkan',
     label: 'Item Dibatalkan',
-    toolbar: {
-      paket: 'select',
-      cari: false,
-      selectOptions: ['Telah Bayar', '+Belum Bayar'],
-      selectDefault: 'Telah Bayar',
-    },
+    toolbar: TB,
     summary: {
       title: 'Ringkasan',
       columns: [
@@ -1148,9 +1162,10 @@ export const PENJUALAN_REPORTS = [
       ],
     },
     columns: [
+      { key: 'sumber', label: 'Sumber' },
       { key: 'no_pesanan', label: 'No. Pesanan' },
-      { key: 'tanggal_jual', label: 'Tanggal Jual' },
-      { key: 'penjualan_oleh', label: 'Penjualan Oleh' },
+      { key: 'tanggal_pembatalan', label: 'Tanggal Pembatalan' },
+      { key: 'dibatalkan_oleh', label: 'Dibatalkan Oleh' },
       { key: 'item', label: 'Item' },
       qty,
       { key: 'total_pesanan', label: 'Total Pesanan', align: 'right' },
@@ -1158,6 +1173,7 @@ export const PENJUALAN_REPORTS = [
   },
   {
     id: 'log-item-pos-batal',
+    dataSource: 'log-item-pos-batal',
     label: 'Log Item POS Dibatalkan',
     toolbar: TB,
     summary: {
@@ -1169,23 +1185,20 @@ export const PENJUALAN_REPORTS = [
     },
     columns: [
       { key: 'tanggal_penjualan', label: 'Tanggal Penjualan' },
-      { key: 'tanggal_batal', label: 'Tanggal Batal' },
-      { key: 'type_order', label: 'Type Order' },
-      { key: 'type_log', label: 'Type Log' },
+      { key: 'tanggal_pembatalan', label: 'Tanggal Pembatalan' },
       { key: 'no_pesanan', label: 'No.Pesanan' },
-      { key: 'nomor_meja', label: 'Nomor Meja' },
       { key: 'dibatalkan_oleh', label: 'Dibatalkan oleh' },
       { key: 'item', label: 'Item' },
       qty,
       { key: 'total_penjualan', label: 'Total Penjualan', align: 'right' },
-      { key: 'catatan_order', label: 'Catatan Order' },
-      { key: 'catatan_item', label: 'Catatan Item' },
+      { key: 'catatan_order', label: 'Catatan Transaksi' },
     ],
   },
   {
     id: 'item-dikembalikan',
     label: 'Item Dikembalikan',
     toolbar: TB,
+    unavailable: 'Retur penjualan saat ini hanya menyimpan nominal pada header pengembalian, bukan item dan qty yang diretur. Laporan item tidak ditampilkan agar tidak menyajikan data perkiraan.',
     summary: {
       title: 'Ringkasan',
       columns: [
@@ -1208,20 +1221,22 @@ export const PENJUALAN_REPORTS = [
   },
   {
     id: 'sisa-deposit',
+    dataSource: 'sisa-deposit',
     label: 'Sisa deposit',
-    toolbar: TB,
+    dateMode: 'all',
+    toolbar: { paket: false, cari: 'left' },
     filterBar: { searchPlaceholder: 'Cari id atau nama' },
     columns: [
       { key: 'id_pelanggan', label: 'Id Pelanggan' },
       { key: 'pelanggan', label: 'Pelanggan' },
       { key: 'email', label: 'Email' },
       { key: 'sisa_deposit', label: 'Sisa deposit', align: 'right' },
-      { key: 'deposit_tertahan', label: 'Deposit tertahan', align: 'right' },
     ],
   },
   {
     id: 'penjualan-qpon',
     label: 'Rincian Penjualan QPon',
+    unavailable: 'Transaksi belum menyimpan penanda kanal QPon atau metode pembayaran QPon QRIS.',
     toolbar: {
       paket: 'select',
       cari: false,

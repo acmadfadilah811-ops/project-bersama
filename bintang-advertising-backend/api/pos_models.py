@@ -1,7 +1,7 @@
 from django.db import models
 from django.conf import settings
 from .models import Contact, CustomUser, SaldoKasHarian
-from .product_models import Product, ProductVariant
+from .product_models import Product, ProductPackage, ProductVariant
 from django.utils import timezone
 
 class POSSale(models.Model):
@@ -33,6 +33,27 @@ class POSSale(models.Model):
     
     catatan = models.TextField(blank=True, default='')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='paid')
+    WHATSAPP_RESI_STATUS_CHOICES = (
+        ('pending', 'Belum Dikirim'),
+        ('sending', 'Sedang Dikirim'),
+        ('sent', 'Terkirim'),
+        ('failed', 'Gagal Dikirim'),
+        ('skipped', 'Tidak Dikirim'),
+    )
+    whatsapp_resi_status = models.CharField(
+        max_length=20, choices=WHATSAPP_RESI_STATUS_CHOICES, default='pending',
+        help_text='Status pengiriman resi POS melalui WhatsApp.',
+    )
+    whatsapp_resi_number = models.CharField(max_length=20, blank=True, default='')
+    whatsapp_resi_sent_at = models.DateTimeField(null=True, blank=True)
+    whatsapp_resi_error = models.CharField(max_length=255, blank=True, default='')
+    # Audit pembatalan disimpan pada transaksi sumber. Jangan gunakan
+    # ``created_at`` sebagai waktu void karena keduanya adalah peristiwa berbeda.
+    voided_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    voided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='pos_sales_voided',
+    )
     
     # TAMBAHAN FIELD MODUL PROMO/KUPON (MIGRASI 0078)
     kupon = models.ForeignKey('DiscountCoupon', on_delete=models.SET_NULL, null=True, blank=True, related_name='pos_sales')
@@ -70,8 +91,64 @@ class POSSale(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # Terisi saat kasir menandai pesanan (dengan SPK produksi) sudah diambil
+    # pelanggan — padanan Order.status_global='selesai' utk transaksi POS.
+    # Sebelum ini transaksi POS Lunas + SPK tidak punya status "siap
+    # diambil"/"sudah diambil" sama sekali: job produksi dari alur POS
+    # sengaja di-skip di logic auto-ready (views/jobs.py, cuma cek
+    # order_item), dan halaman Pesanan & Pelunasan cuma baca /orders/ —
+    # jadi pesanan Lunas via Terminal Kasir tidak pernah tampil di sana
+    # meski masih dalam produksi (bug ditemukan & diperbaiki 2026-08-13).
+    diambil_pada = models.DateTimeField(null=True, blank=True)
+
     def __str__(self):
         return f"{self.nomor} - {self.status}"
+
+
+class POSVoidRequest(models.Model):
+    """Permintaan kasir untuk membatalkan (void) transaksi POS Lunas —
+    padanan `OrderVoidRequest` (lihat api/models.py) untuk transaksi kasir
+    yang dibayar langsung/lunas, bukan Order (Pesanan) DP.
+
+    Kasir tidak bisa memanggil /pos/sales/{id}/void/ langsung — dia harus
+    mengajukan permintaan di sini dulu, owner menyetujui lewat Dashboard
+    (men-generate `otp_code`), baru kasir bisa menyelesaikan void dengan
+    kode itu. Owner/manager/admin tetap bisa langsung void tanpa alur ini.
+    Ditolak sejak awal kalau transaksi sudah ditandai `diambil_pada` (sudah
+    diambil pelanggan & resi/notifikasi selesai terkirim lewat panel
+    Pesanan & Pelunasan) — instruksi user 2026-08-14.
+    """
+    STATUS_CHOICES = (
+        ('pending', 'Menunggu Persetujuan'),
+        ('disetujui', 'Disetujui'),
+        ('ditolak', 'Ditolak'),
+        ('digunakan', 'Sudah Digunakan'),
+    )
+
+    sale = models.ForeignKey(POSSale, on_delete=models.CASCADE, related_name='void_requests')
+    diminta_oleh = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, related_name='pos_void_requests_diminta',
+    )
+    alasan = models.TextField()
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default='pending', db_index=True)
+    otp_code = models.CharField(max_length=6, blank=True, default='')
+    disetujui_oleh = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='pos_void_requests_disetujui',
+    )
+    alasan_tolak = models.TextField(blank=True, default='')
+    dibuat_pada = models.DateTimeField(auto_now_add=True)
+    disetujui_pada = models.DateTimeField(null=True, blank=True)
+    kadaluarsa_pada = models.DateTimeField(null=True, blank=True)
+    digunakan_pada = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-dibuat_pada']
+        indexes = [
+            models.Index(fields=['sale', 'status'], name='idx_pvr_sale_status'),
+        ]
+
+    def __str__(self):
+        return f'POSVoidRequest#{self.pk} sale={self.sale_id} status={self.status}'
 
 
 class RingkasanShift(models.Model):
@@ -92,6 +169,15 @@ class RingkasanShift(models.Model):
     penjualan_tunai = models.DecimalField(max_digits=15, decimal_places=2, default=0)
     kas_masuk = models.DecimalField(max_digits=15, decimal_places=2, default=0)
     kas_keluar = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    # Snapshot semua kanal pembayaran pada saat shift ditutup. Setiap baris
+    # berisi metode, tipe, total, nilai POS, dan nilai DP/pelunasan Order.
+    rincian_metode = models.JSONField(default=list, blank=True)
+    # Catatan kasir saat menutup shift (mis. alasan selisih kas) — diambil
+    # dari SaldoKasHarian.catatan yang sudah diterima server saat close()
+    # tapi sebelumnya tidak pernah ikut disalin ke snapshot Ringkasan Shift
+    # ini, jadi tidak pernah muncul di laporan V2 (bug ditemukan &
+    # diperbaiki 2026-08-13).
+    keterangan = models.TextField(blank=True, default='')
 
     def save(self, *args, **kwargs):
         self.selisih = self.aktual - self.expected
@@ -131,6 +217,13 @@ class POSSaleItem(models.Model):
     sale = models.ForeignKey(POSSale, on_delete=models.CASCADE, related_name='items')
     product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True, blank=True)
     variant = models.ForeignKey(ProductVariant, on_delete=models.SET_NULL, null=True, blank=True)
+    # Paket adalah barang jual tersendiri. Komponen paket tetap dipakai untuk
+    # pemotongan stok, tetapi referensi ini menjaga laporan/riwayat tidak
+    # kehilangan identitas paket setelah transaksi selesai.
+    paket = models.ForeignKey(
+        ProductPackage, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='pos_sale_items',
+    )
     
     nama_snapshot = models.CharField(max_length=255)
     harga_snapshot = models.DecimalField(max_digits=12, decimal_places=2, help_text="Harga per satuan DASAR")
@@ -146,6 +239,25 @@ class POSSaleItem(models.Model):
     # TAMBAHAN FIELD MODUL PROMO/KUPON (MIGRASI 0078)
     is_gratis = models.BooleanField(default=False)
     promo = models.ForeignKey('POSPromotion', on_delete=models.SET_NULL, null=True, blank=True, related_name='sale_items')
+
+    # Produk meteran (price_type='per_m2') & Finishing — sebelumnya item begini
+    # dikirim TANPA product (dianggap "item kustom"), jadi tidak bisa dipakaikan
+    # addon maupun ikut potong stok. Sekarang product/variant TETAP tertaut;
+    # dua field ini cuma menyimpan ukuran/biaya finishing untuk riwayat &
+    # struk (harga_snapshot/subtotal tetap dihitung ulang di server dari sini).
+    panjang = models.FloatField(default=0.0, help_text="Panjang (meter) untuk produk meteran")
+    lebar = models.FloatField(default=0.0, help_text="Lebar (meter) untuk produk meteran")
+    finishing_biaya = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        help_text="Biaya tambahan finishing per satuan qty (mis. laminasi, mata ayam)",
+    )
+
+    # Nomor seri yang benar-benar terjual di baris ini (produk dengan
+    # `product.pesanan_no_seri=True`) — daftar string, panjangnya harus sama
+    # dengan `qty`. Sebelum field ini ada, kolom "No. Seri" tersimpan di
+    # kartu produk (Product.serial_numbers) tapi tidak pernah tercatat
+    # terjual di transaksi mana pun (bug ditemukan & diperbaiki 2026-08-13).
+    serial_numbers = models.JSONField(default=list, blank=True)
 
     def __str__(self):
         return f"{self.nama_snapshot} x {self.qty}"

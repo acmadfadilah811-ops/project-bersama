@@ -17,7 +17,9 @@ def cancel_pos_sales_posting(*, sale_ids, actor):
 
 @transaction.atomic
 def _post_one(*, sale_id, actor):
-    sale = POSSale.objects.select_for_update().select_related("accounting_payment_method").get(pk=sale_id)
+    # `of=('self',)` — `accounting_payment_method` adalah FK nullable, Postgres
+    # menolak FOR UPDATE di sisi nullable outer join kalau ikut di-lock.
+    sale = POSSale.objects.select_for_update(of=('self',)).select_related("accounting_payment_method").get(pk=sale_id)
     original = JournalEntry.objects.filter(
         source_type=JournalEntry.SourceType.POS_SALE, source_id=sale.id, reversed_entry__isnull=True,
     ).first()
