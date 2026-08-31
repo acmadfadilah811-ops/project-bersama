@@ -36,3 +36,13 @@ class StagingSecurityBaselineTestCase(TestCase):
         jwt_settings = getattr(settings, 'SIMPLE_JWT', {})
         self.assertTrue(jwt_settings.get('ROTATE_REFRESH_TOKENS'), "ROTATE_REFRESH_TOKENS harus True")
         self.assertTrue(jwt_settings.get('BLACKLIST_AFTER_ROTATION'), "BLACKLIST_AFTER_ROTATION harus True")
+
+    def test_production_secret_validation(self):
+        from core.settings import _is_valid_production_secret
+
+        self.assertFalse(_is_valid_production_secret(None))
+        self.assertFalse(_is_valid_production_secret('terlalu-pendek'))
+        self.assertFalse(_is_valid_production_secret('CHANGE_THIS_' + 'x' * 50))
+        self.assertFalse(_is_valid_production_secret('x' * 50))
+        self.assertFalse(_is_valid_production_secret('django-insecure-' + 'aB3!' * 20))
+        self.assertTrue(_is_valid_production_secret('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'))

@@ -32,11 +32,23 @@ QZ_TRAY_PRIVATE_KEY_PATH = os.getenv('QZ_TRAY_PRIVATE_KEY_PATH', '')
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv('SECRET_KEY')
-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
+
+
+def _is_valid_production_secret(value):
+    return bool(
+        value
+        and len(value) >= 50
+        and len(set(value)) >= 20
+        and not value.startswith(('CHANGE_THIS', 'django-insecure-'))
+    )
+
+
+# SECURITY WARNING: keep the secret key used in production secret!
+SECRET_KEY = os.getenv('SECRET_KEY')
+if not DEBUG and not _is_valid_production_secret(SECRET_KEY):
+    raise RuntimeError('SECRET_KEY production wajib acak, bukan placeholder, dan minimal 50 karakter.')
 
 # Baca dari .env: ALLOWED_HOSTS=bintang-adv.duckdns.org,127.0.0.1,localhost
 _allowed = os.getenv('ALLOWED_HOSTS', '')

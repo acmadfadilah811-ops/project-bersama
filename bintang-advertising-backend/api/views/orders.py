@@ -80,7 +80,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             'activity_logs__user',
             'payments__dibuat_oleh',
             'payments__shift',
-        ).order_by('-waktu')
+        ).order_by('-waktu', '-id')
         
         # ✅ Filter by nomor_wa if provided in query params (optimasi query detail customer)
         nomor_wa = self.request.query_params.get('nomor_wa')
