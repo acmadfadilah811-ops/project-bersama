@@ -4,12 +4,12 @@ FROM python:3.12-slim
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV UV_HTTP_TIMEOUT=300
+ENV UV_HTTP_RETRIES=5
 
-# Install system dependencies for MySQL client and other components
+# Install build dependencies for PostgreSQL and Python packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    pkg-config \
-    default-libmysqlclient-dev \
     libpq-dev \
     curl \
     && rm -rf /var/lib/apt/lists/*
@@ -23,8 +23,8 @@ WORKDIR /app
 # Copy dependency definition files
 COPY pyproject.toml uv.lock ./
 
-# Compile dependencies using uv and install directly to the system python environment
-RUN uv pip compile pyproject.toml -o requirements.txt && \
+# Install exact locked dependencies directly to the system Python environment
+RUN uv export --frozen --no-dev --no-emit-project -o requirements.txt && \
     uv pip install --system --break-system-packages -r requirements.txt
 
 # Copy project files

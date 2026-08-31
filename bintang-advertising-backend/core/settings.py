@@ -119,8 +119,8 @@ TEMPLATES = [
 WSGI_APPLICATION = 'core.wsgi.application'
 
 
-# Gunakan SQLite jika DB_ENGINE=sqlite diatur di .env
-DB_ENGINE = os.getenv('DB_ENGINE', 'mysql').lower()
+# SQLite hanya untuk development/test; deployment memakai PostgreSQL.
+DB_ENGINE = os.getenv('DB_ENGINE', 'postgres').lower()
 
 if DB_ENGINE == 'sqlite':
     DATABASES = {
@@ -144,17 +144,7 @@ elif DB_ENGINE in ('postgresql', 'postgres'):
         }
     }
 else:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.mysql',
-            'NAME': os.getenv('DB_NAME', 'bintang_adv_db'),
-            'USER': os.getenv('DB_USER', 'root'),
-            'PASSWORD': os.getenv('DB_PASSWORD', ''),
-            'HOST': os.getenv('DB_HOST', '127.0.0.1'),
-            'PORT': os.getenv('DB_PORT', '3306'),
-            'CONN_MAX_AGE': int(os.getenv('DB_CONN_MAX_AGE', '60')),
-        }
-    }
+    raise RuntimeError('DB_ENGINE harus "sqlite" untuk development/test atau "postgres" untuk deployment.')
 
 
 # Password validation
@@ -247,6 +237,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://192.168.1.160:5173",  # Akses LAN dari perangkat lain di WiFi yang sama
+    "http://192.168.1.14:5173",  # Akses LAN dari perangkat lain di WiFi yang sama
     "https://brandy-crm-811.web.app",
     "https://brandy-crm-811.firebaseapp.com",
     "https://bintang-adv.duckdns.org",
