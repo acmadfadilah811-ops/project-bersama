@@ -132,11 +132,16 @@ class AccountingCompleteSetupView(APIView):
         settings = _get_or_create_settings()
         try:
             get_purchase_account_mappings()
-        except DjangoValidationError as exc:
-            return Response(
-                {"error": getattr(exc, "messages", [str(exc)])[0]},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        except DjangoValidationError:
+            call_command("seed_coa")
+            settings.refresh_from_db()
+            try:
+                get_purchase_account_mappings()
+            except DjangoValidationError as bootstrap_exc:
+                return Response(
+                    {"error": getattr(bootstrap_exc, "messages", [str(bootstrap_exc)])[0]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
         already_done = settings.initial_setup_completed_at is not None
 
         response = _update_settings(

@@ -87,15 +87,24 @@ class POSDefaultAccountSettingsTestCase(TestCase):
         self.assertEqual(response.data["default_payment_due_days"], 14)
         self.assertIsNotNone(response.data["initial_setup_completed_at"])
 
-    def test_complete_setup_rejects_missing_purchase_mapping(self):
+    def test_complete_setup_bootstraps_missing_purchase_mapping(self):
         settings = AccountingSettings.objects.get()
+        settings.purchase_inventory_account = None
+        settings.purchase_payable_account = None
         settings.purchase_advance_account = None
-        settings.save(update_fields=["purchase_advance_account"])
+        settings.save(update_fields=[
+            "purchase_inventory_account",
+            "purchase_payable_account",
+            "purchase_advance_account",
+        ])
 
         response = self.client.post("/api/accounting/settings/complete-setup/", {}, format="json")
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("Mapping akun Pembelian", response.data["error"])
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        settings.refresh_from_db()
+        self.assertEqual(settings.purchase_inventory_account.code, "11400")
+        self.assertEqual(settings.purchase_payable_account.code, "21000")
+        self.assertEqual(settings.purchase_advance_account.code, "11710")
 
     def test_owner_can_bootstrap_default_coa_and_purchase_mapping(self):
         settings = AccountingSettings.objects.get()
