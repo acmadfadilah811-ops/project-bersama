@@ -56,5 +56,5 @@ gunzip -c deploy/backup/backups/bintang_db_<STAMP>.sql.gz | docker compose exec 
 
 - VPS ini cuma jalankan **backend** (Django/Daphne + Postgres + Redis + Evolution API). Frontend (React) di-deploy terpisah ke **Netlify** (`bintang-react-frontend/netlify.toml`), bukan container di VPS — disk VPS ini kecil (11GB), jadi sengaja tidak dipakai untuk build/serve frontend.
 - Semua service jalan lewat `docker compose` di folder ini — satu checkout monorepo, bukan 2 checkout terpisah seperti VPS lama. Update kode backend = `git pull` di root repo, lalu `docker compose build backend` + `up -d backend` di sini.
-- `gateway` (nginx) satu-satunya service yang expose port ke host (80), API-only: `/api/`, `/admin/` → `backend` (round-robin ke semua replica), `/static/`/`/media/` → volume bersama. Root `/` cuma balas teks penanda, bukan situs — situs publiknya di Netlify.
+- `gateway` (nginx) hanya bind ke loopback host (`127.0.0.1:80`) dan diakses publik melalui Cloudflare Tunnel. API-only: `/api/`, `/admin/` → `backend` (round-robin ke semua replica), `/static/`/`/media/` → volume bersama. Root `/` cuma balas teks penanda, bukan situs — situs publiknya di Netlify.
 - Cloudflare Tunnel masih Quick Tunnel (URL publik berubah tiap restart `cloudflared`, belum ada domain) — lihat langkah 3b buat cara ambil URL-nya dan menyambungkannya ke Netlify.
