@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, Download, Info, RefreshCw, Table2, TrendingDown, TrendingUp } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import { BarTerlaris, SERIES, STATUS, StokBar, TrenChart, rupiah } from '../components/ExecutiveCharts';
+import ExecutiveNav from '../components/ExecutiveNav';
 
 /**
  * Dashboard eksekutif — ringkasan lintas periode untuk owner/manager.
@@ -153,6 +154,7 @@ export default function ExecutiveDashboard() {
 
   return (
     <div className="space-y-6 w-full max-w-7xl mx-auto px-4 pb-10">
+      <ExecutiveNav />
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-black text-slate-900">Dashboard Eksekutif</h1>

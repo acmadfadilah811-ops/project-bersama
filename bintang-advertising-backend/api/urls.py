@@ -82,6 +82,7 @@ router.register(r'customer-reviews', customer_views.CustomerReviewViewSet, basen
 router.register(r'suppliers', customer_views.SupplierViewSet, basename='supplier')
 
 # POS Cashier Terminal
+from . import ai_business_analyst_views
 from . import executive_dashboard_views
 from . import pos_views
 router.register(r'pos/sales', pos_views.POSSaleViewSet, basename='pos-sale')
@@ -98,6 +99,8 @@ urlpatterns = [
     # Dashboard eksekutif (manajemen) — terpisah dari dashboard operasional di atas.
     path('executive-dashboard/', executive_dashboard_views.ExecutiveDashboardView.as_view(), name='executive-dashboard'),
     path('executive-dashboard/export/', executive_dashboard_views.ExecutiveDashboardExportView.as_view(), name='executive-dashboard-export'),
+    # AI Business Analyst — dashboard analisis lintas modul, dibatasi owner/manager (sama dengan di atas).
+    path('ai-business-analyst/', ai_business_analyst_views.AiBusinessAnalystView.as_view(), name='ai-business-analyst'),
     path('auth/create-user/', CreateUserView.as_view(), name='create_user'),
     path('orders/<str:order_id>/invoice-whatsapp/', views.OrderInvoiceWhatsAppView.as_view(), name='order-invoice-whatsapp'),
     path('orders/<str:order_id>/assign/', AssignOrderView.as_view(), name='assign_order'),
