@@ -102,10 +102,13 @@ services:
       - backend
       - frontend
 
+  # Named Tunnel (domain tetap) - public hostname & routing sudah dikonfigurasi
+  # di dashboard Cloudflare Zero Trust (Networks > Tunnels), bukan di sini.
+  # CLOUDFLARE_TUNNEL_TOKEN wajib diisi di deploy/.env, JANGAN commit ke git.
   cloudflared:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped
-    command: tunnel --no-autoupdate --url http://gateway:80
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN wajib diisi di deploy/.env}
     depends_on:
       - gateway
 
