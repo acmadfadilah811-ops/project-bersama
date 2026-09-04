@@ -6,7 +6,6 @@ import { Button, PageHeader, Select, StatusBadge, Toolbar } from '../components/
 import { formatCurrency } from '../productInventoryData';
 import { useAuth } from '../../../../context/AuthContext';
 import apiClient from '../../../../api/apiClient';
-import { fetchAllPages } from '../../../../utils/paginatedApi';
 import VariantModal, { PriceInput } from './VariantModal';
 import ImportProductModal from './ImportProductModal';
 import ImportRecipeModal from './ImportRecipeModal';
@@ -266,6 +265,13 @@ export default function ProductsPage() {
   const [categoryFilter, setCategoryFilter] = useState('');
   const [brandFilter, setBrandFilter] = useState('');
   const [collectionFilter, setCollectionFilter] = useState('');
+  // Pagination server sungguhan - sebelumnya fetchAllPages() narik SEMUA
+  // produk (1500+) sekaligus lalu render semuanya jadi DOM, bikin halaman
+  // ini lambat begitu jumlah produk banyak.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [totalCount, setTotalCount] = useState(0);
+  const [gotoInput, setGotoInput] = useState('1');
 
   // Form states matching screenshot
   const [formNama, setFormNama] = useState('');
@@ -364,16 +370,16 @@ export default function ProductsPage() {
     setLoading(true);
     setError(null);
     try {
-      const params = {};
+      const params = { page, page_size: pageSize };
       if (debouncedSearch) params.search = debouncedSearch;
       if (categoryFilter) params.kategori = categoryFilter;
-      const data = await fetchAllPages('/products/', { params });
+      if (brandFilter) params.brand = brandFilter;
+      if (collectionFilter) params.koleksi = collectionFilter;
+      const res = await apiClient.get('/products/', { params });
       if (fetchId !== fetchIdRef.current) return; // respons basi, abaikan
-      let filtered = brandFilter ? data.filter((p) => String(p.brand) === String(brandFilter)) : data;
-      if (collectionFilter) {
-        filtered = filtered.filter((p) => String(p.koleksi) === String(collectionFilter));
-      }
-      setProducts(filtered);
+      const data = res.data;
+      setProducts(Array.isArray(data) ? data : data.results || []);
+      setTotalCount(Array.isArray(data) ? data.length : data.count || 0);
     } catch (err) {
       if (fetchId !== fetchIdRef.current) return;
       console.error('[ProductsPage] fetch products error:', err);
@@ -400,10 +406,20 @@ export default function ProductsPage() {
     })();
   }, []);
 
+  // Filter berubah -> balik ke halaman 1 (hasil pencarian baru belum tentu
+  // punya sebanyak itu halaman).
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, categoryFilter, brandFilter, collectionFilter]);
+
   useEffect(() => {
     fetchProducts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearch, categoryFilter, brandFilter, collectionFilter]);
+  }, [debouncedSearch, categoryFilter, brandFilter, collectionFilter, page, pageSize]);
+
+  useEffect(() => {
+    setGotoInput(String(page));
+  }, [page]);
 
   const toggleSelectAll = (e) => {
     if (e.target.checked) {
@@ -1093,20 +1109,53 @@ export default function ProductsPage() {
           </button>
         </div>
         <div className="pi-pagination-right">
-          <Select defaultValue="10">
+          <Select
+            value={String(pageSize)}
+            onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+          >
             <option value="10">10/page</option>
             <option value="20">20/page</option>
             <option value="50">50/page</option>
           </Select>
-          <span>Total {products.length}</span>
+          <span>Total {totalCount}</span>
           <div className="pi-pagination-pages">
-            <button className="pi-pagination-btn" disabled>&lt;</button>
-            <span className="pi-pagination-active-page">1</span>
-            <button className="pi-pagination-btn" disabled>&gt;</button>
+            <button
+              className="pi-pagination-btn"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              &lt;
+            </button>
+            <span className="pi-pagination-active-page">
+              {page} / {Math.max(1, Math.ceil(totalCount / pageSize))}
+            </span>
+            <button
+              className="pi-pagination-btn"
+              disabled={page >= Math.ceil(totalCount / pageSize)}
+              onClick={() => setPage((p) => Math.min(Math.ceil(totalCount / pageSize) || 1, p + 1))}
+            >
+              &gt;
+            </button>
           </div>
           <div className="pi-pagination-goto">
             <span>Go to</span>
-            <input type="text" defaultValue="1" readOnly style={{ width: '40px', textAlign: 'center', height: '28px', border: '1px solid #e2e8f0', borderRadius: '6px' }} />
+            <input
+              type="text"
+              value={gotoInput}
+              onChange={(e) => setGotoInput(e.target.value.replace(/[^0-9]/g, ''))}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter') return;
+                const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+                const target = Math.min(totalPages, Math.max(1, Number(gotoInput) || 1));
+                setPage(target);
+              }}
+              onBlur={() => {
+                const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+                const target = Math.min(totalPages, Math.max(1, Number(gotoInput) || 1));
+                setPage(target);
+              }}
+              style={{ width: '40px', textAlign: 'center', height: '28px', border: '1px solid #e2e8f0', borderRadius: '6px' }}
+            />
           </div>
         </div>
       </div>

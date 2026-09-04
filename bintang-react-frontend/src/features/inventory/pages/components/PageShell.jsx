@@ -39,9 +39,14 @@ export function Button({ children, variant = 'primary', className = '', ...props
   );
 }
 
-export function Select({ children, defaultValue }) {
+export function Select({ children, defaultValue, value, onChange }) {
   return (
-    <select className="pi-select" defaultValue={defaultValue}>
+    <select
+      className="pi-select"
+      defaultValue={value === undefined ? defaultValue : undefined}
+      value={value}
+      onChange={onChange}
+    >
       {children}
     </select>
   );

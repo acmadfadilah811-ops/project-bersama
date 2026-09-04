@@ -360,6 +360,12 @@ class ProductViewSet(viewsets.ModelViewSet):
         category = self.request.query_params.get('kategori', None)
         if category is not None:
             queryset = queryset.filter(kategori__id=category)
+        brand = self.request.query_params.get('brand', None)
+        if brand:
+            queryset = queryset.filter(brand__id=brand)
+        koleksi = self.request.query_params.get('koleksi', None)
+        if koleksi:
+            queryset = queryset.filter(koleksi__id=koleksi)
         search = self.request.query_params.get('search', None)
         if search:
             queryset = queryset.filter(
