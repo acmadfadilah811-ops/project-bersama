@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.conf import settings
 from django.utils import timezone
+import re
 import uuid
 import logging
 
@@ -90,6 +91,15 @@ class CustomUser(AbstractUser):
                     except ValueError:
                         pass
                 self.nip = f"STF-{current_year}-{next_num:03d}"
+        elif self.role != 'staff' and self.nip and re.match(r'^STF-\d{4}-\d{3}$', self.nip):
+            # Role field default-nya 'staff' - kalau akun dibuat via
+            # create_user()/create_superuser() tanpa role di kwargs lalu
+            # role diubah SESUDAH create (bukan sekaligus di awal), save()
+            # pertama sempat menganggapnya staff dan kasih NIP otomatis.
+            # NIP format staff itu tidak relevan buat non-staff - bersihkan
+            # di sini supaya nomornya bisa dipakai staff sungguhan
+            # berikutnya, bukan tersandera akun owner/manager/kasir/admin.
+            self.nip = None
         super().save(*args, **kwargs)
 
     def __str__(self):
