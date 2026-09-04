@@ -12,6 +12,7 @@ from .models import (
     OrderVoidRequest
 )
 from .product_serializers import SaleItemAddonSerializer
+from .protected_media import protected_media_url
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +88,12 @@ class CustomUserSerializer(serializers.ModelSerializer):
             'status_karyawan', 'jenis_kontrak', 'kontrak_mulai', 'kontrak_selesai',
             'no_kpj', 'bpjs_kes', 'file_pkwt', 'nip'
         ]
+
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        # file_pkwt berisi dokumen HR privat - jangan expose URL publik.
+        rep['file_pkwt'] = protected_media_url(instance.file_pkwt, self.context.get('request'))
+        return rep
 
     def to_internal_value(self, data):
         # Buat salinan mutable jika data adalah QueryDict atau dict

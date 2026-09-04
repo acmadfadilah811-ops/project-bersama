@@ -3,6 +3,7 @@ from .customer_models import (
     CustomerGroup, Customer, CustomerNote, CustomerNoteEntry, CustomerNoteDocument,
     CustomerNoteTag, CustomerReview, Supplier,
 )
+from .protected_media import protected_media_url
 
 MAX_NOTE_DOCUMENTS = 5
 MAX_NOTE_DOCUMENT_SIZE = 5 * 1024 * 1024
@@ -42,6 +43,13 @@ class CustomerNoteDocumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomerNoteDocument
         fields = '__all__'
+
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        # Dokumen catatan pelanggan bisa berisi lampiran privat - jangan
+        # expose URL publik.
+        rep['file'] = protected_media_url(instance.file, self.context.get('request'))
+        return rep
 
     def validate_file(self, value):
         if value.size > MAX_NOTE_DOCUMENT_SIZE:

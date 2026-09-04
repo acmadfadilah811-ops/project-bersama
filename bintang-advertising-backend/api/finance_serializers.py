@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from .finance_models import CashTransactionType, CashTransaction, CashTransactionAttachment
+from .protected_media import protected_media_url
 
 
 class CashTransactionTypeSerializer(serializers.ModelSerializer):
@@ -19,14 +20,17 @@ class CashTransactionAttachmentSerializer(serializers.ModelSerializer):
         fields = ['id', 'file', 'file_url', 'nama', 'created_at']
 
     def get_file_url(self, obj):
-        if not obj.file:
-            return None
-        request = self.context.get('request')
-        url = obj.file.url
-        return request.build_absolute_uri(url) if request else url
+        return protected_media_url(obj.file, self.context.get('request'))
 
     def get_nama(self, obj):
         return obj.file.name.split('/')[-1] if obj.file else None
+
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        # Lampiran transaksi kas bisa berisi dokumen finansial privat -
+        # jangan expose URL publik lewat field 'file' mentah.
+        rep['file'] = protected_media_url(instance.file, self.context.get('request'))
+        return rep
 
 
 class CashTransactionSerializer(serializers.ModelSerializer):

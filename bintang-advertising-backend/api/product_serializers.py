@@ -10,6 +10,7 @@ from .product_models import (
     StockOpnameDocument, StockOpnameDocumentItem,
     Purchase, PurchaseItem, PurchasePayment, PurchaseAttachment
 )
+from .protected_media import protected_media_url
 
 class ProductCategorySerializer(serializers.ModelSerializer):
     products_count = serializers.SerializerMethodField()
@@ -293,14 +294,17 @@ class PurchaseAttachmentSerializer(serializers.ModelSerializer):
         return obj.file.name.rsplit('/', 1)[-1] if obj.file else ''
 
     def get_file_url(self, obj):
-        if not obj.file:
-            return None
-        request = self.context.get('request')
-        url = obj.file.url
-        return request.build_absolute_uri(url) if request else url
+        return protected_media_url(obj.file, self.context.get('request'))
 
     def get_ukuran(self, obj):
         return obj.file.size if obj.file else 0
+
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        # Lampiran pembelian bisa berisi dokumen privat - jangan expose URL
+        # publik lewat field 'file' mentah.
+        rep['file'] = protected_media_url(instance.file, self.context.get('request'))
+        return rep
 
 
 class PurchaseSerializer(serializers.ModelSerializer):

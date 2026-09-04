@@ -13,6 +13,7 @@ from .report_views import ReportDataView, ReportExportView
 from .views.purchase_workflow import PurchaseWorkflowView
 from .views.purchase_reports import PurchaseReportView
 from .views.qz import QZCertificateView, QZSignView
+from .protected_media import serve_protected_media
 
 router = DefaultRouter()
 
@@ -90,6 +91,9 @@ router.register(r'pos-void-requests', views.POSVoidRequestViewSet, basename='pos
 
 
 urlpatterns = [
+    # Proteksi media privat (kontrak HR, lampiran transaksi, dokumen catatan
+    # pelanggan) - lihat api/protected_media.py.
+    path('media-protected/<str:token>/', serve_protected_media, name='media-protected'),
     path('purchases/<int:pk>/workflow/<str:action>/', PurchaseWorkflowView.as_view(), name='purchase-workflow'),
     path('contacts/stats/', ContactStatsView.as_view(), name='contact-stats'),
     # BE-24: endpoint sempit papan produksi (nama + no. WA saja, tanpa finansial).

@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from .models import Absensi, Kontrak, StaffAnnouncement, Akun, TransaksiBukuBesar, SlipGaji
+from api.protected_media import protected_media_url
 
 
 class AbsensiSerializer(serializers.ModelSerializer):
@@ -58,6 +59,12 @@ class KontrakSerializer(serializers.ModelSerializer):
             "dibuat_pada",
         ]
         read_only_fields = ["id", "dibuat_oleh", "dibuat_pada"]
+
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        # dokumen berisi PDF kontrak kerja privat - jangan expose URL publik.
+        rep['dokumen'] = protected_media_url(instance.dokumen, self.context.get('request'))
+        return rep
 
 
 class AnnouncementSerializer(serializers.ModelSerializer):

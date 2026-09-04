@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from api.models import CustomUser
+from api.protected_media import protected_media_url
 from .models import Profile, SecurityAuditLog, SessionToken
 
 
@@ -64,6 +65,12 @@ class UserMeSerializer(serializers.ModelSerializer):
             "file_pkwt",
         ]
         read_only_fields = ["id", "role", "last_login", "date_joined"]
+
+    def to_representation(self, instance):
+        rep = super().to_representation(instance)
+        # file_pkwt berisi dokumen HR privat - jangan expose URL publik.
+        rep['file_pkwt'] = protected_media_url(instance.file_pkwt, self.context.get('request'))
+        return rep
 
     def get_is_online(self, obj):
         if hasattr(obj, 'profile'):
