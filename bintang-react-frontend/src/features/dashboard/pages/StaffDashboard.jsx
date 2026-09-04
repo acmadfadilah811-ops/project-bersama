@@ -943,7 +943,7 @@ export default function StaffDashboard() {
                 Konfirmasi Keluar Jam Kerja
               </h3>
               <p className="text-xs text-rose-100 mt-1">
-                Sistem Absensi &amp; Kepegawaian Bintang Advertising
+                Sistem Absensi &amp; Kepegawaian StarPhoto & Advertising
               </p>
             </div>
 

@@ -319,9 +319,9 @@ export default function Sidebar() {
           {!isCollapsed && (
             <h1
               className="text-slate-800 text-slate-800 font-extrabold text-sm tracking-tight animate-fade-in truncate max-w-[125px]"
-              title={businessSettings?.nama_bisnis || 'Bintang Advertising'}
+              title={businessSettings?.nama_bisnis || 'StarPhoto & Advertising'}
             >
-              {businessSettings?.nama_bisnis || 'Bintang Advertising'}
+              {businessSettings?.nama_bisnis || 'StarPhoto & Advertising'}
             </h1>
           )}
         </div>

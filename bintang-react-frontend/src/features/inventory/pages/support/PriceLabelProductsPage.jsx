@@ -4,7 +4,7 @@ import apiClient from '../../../../api/apiClient';
 import { fetchAllPages } from '../../../../utils/paginatedApi';
 import BarcodeSvg from './BarcodeSvg';
 
-const DEFAULTS = { marginTop: 10, marginBottom: 10, marginLeft: 10, marginRight: 10, paperWidth: 210, labelsPerLine: 2, padding: 8, labelWidth: 90, labelHeight: 45, useAltName: true, showBarcode: true, showWeight: true, showPromo: true, storeName: 'Bintang Advertising' };
+const DEFAULTS = { marginTop: 10, marginBottom: 10, marginLeft: 10, marginRight: 10, paperWidth: 210, labelsPerLine: 2, padding: 8, labelWidth: 90, labelHeight: 45, useAltName: true, showBarcode: true, showWeight: true, showPromo: true, storeName: 'StarPhoto & Advertising' };
 const list = (data) => Array.isArray(data) ? data : (data?.results || []);
 const money = (value) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(Number(value) || 0);
 

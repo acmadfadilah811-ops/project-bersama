@@ -25,7 +25,7 @@ export default function BukuBesarDetailPrint({ data, businessName, dateFromLabel
   return (
     <div className="print-area hidden print:block bg-white p-8 text-black font-sans text-[10px] min-h-screen">
       <div className="text-center mb-6">
-        <h1 className="text-base font-bold">{businessName || 'Bintang Advertising'}</h1>
+        <h1 className="text-base font-bold">{businessName || 'StarPhoto & Advertising'}</h1>
         <h2 className="text-sm font-semibold mt-0.5">Buku besar</h2>
         <p className="text-[10px] text-slate-600 mt-0.5">
           {dateFromLabel} &mdash; {dateToLabel}

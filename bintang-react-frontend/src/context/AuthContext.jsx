@@ -12,7 +12,7 @@ const _loadCachedSettings = () => {
   } catch {
     /* ignore */
   }
-  return { nama_bisnis: 'Bintang Advertising', no_telepon: '', alamat: '', logo_url: '', deskripsi: '' };
+  return { nama_bisnis: 'StarPhoto & Advertising', no_telepon: '', alamat: '', logo_url: '', deskripsi: '' };
 };
 
 import apiClient from '../api/apiClient';

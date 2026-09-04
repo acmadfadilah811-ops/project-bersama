@@ -54,7 +54,7 @@ function formatDate(value) {
 }
 
 export function buildTmU220Receipt(receipt, settings) {
-  const storeName = toText(settings?.nama_usaha || settings?.business_name || 'Bintang Advertising');
+  const storeName = toText(settings?.nama_usaha || settings?.business_name || 'StarPhoto & Advertising');
   const customer = toText(receipt?.pelanggan_name || receipt?.customer_name || 'Pelanggan umum');
   const items = Array.isArray(receipt?.items) ? receipt.items : [];
   const lines = [

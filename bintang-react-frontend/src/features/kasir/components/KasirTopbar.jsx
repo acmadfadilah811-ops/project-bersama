@@ -119,7 +119,7 @@ export default function KasirTopbar() {
 
           <Link to="/kasir/terminal" className="flex items-center gap-2">
             <span className="font-black text-white text-base tracking-tight truncate max-w-[150px] md:max-w-xs">
-              {businessSettings?.nama_bisnis || 'Bintang Advertising'}
+              {businessSettings?.nama_bisnis || 'StarPhoto & Advertising'}
             </span>
           </Link>
 

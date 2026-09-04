@@ -24,7 +24,7 @@ export default function TransferModal() {
 
   // Form Modal States
   const [isAddOpen, setIsAddOpen] = useState(false);
-  const [destStore, setDestStore] = useState('Bintang Advertising pusat');
+  const [destStore, setDestStore] = useState('StarPhoto & Advertising pusat');
   const [txDate, setTxDate] = useState(getTodayStr());
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
@@ -35,9 +35,9 @@ export default function TransferModal() {
 
   // Dropdown lists
   const storeOptions = [
-    'Bintang Advertising pusat',
-    'Bintang Advertising cabang A',
-    'Bintang Advertising cabang B',
+    'StarPhoto & Advertising pusat',
+    'StarPhoto & Advertising cabang A',
+    'StarPhoto & Advertising cabang B',
   ];
 
   useEffect(() => {

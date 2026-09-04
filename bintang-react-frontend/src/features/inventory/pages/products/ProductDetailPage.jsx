@@ -238,7 +238,7 @@ function FormRow({ label, desc, children }) {
   );
 }
 
-export default function ProductDetailPage({ product, onBack, onUpdated, categories = [], brands = [], storeName = 'Bintang Advertising', initialCopyMode = false }) {
+export default function ProductDetailPage({ product, onBack, onUpdated, categories = [], brands = [], storeName = 'StarPhoto & Advertising', initialCopyMode = false }) {
   const [activeTab, setActiveTab] = useState('profil');
   const [editingSection, setEditingSection] = useState(null);
   const [savingSection, setSavingSection] = useState(false);

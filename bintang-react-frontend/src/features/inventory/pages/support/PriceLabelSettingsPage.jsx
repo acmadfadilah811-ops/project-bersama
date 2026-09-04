@@ -15,7 +15,7 @@ const defaultSettings = {
   showBarcode: true,
   showWeight: true,
   showPromo: true,
-  storeName: 'Bintang Advertising'
+  storeName: 'StarPhoto & Advertising'
 };
 
 // Inline SVGs matching Olsera layout icons exactly

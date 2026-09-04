@@ -44,7 +44,7 @@ export default function Sidebar({ collapsed, setCollapsed, activeTab, setActiveT
             </div>
             <div>
               <h1 className="text-sm font-bold text-white leading-tight">Papan Produksi</h1>
-              <p className="text-sm text-slate-500 font-medium">Bintang Advertising</p>
+              <p className="text-sm text-slate-500 font-medium">StarPhoto & Advertising</p>
             </div>
           </div>
         )}

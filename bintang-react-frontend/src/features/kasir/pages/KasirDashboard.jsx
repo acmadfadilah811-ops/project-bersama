@@ -376,7 +376,7 @@ export default function KasirDashboard({ onToggleSidebar }) {
                 Konfirmasi Clock-Out
               </h3>
               <p className="text-xs text-rose-100 mt-0.5">
-                Sistem Absensi Kasir Bintang Advertising
+                Sistem Absensi Kasir StarPhoto & Advertising
               </p>
             </div>
 

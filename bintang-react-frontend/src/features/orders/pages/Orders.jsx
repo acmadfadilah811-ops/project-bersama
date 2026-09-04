@@ -1885,7 +1885,7 @@ export default function Orders() {
                     <p className="font-bold text-slate-700">Metode Pembayaran:</p>
                     <p className="max-w-[220px]">
                       {businessSettings?.deskripsi ||
-                        `Transfer BCA: 1234567890 a/n ${businessSettings?.nama_bisnis || 'Bintang Advertising'}`}
+                        `Transfer BCA: 1234567890 a/n ${businessSettings?.nama_bisnis || 'StarPhoto & Advertising'}`}
                     </p>
                   </div>
                   <div className="text-center w-36">
@@ -2011,7 +2011,7 @@ export default function Orders() {
                 <div className="text-center w-40">
                   <p className="mb-16">Mengetahui,</p>
                   <p className="font-bold border-t border-slate-400 pt-1">
-                    {businessSettings?.nama_bisnis || 'Bintang Advertising'}
+                    {businessSettings?.nama_bisnis || 'StarPhoto & Advertising'}
                   </p>
                 </div>
               </div>

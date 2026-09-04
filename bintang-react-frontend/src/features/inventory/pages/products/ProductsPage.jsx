@@ -666,7 +666,7 @@ export default function ProductsPage() {
         onUpdated={setViewingProduct}
         categories={categories}
         brands={brands}
-        storeName={businessSettings?.nama_bisnis || 'Bintang Advertising'}
+        storeName={businessSettings?.nama_bisnis || 'StarPhoto & Advertising'}
         initialCopyMode={initialCopyMode}
       />
     );
@@ -684,7 +684,7 @@ export default function ProductsPage() {
             <div className="pi-store-select-group">
               <span>Simpan di:</span>
               <select className="pi-store-select">
-                <option>{businessSettings?.nama_bisnis || 'Bintang Advertising'}</option>
+                <option>{businessSettings?.nama_bisnis || 'StarPhoto & Advertising'}</option>
               </select>
             </div>
             <button
@@ -912,7 +912,7 @@ export default function ProductsPage() {
           onRemoveRow={removeVariantRow}
           trackInventory={variantTrackInventory}
           onTrackInventoryChange={setVariantTrackInventory}
-          storeName={businessSettings?.nama_bisnis || 'Bintang Advertising'}
+          storeName={businessSettings?.nama_bisnis || 'StarPhoto & Advertising'}
         />
 
         {/* Informasi Detail Collapsible */}

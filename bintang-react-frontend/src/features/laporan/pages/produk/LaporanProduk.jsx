@@ -957,7 +957,7 @@ function LaporanDetail({ report, collapsed, onExpand }) {
       <body>
         <div class="header">
           <h1>${report.label}</h1>
-          <div class="sub">Bintang Advertising | Tanggal Dicetak: ${new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
+          <div class="sub">StarPhoto & Advertising | Tanggal Dicetak: ${new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
         </div>
         ${tableHtml}
         <script>

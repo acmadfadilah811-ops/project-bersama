@@ -14,7 +14,7 @@ export default function WaSettings({ onToggleSidebar }) {
 
   // Template states
   const [greetingTemplate, setGreetingTemplate] = useState(
-    'Halo *{{nama}}*,\n\nTerima kasih telah menghubungi *Bintang Advertising*. Pesanan Anda dengan ID *{{order_id}}* telah masuk ke sistem kami dan sedang direview oleh kasir.\n\nMohon tunggu konfirmasi berikutnya.'
+    'Halo *{{nama}}*,\n\nTerima kasih telah menghubungi *StarPhoto & Advertising*. Pesanan Anda dengan ID *{{order_id}}* telah masuk ke sistem kami dan sedang direview oleh kasir.\n\nMohon tunggu konfirmasi berikutnya.'
   );
   const [invoiceTemplate, setInvoiceTemplate] = useState(
     'Halo *{{nama}}*,\n\nPembayaran untuk pesanan *{{order_id}}* sebesar *{{total}}* telah kami terima dengan status *LUNAS* melalui metode *{{metode}}*.\n\nDetail item:\n{{items}}\n\nTerima kasih atas kepercayaannya!'

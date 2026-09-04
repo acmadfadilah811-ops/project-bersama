@@ -529,9 +529,9 @@ export default function TambahAkunModal({ isOpen, onClose, onCreated }) {
                   className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-800 text-xs font-semibold focus:bg-white focus:border-[#0088E8] outline-none"
                 >
                   <option value="">Pilih Cabang / Toko</option>
-                  <option value="bintang_pusat">Bintang Advertising - Pusat</option>
-                  <option value="bintang_gading">Bintang Advertising - Gading Serpong</option>
-                  <option value="bintang_karawaci">Bintang Advertising - Karawaci</option>
+                  <option value="bintang_pusat">StarPhoto & Advertising - Pusat</option>
+                  <option value="bintang_gading">StarPhoto & Advertising - Gading Serpong</option>
+                  <option value="bintang_karawaci">StarPhoto & Advertising - Karawaci</option>
                 </select>
               </div>
 

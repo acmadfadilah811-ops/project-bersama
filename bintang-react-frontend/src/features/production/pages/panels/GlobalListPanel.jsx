@@ -675,7 +675,7 @@ export default function GlobalListPanel() {
                   RESI - {printOrder.nama?.toUpperCase()} - #{printOrder.id}
                 </h2>
                 <h3 className="font-bold text-[10px] text-slate-500 mt-1">
-                  {businessSettings?.nama_bisnis || 'Bintang Advertising'}
+                  {businessSettings?.nama_bisnis || 'StarPhoto & Advertising'}
                 </h3>
                 <p className="text-[10px] text-slate-400 mt-0.5">
                   {businessSettings?.alamat || 'Jl. Produksi No. 123, Kota'}
@@ -800,7 +800,7 @@ export default function GlobalListPanel() {
                     INVOICE - {printInvoiceOrder.nama?.toUpperCase()} - #{printInvoiceOrder.id}
                   </h2>
                   <p className="text-slate-500 font-bold text-[10px] mt-0.5">
-                    {businessSettings?.nama_bisnis || 'Bintang Advertising'}
+                    {businessSettings?.nama_bisnis || 'StarPhoto & Advertising'}
                   </p>
                   <p className="text-slate-550 text-slate-500 mt-0.5">
                     {businessSettings?.alamat || 'Jl. Produksi No. 123, Kota'}
@@ -926,7 +926,7 @@ export default function GlobalListPanel() {
                     <p className="font-bold text-slate-700">Metode Pembayaran:</p>
                     <p className="max-w-[220px]">
                       {businessSettings?.deskripsi ||
-                        `Transfer BCA: 1234567890 a/n ${businessSettings?.nama_bisnis || 'Bintang Advertising'}`}
+                        `Transfer BCA: 1234567890 a/n ${businessSettings?.nama_bisnis || 'StarPhoto & Advertising'}`}
                     </p>
                   </div>
                   <div className="text-center w-36">
@@ -1000,7 +1000,7 @@ export default function GlobalListPanel() {
                     SURAT JALAN - {printSuratJalanOrder.nama?.toUpperCase()} - #{printSuratJalanOrder.id}
                   </h2>
                   <p className="text-slate-500 font-bold text-[10px] mt-0.5">
-                    {businessSettings?.nama_bisnis || 'Bintang Advertising'}
+                    {businessSettings?.nama_bisnis || 'StarPhoto & Advertising'}
                   </p>
                   <p className="text-slate-500 mt-0.5">
                     {businessSettings?.alamat || 'Jl. Produksi No. 123, Kota'}
@@ -1077,7 +1077,7 @@ export default function GlobalListPanel() {
                 <div className="text-center w-40">
                   <p className="mb-16">Mengetahui,</p>
                   <p className="font-bold border-t border-slate-400 pt-1">
-                    {businessSettings?.nama_bisnis || 'Bintang Advertising'}
+                    {businessSettings?.nama_bisnis || 'StarPhoto & Advertising'}
                   </p>
                 </div>
               </div>
@@ -1135,7 +1135,7 @@ export default function GlobalListPanel() {
                       SPK - {printSpkOrder.nama?.toUpperCase()} - #{printSpkOrder.id}
                     </h2>
                     <p className="text-[9px] text-slate-500 font-bold mt-0.5">
-                      {businessSettings?.nama_bisnis || 'Bintang Advertising'}
+                      {businessSettings?.nama_bisnis || 'StarPhoto & Advertising'}
                     </p>
                   </div>
                 </div>

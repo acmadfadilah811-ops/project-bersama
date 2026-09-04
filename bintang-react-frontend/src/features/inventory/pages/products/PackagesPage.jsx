@@ -1471,7 +1471,7 @@ export function PackagesPage({ onToggleCreate }) {
               <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '500' }}>Simpan di:</span>
               <div style={{ border: '1px solid #cbd5e1', borderRadius: '4px', padding: '4px 10px', background: '#ffffff', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#334155' }}>
-                  {businessSettings?.nama_bisnis || 'Bintang Advertising'}
+                  {businessSettings?.nama_bisnis || 'StarPhoto & Advertising'}
                 </span>
                 <span style={{ color: '#94a3b8', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}>×</span>
               </div>
