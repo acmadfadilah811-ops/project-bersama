@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import apiClient from '../../../api/apiClient';
 import {
   BookOpen,
@@ -132,11 +132,12 @@ export default function BukuBesar() {
       minimumFractionDigits: 0,
     }).format(angka || 0);
 
-  // FE-17: hitung saldo berjalan SEBELUM render (useMemo), bukan dengan
-  // memutasi variabel `let` di tengah .map() JSX. Mutasi saat render adalah
+  // FE-17: hitung saldo berjalan SEBELUM render, bukan dengan memutasi
+  // variabel `let` di tengah .map() JSX. Mutasi saat render adalah
   // anti-pattern React (bisa salah saat re-render/strict mode) dan sebelumnya
-  // dipakai bersama key={index} yang tidak stabil.
-  const rowsWithSaldo = useMemo(() => {
+  // dipakai bersama key={index} yang tidak stabil. React Compiler yang
+  // memoize otomatis, jadi tidak perlu useMemo manual di sini.
+  const rowsWithSaldo = (() => {
     let running = saldoAwal;
     return bukuBesarData.map((trx) => {
       const d = parseFloat(trx.debit) || 0;
@@ -144,7 +145,7 @@ export default function BukuBesar() {
       running = isCreditNormal ? running + k - d : running + d - k;
       return { ...trx, _d: d, _k: k, _saldo: running };
     });
-  }, [bukuBesarData, saldoAwal, isCreditNormal]);
+  })();
 
   // Menghitung total mutasi dan saldo akhir
   const totalDebit = bukuBesarData.reduce((sum, trx) => sum + (parseFloat(trx.debit) || 0), 0);

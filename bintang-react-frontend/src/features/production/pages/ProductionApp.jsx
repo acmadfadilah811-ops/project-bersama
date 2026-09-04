@@ -355,7 +355,7 @@ export default function ProductionApp() {
   };
 
   const roleLower = user?.role?.toLowerCase();
-  let menuItems = [];
+  let menuItems;
   if (['owner', 'manager'].includes(roleLower)) {
     menuItems = [
       { id: 'papan_kerja_spk', label: 'Papan Kerja SPK', icon: ClipboardList },

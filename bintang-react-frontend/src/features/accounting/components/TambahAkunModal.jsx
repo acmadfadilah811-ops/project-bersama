@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Download, FileText, UploadCloud, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import { notifyApiError, notifySuccess } from '../../../utils/notify';
@@ -53,10 +53,7 @@ export default function TambahAkunModal({ isOpen, onClose, onCreated }) {
     ['Harta Lancar', 'Harta Tetap', 'Harta Tak Berwujud'].includes(kategoriLabel) &&
     !!subKategoriName;
 
-  const selectedClassification = useMemo(
-    () => classifications.find((c) => c.name === effectiveSubKategoriName),
-    [classifications, effectiveSubKategoriName],
-  );
+  const selectedClassification = classifications.find((c) => c.name === effectiveSubKategoriName);
 
   // Auto-fill nomor akun
   useEffect(() => {

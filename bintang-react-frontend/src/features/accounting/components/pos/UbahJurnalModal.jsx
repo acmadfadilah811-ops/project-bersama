@@ -1,9 +1,7 @@
 import { useState } from 'react';
 import { notify } from '../../../../utils/notify';
 
-export default function UbahJurnalModal({ isOpen, onClose, initialData, onUpdate }) {
-  if (!isOpen) return null;
-
+export default function UbahJurnalModal({ isOpen, onClose, initialData = {}, onUpdate }) {
   const defaultJournalNames = [
     'Akumulasi penyusutan',
     'Biaya',
@@ -77,6 +75,8 @@ export default function UbahJurnalModal({ isOpen, onClose, initialData, onUpdate
   const [notes, setNotes] = useState(`Penjualan ke ${client}`);
   const [amount, setAmount] = useState(initialData.amount ? initialData.amount.toLocaleString('id-ID', { minimumFractionDigits: 2 }) : '25.000,00');
   const [docNo, setDocNo] = useState(initialData.txNo ? initialData.txNo.replace('EFC8260724', '32FB260724') : '32FB26072400000001');
+
+  if (!isOpen) return null;
 
   const handleUpdateClick = () => {
     if (onUpdate) {

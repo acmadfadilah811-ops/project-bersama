@@ -846,7 +846,7 @@ function LaporanDetail({ report, collapsed, onExpand }) {
       ws['!cols'] = colWidths;
     }
     XLSX.utils.book_append_sheet(wb, ws, 'Laporan');
-    const sanitizedName = (report.label || 'Laporan').replace(/[\/\\?%*:|"<>]/g, '_');
+    const sanitizedName = (report.label || 'Laporan').replace(/[/\\?%*:|"<>]/g, '_');
     XLSX.writeFile(wb, `${sanitizedName}_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
@@ -857,7 +857,7 @@ function LaporanDetail({ report, collapsed, onExpand }) {
       return;
     }
 
-    let tableHtml = '';
+    let tableHtml;
 
     if (report.labaRugi || report.linkList?.some((i) => i.labaRugi)) {
       const sections = report.labaRugi || (report.linkList?.find((i) => i.labaRugi)?.labaRugi) || [];

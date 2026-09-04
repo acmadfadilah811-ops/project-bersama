@@ -93,8 +93,8 @@ export default function BukuBesar({ onToggleSidebar }) {
   };
 
   const resolveDates = () => {
-    let fromStr = '';
-    let toStr = '';
+    let fromStr;
+    let toStr;
     if (dateMode === 'Bulan') {
       const period = getPeriodString(currentDate);
       fromStr = `${period}-01`;

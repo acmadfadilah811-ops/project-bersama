@@ -123,7 +123,7 @@ function ProductInventoryInner() {
   useEffect(() => {
     if (!feature) return;
     const activeTab = feature.tabs ? tabKey || feature.defaultTab : feature.defaultTab;
-    let sub = '';
+    let sub;
     if (featureKey === 'product') {
       if (activeTab === 'packages' && isPackageCreating) {
         sub = 'Buat Paket Produk';

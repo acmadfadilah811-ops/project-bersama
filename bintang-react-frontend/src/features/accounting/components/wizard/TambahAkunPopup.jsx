@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import apiClient from '../../../../api/apiClient';
 import { notifyApiError, notifySuccess } from '../../../../utils/notify';
 import {
@@ -29,10 +29,7 @@ export default function TambahAkunPopup({ onClose, onCreated }) {
   const effectiveSubKategoriName = needsSubKategori ? subKategoriName : kategori?.singleClassification || '';
   const showAkumulasiDariAkun = effectiveSubKategoriName === AKUMULASI_DARI_AKUN_SUB_CATEGORY;
 
-  const selectedClassification = useMemo(
-    () => classifications.find((c) => c.name === effectiveSubKategoriName),
-    [classifications, effectiveSubKategoriName],
-  );
+  const selectedClassification = classifications.find((c) => c.name === effectiveSubKategoriName);
 
   // Auto-fill Nomor Akun begitu klasifikasi diketahui: kode tertinggi yang
   // sudah dipakai di klasifikasi itu + 1, atau code_range_start kalau kosong.

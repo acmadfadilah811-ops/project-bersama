@@ -644,9 +644,7 @@ function CustomerSupplierInner() {
     XLSX.writeFile(wb, `suppliers-export.xlsx`);
   };
 
-  const filteredSuppliers = useMemo(() => {
-    return suppliers.filter(s => `${s.nama} ${s.kontak_pic} ${s.phone}`.toLowerCase().includes(supplierQuery.toLowerCase()));
-  }, [suppliers, supplierQuery]);
+  const filteredSuppliers = suppliers.filter(s => `${s.nama} ${s.kontak_pic} ${s.phone}`.toLowerCase().includes(supplierQuery.toLowerCase()));
 
   const [supplierPageSize, setSupplierPageSize] = useState(10);
   const [supplierCurrentPage, setSupplierCurrentPage] = useState(1);

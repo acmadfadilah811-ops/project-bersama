@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { notify } from '../../../../utils/notify';
 
 export default function HapusJurnalModal({ isOpen, onClose, txNo, onDeleteConfirm }) {
-  if (!isOpen) return null;
-
   const [notes, setNotes] = useState('');
+
+  if (!isOpen) return null;
 
   const handleDeleteClick = () => {
     if (!notes.trim()) {
