@@ -112,7 +112,6 @@ const groupedMenuOwnerManager = [
     submenus: [
       { path: '/orders', label: 'Pesanan', icon: ShoppingCart },
       { path: '/produksi', label: 'Papan Kerja (SPK)', icon: Kanban },
-      { path: '/customers', label: 'Pelanggan', icon: User },
       { path: '/komplain', label: 'Komplain & Garansi', icon: AlertTriangle },
     ],
   },
@@ -213,7 +212,6 @@ export default function Sidebar() {
     if (path === '/orders') return 'orders';
     if (path.startsWith('/kasir')) return 'kasir-pos';
     if (path === '/jobs' || path === '/produksi') return 'jobs';
-    if (path === '/customers') return 'customers';
     if (path === '/attendance') return 'attendance';
     if (path === '/employees') return 'employees';
     if (path === '/payroll') return 'payroll';

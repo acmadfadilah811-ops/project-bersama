@@ -1021,7 +1021,7 @@ export default function Orders() {
 
                     <button 
                       type="button" 
-                      onClick={() => { closeEditModal(); navigate('/customers'); }} 
+                      onClick={() => { closeEditModal(); navigate('/customer-supplier'); }}
                       className="flex flex-col items-center justify-center p-3 border border-slate-200 rounded-xl bg-white hover:bg-slate-50/80 transition-all cursor-pointer shadow-2xs hover:shadow-xs group"
                     >
                       <span className="text-[11px] font-extrabold text-[#714B67] group-hover:scale-105 transition-transform">

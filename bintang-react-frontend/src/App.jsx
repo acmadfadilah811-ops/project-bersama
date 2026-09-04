@@ -13,7 +13,6 @@ import StaffDashboard from './features/dashboard/pages/StaffDashboard';
 import ExecutiveDashboard from './features/dashboard/pages/ExecutiveDashboard';
 import AiBusinessAnalyst from './features/dashboard/pages/AiBusinessAnalyst';
 import Orders from './features/orders/pages/Orders';
-import Customers from './features/customerSupplier/pages/CustomersPageLegacy';
 import SettingsApp from './features/settings/pages/SettingsApp';
 import Profile from './features/settings/pages/Profile';
 import Employees from './features/hr/pages/Employees';
@@ -160,7 +159,6 @@ function App() {
                 <Route path="/accounting-internal/*" element={<AccountingInternalApp />} />
 
                 {/* Tim */}
-                <Route path="/customers" element={<Customers />} />
                 <Route path="/users" element={<Employees />} />
                 <Route path="/employees" element={<Employees />} />
                 <Route path="/payroll" element={<Payroll />} />
