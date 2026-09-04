@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
-from .views import DashboardView, CreateUserView, AssignOrderView, ForwardJobView, InventoryRestockView, JobMaterialDeductView, FonnteWebhookView, EvolutionWebhookView, BusinessSettingsView, StaffPerformanceReportView, HealthCheckView, KomplainViewSet, ContactStatsView, ProductionCustomerLiteView
+from .views import DashboardView, CreateUserView, AssignOrderView, ForwardJobView, InventoryRestockView, JobMaterialDeductView, EvolutionWebhookView, BusinessSettingsView, StaffPerformanceReportView, HealthCheckView, KomplainViewSet, ContactStatsView, ProductionCustomerLiteView
 from .export_views import ExportOrdersView, ExportInventoryView, ExportJobsView, ExportContactsView, ExportAbsensiView, ExportStaffPerformanceView, ExportStockMovementView, ExportCustomersView, ExportProductsView, ExportCustomerNotesView, ExportCashTransactionsView, ExportSalesItemsByBrandView, ExportSalesDetailsView
 from . import product_views
 from . import production_views
@@ -144,8 +144,6 @@ urlpatterns = [
     # Explicit restock URL — standalone APIView, tidak pakai @action ViewSet
     path('inventory/<str:pk>/restock/', InventoryRestockView.as_view(), name='inventory-restock'),
     
-    # Webhook Bot WA (Fonnte)
-    path('webhook/fonnte/', FonnteWebhookView.as_view(), name='webhook-fonnte'),
 
     # Webhook Bot WA (Evolution API)
     path('webhook/evolution/', EvolutionWebhookView.as_view(), name='webhook-evolution'),

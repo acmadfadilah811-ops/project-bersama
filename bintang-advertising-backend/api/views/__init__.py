@@ -1,5 +1,5 @@
 from .whatsapp import (
-    FonnteWebhookView, EvolutionWebhookView, WAWebhookView, WhatsAppStatusView,
+    EvolutionWebhookView, WAWebhookView, WhatsAppStatusView,
     WhatsAppChatsView, WhatsAppMessagesView, WhatsAppSendMessageView,
     WhatsAppSendMediaView
 )

@@ -68,7 +68,6 @@ ENV_VARS_WAJIB = [
 ]
 ENV_VARS_OPSIONAL = [
     "KOBOI_API_KEY",      # AI WhatsApp bot
-    "FONNTE_API_KEY",     # WhatsApp gateway
     "SENTRY_DSN",         # Error monitoring
     "REDIS_URL",          # Cache server
 ]

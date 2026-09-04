@@ -4,7 +4,7 @@ import PosHeaderBar from '../components/PosHeaderBar';
 
 export default function WaSettings({ onToggleSidebar }) {
   // Connection states
-  const [apiType, setApiType] = useState('fonnte');
+  const [apiType, setApiType] = useState('evolution');
   const [apiKey, setApiKey] = useState('');
   const [deviceId, setDeviceId] = useState('');
   const [webhookUrl, setWebhookUrl] = useState('');
@@ -102,7 +102,7 @@ export default function WaSettings({ onToggleSidebar }) {
         {/* Header */}
         <div>
           <h4 className="font-extrabold text-slate-800 text-lg">Pengaturan Integrasi WhatsApp</h4>
-          <p className="text-xs text-slate-500 font-semibold">Hubungkan nomor toko Anda dengan gateway Fonnte / Evolution API dan kelola template pesan otomatis.</p>
+          <p className="text-xs text-slate-500 font-semibold">Hubungkan nomor toko Anda dengan gateway Evolution API dan kelola template pesan otomatis.</p>
         </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -122,7 +122,6 @@ export default function WaSettings({ onToggleSidebar }) {
                   onChange={(e) => setApiType(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold text-slate-700 focus:outline-none"
                 >
-                  <option value="fonnte">Fonnte Gateway</option>
                   <option value="evolution">Evolution API (Self-Hosted)</option>
                 </select>
               </div>

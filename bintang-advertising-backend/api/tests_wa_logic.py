@@ -431,7 +431,7 @@ class WALogicUnitTestCase(TestCase):
 
 class WhatsAppWebhookIntegrationTestCase(TestCase):
     """
-    Test suite untuk pipeline WhatsApp webhook (Evolution API, Fonnte, Baileys)
+    Test suite untuk pipeline WhatsApp webhook (Evolution API, Baileys)
     memastikan integrasi wa_logic dan AI auto-reply berjalan sempurna.
     """
 

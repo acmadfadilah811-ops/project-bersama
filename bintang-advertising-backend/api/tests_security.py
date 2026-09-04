@@ -456,54 +456,45 @@ class SecurityPermissionTestCase(APITestCase):
 
     def test_webhook_fail_closed_without_secrets(self):
         """
-        Memverifikasi bahwa webhook Evolution, Fonnte, dan error logger fail-closed (500)
+        Memverifikasi bahwa webhook Evolution dan error logger fail-closed (500)
         jika env var secret masing-masing tidak dikonfigurasi.
         """
         import os
         from unittest import mock
-        
+
         # Simpan env vars asli
         orig_evo = os.getenv("EVOLUTION_API_KEY")
-        orig_fonnte = os.getenv("FONNTE_WEBHOOK_SECRET")
         orig_client = os.getenv("CLIENT_LOG_SECRET")
-        
+
         try:
             # Hapus env vars agar kosong/tidak diset
             if "EVOLUTION_API_KEY" in os.environ: del os.environ["EVOLUTION_API_KEY"]
-            if "FONNTE_WEBHOOK_SECRET" in os.environ: del os.environ["FONNTE_WEBHOOK_SECRET"]
             if "CLIENT_LOG_SECRET" in os.environ: del os.environ["CLIENT_LOG_SECRET"]
-            
+
             # 1. Evolution webhook fail closed
             response = self.client.post("/api/webhook/evolution/", {}, format="json")
             self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
             self.assertIn("Evolution API key not configured", response.data["error"])
-            
-            # 2. Fonnte webhook fail closed
-            response = self.client.post("/api/webhook/fonnte/", {}, format="json")
-            self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
-            self.assertIn("Webhook secret not configured", response.data["error"])
-            
-            # 3. Client log error fail closed
+
+            # 2. Client log error fail closed
             response = self.client.post("/api/log-client-error/", {}, format="json")
             self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
             self.assertIn("Client log secret not configured", response.data["error"])
-            
+
         finally:
             # Kembalikan env vars asli
             if orig_evo: os.environ["EVOLUTION_API_KEY"] = orig_evo
-            if orig_fonnte: os.environ["FONNTE_WEBHOOK_SECRET"] = orig_fonnte
             if orig_client: os.environ["CLIENT_LOG_SECRET"] = orig_client
 
     def test_webhook_and_logger_authentication_success_and_fail(self):
         """
-        Memverifikasi autentikasi webhook Evolution, Fonnte, dan error logger.
+        Memverifikasi autentikasi webhook Evolution dan error logger.
         """
         import os
         from unittest import mock
-        
+
         with mock.patch.dict(os.environ, {
             "EVOLUTION_API_KEY": "ValidEvoKey",
-            "FONNTE_WEBHOOK_SECRET": "ValidFonnteSecret",
             "CLIENT_LOG_SECRET": "ValidClientSecret"
         }):
             # Test Evolution Webhook
@@ -515,15 +506,6 @@ class SecurityPermissionTestCase(APITestCase):
                 response = self.client.post("/api/webhook/evolution/", {}, HTTP_APIKEY="ValidEvoKey")
                 self.assertNotEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
                 self.assertNotEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-            # Test Fonnte Webhook
-            # Gagal - token salah
-            response = self.client.post("/api/webhook/fonnte/?secret=WrongSecret", {})
-            self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-            # Sukses
-            response = self.client.post("/api/webhook/fonnte/?secret=ValidFonnteSecret", {})
-            self.assertNotEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-            self.assertNotEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
 
             # Test Client Logger
             # Gagal - token salah
