@@ -26,12 +26,10 @@ const PAGE_TITLES = {
   '/staff-dashboard': 'Dashboard',
   '/orders': 'Pesanan',
   '/customers': 'Pelanggan',
-  '/inventory': 'Inventaris',
   '/jobs': 'Papan Produksi',
   '/attendance': 'Absensi',
   '/employees': 'Karyawan',
   '/payroll': 'Penggajian & BoM',
-  '/buku-besar': 'Buku Besar',
   '/announcements': 'Pengumuman',
   '/profile': 'Profil Saya',
   '/settings': 'Pengaturan',
@@ -81,19 +79,17 @@ export default function Topbar() {
     { label: 'Buka Papan Kerja (SPK)', action: () => navigate('/jobs'), category: 'Navigasi' },
     { label: 'Buka Kanban Produksi', action: () => navigate('/produksi'), category: 'Navigasi' },
     { label: 'Buka Pelanggan', action: () => navigate('/customers'), category: 'Navigasi' },
-    { label: 'Buka Inventori', action: () => navigate('/inventory'), category: 'Navigasi' },
     { label: 'Buka Absensi', action: () => navigate('/attendance'), category: 'Navigasi' },
     { label: 'Buka Karyawan', action: () => navigate('/employees'), category: 'Navigasi' },
     { label: 'Buka Gaji & BoM', action: () => navigate('/payroll'), category: 'Navigasi' },
-    { label: 'Buka Buku Besar', action: () => navigate('/buku-besar'), category: 'Navigasi' },
     { label: 'Buka Pengaturan', action: () => navigate('/settings'), category: 'Navigasi' },
     { label: 'Toggle Layar Penuh', action: () => { toggleFullscreen(); setShowCommandPalette(false); }, category: 'Alat' },
     { label: 'Keluar / Logout', action: () => { logout(); navigate('/login'); }, category: 'Akun' },
   ];
 
   const filteredCommands = allCommands.filter(cmd => {
-    if (userRole === 'staff' && ['Buka Karyawan', 'Buka Gaji & BoM', 'Buka Buku Besar', 'Buka Pengaturan'].includes(cmd.label)) return false;
-    if (userRole === 'admin' && ['Buka Karyawan', 'Buka Gaji & BoM', 'Buka Buku Besar'].includes(cmd.label)) return false;
+    if (userRole === 'staff' && ['Buka Karyawan', 'Buka Gaji & BoM', 'Buka Pengaturan'].includes(cmd.label)) return false;
+    if (userRole === 'admin' && ['Buka Karyawan', 'Buka Gaji & BoM'].includes(cmd.label)) return false;
     return cmd.label.toLowerCase().includes(commandQuery.toLowerCase());
   });
   const [currentDate, setCurrentDate] = useState('');

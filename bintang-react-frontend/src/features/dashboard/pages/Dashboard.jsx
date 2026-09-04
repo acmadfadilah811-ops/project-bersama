@@ -612,7 +612,7 @@ export default function Dashboard() {
         {[
           { name: 'Penjualan', path: '/orders', icon: ShoppingCart, desc: 'Quotations & Sales', color: 'bg-gradient-to-r from-rose-500 to-orange-400' },
           { name: 'Papan Kerja', path: '/produksi', icon: ClipboardList, desc: 'Production SPK', color: 'bg-gradient-to-r from-blue-600 to-cyan-400' },
-          { name: 'Inventori', path: '/inventory', icon: Package, desc: 'Inventory & BoM', color: 'bg-gradient-to-r from-purple-600 to-indigo-600' },
+          { name: 'Inventori', path: '/product-inventory', icon: Package, desc: 'Inventory & BoM', color: 'bg-gradient-to-r from-purple-600 to-indigo-600' },
           { name: 'Kepegawaian', path: '/attendance', icon: CalendarClock, desc: 'HR & Timesheets', color: 'bg-gradient-to-r from-teal-600 to-emerald-400' },
           { name: 'Pengaturan', path: '/settings', icon: Settings, desc: 'System Settings', color: 'bg-gradient-to-r from-slate-700 to-slate-500' }
         ].map((app, idx) => {

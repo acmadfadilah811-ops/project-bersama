@@ -130,17 +130,6 @@ const groupedMenuOwnerManager = [
       { path: '/reports', label: 'Laporan Kerja', icon: BarChart3 },
     ],
   },
-  {
-    id: 'keuangan_logistik',
-    label: 'Keuangan & Logistik',
-    icon: BookOpen,
-    isGroup: true,
-    submenus: [
-      { path: '/inventory', label: 'Inventori Lama', icon: Package },
-      { path: '/buku-besar', label: 'Buku Besar', icon: BookOpen },
-      { path: '/pricelist', label: 'Daftar Harga', icon: DollarSign },
-    ],
-  },
   { path: '/profile', label: 'Profil', icon: User, isGroup: false },
   PENGATURAN_GROUP,
 ];
@@ -213,7 +202,6 @@ export default function Sidebar() {
     transaksi_pembayaran: true,
     laporan_pembukuan: true,
     hr_kepegawaian: false,
-    keuangan_logistik: false,
     pengaturan: false,
   });
 
@@ -233,9 +221,6 @@ export default function Sidebar() {
     if (path === '/reports') return 'reports';
     if (path.startsWith('/product-inventory')) return 'product-inventory';
     if (path.startsWith('/customer-supplier')) return 'customer-supplier';
-    if (path === '/inventory') return 'inventory';
-    if (path === '/buku-besar') return 'buku-besar';
-    if (path === '/pricelist') return 'pricelist';
     if (path === '/divisi') return 'divisi';
     if (path === '/settings' || path.startsWith('/settings/')) return 'settings';
     if (path.startsWith('/accounting-internal')) return 'accounting-internal';

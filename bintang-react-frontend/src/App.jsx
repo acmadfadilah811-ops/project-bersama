@@ -13,16 +13,13 @@ import StaffDashboard from './features/dashboard/pages/StaffDashboard';
 import ExecutiveDashboard from './features/dashboard/pages/ExecutiveDashboard';
 import AiBusinessAnalyst from './features/dashboard/pages/AiBusinessAnalyst';
 import Orders from './features/orders/pages/Orders';
-import Inventory from './features/inventory/pages/Inventory';
 import Customers from './features/customerSupplier/pages/CustomersPageLegacy';
 import SettingsApp from './features/settings/pages/SettingsApp';
 import Profile from './features/settings/pages/Profile';
 import Employees from './features/hr/pages/Employees';
 import Payroll from './features/hr/pages/Payroll';
 import Attendance from './features/hr/pages/Attendance';
-import BukuBesar from './features/finance/pages/BukuBesar';
 import Announcements from './features/announcements/pages/Announcements';
-import Pricelist from './features/catalog/pages/Pricelist';
 import Divisi from './features/hr/pages/Divisi';
 import Reports from './features/reports/pages/Reports';
 import Komplain from './features/komplain/pages/Komplain';
@@ -143,7 +140,6 @@ function App() {
                 <Route path="/orders/create" element={<Orders />} />
                 <Route path="/jobs" element={<Navigate to="/produksi" replace />} />
                 <Route path="/produksi/*" element={<ProductionApp />} />
-                <Route path="/inventory" element={<Inventory />} />
                 <Route path="/product-inventory/*" element={<ProductInventoryApp />} />
                 <Route path="/customer-supplier/*" element={<CustomerSupplierApp />} />
                 <Route path="/attendance" element={<Attendance />} />
@@ -171,8 +167,6 @@ function App() {
                 <Route path="/divisi" element={<Divisi />} />
 
                 {/* Laporan & Lainnya */}
-                <Route path="/buku-besar" element={<BukuBesar />} />
-                <Route path="/pricelist" element={<Pricelist />} />
                 <Route path="/announcements" element={<Announcements />} />
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/profile" element={<Profile />} />
