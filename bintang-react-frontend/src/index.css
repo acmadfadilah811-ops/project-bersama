@@ -1,5 +1,15 @@
 @import 'tailwindcss';
 
+/* Banyak komponen (100+ file) pakai class Tailwind font-mono/font-serif yang
+   defaultnya beda font stack dari body (Inter) - bikin tampilan tidak
+   konsisten. Override di sini menyamakan semuanya ke Inter tanpa perlu ubah
+   class di tiap komponen satu per satu. */
+@theme {
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'Inter', system-ui, sans-serif;
+  --font-serif: 'Inter', system-ui, sans-serif;
+}
+
 *,
 *::before,
 *::after {
