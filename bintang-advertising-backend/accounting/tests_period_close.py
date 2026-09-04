@@ -1,8 +1,10 @@
+import calendar
 from datetime import date
 from decimal import Decimal
 from django.test import TestCase
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework import status
 
@@ -244,10 +246,21 @@ class CloseAllOpenPeriodsTestCase(TestCase):
 
     def test_close_all_skips_current_ongoing_period(self):
         """Periode yang belum berakhir (end_date di masa depan) tidak ikut ditutup."""
-        past_start, past_end = date(2026, 5, 1), date(2026, 5, 31)
-        ongoing_start, ongoing_end = date(2026, 8, 1), date(2026, 8, 31)
-        AccountingPeriod.objects.create(fiscal_year=2026, start_date=past_start, end_date=past_end, status=AccountingPeriod.Status.OPEN)
-        AccountingPeriod.objects.create(fiscal_year=2026, start_date=ongoing_start, end_date=ongoing_end, status=AccountingPeriod.Status.OPEN)
+        today = timezone.localdate()
+        # Periode berjalan = bulan ini - end_date-nya dijamin belum lewat hari ini
+        # berapa pun tanggal test ini dijalankan, tidak hardcode tahun/bulan tetap.
+        ongoing_start = today.replace(day=1)
+        ongoing_last_day = calendar.monthrange(today.year, today.month)[1]
+        ongoing_end = today.replace(day=ongoing_last_day)
+        # Periode lampau = 3 bulan sebelum bulan ini, dijamin sudah berakhir.
+        past_month_index = today.month - 3
+        past_year = today.year + (past_month_index - 1) // 12
+        past_month = (past_month_index - 1) % 12 + 1
+        past_start = date(past_year, past_month, 1)
+        past_last_day = calendar.monthrange(past_year, past_month)[1]
+        past_end = date(past_year, past_month, past_last_day)
+        AccountingPeriod.objects.create(fiscal_year=past_year, start_date=past_start, end_date=past_end, status=AccountingPeriod.Status.OPEN)
+        AccountingPeriod.objects.create(fiscal_year=today.year, start_date=ongoing_start, end_date=ongoing_end, status=AccountingPeriod.Status.OPEN)
 
         closed, failed = close_all_open_periods(actor=self.owner)
 
