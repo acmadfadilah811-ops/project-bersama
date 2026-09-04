@@ -448,11 +448,30 @@ export function PackagesPage({ onToggleCreate }) {
     }
   };
 
+  // Mitigasi risiko ReDoS/prototype-pollution di library `xlsx` (tidak ada
+  // fix resmi dari maintainer, lihat npm audit) - tolak file yang jelas
+  // bukan xlsx/xls sah atau kelewat besar SEBELUM diparse di browser.
+  const MAX_IMPORT_FILE_SIZE = 5 * 1024 * 1024; // 5MB, cukup untuk daftar paket produk
+
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (!file) {
       setImportFile(null);
       setParsedRows([]);
+      return;
+    }
+    const validExt = /\.(xlsx|xls)$/i.test(file.name);
+    if (!validExt || file.size > MAX_IMPORT_FILE_SIZE) {
+      setImportFile(null);
+      setParsedRows([]);
+      setImportResult({
+        errors: [
+          !validExt
+            ? 'File harus berformat .xlsx atau .xls.'
+            : `Ukuran file maksimal ${MAX_IMPORT_FILE_SIZE / (1024 * 1024)}MB.`,
+        ],
+        createdCount: 0,
+      });
       return;
     }
     setImportFile(file);
