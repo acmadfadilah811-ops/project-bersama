@@ -8,6 +8,14 @@
   --font-sans: 'Inter', system-ui, sans-serif;
   --font-mono: 'Inter', system-ui, sans-serif;
   --font-serif: 'Inter', system-ui, sans-serif;
+
+  /* Google Fonts Inter di-load cuma sampai weight 800 (lihat index.html).
+     font-black (900, dipakai 409 tempat) sebelumnya tidak punya file
+     weight itu sama sekali - browser terpaksa "mensimulasikan" 900 dari
+     800 (synthetic bold), hasilnya kelihatan kasar/pecah terutama di
+     ukuran teks kecil. Dipetakan ke 800 (weight asli yang sudah di-load)
+     supaya render bersih, bukan hasil simulasi. */
+  --font-weight-black: 800;
 }
 
 *,
