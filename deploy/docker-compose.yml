@@ -75,13 +75,20 @@ services:
       start_period: 20s
     restart: unless-stopped
 
-  # Frontend TIDAK dijalankan di VPS ini — di-deploy terpisah ke Netlify
-  # (bintang-react-frontend/netlify.toml). VPS cuma jadi API backend.
+  # Frontend dilayani langsung dari VPS ini (image build multi-stage, hasil
+  # akhir cuma nginx:stable-alpine + static dist — kecil).
+  frontend:
+    build:
+      context: ../bintang-react-frontend
+    # Image frontend didesain untuk Cloud Run (nginx template pakai ${PORT}
+    # yang biasanya di-inject platform) — di docker-compose harus diisi manual.
+    environment:
+      PORT: 8080
+    restart: unless-stopped
 
   # Gateway origin — hanya bind loopback host; akses publik masuk lewat cloudflared.
-  # Rute /api,
-  # /admin, /static, /media ke backend (round-robin ke semua replica lewat DNS
-  # Docker bawaan). Tidak ada rute frontend di sini (dilayani Netlify).
+  # Rute /api, /admin, /static, /media ke backend (round-robin ke semua
+  # replica lewat DNS Docker bawaan); selain itu ke frontend (SPA).
   gateway:
     image: nginx:1.27-alpine
     restart: unless-stopped
@@ -93,6 +100,7 @@ services:
       - media_files:/srv/media:ro
     depends_on:
       - backend
+      - frontend
 
   cloudflared:
     image: cloudflare/cloudflared:latest
@@ -118,7 +126,7 @@ services:
       - evolution_redis_data:/data
 
   evolution-api:
-    image: atendai/evolution-api:latest
+    image: evoapicloud/evolution-api:latest
     restart: unless-stopped
     env_file:
       - evolution.env
