@@ -1,20 +1,21 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Search, Package, Plus, Boxes } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Search, Package, Boxes } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
-import { fetchAllPages } from '../../../utils/paginatedApi';
 import PosHeaderBar from '../components/PosHeaderBar';
-import { useKasir } from '../context/KasirContext';
 
 export default function ProductListPage({ onToggleSidebar }) {
-  const navigate = useNavigate();
-  const { addToCart } = useKasir();
-
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
+  // Paginasi server sungguhan — sebelumnya fetchAllPages menarik SELURUH
+  // produk aktif setiap kali filter berubah (keluhan render Kasir lambat,
+  // user 2026-09-06). Sama seperti PosTerminal.jsx & halaman Produk owner.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [totalCount, setTotalCount] = useState(0);
+  const fetchIdRef = useRef(0);
 
   useEffect(() => {
     const fetchCategories = async () => {
@@ -28,24 +29,34 @@ export default function ProductListPage({ onToggleSidebar }) {
     fetchCategories();
   }, []);
 
+  // Filter berubah -> balik ke halaman 1.
+  useEffect(() => {
+    setPage(1);
+  }, [selectedCategory, searchTerm]);
+
   useEffect(() => {
     const fetchProducts = async () => {
+      const fetchId = ++fetchIdRef.current;
       setLoading(true);
       try {
-        const params = { is_active: true };
+        const params = { is_active: true, page, page_size: pageSize };
         if (selectedCategory !== 'all') params.kategori = selectedCategory;
         if (searchTerm) params.search = searchTerm;
-        const data = await fetchAllPages('/products/', { params });
-        setProducts(data);
+        const res = await apiClient.get('/products/', { params });
+        if (fetchId !== fetchIdRef.current) return; // respons basi, abaikan
+        const data = res.data;
+        setProducts(Array.isArray(data) ? data : data.results || []);
+        setTotalCount(Array.isArray(data) ? data.length : data.count || 0);
       } catch (err) {
+        if (fetchId !== fetchIdRef.current) return;
         console.error('Gagal memuat produk:', err);
       } finally {
-        setLoading(false);
+        if (fetchId === fetchIdRef.current) setLoading(false);
       }
     };
     const t = setTimeout(fetchProducts, 300);
     return () => clearTimeout(t);
-  }, [selectedCategory, searchTerm]);
+  }, [selectedCategory, searchTerm, page, pageSize]);
 
   const formatCurrency = (v) =>
     new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(v || 0);
@@ -150,6 +161,42 @@ export default function ProductListPage({ onToggleSidebar }) {
             </div>
           )}
         </div>
+
+        {!loading && totalCount > 0 && (
+          <div className="flex items-center justify-between gap-3 mt-3 text-[11px] font-bold text-slate-500">
+            <div className="flex items-center gap-2">
+              <span>Total {totalCount} produk</span>
+              <select
+                value={pageSize}
+                onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+                className="bg-white border border-slate-200 rounded-lg px-2 py-1 outline-none cursor-pointer text-slate-700"
+              >
+                <option value={10}>10/hal</option>
+                <option value={20}>20/hal</option>
+                <option value={50}>50/hal</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg px-2.5 py-1 cursor-pointer text-slate-700"
+              >
+                &lt;
+              </button>
+              <span>{page} / {Math.max(1, Math.ceil(totalCount / pageSize))}</span>
+              <button
+                type="button"
+                disabled={page >= Math.ceil(totalCount / pageSize)}
+                onClick={() => setPage((p) => Math.min(Math.ceil(totalCount / pageSize) || 1, p + 1))}
+                className="bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg px-2.5 py-1 cursor-pointer text-slate-700"
+              >
+                &gt;
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
