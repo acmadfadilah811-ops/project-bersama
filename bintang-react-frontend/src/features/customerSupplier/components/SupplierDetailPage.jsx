@@ -181,9 +181,9 @@ export default function SupplierDetailPage({ supplier, onEdit, onDelete, onBack 
               <h3 style={{ ...sectionTitleStyle, width: '100%', textAlign: 'center' }}>Logo Supplier</h3>
               
               <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'center' }}>
-                {localStorage.getItem(`supplier_photo_${supplier.id}`) ? (
+                {supplier.foto ? (
                   <img
-                    src={localStorage.getItem(`supplier_photo_${supplier.id}`)}
+                    src={supplier.foto}
                     alt={supplier.nama}
                     style={{
                       width: '100px',

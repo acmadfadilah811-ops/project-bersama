@@ -569,30 +569,35 @@ function CustomerSupplierInner() {
     setShowSupplierForm(true);
   };
 
-  const handleSaveSupplier = async (formValues, photoBase64) => {
+  const handleSaveSupplier = async (formValues, photoFile) => {
     setSavingSupplier(true);
     setError(null);
     try {
-      let savedSupplier;
+      // Foto (kalau ada file baru dipilih) dikirim sungguhan ke server lewat
+      // multipart — sebelumnya cuma disimpan base64 ke localStorage (hilang
+      // kalau ganti perangkat/browser, tidak pernah tersinkron; bug ditemukan
+      // & diperbaiki 2026-09-05). Tanpa file baru, kirim JSON biasa supaya
+      // foto yang sudah ada di server tidak ikut terhapus/ter-reset.
+      let payload = formValues;
+      let config;
+      if (photoFile) {
+        const fd = new FormData();
+        Object.entries(formValues).forEach(([key, value]) => {
+          if (value !== null && value !== undefined) fd.append(key, value);
+        });
+        fd.append('foto', photoFile);
+        payload = fd;
+        config = { headers: { 'Content-Type': 'multipart/form-data' } };
+      }
+
       if (editingSupplier) {
-        const res = await apiClient.patch(`/suppliers/${editingSupplier.id}/`, formValues);
-        savedSupplier = res.data;
+        const res = await apiClient.patch(`/suppliers/${editingSupplier.id}/`, payload, config);
         // If we are editing from details view, update the activeSupplier
         if (activeSupplier && activeSupplier.id === editingSupplier.id) {
           setActiveSupplier(res.data);
         }
       } else {
-        const res = await apiClient.post('/suppliers/', formValues);
-        savedSupplier = res.data;
-      }
-
-      // Persist photo in localStorage
-      if (savedSupplier && savedSupplier.id) {
-        if (photoBase64) {
-          localStorage.setItem(`supplier_photo_${savedSupplier.id}`, photoBase64);
-        } else {
-          localStorage.removeItem(`supplier_photo_${savedSupplier.id}`);
-        }
+        await apiClient.post('/suppliers/', payload, config);
       }
 
       setShowSupplierForm(false);

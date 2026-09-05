@@ -18,7 +18,13 @@ const INDONESIA_CITIES = [
 
 export default function SupplierFormPage({ supplier, onSave, onCancel, saving }) {
   const fileInputRef = React.useRef(null);
-  const [photoBase64, setPhotoBase64] = useState('');
+  // File yang baru dipilih (belum diupload) — dikirim ke onSave, BUKAN dibaca
+  // jadi base64 lalu disimpan localStorage seperti sebelumnya (foto jadi
+  // device-specific, hilang kalau data browser dibersihkan, dan tidak pernah
+  // muncul di komputer lain). Sekarang foto sungguhan tersimpan di server
+  // lewat field Supplier.foto (bug ditemukan & diperbaiki 2026-09-05).
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState('');
   const [form, setForm] = useState({
     nama: '',
     kontak_pic: '',
@@ -46,12 +52,8 @@ export default function SupplierFormPage({ supplier, onSave, onCancel, saving })
         kode_pos: supplier.kode_pos || '',
         alamat: supplier.alamat || ''
       });
-      const savedPhoto = localStorage.getItem(`supplier_photo_${supplier.id}`);
-      if (savedPhoto) {
-        setPhotoBase64(savedPhoto);
-      } else {
-        setPhotoBase64('');
-      }
+      setPhotoFile(null);
+      setPhotoPreviewUrl(supplier.foto || '');
     } else {
       setForm({
         nama: '',
@@ -65,7 +67,8 @@ export default function SupplierFormPage({ supplier, onSave, onCancel, saving })
         kode_pos: '',
         alamat: ''
       });
-      setPhotoBase64('');
+      setPhotoFile(null);
+      setPhotoPreviewUrl('');
     }
   }, [supplier]);
 
@@ -76,16 +79,13 @@ export default function SupplierFormPage({ supplier, onSave, onCancel, saving })
   const handlePhotoChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setPhotoBase64(event.target.result);
-    };
-    reader.readAsDataURL(file);
+    setPhotoFile(file);
+    setPhotoPreviewUrl(URL.createObjectURL(file));
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSave(form, photoBase64);
+    onSave(form, photoFile);
   };
 
   const inputStyle = {
@@ -262,9 +262,9 @@ export default function SupplierFormPage({ supplier, onSave, onCancel, saving })
                   cursor: 'pointer'
                 }}
               >
-                {photoBase64 ? (
+                {photoPreviewUrl ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <img src={photoBase64} alt="Supplier Preview" style={{ width: '32px', height: '32px', borderRadius: '4px', objectFit: 'cover' }} />
+                    <img src={photoPreviewUrl} alt="Supplier Preview" style={{ width: '32px', height: '32px', borderRadius: '4px', objectFit: 'cover' }} />
                     <span style={{ fontSize: '13px', color: '#334155', fontWeight: 'bold' }}>Foto Terpilih</span>
                   </div>
                 ) : (

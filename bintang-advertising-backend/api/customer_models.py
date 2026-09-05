@@ -148,6 +148,7 @@ class Supplier(models.Model):
     kota = models.CharField(max_length=100, blank=True, default='')
     kode_pos = models.CharField(max_length=20, blank=True, default='')
     alamat = models.TextField(blank=True, default='')
+    foto = models.ImageField(upload_to='supplier_photos/', blank=True, null=True)
     is_active = models.BooleanField(default=True)
     akun_hutang = models.ForeignKey(
         'accounting.Account', on_delete=models.SET_NULL, null=True, blank=True,
