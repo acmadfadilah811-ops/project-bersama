@@ -140,15 +140,19 @@ export default function Login() {
 
   return (
     <div className="min-h-screen w-full flex bg-white font-sans">
-      {/* Panel Kiri: Ilustrasi Brand penuh satu sisi (disembunyikan di layar kecil).
-          bg-position rapat ke kiri (bukan center) supaya maskot & logo yang
-          posisinya di tepi kiri gambar asli tidak ikut kepotong saat gambar
-          di-crop memenuhi panel — sisi kanan (area kosong pada gambar asli)
-          yang dikorbankan kepotong duluan. */}
-      <div
-        className="hidden lg:block lg:w-1/2 bg-cover bg-no-repeat"
-        style={{ backgroundImage: `url(${loginDashboardBg})`, backgroundPosition: 'left center' }}
-      ></div>
+      {/* Panel Kiri: Ilustrasi Brand (disembunyikan di layar kecil). Gambar
+          ditampilkan UTUH (object-contain, tidak di-crop) supaya maskot & teks
+          "Hallo Star Friends" tidak ada yang kepotong sama sekali. Warna
+          gradient panel disamakan dengan warna asli sudut gambar (dicek
+          lewat sampling piksel) supaya area kosong di sekeliling gambar
+          menyatu, bukan kelihatan seperti kotak kosong terpisah. */}
+      <div className="hidden lg:flex lg:w-1/2 items-center justify-center bg-gradient-to-b from-[#f9f8fd] to-[#cee2fd]">
+        <img
+          src={loginDashboardBg}
+          alt="StarPhoto & Advertising"
+          className="w-full h-full object-contain"
+        />
+      </div>
 
       {/* Panel Kanan: Form Login */}
       <div className="flex-1 flex items-center justify-center p-6 sm:p-10 bg-white relative">
