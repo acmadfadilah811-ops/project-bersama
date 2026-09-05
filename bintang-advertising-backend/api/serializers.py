@@ -356,17 +356,40 @@ class OrderItemSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         insentif_val = 0
         biaya_desain_val = 0
+        addon_specs = None
         if request and request.data:
             try: insentif_val = int(request.data.get('insentif', 0) or 0)
             except (ValueError, TypeError): pass
             try: biaya_desain_val = int(request.data.get('biaya_desain', 0) or 0)
             except (ValueError, TypeError): pass
+            addon_specs = request.data.get('addons') or request.data.get('addon_ids')
 
         instance = OrderItem(**validated_data)
         if current_user:
             instance._current_user = current_user
         instance.save()
         _potong_stok_order_item(instance, current_user)
+
+        # Add-on per item — sebelumnya endpoint /order-items/ (dipakai form
+        # Antrean WA) tidak punya jalur addon sama sekali, beda dari
+        # checkout-pos() yang sudah punya lewat resolve_addons/apply_addons
+        # (M6: harga & qty addon SELALU dihitung ulang di server dari
+        # Addon.harga, payload klien cuma bawa id). Ditambahkan lewat audit
+        # produksi 2026-09-05.
+        if addon_specs and instance.product_id:
+            from . import pos_settings
+            from django.utils import timezone as _tz
+            from .services.addon_sales import resolve_addons, apply_addons
+            addons = resolve_addons(addon_specs, instance.product, default_qty=instance.qty)
+            if addons:
+                addon_total = apply_addons(
+                    addons=addons, user=current_user, tanggal=_tz.localdate(),
+                    order_item=instance, order=instance.order,
+                    deduct_stock=pos_settings.pos_mengurangi_stok(),
+                )
+                if addon_total:
+                    instance.harga_jual = (instance.harga_jual or 0) + int(addon_total)
+                    instance.save(update_fields=['harga_jual'])
 
         # Create default job if needed
         from api.models import TahapProses, JobBoard

@@ -15,7 +15,7 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from . import stock_fifo
-from .models import Divisi, Order, TahapProses
+from .models import Divisi, Order, OrderItem, TahapProses
 from .pos_models import POSSale
 from .product_models import Addon, Product, ProductStockMovement, SaleItemAddon
 
@@ -81,6 +81,30 @@ class AddonSalesTest(APITestCase):
         self.assertEqual(len(addon_rows), 1)
         self.assertEqual(addon_rows[0]['addon'], 'Mata Ayam')
         self.assertEqual(addon_rows[0]['total_penjualan'], 10000.0)
+
+    def test_report_addon_per_item_agregat_lintas_transaksi(self):
+        """Laporan Produk > 'Penjualan Add-On Per Item' sebelumnya ditandai
+        'unavailable' di frontend dengan alasan yang sudah tidak akurat -
+        SaleItemAddon sudah mencatat penjualan add-on sejak apply_addons().
+        Test ini membuktikan endpoint agregatnya (beda dari
+        addon-item-penjualan yang per-transaksi) menjumlahkan qty & total
+        dengan benar lintas 2 transaksi POS terpisah."""
+        for _ in range(2):
+            res = self.client.post('/api/pos/sales/', {
+                'items': [{'product_id': self.produk.id, 'qty': 2, 'harga': 50000, 'addon_ids': [self.addon.id]}],
+                'status': 'paid',
+                'dibayar': 110000,
+                'metode_bayar': 'CASH',
+            }, format='json')
+            self.assertEqual(res.status_code, 201, res.content)
+
+        report = self.client.get('/api/reports/addon-per-item/')
+        self.assertEqual(report.status_code, 200, report.content)
+        rows = [r for r in report.json()['rows'] if r['addon'] == 'Mata Ayam']
+        self.assertEqual(len(rows), 1)
+        # 2 transaksi x (qty 2, subtotal 10000) = qty 4, total 20000.
+        self.assertEqual(rows[0]['total_qty'], 4.0)
+        self.assertEqual(rows[0]['total_jual'], 20000.0)
 
     def test_addon_tidak_berlaku_untuk_produk_lain_ditolak(self):
         res = self.client.post('/api/pos/sales/', {
@@ -150,3 +174,36 @@ class AddonSalesTest(APITestCase):
         self.assertEqual(res2.status_code, 200, res2.content)
         self.bahan_mata_ayam.refresh_from_db()
         self.assertEqual(self.bahan_mata_ayam.qty_stok, Decimal('100'))
+
+    def test_order_item_endpoint_addon_menambah_harga_dan_stok(self):
+        """Form Antrean WA (CreateOrderModal) membuat order lewat POST /orders/
+        + POST /order-items/ per item - jalur BERBEDA dari checkout-pos() yang
+        sudah punya addon sejak awal. Sebelumnya /order-items/ tidak punya
+        jalur addon sama sekali (user melapor: 'di antrean wa ngga ada pilihan
+        untuk menambahkan addon'). Test ini membuktikan OrderItemSerializer
+        sekarang menghitung ulang harga addon di server & memotong stok bahan,
+        persis seperti checkout-pos."""
+        order = Order.objects.create(
+            nomor_wa='081234567893', nama='Pelanggan Antrean WA', sumber='wa',
+            dilayani_oleh=self.staff,
+        )
+        res = self.client.post('/api/order-items/', {
+            'order': order.pk,
+            'jenis_produk': self.produk.nama,
+            'product': self.produk.id,
+            'panjang': 0, 'lebar': 0,
+            'qty': 2,
+            'harga_jual': 100000,  # 2 x 50000 katalog, TANPA addon (klien tidak tahu harga addon)
+            'addon_ids': [self.addon.id],
+        }, format='json')
+        self.assertEqual(res.status_code, 201, res.content)
+        # Server menambahkan 2 x 5000 (addon, qty ikut qty item induk) ke harga_jual.
+        self.assertEqual(res.data['harga_jual'], 110000)
+
+        item = OrderItem.objects.get(pk=res.data['id'])
+        addon_link = SaleItemAddon.objects.get(order_item=item)
+        self.assertEqual(addon_link.nama_snapshot, 'Mata Ayam')
+        self.assertEqual(addon_link.subtotal, Decimal('10000'))
+
+        self.bahan_mata_ayam.refresh_from_db()
+        self.assertEqual(self.bahan_mata_ayam.qty_stok, Decimal('92'))  # 100 - (4*2)

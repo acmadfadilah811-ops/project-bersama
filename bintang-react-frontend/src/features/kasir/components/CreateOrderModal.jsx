@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Phone, Plus, Trash2, ShoppingCart, ShoppingBag, Send, FileText, X, AlertTriangle, Search } from 'lucide-react';
+import { User, Phone, Plus, Trash2, ShoppingCart, ShoppingBag, Send, FileText, X, AlertTriangle, Search, PackagePlus } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import { fetchAllPages } from '../../../utils/paginatedApi';
 import ProductMasterPicker from '../../orders/components/ProductMasterPicker';
@@ -17,6 +17,8 @@ const emptyItem = () => ({
   lebar: 1,
   qty: 1,
   harga_jual: 0,
+  addonIds: [],
+  addonQty: {},
 });
 
 const checkIsMeteran = (product) => {
@@ -154,6 +156,65 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
   const [searchTerm, setSearchTerm] = useState('');
   const [loadingProducts, setLoadingProducts] = useState(false);
 
+  // Add-on per item — sebelumnya form Antrean WA tidak punya pilihan addon
+  // sama sekali (beda dari POS Terminal), daftarnya diambil sekali saat modal
+  // dibuka lalu difilter per item berdasarkan produk yang dipilih (sama
+  // dengan pola PosItemDetailPanel: berlaku umum kalau applies_to/
+  // applies_to_categories kosong, kalau tidak harus cocok salah satunya).
+  const [addons, setAddons] = useState([]);
+  useEffect(() => {
+    if (!isOpen) return;
+    (async () => {
+      try {
+        const res = await apiClient.get('/addons/');
+        setAddons(Array.isArray(res.data) ? res.data : res.data?.results || []);
+      } catch (err) {
+        console.error('Error fetching addons:', err);
+      }
+    })();
+  }, [isOpen]);
+
+  const getApplicableAddons = (it) => {
+    if (!it.product) return [];
+    const prod = products.find((p) => p.id === it.product);
+    const kategoriId = prod?.kategori || null;
+    return addons.filter((a) => {
+      const scopedToProduct = Array.isArray(a.applies_to) && a.applies_to.length > 0;
+      const scopedToCategory = Array.isArray(a.applies_to_categories) && a.applies_to_categories.length > 0;
+      if (!scopedToProduct && !scopedToCategory) return true;
+      if (scopedToProduct && a.applies_to.includes(it.product)) return true;
+      if (scopedToCategory && kategoriId && a.applies_to_categories.includes(kategoriId)) return true;
+      return false;
+    });
+  };
+
+  const getAddonsTotal = (it) => {
+    const applicable = getApplicableAddons(it);
+    return (it.addonIds || []).reduce((sum, id) => {
+      const addon = applicable.find((a) => a.id === id);
+      if (!addon) return sum;
+      return sum + (Number(addon.harga) || 0) * (it.addonQty?.[id] || 1);
+    }, 0);
+  };
+
+  const toggleItemAddon = (idx, addonId) => {
+    setItems((prev) => prev.map((it, i) => {
+      if (i !== idx) return it;
+      const already = (it.addonIds || []).includes(addonId);
+      const addonIds = already ? it.addonIds.filter((id) => id !== addonId) : [...(it.addonIds || []), addonId];
+      const addonQty = { ...(it.addonQty || {}) };
+      if (!already && !addonQty[addonId]) addonQty[addonId] = 1;
+      return { ...it, addonIds, addonQty };
+    }));
+  };
+
+  const setItemAddonQty = (idx, addonId, val) => {
+    const n = Math.max(1, parseInt(val) || 1);
+    setItems((prev) => prev.map((it, i) => (
+      i === idx ? { ...it, addonQty: { ...(it.addonQty || {}), [addonId]: n } } : it
+    )));
+  };
+
   // Fetch Categories
   useEffect(() => {
     if (!isOpen) return;
@@ -210,6 +271,8 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
       is_meteran: isMeteran,
       qty: 1,
       harga_jual: detectedPrice,
+      addonIds: [],
+      addonQty: {},
     };
 
     setItems((prev) => {
@@ -240,7 +303,7 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
       const l = lRaw > 0 ? lRaw : 1;
       const qty = parseInt(it.qty) || 1;
       const harga = parseFloat(it.harga_jual) || 0;
-      return isMeteran ? p * l * harga * qty : harga * qty;
+      return (isMeteran ? p * l * harga * qty : harga * qty) + getAddonsTotal(it);
     };
     const subtotal = validItems.reduce((sum, it) => sum + hitungSubtotalItem(it), 0);
     let cancelled = false;
@@ -268,7 +331,11 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
   const formatCurrency = (v) =>
     new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(v || 0);
 
-  const getItemSubtotal = (it) => {
+  // Subtotal item TANPA addon — ini yang dikirim sebagai harga_jual ke server
+  // (lihat handleSubmit). Server menghitung ulang & menambahkan harga addon
+  // sendiri dari Addon.harga (M6) - kalau addon ikut dijumlahkan di sini,
+  // harganya kena hitung dobel (client + server).
+  const getItemPokokSubtotal = (it) => {
     const p_raw = parseFloat(it.panjang);
     const l_raw = parseFloat(it.lebar);
     const isMeteran =
@@ -280,6 +347,10 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
     const harga = parseFloat(it.harga_jual) || 0;
     return isMeteran ? p * l * harga * qty : harga * qty;
   };
+
+  // Subtotal item TERMASUK addon — dipakai untuk tampilan (kolom Subtotal,
+  // ringkasan Total) supaya kasir melihat angka akhir yang benar sebelum submit.
+  const getItemSubtotal = (it) => getItemPokokSubtotal(it) + getAddonsTotal(it);
 
   const changeItem = (idx, field, value) => {
     setItems((prev) =>
@@ -427,7 +498,7 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
       });
       const orderId = resOrder.data.id;
       for (const it of validItems) {
-        const itemSubtotal = getItemSubtotal(it);
+        const itemSubtotal = getItemPokokSubtotal(it);
         await apiClient.post('/order-items/', {
           order: orderId,
           jenis_produk: it.jenis_produk,
@@ -437,6 +508,9 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
           harga_per_m2: parseFloat(it.harga_jual || 0),
           qty: parseInt(it.qty || 1),
           harga_jual: Math.round(itemSubtotal),
+          // Harga & qty addon SELALU dihitung ulang di server dari Addon.harga
+          // (M6) - payload ini cuma bawa id + qty per addon yang dipilih kasir.
+          addons: (it.addonIds || []).map((id) => ({ id, qty: it.addonQty?.[id] || 1 })),
         });
       }
       setOrderBaru({ id: orderId, nama });
@@ -808,12 +882,55 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
                                     is_meteran: isMeteran,
                                     panjang: it.panjang || 1,
                                     lebar: it.lebar || 1,
+                                    // Addon lama belum tentu berlaku untuk produk baru
+                                    // (applies_to/applies_to_categories beda) — reset.
+                                    addonIds: [],
+                                    addonQty: {},
                                   });
                                 } else {
-                                  updateItem(idx, { product: null, product_nama: '', is_meteran: false });
+                                  updateItem(idx, { product: null, product_nama: '', is_meteran: false, addonIds: [], addonQty: {} });
                                 }
                               }}
                             />
+                            {getApplicableAddons(it).length > 0 && (
+                              <div className="mt-1.5 flex flex-wrap gap-1">
+                                {getApplicableAddons(it).map((addon) => {
+                                  const isSelected = (it.addonIds || []).includes(addon.id);
+                                  return (
+                                    <div
+                                      key={addon.id}
+                                      className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[10px] font-bold ${
+                                        isSelected ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-slate-50 border-slate-200 text-slate-500'
+                                      }`}
+                                    >
+                                      <label className="flex items-center gap-1 cursor-pointer">
+                                        <PackagePlus size={10} />
+                                        <input
+                                          type="checkbox"
+                                          checked={isSelected}
+                                          onChange={() => toggleItemAddon(idx, addon.id)}
+                                          className="accent-indigo-600 w-3 h-3"
+                                        />
+                                        <span>{addon.nama}</span>
+                                      </label>
+                                      {isSelected && (
+                                        <input
+                                          type="number"
+                                          min={1}
+                                          value={it.addonQty?.[addon.id] || 1}
+                                          onChange={(e) => setItemAddonQty(idx, addon.id, e.target.value)}
+                                          title="Qty addon"
+                                          className="w-8 bg-white border border-indigo-200 rounded px-0.5 text-center"
+                                        />
+                                      )}
+                                      <span className="text-slate-400">
+                                        +Rp{Number(addon.harga || 0).toLocaleString('id-ID')}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </td>
                           <td className="px-3 py-2">
                             <div className="flex items-center gap-1">
