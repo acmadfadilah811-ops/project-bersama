@@ -140,10 +140,14 @@ export default function Login() {
 
   return (
     <div className="min-h-screen w-full flex bg-white font-sans">
-      {/* Panel Kiri: Ilustrasi Brand penuh satu sisi (disembunyikan di layar kecil) */}
+      {/* Panel Kiri: Ilustrasi Brand penuh satu sisi (disembunyikan di layar kecil).
+          bg-position rapat ke kiri (bukan center) supaya maskot & logo yang
+          posisinya di tepi kiri gambar asli tidak ikut kepotong saat gambar
+          di-crop memenuhi panel — sisi kanan (area kosong pada gambar asli)
+          yang dikorbankan kepotong duluan. */}
       <div
-        className="hidden lg:block lg:w-1/2 bg-cover bg-center bg-no-repeat"
-        style={{ backgroundImage: `url(${loginDashboardBg})` }}
+        className="hidden lg:block lg:w-1/2 bg-cover bg-no-repeat"
+        style={{ backgroundImage: `url(${loginDashboardBg})`, backgroundPosition: 'left center' }}
       ></div>
 
       {/* Panel Kanan: Form Login */}
