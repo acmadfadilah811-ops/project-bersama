@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { X, UploadCloud, Trash2, CheckCircle2, ArrowLeft } from 'lucide-react';
+import { X, UploadCloud, Trash2, CheckCircle2, ArrowLeft, AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from '../components/PageShell';
 import apiClient from '../../../../api/apiClient';
 
@@ -13,6 +13,16 @@ export default function ImportProductModal({ open, onClose, onSuccess, title = '
   const [preview, setPreview] = useState(null);
   const fileInputRef = useRef(null);
 
+  // Langkah wajib setelah import sukses: produk baru belum punya lapisan
+  // biaya FIFO sampai di-sync (ditemukan lewat audit produksi 2026-09-05 -
+  // 1578 produk hasil import sebelumnya kelewat sync, HPP-nya jadi tidak
+  // akurat). Modal ini SENGAJA tidak bisa ditutup lewat X/backdrop sampai
+  // sync dijalankan, supaya langkah ini tidak lagi kelewat.
+  const [needsSync, setNeedsSync] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
+  const [syncError, setSyncError] = useState(null);
+
   if (!open) return null;
 
   const resetAll = () => {
@@ -21,6 +31,28 @@ export default function ImportProductModal({ open, onClose, onSuccess, title = '
     setError(null);
     setSuccessMsg(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncError(null);
+    try {
+      const res = await apiClient.post('/stock-fifo/sync/');
+      setSyncResult(res.data);
+    } catch (err) {
+      console.error('[ImportProductModal] Error sync stok:', err);
+      setSyncError(err.response?.data?.error || 'Gagal menyinkronkan stok. Coba lagi.');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleFinish = () => {
+    setNeedsSync(false);
+    setSyncResult(null);
+    setSyncError(null);
+    setSuccessMsg(null);
+    onClose();
   };
 
   const acceptFile = (f) => {
@@ -89,7 +121,7 @@ export default function ImportProductModal({ open, onClose, onSuccess, title = '
       setPreview(null);
       setFile(null);
       if (onSuccess) onSuccess();
-      setTimeout(() => { onClose(); setSuccessMsg(null); }, 1800);
+      setNeedsSync(true);
     } catch (err) {
       console.error('[ImportProductModal] Error importing products:', err);
       setError(err.response?.data?.error || 'Gagal memproses file. Pastikan format CSV sesuai template.');
@@ -108,14 +140,54 @@ export default function ImportProductModal({ open, onClose, onSuccess, title = '
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #f1f5f9', flexShrink: 0 }}>
           <h3 style={{ fontSize: 16, fontWeight: 600, color: '#0f172a', margin: 0 }}>
-            {showPreview ? 'Pratinjau Data Import' : title}
+            {needsSync ? 'Sinkronkan Stok Produk' : showPreview ? 'Pratinjau Data Import' : title}
           </h3>
-          <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: 4, borderRadius: 6, display: 'flex' }}>
-            <X size={18} />
-          </button>
+          {/* Sengaja disembunyikan selama needsSync && belum ada syncResult -
+              lihat catatan di deklarasi needsSync di atas. */}
+          {!(needsSync && !syncResult) && (
+            <button onClick={needsSync ? handleFinish : onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: 4, borderRadius: 6, display: 'flex' }}>
+              <X size={18} />
+            </button>
+          )}
         </div>
 
-        {showPreview ? (
+        {needsSync ? (
+          /* ─────────── LANGKAH WAJIB: SYNC STOK PRODUK ─────────── */
+          <div style={{ padding: 20 }}>
+            <div style={{ padding: '10px 12px', backgroundColor: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, color: '#166534', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+              <CheckCircle2 size={16} /> {successMsg}
+            </div>
+
+            {!syncResult ? (
+              <div style={{ padding: '14px 16px', backgroundColor: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8 }}>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                  <AlertTriangle size={18} style={{ color: '#d97706', flexShrink: 0, marginTop: 1 }} />
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#92400e' }}>Langkah wajib berikutnya</div>
+                    <p style={{ fontSize: 12, color: '#92400e', margin: '4px 0 0 0', lineHeight: 1.5 }}>
+                      Produk yang baru diimpor belum punya lapisan biaya (dasar perhitungan modal).
+                      Tanpa sinkronisasi, harga pokok penjualan (HPP) produk ini bisa salah saat terjual.
+                      Klik tombol di bawah untuk menyinkronkan sekarang.
+                    </p>
+                  </div>
+                </div>
+                {syncError && (
+                  <div style={{ marginTop: 10, padding: '8px 10px', backgroundColor: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 6, color: '#991b1b', fontSize: 12 }}>{syncError}</div>
+                )}
+              </div>
+            ) : (
+              <div style={{ padding: '14px 16px', backgroundColor: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <CheckCircle2 size={18} style={{ color: '#16a34a', flexShrink: 0, marginTop: 1 }} />
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#166534' }}>Sinkronisasi selesai</div>
+                  <p style={{ fontSize: 12, color: '#166534', margin: '4px 0 0 0', lineHeight: 1.5 }}>
+                    {syncResult.lapisan_dibuat} lapisan saldo awal dibuat. Produk siap dipakai untuk transaksi.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : showPreview ? (
           /* ─────────── LANGKAH PRATINJAU ─────────── */
           <div style={{ padding: 20, overflowY: 'auto', flex: 1, minHeight: 0 }}>
             {/* Ringkasan */}
@@ -203,11 +275,6 @@ export default function ImportProductModal({ open, onClose, onSuccess, title = '
               {error && (
                 <div style={{ marginTop: 12, padding: '10px 12px', backgroundColor: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, color: '#991b1b', fontSize: 12.5 }}>{error}</div>
               )}
-              {successMsg && (
-                <div style={{ marginTop: 12, padding: '10px 12px', backgroundColor: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, color: '#166534', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <CheckCircle2 size={16} /> {successMsg}
-                </div>
-              )}
 
               {file && (
                 <div style={{ marginTop: 16, padding: '10px 14px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -226,7 +293,21 @@ export default function ImportProductModal({ open, onClose, onSuccess, title = '
 
         {/* Footer */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '16px 20px', borderTop: '1px solid #f1f5f9', backgroundColor: '#f8fafc', flexShrink: 0 }}>
-          {showPreview ? (
+          {needsSync ? (
+            <>
+              <div />
+              {!syncResult ? (
+                <Button variant="primary" onClick={handleSync} disabled={syncing}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
+                    {syncing ? 'Menyinkronkan...' : 'Sync Stok Produk Sekarang'}
+                  </span>
+                </Button>
+              ) : (
+                <Button variant="primary" onClick={handleFinish}>Selesai</Button>
+              )}
+            </>
+          ) : showPreview ? (
             <>
               <Button variant="secondary" onClick={resetAll} disabled={loading}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><ArrowLeft size={15} /> Ganti Berkas</span>
