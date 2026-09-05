@@ -319,7 +319,10 @@ def create_sale(*, user, data):
         # Baris keranjang & konteks promo dibangun SELALU (bukan hanya saat ada
         # kupon_kode) karena Diskon Penjualan harus dievaluasi meski kasir tidak
         # menerapkan kupon apa pun.
-        from .promo_engine import BarisKeranjang, KonteksPromo, evaluate_coupon_code, evaluate_sales_discount
+        from .promo_engine import (
+            BarisKeranjang, KonteksPromo, evaluate_coupon_code, evaluate_sales_discount,
+            evaluate_promotions,
+        )
         from .marketing_models import KANAL_POS
         baris_promo = [
             BarisKeranjang(product=p, variant=v, package=package, qty=qb, harga=pb, subtotal=lt)
@@ -362,6 +365,46 @@ def create_sale(*, user, data):
         # metode_diskon == 'tidak_ada' (atau nilai tak dikenal lain): tidak ada
         # kupon maupun diskon penjualan yang diterapkan sama sekali.
 
+        # ── Promosi POS (BX/DQ/DA/FI) — mekanisme marketing terpisah dari
+        # kupon/Diskon Penjualan di atas, jadi SELALU dievaluasi & boleh
+        # menumpuk dengan salah satu diskon order-level itu (desain Olsera).
+        # PENTING: sebelum perbaikan ini evaluate_promotions() tidak pernah
+        # dipanggil dari create_sale sama sekali — Promosi (POS) tersimpan &
+        # tampak aktif di menu Marketing tapi tidak pernah berdampak ke
+        # transaksi kasir manapun (bug ditemukan & diperbaiki 2026-09-05).
+        hasil_promo = evaluate_promotions(konteks)
+        promo_discount = hasil_promo.diskon
+        promo_gratis_items = hasil_promo.items_gratis
+
+        # Pre-check stok item gratis (BX/FI) sebelum menulis apa pun, digabung
+        # dengan qty yang sudah diminta di keranjang (requested) kalau
+        # kebetulan produk yang sama juga dibeli di baris lain — supaya tidak
+        # oversell. Produk dengan varian atau No. Seri wajib DILEWATI (bukan
+        # cuma di sini, juga saat pemotongan stok di bawah): produk_gratis
+        # cuma ManyToMany ke Product, tidak ada info varian/No. Seri mana yang
+        # digratiskan, jadi stoknya harus disesuaikan manual (Stok Opname).
+        gratis_locked_products = {}
+        if status_val == 'paid' and pos_settings.pos_mengurangi_stok():
+            gratis_qty_by_product = {}
+            for gratis in promo_gratis_items:
+                qty_g = Decimal(str(gratis.qty or 0)).quantize(QTY)
+                if qty_g <= 0:
+                    continue
+                gratis_qty_by_product[gratis.product.id] = gratis_qty_by_product.get(gratis.product.id, Decimal('0')) + qty_g
+            for product_id, qty_g in gratis_qty_by_product.items():
+                produk_gratis = Product.objects.select_for_update().filter(pk=product_id).first()
+                if not produk_gratis or produk_gratis.has_variant or produk_gratis.pesanan_no_seri:
+                    continue
+                gratis_locked_products[product_id] = produk_gratis
+                if not produk_gratis.lacak_inventori:
+                    continue
+                already_requested = sum(
+                    (qty for (pid, _vid), qty in requested.items() if pid == product_id),
+                    Decimal('0'),
+                )
+                if qty_g + already_requested > Decimal(str(produk_gratis.qty_stok or 0)):
+                    raise ValidationError({'error': f"Stok '{produk_gratis}' tidak mencukupi untuk item gratis promosi."})
+
         # ── Penebusan poin loyalty (hanya transaksi lunas & pelanggan tertaut member) ──
         loyalty_obj = None
         loyalty_customer = None
@@ -388,9 +431,9 @@ def create_sale(*, user, data):
             loyalty_discount = loyalty_svc.compute_redemption_discount(loyalty_obj, subtotal)
 
         discount = money(subtotal * discount_pct / Decimal('100'))
-        taxable = max(Decimal('0'), subtotal - discount - coupon_discount - sales_discount_amount - loyalty_discount)
+        taxable = max(Decimal('0'), subtotal - discount - coupon_discount - sales_discount_amount - loyalty_discount - promo_discount)
         tax = money(taxable * tax_pct / Decimal('100'))
-        total = money(max(Decimal('0'), subtotal - discount - coupon_discount - sales_discount_amount - loyalty_discount + tax))
+        total = money(max(Decimal('0'), subtotal - discount - coupon_discount - sales_discount_amount - loyalty_discount - promo_discount + tax))
         if status_val == 'paid' and paid < total:
             raise ValidationError({'error': 'Jumlah pembayaran belum mencukupi total server.'})
         client_total = data.get('total')
@@ -401,6 +444,7 @@ def create_sale(*, user, data):
             nomor=_nomor(), kasir=user, pelanggan=customer, shift=shift, dilayani_oleh=dilayani_oleh,
             subtotal=money(subtotal), diskon=discount, kupon=kupon_obj, diskon_kupon=coupon_discount,
             sales_discount=sales_discount_rule, diskon_penjualan=sales_discount_amount,
+            diskon_promo=promo_discount,
             loyalty_redemption=loyalty_obj, diskon_loyalti=loyalty_discount,
             pajak=tax, total=total,
             metode_bayar=str(data.get('metode_bayar') or 'Cash')[:50], dibayar=paid,
@@ -435,6 +479,21 @@ def create_sale(*, user, data):
                     deduct_stock=(status_val == 'paid' and pos_settings.pos_mengurangi_stok()),
                 )
 
+        # ── Baris item gratis dari Promosi POS (BX/FI) — harga 0, ditandai
+        # is_gratis supaya struk & laporan bisa membedakan dari baris beli.
+        for gratis in promo_gratis_items:
+            qty_g = Decimal(str(gratis.qty or 0)).quantize(QTY)
+            if qty_g <= 0:
+                continue
+            POSSaleItem.objects.create(
+                sale=sale, product=gratis.product, variant=None,
+                nama_snapshot=f"{gratis.product.nama} (Gratis)",
+                harga_snapshot=Decimal('0'), qty=qty_g, subtotal=Decimal('0'),
+                catatan=f"Gratis - Promosi {gratis.promo.judul}",
+                uom_kode='', uom_konverter=Decimal('1'), uom_qty=qty_g,
+                is_gratis=True, promo=gratis.promo,
+            )
+
         # Tandai No. Seri yang terjual di transaksi ini supaya tidak bisa
         # dipilih lagi di transaksi berikutnya (`entry['no_pesanan']` diisi
         # nomor nota) — dilepas lagi kalau transaksi ini di-void (void_sale).
@@ -468,6 +527,27 @@ def create_sale(*, user, data):
                 # Potong bahan baku (BoM) kalau produk ini punya resep —
                 # independen dari lacak_inventori (instruksi user 2026-08-15).
                 _potong_bahan_baku_bom(product, variant, qty_base, sale, user)
+
+            # Item gratis dari Promosi POS (BX/FI) — lihat batasan varian/No.
+            # Seri di blok pre-check di atas (gratis_locked_products).
+            for gratis in promo_gratis_items:
+                qty_g = Decimal(str(gratis.qty or 0)).quantize(QTY)
+                if qty_g <= 0:
+                    continue
+                produk_gratis = gratis_locked_products.get(gratis.product.id)
+                if produk_gratis is None:
+                    continue
+                if produk_gratis.lacak_inventori:
+                    start = produk_gratis.qty_stok
+                    produk_gratis.qty_stok = start - qty_g
+                    produk_gratis.save(update_fields=['qty_stok'])
+                    movement = ProductStockMovement.objects.create(
+                        product=produk_gratis, variant=None, user=user, tipe='penjualan', qty=qty_g,
+                        stok_awal=start, stok_akhir=produk_gratis.qty_stok, pos_sale=sale,
+                        catatan=f'Penjualan POS {sale.nomor} - Gratis Promosi {gratis.promo.judul}', tanggal=now,
+                    )
+                    stock_fifo.consume_layers(produk_gratis, None, qty_g, movement=movement)
+                _potong_bahan_baku_bom(produk_gratis, None, qty_g, sale, user)
 
         # SPK untuk transaksi lunas diterbitkan dalam transaksi database yang sama
         # dengan nota POS. Targetnya selalu antrean divisi bagi akun kasir; aturan
@@ -590,6 +670,14 @@ def void_sale(*, sale_id, user):
         if sale.status == 'paid' and pos_settings.pos_mengurangi_stok():
             for item in sale.items.select_related('product', 'variant'):
                 if not item.product or not item.product.lacak_inventori:
+                    continue
+                if item.is_gratis and (item.product.has_variant or item.product.pesanan_no_seri):
+                    # Simetris dengan create_sale: stok item gratis (BX/FI) dari
+                    # Promosi POS untuk produk bervarian/No. Seri sengaja TIDAK
+                    # dipotong saat transaksi dibuat (tidak ada info varian/No.
+                    # Seri mana yang digratiskan), jadi jangan dikembalikan juga
+                    # di sini — kalau tetap dijalankan, stok akan bertambah
+                    # padahal tidak pernah dikurangi (bug ganda).
                     continue
                 product = Product.objects.select_for_update().get(pk=item.product_id)
                 variant = (ProductVariant.objects.select_for_update().get(pk=item.variant_id)

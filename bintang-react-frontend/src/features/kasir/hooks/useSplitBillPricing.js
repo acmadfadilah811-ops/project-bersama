@@ -14,6 +14,12 @@ export default function useSplitBillPricing({
 }) {
   const [autoDiscount, setAutoDiscount] = useState(0);
   const [isCheckingAutoDiscount, setIsCheckingAutoDiscount] = useState(false);
+  // Promosi (POS) BX/DQ/DA/FI — server SELALU mengevaluasinya di create_sale
+  // terlepas dari metodeDiskon (lihat KasirContext.jsx untuk penjelasan
+  // lengkap kenapa preview ini wajib ada, bug ditemukan & diperbaiki
+  // 2026-09-05). Split Bill diketik ulang di sini karena hook ini menghitung
+  // sub-total billB sendiri, bukan lewat KasirContext.
+  const [posPromotionDiscount, setPosPromotionDiscount] = useState(0);
 
   const getUnitPrice = (item) => toNumber(item.splitUnitPrice ?? item.harga);
   const getSubtotal = (items) => Math.round(
@@ -50,6 +56,7 @@ export default function useSplitBillPricing({
     const taxable = getSubtotal(items)
       - getDiscountAmount(items)
       - getPromotionDiscount(items)
+      - posPromotionDiscount
       - getLoyaltyDiscount(items);
     return Math.round((Math.max(0, taxable) * toNumber(taxPercent)) / 100);
   };
@@ -57,6 +64,7 @@ export default function useSplitBillPricing({
     getSubtotal(items)
       - getDiscountAmount(items)
       - getPromotionDiscount(items)
+      - posPromotionDiscount
       - getLoyaltyDiscount(items)
       + getTaxAmount(items),
   ));
@@ -95,6 +103,30 @@ export default function useSplitBillPricing({
       clearTimeout(timer);
     };
   }, [billItems.length, metodeDiskon, previewItems, selectedContact?.nomor_wa, subtotal]);
+
+  useEffect(() => {
+    if (billItems.length === 0) {
+      setPosPromotionDiscount(0);
+      return undefined;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const response = await apiClient.post('/pos-promotions/preview/', {
+          subtotal,
+          pelanggan: selectedContact?.nomor_wa || null,
+          items: previewItems,
+        });
+        if (!cancelled) setPosPromotionDiscount(toNumber(response.data?.diskon));
+      } catch {
+        if (!cancelled) setPosPromotionDiscount(0);
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [billItems.length, previewItems, selectedContact?.nomor_wa, subtotal]);
 
   return {
     getUnitPrice,

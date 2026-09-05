@@ -179,8 +179,68 @@ class POSPromotionViewSet(viewsets.ModelViewSet):
     serializer_class = POSPromotionSerializer
     permission_classes = [IsOwnerManagerAdminOrReadOnly]
 
+    def get_permissions(self):
+        # 'preview' murni baca (hitung estimasi promosi aktif utk keranjang saat
+        # ini), dipakai kasir di POS Terminal supaya `total` yang dikirim saat
+        # checkout cocok dgn yang backend hitung ulang (lihat pos_services.create_sale)
+        # — sama seperti SalesDiscountViewSet.preview & DiscountCouponViewSet.evaluate.
+        if self.action == 'preview':
+            return [IsOwnerManagerAdminOrKasir()]
+        return super().get_permissions()
+
     def perform_create(self, serializer):
         serializer.save(dibuat_oleh=self.request.user)
+
+    @action(detail=False, methods=['post'], url_path='preview')
+    def preview(self, request):
+        """Estimasi Promosi (POS) aktif (BX/DQ/DA/FI) untuk keranjang saat ini.
+
+        Dipakai kasir POS Terminal & Split Bill untuk menampilkan potongan
+        sebelum transaksi disimpan, dan supaya `total` yang dikirim cocok
+        dengan hasil hitung ulang server saat checkout — nilai final tetap
+        dihitung ulang & mengikat di server (create_sale), bukan dipercaya
+        dari sini (M6)."""
+        from decimal import Decimal
+        from .models import Contact
+        from .product_models import Product, ProductPackage
+        from .promo_engine import BarisKeranjang, KonteksPromo, evaluate_promotions
+        from .marketing_models import KANAL_POS
+
+        subtotal = request.data.get('subtotal', 0)
+        pelanggan_id = request.data.get('pelanggan')
+        pelanggan = Contact.objects.filter(pk=pelanggan_id).first() if pelanggan_id else None
+
+        raw_items = request.data.get('items') or []
+        baris = []
+        for item in raw_items:
+            pid = item.get('product_id') or item.get('product')
+            prod = Product.objects.filter(pk=pid).first() if pid else None
+            package_id = item.get('package_id') or item.get('paket_id')
+            package = ProductPackage.objects.filter(pk=package_id).first() if package_id else None
+            qty = Decimal(str(item.get('qty', 1) or 1))
+            harga = Decimal(str(item.get('harga', 0) or 0))
+            if package:
+                harga = Decimal(str(package.harga_jual_offline or 0))
+            baris.append(BarisKeranjang(product=prod, package=package, qty=qty, harga=harga, subtotal=harga * qty))
+
+        ctx_subtotal = Decimal(str(subtotal or 0))
+        if not ctx_subtotal:
+            ctx_subtotal = sum((b.subtotal for b in baris), Decimal('0'))
+        konteks = KonteksPromo(baris=baris, subtotal=ctx_subtotal, pelanggan=pelanggan, kanal=KANAL_POS)
+        hasil = evaluate_promotions(konteks)
+        return Response({
+            # Nilai uang dikirim sebagai string agar Decimal tidak berubah
+            # menjadi float biner saat melewati JSON.
+            'diskon': str(hasil.diskon),
+            'items_gratis': [
+                {'product_id': g.product.id, 'nama': g.product.nama, 'qty': str(g.qty), 'promo': g.promo.judul}
+                for g in hasil.items_gratis
+            ],
+            'diterapkan': [
+                {'promo_id': d['promo'].id, 'judul': d['judul'], 'tipe': d['tipe'], 'diskon': str(d['diskon'])}
+                for d in hasil.diterapkan
+            ],
+        })
 
     @action(detail=True, methods=['post'], url_path='toggle-status')
     def toggle_status(self, request, pk=None):

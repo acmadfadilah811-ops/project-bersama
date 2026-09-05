@@ -311,6 +311,46 @@ export function KasirProvider({ children }) {
 
   const getSalesDiscountAmount = () => Number(salesDiscountPreview?.diskon || 0);
 
+  // ── Promosi (POS) — BX/DQ/DA/FI (Marketing > Voucher & Diskon > Promosi POS) ──
+  // Mekanisme TERPISAH dari Kupon/Diskon Penjualan di atas: server SELALU
+  // mengevaluasinya di create_sale, terlepas dari `metodeDiskon`, dan boleh
+  // menumpuk dengan kupon/diskon otomatis (lihat pos_services.create_sale).
+  // Preview di sini WAJIB ada supaya `total` yang dikirim saat checkout cocok
+  // dengan hasil hitung ulang server — kalau tidak, transaksi yang kena promo
+  // akan ditolak server dengan "Total transaksi berubah" (bug ditemukan &
+  // diperbaiki 2026-09-05, audit modul Marketing).
+  const [posPromotionPreview, setPosPromotionPreview] = useState(null);
+
+  useEffect(() => {
+    if (cart.length === 0) {
+      setPosPromotionPreview(null);
+      return undefined;
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const res = await apiClient.post('/pos-promotions/preview/', {
+          subtotal: getSubtotal(),
+          pelanggan: selectedContact ? selectedContact.nomor_wa : null,
+          items: cart.map((it) => ({
+            product_id: it.product ? it.product.id : null,
+            package_id: it.paket ? it.paket.id : null,
+            harga: it.harga,
+            qty: it.qty,
+          })),
+        });
+        if (!cancelled) setPosPromotionPreview(res.data);
+      } catch {
+        if (!cancelled) setPosPromotionPreview(null);
+      }
+    }, 400);
+    return () => { cancelled = true; clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cart, selectedContact]);
+
+  const getPosPromotionDiscountAmount = () => Number(posPromotionPreview?.diskon || 0);
+  const getPosPromotionGratisItems = () => posPromotionPreview?.items_gratis || [];
+
   // Nilai diskon Kupon/Diskon Penjualan yang BENAR-BENAR berlaku — ditentukan
   // oleh pilihan eksplisit kasir (`metodeDiskon`), bukan lagi dibandingkan
   // otomatis. Harus konsisten dengan `metode_diskon` yang dikirim ke server.
@@ -339,7 +379,7 @@ export function KasirProvider({ children }) {
   const getTaxAmount = () => {
     const afterDiscount = Math.max(
       0,
-      getSubtotal() - getDiscountAmount() - getPromoDiscountAmount() - getLoyaltyDiscountAmount(),
+      getSubtotal() - getDiscountAmount() - getPromoDiscountAmount() - getPosPromotionDiscountAmount() - getLoyaltyDiscountAmount(),
     );
     return Math.round((afterDiscount * Number(taxPercent || 0)) / 100);
   };
@@ -348,7 +388,7 @@ export function KasirProvider({ children }) {
     return Math.max(
       0,
       Math.round(
-        getSubtotal() - getDiscountAmount() - getPromoDiscountAmount() - getLoyaltyDiscountAmount() + getTaxAmount(),
+        getSubtotal() - getDiscountAmount() - getPromoDiscountAmount() - getPosPromotionDiscountAmount() - getLoyaltyDiscountAmount() + getTaxAmount(),
       ),
     );
   };
@@ -392,6 +432,9 @@ export function KasirProvider({ children }) {
         salesDiscountPreview,
         getSalesDiscountAmount,
         getPromoDiscountAmount,
+        posPromotionPreview,
+        getPosPromotionDiscountAmount,
+        getPosPromotionGratisItems,
         getLoyaltyDiscountAmount,
         getTaxAmount,
         getTotal,
