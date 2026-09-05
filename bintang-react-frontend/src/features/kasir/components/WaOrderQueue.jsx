@@ -142,8 +142,13 @@ export default function WaOrderQueue({ onToggleSidebar }) {
 
   const fetchProducts = async () => {
     try {
-      const list = await fetchAllPages('/products/');
-      setProducts(list.filter((item) => item.is_active !== false));
+      // is_active=true -> backend juga menyaring tidak_tersedia_offline_pos
+      // ("Sembunyikan dari POS"), diselaraskan dengan PosTerminal.jsx &
+      // ProductListPage.jsx. Sebelumnya cuma filter is_active di frontend,
+      // jadi produk yang sengaja disembunyikan dari POS tetap bisa dipakai
+      // saat staf membuat pesanan dari Antrean WA (temuan user 2026-09-06).
+      const list = await fetchAllPages('/products/', { params: { is_active: true } });
+      setProducts(list);
     } catch {
       setProducts([]);
     }

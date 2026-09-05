@@ -498,7 +498,8 @@ export function CategoriesPage() {
             {/* Tidak muncul di Point Of Sale */}
             <div className="pi-create-row" style={{ paddingBottom: '12px' }}>
               <div className="pi-row-label-desc">
-                <span className="pi-row-label">Tidak muncul di Point Of Sale</span>
+                <span className="pi-row-label">Tidak muncul di Point Of Sale (Kasir)</span>
+                <span className="pi-row-desc">Kategori & produk di dalamnya akan disembunyikan dari Terminal Kasir dan Antrean WA</span>
               </div>
               <div className="pi-row-input">
                 <div className="pi-switch-container">
@@ -664,20 +665,23 @@ export function CategoriesPage() {
                 </div>
 
                 {/* Tidak muncul di Point Of Sale */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 13, color: '#475569' }}>Tidak muncul di Point Of Sale</span>
-                  <div className="pi-switch-container">
-                    <span className={`pi-switch-label ${!editTidakPos ? 'active' : ''}`}>no</span>
-                    <label className="pi-simple-switch">
-                      <input 
-                        type="checkbox" 
-                        checked={editTidakPos} 
-                        onChange={(e) => setEditTidakPos(e.target.checked)} 
-                      />
-                      <span className="pi-simple-slider"></span>
-                    </label>
-                    <span className={`pi-switch-label ${editTidakPos ? 'active' : ''}`}>yes</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 13, color: '#475569' }}>Tidak muncul di Point Of Sale (Kasir)</span>
+                    <div className="pi-switch-container">
+                      <span className={`pi-switch-label ${!editTidakPos ? 'active' : ''}`}>no</span>
+                      <label className="pi-simple-switch">
+                        <input
+                          type="checkbox"
+                          checked={editTidakPos}
+                          onChange={(e) => setEditTidakPos(e.target.checked)}
+                        />
+                        <span className="pi-simple-slider"></span>
+                      </label>
+                      <span className={`pi-switch-label ${editTidakPos ? 'active' : ''}`}>yes</span>
+                    </div>
                   </div>
+                  <span style={{ fontSize: 11, color: '#94a3b8' }}>Kategori & produk di dalamnya akan disembunyikan dari Terminal Kasir dan Antrean WA</span>
                 </div>
 
                 {/* Submenu tidak muncul di Menu/Navigasi Website */}
