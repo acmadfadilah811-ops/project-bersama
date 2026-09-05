@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Calendar, Download, ChevronsUpDown, ChevronDown } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
+import { Select } from '../components/PageShell';
 
 export function StockMovementPage() {
   const [startDate, setStartDate] = useState('2026-06-25');
@@ -10,9 +11,15 @@ export function StockMovementPage() {
   const [searchVal, setSearchVal] = useState('');
   const [isAutocomplete, setIsAutocomplete] = useState(true);
 
-  // Pagination & Sorting States
+  // Pagination server sungguhan (sama pola Halaman Produk, instruksi user
+  // 2026-09-05) - sebelumnya /product-stock-movements/summary/ SELALU
+  // menghitung ringkasan utk SEMUA produk (1500+) lalu dipotong halaman di
+  // browser. Backend sekarang memaginasi & memfilter search produk DULU
+  // (lihat ProductStockMovementViewSet.summary di product_views.py).
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [sortKey, setSortKey] = useState(null);
   const [sortDirection, setSortDirection] = useState('asc');
 
@@ -21,42 +28,45 @@ export function StockMovementPage() {
   const [listLoading, setListLoading] = useState(false);
   const [fetchError, setFetchError] = useState('');
 
+  // Debounce ketikan pencarian (350ms), sama pola Halaman Produk.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchVal), 350);
+    return () => clearTimeout(t);
+  }, [searchVal]);
+
+  const fetchIdRef = useRef(0);
   useEffect(() => {
     let isMounted = true;
+    const fetchId = ++fetchIdRef.current;
     const fetchData = async () => {
       setListLoading(true);
       setFetchError('');
       try {
-        const res = await apiClient.get('/product-stock-movements/summary/', {
-          params: {
-            start_date: startDate,
-            end_date: endDate
-          }
-        });
-        if (isMounted) {
-          setMovementList(res.data);
-        }
+        const params = { start_date: startDate, end_date: endDate, page: currentPage, page_size: pageSize };
+        if (debouncedSearch) params.search = debouncedSearch;
+        const res = await apiClient.get('/product-stock-movements/summary/', { params });
+        if (!isMounted || fetchId !== fetchIdRef.current) return; // respons basi, abaikan
+        const data = res.data;
+        setMovementList(Array.isArray(data) ? data : data.results || []);
+        setTotalCount(Array.isArray(data) ? data.length : data.count || 0);
       } catch (err) {
+        if (!isMounted || fetchId !== fetchIdRef.current) return;
         console.error('Error fetching stock movements:', err);
-        if (isMounted) {
-          setFetchError('Gagal memuat data pergerakan stok');
-        }
+        setFetchError('Gagal memuat data pergerakan stok');
       } finally {
-        if (isMounted) {
-          setListLoading(false);
-        }
+        if (isMounted && fetchId === fetchIdRef.current) setListLoading(false);
       }
     };
     fetchData();
     return () => {
       isMounted = false;
     };
-  }, [startDate, endDate]);
+  }, [startDate, endDate, currentPage, pageSize, debouncedSearch]);
 
   // Reset page number on filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchVal, pageSize]);
+  }, [debouncedSearch, startDate, endDate]);
 
   const handleDownloadExcel = async () => {
     try {
@@ -179,15 +189,9 @@ export function StockMovementPage() {
     }
   };
 
-  // Filter list
-  const filteredList = sortedList.filter(row => {
-    const q = searchVal.toLowerCase();
-    return row.product.toLowerCase().includes(q) || row.group.toLowerCase().includes(q);
-  });
-
-  // Pagination calculation
-  const totalPages = Math.ceil(filteredList.length / pageSize) || 1;
-  const paginatedList = filteredList.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  // Search & pagination sekarang dilakukan server - movementList (via
+  // sortedList) sudah berisi persis satu halaman hasil.
+  const paginatedList = sortedList;
 
   return (
     <>
@@ -195,7 +199,7 @@ export function StockMovementPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
         <div>
           <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#1e293b', margin: 0 }}>Pergerakan Stok</h2>
-          <span style={{ fontSize: '12px', color: '#64748b', marginTop: '2px', display: 'block' }}>{filteredList.length} Item</span>
+          <span style={{ fontSize: '12px', color: '#64748b', marginTop: '2px', display: 'block' }}>{totalCount} Item</span>
         </div>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -359,20 +363,8 @@ export function StockMovementPage() {
         </div>
       </div>
 
-      {/* Row 2: Rows select and Autocomplete Filter matching Olsera screenshot */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-        <div>
-          <select 
-            value={pageSize}
-            onChange={(e) => setPageSize(Number(e.target.value))}
-            style={{ border: '1px solid #cbd5e1', borderRadius: '6px', padding: '6px 12px', fontSize: '13px', outline: 'none', background: '#ffffff', height: '34px', minWidth: '110px' }}
-          >
-            <option value={10}>10 Baris</option>
-            <option value={25}>25 Baris</option>
-            <option value={50}>50 Baris</option>
-          </select>
-        </div>
-
+      {/* Row 2: Autocomplete Filter matching Olsera screenshot (page-size dipindah ke footer, format sama Halaman Produk) */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <input 
             type="text"
@@ -515,94 +507,53 @@ export function StockMovementPage() {
         </table>
       </div>
 
-      {/* Pagination Footer matching bottom left of Olsera screenshot */}
-      {filteredList.length > 0 && (
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'flex-start', 
-          alignItems: 'center', 
-          gap: '16px', 
-          marginTop: '16px', 
-          fontSize: '13px', 
-          color: '#64748b',
-          padding: '8px 4px'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <button 
-              type="button"
-              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-              disabled={currentPage === 1} 
-              style={{ 
-                border: 0, 
-                background: 'none', 
-                color: currentPage === 1 ? '#cbd5e1' : '#64748b', 
-                cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
-                padding: '4px 8px',
-                fontWeight: 'bold',
-                fontSize: '14px'
-              }}
+      {/* Pagination Footer — format sama seperti Halaman Produk (instruksi user 2026-09-05) */}
+      {totalCount > 0 && (
+        <div className="pi-pagination-container">
+          <div className="pi-pagination-left" />
+          <div className="pi-pagination-right">
+            <Select
+              value={String(pageSize)}
+              onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
             >
-              &lt;
-            </button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+              <option value="10">10/page</option>
+              <option value="20">20/page</option>
+              <option value="50">50/page</option>
+            </Select>
+            <span>Total {totalCount}</span>
+            <div className="pi-pagination-pages">
               <button
-                key={page}
-                type="button"
-                onClick={() => setCurrentPage(page)}
-                style={{
-                  border: 0,
-                  background: 'none',
-                  color: currentPage === page ? '#0085ca' : '#64748b',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  padding: '4px 8px',
-                  borderRadius: '4px',
-                  backgroundColor: currentPage === page ? '#e4f8ff' : 'transparent'
-                }}
+                className="pi-pagination-btn"
+                disabled={currentPage <= 1}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               >
-                {page}
+                &lt;
               </button>
-            ))}
-            <button 
-              type="button"
-              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-              disabled={currentPage === totalPages} 
-              style={{ 
-                border: 0, 
-                background: 'none', 
-                color: currentPage === totalPages ? '#cbd5e1' : '#64748b', 
-                cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
-                padding: '4px 8px',
-                fontWeight: 'bold',
-                fontSize: '14px'
-              }}
-            >
-              &gt;
-            </button>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span>Go to</span>
-            <input 
-              type="number" 
-              min={1}
-              max={totalPages}
-              value={currentPage} 
-              onChange={(e) => {
-                const val = parseInt(e.target.value, 10);
-                if (val >= 1 && val <= totalPages) {
-                  setCurrentPage(val);
-                }
-              }}
-              style={{ 
-                width: '45px', 
-                height: '28px', 
-                border: '1px solid #cbd5e1', 
-                borderRadius: '6px', 
-                textAlign: 'center', 
-                outline: 'none',
-                fontSize: '13px'
-              }} 
-            />
+              <span className="pi-pagination-active-page">
+                {currentPage} / {Math.max(1, Math.ceil(totalCount / pageSize))}
+              </span>
+              <button
+                className="pi-pagination-btn"
+                disabled={currentPage >= Math.ceil(totalCount / pageSize)}
+                onClick={() => setCurrentPage((p) => Math.min(Math.ceil(totalCount / pageSize) || 1, p + 1))}
+              >
+                &gt;
+              </button>
+            </div>
+            <div className="pi-pagination-goto">
+              <span>Go to</span>
+              <input
+                type="text"
+                value={currentPage}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/[^0-9]/g, '');
+                  if (!raw) return;
+                  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+                  setCurrentPage(Math.min(totalPages, Math.max(1, Number(raw))));
+                }}
+                style={{ width: '40px', textAlign: 'center', height: '28px', border: '1px solid #e2e8f0', borderRadius: '6px' }}
+              />
+            </div>
           </div>
         </div>
       )}

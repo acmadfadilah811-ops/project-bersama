@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
-import { Search, X, Plus, ArrowLeft, ArrowRight, ChevronsUpDown, Trash2, CloudUpload, Printer, ChevronDown } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Search, X, Plus, ArrowLeft, ChevronsUpDown, Trash2, CloudUpload, Printer, ChevronDown } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
 import { useAuth } from '../../../../context/AuthContext';
 import { todayISO } from '../../../../utils/date';
 import { getLogoUrl } from '../../../../utils/logo';
 import { receivedByDisplay } from '../../../../utils/stockDocument';
 import { ProductionCostSection } from './ProductionCostSection';
+import { Select } from '../components/PageShell';
 
 const STATUS_LABEL = { draft: 'Draft', selesai: 'Selesai', batal: 'Batal' };
 const MONTHS_ID = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
@@ -61,9 +62,13 @@ export function StockProductionPage({ onToggleCreate, viewState: propViewState }
   const [qtyValue, setQtyValue] = useState(1);
   const [itemSaving, setItemSaving] = useState(false);
 
-  // Pagination & Sorting States
-  const [pageSize, setPageSize] = useState(15);
+  // Pagination server sungguhan (sama pola Halaman Produk, instruksi user
+  // 2026-09-05) - sebelumnya fetchDocuments() menarik SEMUA dokumen sekaligus
+  // lalu difilter+dipotong halaman di browser.
+  const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [sortKey, setSortKey] = useState(null);
   const [sortDirection, setSortDirection] = useState('asc');
 
@@ -163,22 +168,40 @@ export function StockProductionPage({ onToggleCreate, viewState: propViewState }
     win.document.close();
   };
 
-  const fetchDocuments = async () => {
+  const fetchIdRef = useRef(0);
+  const fetchDocuments = useCallback(async () => {
+    const fetchId = ++fetchIdRef.current;
     setListLoading(true);
     try {
-      const res = await apiClient.get('/stock-production-documents/');
-      const data = Array.isArray(res.data) ? res.data : res.data?.results || [];
-      setProductionList(data.map(mapDocToRow));
+      const params = { page: currentPage, page_size: pageSize };
+      if (debouncedSearch) params.search = debouncedSearch;
+      const res = await apiClient.get('/stock-production-documents/', { params });
+      if (fetchId !== fetchIdRef.current) return; // respons basi, abaikan
+      const data = res.data;
+      const rows = Array.isArray(data) ? data : data.results || [];
+      setProductionList(rows.map(mapDocToRow));
+      setTotalCount(Array.isArray(data) ? data.length : data.count || 0);
     } catch (err) {
+      if (fetchId !== fetchIdRef.current) return;
       console.error('[StockProductionPage] fetch documents error:', err);
     } finally {
-      setListLoading(false);
+      if (fetchId === fetchIdRef.current) setListLoading(false);
     }
-  };
+  }, [currentPage, pageSize, debouncedSearch]);
+
+  // Debounce ketikan pencarian (350ms), sama pola Halaman Produk.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery), 350);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch]);
 
   useEffect(() => {
     fetchDocuments();
-  }, []);
+  }, [fetchDocuments]);
 
   useEffect(() => {
     if (!searchProduct.trim()) {
@@ -196,11 +219,6 @@ export function StockProductionPage({ onToggleCreate, viewState: propViewState }
     }, 300);
     return () => clearTimeout(handle);
   }, [searchProduct]);
-
-  // Reset page when search or active items change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, pageSize]);
 
   const handleStateChange = (state) => {
     setViewState(state);
@@ -333,7 +351,9 @@ export function StockProductionPage({ onToggleCreate, viewState: propViewState }
     }
   };
 
-  // Sort list
+  // Search & pagination sekarang dilakukan server (lihat fetchDocuments) -
+  // productionList sudah berisi persis satu halaman hasil. Sort tetap
+  // client-side, tapi cuma menata halaman yang sedang tampil.
   let sortedList = [...productionList];
   if (sortKey) {
     sortedList.sort((a, b) => {
@@ -348,17 +368,7 @@ export function StockProductionPage({ onToggleCreate, viewState: propViewState }
       return 0;
     });
   }
-
-  // Filter list
-  const filteredList = sortedList.filter(row =>
-    row.no.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    row.note.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    row.receivedBy.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  // Pagination calculations
-  const totalPages = Math.ceil(filteredList.length / pageSize) || 1;
-  const paginatedList = filteredList.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const paginatedList = sortedList;
 
   return (
     <>
@@ -495,7 +505,13 @@ export function StockProductionPage({ onToggleCreate, viewState: propViewState }
                       key={index}
                       onClick={async () => {
                         await fetchDocDetail(row.id);
-                        handleStateChange('detail');
+                        // handleStateChange('detail') tidak dipakai di sini
+                        // (bukan setelah await) karena react-hooks/refs
+                        // menandai fungsi itu berpotensi menyentuh ref
+                        // (fetchDocuments/fetchIdRef) lewat cabang 'list'-nya
+                        // - state 'detail' sendiri tidak pernah menyentuhnya.
+                        setViewState('detail');
+                        if (onToggleCreate) onToggleCreate('detail');
                       }}
                       style={{ borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}
                       className="pi-table-row-hover"
@@ -518,72 +534,50 @@ export function StockProductionPage({ onToggleCreate, viewState: propViewState }
             </table>
           </div>
 
-          {/* Pagination Footer */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', padding: '0 4px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <select
-                value={pageSize}
-                onChange={(e) => setPageSize(Number(e.target.value))}
-                style={{ border: '1px solid #cbd5e1', borderRadius: '6px', padding: '6px 10px', fontSize: '12px', outline: 'none', background: '#ffffff' }}
+          {/* Pagination Footer — format sama seperti Halaman Produk (instruksi user 2026-09-05) */}
+          <div className="pi-pagination-container">
+            <div className="pi-pagination-left" />
+            <div className="pi-pagination-right">
+              <Select
+                value={String(pageSize)}
+                onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
               >
-                <option value={5}>5 Baris</option>
-                <option value={10}>10 Baris</option>
-                <option value={15}>15 Baris</option>
-                <option value={30}>30 Baris</option>
-                <option value={50}>50 Baris</option>
-              </select>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '13px', color: '#64748b' }}>
-              <span>Total {filteredList.length}</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <option value="10">10/page</option>
+                <option value="20">20/page</option>
+                <option value="50">50/page</option>
+              </Select>
+              <span>Total {totalCount}</span>
+              <div className="pi-pagination-pages">
                 <button
-                  type="button"
-                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                  disabled={currentPage === 1}
-                  style={{ background: 'transparent', border: 0, padding: '4px', color: currentPage === 1 ? '#cbd5e1' : '#64748b', cursor: currentPage === 1 ? 'not-allowed' : 'pointer' }}
+                  className="pi-pagination-btn"
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 >
-                  <ArrowLeft size={16} />
+                  &lt;
                 </button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-                  <span
-                    key={page}
-                    onClick={() => setCurrentPage(page)}
-                    style={{
-                      background: currentPage === page ? '#3b82f6' : 'transparent',
-                      color: currentPage === page ? '#ffffff' : '#64748b',
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      fontWeight: 'bold',
-                      fontSize: '12px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {page}
-                  </span>
-                ))}
+                <span className="pi-pagination-active-page">
+                  {currentPage} / {Math.max(1, Math.ceil(totalCount / pageSize))}
+                </span>
                 <button
-                  type="button"
-                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                  disabled={currentPage === totalPages}
-                  style={{ background: 'transparent', border: 0, padding: '4px', color: currentPage === totalPages ? '#cbd5e1' : '#64748b', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer' }}
+                  className="pi-pagination-btn"
+                  disabled={currentPage >= Math.ceil(totalCount / pageSize)}
+                  onClick={() => setCurrentPage((p) => Math.min(Math.ceil(totalCount / pageSize) || 1, p + 1))}
                 >
-                  <ArrowRight size={16} />
+                  &gt;
                 </button>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div className="pi-pagination-goto">
                 <span>Go to</span>
                 <input
-                  type="number"
-                  min={1}
-                  max={totalPages}
+                  type="text"
                   value={currentPage}
                   onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    if (val >= 1 && val <= totalPages) {
-                      setCurrentPage(val);
-                    }
+                    const raw = e.target.value.replace(/[^0-9]/g, '');
+                    if (!raw) return;
+                    const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+                    setCurrentPage(Math.min(totalPages, Math.max(1, Number(raw))));
                   }}
-                  style={{ width: '40px', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '4px', fontSize: '12px', textAlign: 'center', outline: 'none' }}
+                  style={{ width: '40px', textAlign: 'center', height: '28px', border: '1px solid #e2e8f0', borderRadius: '6px' }}
                 />
               </div>
             </div>

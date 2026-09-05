@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, ChevronDown, ChevronUp, MoreHorizontal, Printer, X, Plus, Trash2, ArrowLeft, CloudUpload, Download, Check, FileText, Edit, Settings, ChevronsUpDown } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useAuth } from '../../../../context/AuthContext';
@@ -7,6 +7,7 @@ import { fetchAllPages } from '../../../../utils/paginatedApi';
 import { getLogoUrl } from '../../../../utils/logo';
 import { nowTimeLocal, todayISO } from '../../../../utils/date';
 import { receivedByDisplay } from '../../../../utils/stockDocument';
+import { Select } from '../components/PageShell';
 
 
 const MONTHS_ID = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
@@ -135,24 +136,43 @@ export function StockOpnamePage({ onToggleCreate, viewState: propViewState }) {
   // Daftar dokumen (dari API)
   const [opnameList, setOpnameList] = useState([]);
   const [listLoading, setListLoading] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
 
-  const fetchDocuments = async () => {
+  const fetchIdRef = useRef(0);
+  const fetchDocuments = useCallback(async () => {
+    const fetchId = ++fetchIdRef.current;
     setListLoading(true);
     try {
-      const res = await apiClient.get('/stock-opname-documents/');
-      const data = Array.isArray(res.data) ? res.data : res.data?.results || [];
-      setOpnameList(data.map(mapDocToRow));
+      const params = { page: currentPage, page_size: pageSize };
+      if (debouncedSearch) params.search = debouncedSearch;
+      const res = await apiClient.get('/stock-opname-documents/', { params });
+      if (fetchId !== fetchIdRef.current) return; // respons basi, abaikan
+      const data = res.data;
+      const rows = Array.isArray(data) ? data : data.results || [];
+      setOpnameList(rows.map(mapDocToRow));
+      setTotalCount(Array.isArray(data) ? data.length : data.count || 0);
     } catch (err) {
+      if (fetchId !== fetchIdRef.current) return;
       console.error('[StockOpnamePage] fetch documents error:', err);
     } finally {
-      setListLoading(false);
+      if (fetchId === fetchIdRef.current) setListLoading(false);
     }
-  };
+  }, [currentPage, pageSize, debouncedSearch]);
+
+  // Debounce ketikan pencarian (350ms), sama pola Halaman Produk.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery), 350);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
 
   useEffect(() => {
     fetchDocuments();
-    loadSettings();
-  }, []);
+  }, [fetchDocuments]);
 
   const fetchDocumentDetail = async (id) => {
     const res = await apiClient.get(`/stock-opname-documents/${id}/`);
@@ -338,7 +358,7 @@ export function StockOpnamePage({ onToggleCreate, viewState: propViewState }) {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, pageSize]);
+  }, [debouncedSearch]);
 
   const handleCreateNew = async () => {
     try {
@@ -596,25 +616,17 @@ export function StockOpnamePage({ onToggleCreate, viewState: propViewState }) {
     }
   };
 
-  const filteredList = opnameList.filter((row) => {
-    const q = searchQuery.toLowerCase();
-    return (
-      row.no.toLowerCase().includes(q) ||
-      row.note.toLowerCase().includes(q) ||
-      row.receivedBy.toLowerCase().includes(q)
-    );
-  });
-
-  const sortedList = [...filteredList].sort((a, b) => {
+  // Search & pagination sekarang dilakukan server (lihat fetchDocuments) -
+  // opnameList sudah berisi persis satu halaman hasil. Sort tetap
+  // client-side, tapi cuma menata halaman yang sedang tampil.
+  const sortedList = [...opnameList].sort((a, b) => {
     let valA = String(a[sortKey] || '').toLowerCase();
     let valB = String(b[sortKey] || '').toLowerCase();
     if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
     if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
     return 0;
   });
-
-  const totalPages = Math.ceil(sortedList.length / pageSize) || 1;
-  const paginatedList = sortedList.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const paginatedList = sortedList;
 
   return (
     <>
@@ -623,7 +635,7 @@ export function StockOpnamePage({ onToggleCreate, viewState: propViewState }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <div>
               <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#1e293b', margin: 0 }}>Opname Stok</h2>
-              <span style={{ fontSize: '12px', color: '#64748b', marginTop: '2px', display: 'block' }}>{filteredList.length} Opname Stok</span>
+              <span style={{ fontSize: '12px', color: '#64748b', marginTop: '2px', display: 'block' }}>{totalCount} Opname Stok</span>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -660,17 +672,7 @@ export function StockOpnamePage({ onToggleCreate, viewState: propViewState }) {
             </div>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <select
-              value={pageSize}
-              onChange={(e) => setPageSize(Number(e.target.value))}
-              style={{ border: '1px solid #cbd5e1', borderRadius: '6px', padding: '6px 12px', fontSize: '13px', color: '#334155', outline: 'none', background: '#ffffff', height: '34px', minWidth: '100px' }}
-            >
-              <option value={10}>10 Baris</option>
-              <option value={25}>25 Baris</option>
-              <option value={50}>50 Baris</option>
-            </select>
-
+          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '16px' }}>
             <div style={{ position: 'relative', width: '240px' }}>
               <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
               <input
@@ -738,17 +740,52 @@ export function StockOpnamePage({ onToggleCreate, viewState: propViewState }) {
             </table>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: '16px', marginTop: '16px', fontSize: '13px', color: '#64748b', padding: '8px 4px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <button type="button" onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))} disabled={currentPage === 1} style={{ border: 0, background: 'none', color: currentPage === 1 ? '#cbd5e1' : '#64748b', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', padding: '4px 8px', fontWeight: 'bold', fontSize: '14px' }}>&lt;</button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                <button key={page} type="button" onClick={() => setCurrentPage(page)} style={{ border: 0, background: 'none', color: currentPage === page ? '#0085ca' : '#64748b', fontWeight: 'bold', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px', backgroundColor: currentPage === page ? '#e4f8ff' : 'transparent' }}>{page}</button>
-              ))}
-              <button type="button" onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))} disabled={currentPage === totalPages} style={{ border: 0, background: 'none', color: currentPage === totalPages ? '#cbd5e1' : '#64748b', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', padding: '4px 8px', fontWeight: 'bold', fontSize: '14px' }}>&gt;</button>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span>Go to</span>
-              <input type="number" min={1} max={totalPages} value={currentPage} onChange={(e) => { const val = parseInt(e.target.value, 10); if (val >= 1 && val <= totalPages) setCurrentPage(val); }} style={{ width: '45px', height: '28px', border: '1px solid #cbd5e1', borderRadius: '6px', textAlign: 'center', outline: 'none', fontSize: '13px' }} />
+          {/* Pagination Footer — format sama seperti Halaman Produk (instruksi user 2026-09-05) */}
+          <div className="pi-pagination-container">
+            <div className="pi-pagination-left" />
+            <div className="pi-pagination-right">
+              <Select
+                value={String(pageSize)}
+                onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+              >
+                <option value="10">10/page</option>
+                <option value="20">20/page</option>
+                <option value="50">50/page</option>
+              </Select>
+              <span>Total {totalCount}</span>
+              <div className="pi-pagination-pages">
+                <button
+                  className="pi-pagination-btn"
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                >
+                  &lt;
+                </button>
+                <span className="pi-pagination-active-page">
+                  {currentPage} / {Math.max(1, Math.ceil(totalCount / pageSize))}
+                </span>
+                <button
+                  className="pi-pagination-btn"
+                  disabled={currentPage >= Math.ceil(totalCount / pageSize)}
+                  onClick={() => setCurrentPage((p) => Math.min(Math.ceil(totalCount / pageSize) || 1, p + 1))}
+                >
+                  &gt;
+                </button>
+              </div>
+              <div className="pi-pagination-goto">
+                <span>Go to</span>
+                <input
+                  type="text"
+                  value={currentPage}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^0-9]/g, '');
+                    if (!raw) return;
+                    const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+                    setCurrentPage(Math.min(totalPages, Math.max(1, Number(raw))));
+                  }}
+                  style={{ width: '40px', textAlign: 'center', height: '28px', border: '1px solid #e2e8f0', borderRadius: '6px' }}
+                />
+              </div>
             </div>
           </div>
         </div>

@@ -1492,10 +1492,25 @@ class ProductStockMovementViewSet(viewsets.ReadOnlyModelViewSet):
             
         if not start_date or not end_date:
             return Response({'error': 'Format tanggal tidak valid'}, status=400)
-            
-        # Ambil semua produk dan varian
-        products = Product.objects.all().select_related('kategori').prefetch_related('variants')
-        
+
+        # Sebelumnya endpoint ini SELALU menghitung ringkasan utk SEMUA produk
+        # (1500+) lalu frontend yang memotong-motong jadi halaman - lambat dan
+        # boros query pergerakan stok yang tidak perlu. Sekarang produk
+        # dipaginasi & difilter search DULU, baru pergerakan stoknya dihitung
+        # cuma utk produk di halaman itu (instruksi user 2026-09-05, sama pola
+        # perbaikan Halaman Produk).
+        products_qs = Product.objects.all().select_related('kategori').prefetch_related('variants').order_by('id')
+        search = request.query_params.get('search', '').strip()
+        if search:
+            products_qs = products_qs.filter(
+                Q(nama__icontains=search) | Q(sku__icontains=search) |
+                Q(kategori__nama__icontains=search) |
+                Q(variants__nama_varian__icontains=search) | Q(variants__sku__icontains=search)
+            ).distinct()
+
+        page = self.paginate_queryset(products_qs)
+        products = page if page is not None else products_qs
+
         skus = {}
         for p in products:
             if p.has_variant and p.variants.exists():
@@ -1522,8 +1537,11 @@ class ProductStockMovementViewSet(viewsets.ReadOnlyModelViewSet):
                     'satuan': p.satuan,
                 }
                 
-        # Ambil semua pergerakan stok hingga end_date
-        movements = ProductStockMovement.objects.all().order_by('created_at')
+        # Pergerakan stok cuma utk produk di halaman ini (lihat catatan di atas).
+        product_ids_in_page = [p.id for p in products]
+        movements = ProductStockMovement.objects.filter(
+            product_id__in=product_ids_in_page,
+        ).order_by('created_at')
         
         summary_map = {}
         for key, info in skus.items():
@@ -1624,7 +1642,9 @@ class ProductStockMovementViewSet(viewsets.ReadOnlyModelViewSet):
             s['id'] = f"mv-{p_id}-{v_id}" if v_id else f"mv-{p_id}"
             
             result.append(s)
-            
+
+        if page is not None:
+            return self.get_paginated_response(result)
         return Response(result)
 
 class StockInDocumentViewSet(viewsets.ModelViewSet):
@@ -2524,6 +2544,20 @@ class StockProductionDocumentViewSet(viewsets.ModelViewSet):
     serializer_class = StockProductionDocumentSerializer
     permission_classes = [IsOwnerManagerAdminOrReadOnly]
 
+    def get_queryset(self):
+        # Frontend sebelumnya fetch semua dokumen lalu filter+paginasi di
+        # browser (sama seperti bug Halaman Produk yang sudah diperbaiki
+        # sebelumnya) - search di sini dipakai paginasi server sungguhan
+        # (instruksi user 2026-09-05).
+        queryset = super().get_queryset()
+        search = self.request.query_params.get('search', '').strip()
+        if search:
+            queryset = queryset.filter(
+                Q(nomor__icontains=search) | Q(catatan__icontains=search) |
+                Q(dibuat_oleh__username__icontains=search)
+            )
+        return queryset
+
     def perform_create(self, serializer):
         today = timezone.now().date()
         nomor = _next_document_number(StockProductionDocument, f"PR{today.strftime('%y%m%d')}")
@@ -2708,6 +2742,18 @@ class StockOpnameDocumentViewSet(viewsets.ModelViewSet):
     queryset = StockOpnameDocument.objects.all().prefetch_related('items__product').select_related('dibuat_oleh')
     serializer_class = StockOpnameDocumentSerializer
     permission_classes = [IsOwnerManagerAdminOrReadOnly]
+
+    def get_queryset(self):
+        # Sama seperti StockProductionDocumentViewSet - search server sungguhan
+        # utk paginasi (instruksi user 2026-09-05).
+        queryset = super().get_queryset()
+        search = self.request.query_params.get('search', '').strip()
+        if search:
+            queryset = queryset.filter(
+                Q(nomor__icontains=search) | Q(catatan__icontains=search) |
+                Q(dibuat_oleh__username__icontains=search)
+            )
+        return queryset
 
     def perform_create(self, serializer):
         today = timezone.now().date()
