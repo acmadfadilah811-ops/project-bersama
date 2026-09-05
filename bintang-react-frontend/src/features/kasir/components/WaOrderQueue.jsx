@@ -132,9 +132,14 @@ export default function WaOrderQueue({ onToggleSidebar }) {
 
   const fetchPackages = async () => {
     try {
-      const res = await apiClient.get('/product-packages/', { params: { page: 1, page_size: 1000 } });
+      // tampil_pos disaring di backend sekarang -- sebelumnya cuma publikasi
+      // & habis_stok, jadi paket yang disembunyikan dari POS tetap muncul di
+      // sini padahal PosTerminal.jsx sudah benar (temuan user 2026-09-06).
+      const res = await apiClient.get('/product-packages/', {
+        params: { page: 1, page_size: 1000, publikasi: true, tampil_pos: true, habis_stok: false },
+      });
       const list = res.data?.results || res.data || [];
-      setPackages(list.filter((item) => item.publikasi && !item.habis_stok));
+      setPackages(list);
     } catch {
       setPackages([]);
     }

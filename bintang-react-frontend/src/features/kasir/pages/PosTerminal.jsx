@@ -332,9 +332,11 @@ export default function PosTerminal({ onToggleSidebar }) {
   useEffect(() => {
     (async () => {
       try {
-        const res = await apiClient.get('/product-packages/', { params: { page: 1, page_size: 1000 } });
+        const res = await apiClient.get('/product-packages/', {
+          params: { page: 1, page_size: 1000, publikasi: true, tampil_pos: true, habis_stok: false },
+        });
         const list = res.data?.results || res.data || [];
-        setPackages(list.filter((item) => item.publikasi && item.tampil_pos && !item.habis_stok));
+        setPackages(list);
       } catch {
         setPackages([]);
       }

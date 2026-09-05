@@ -1394,6 +1394,25 @@ class ProductPackageViewSet(viewsets.ModelViewSet):
     serializer_class = ProductPackageSerializer
     permission_classes = [IsOwnerManagerAdminOrReadOnly]
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        # Sama seperti ProductViewSet & ProductCategoryViewSet: penyaringan
+        # opt-in lewat param eksplisit supaya halaman admin Paket Produk
+        # (tidak kirim param ini) tetap melihat & bisa kelola semua paket,
+        # sementara konsumen POS (PosTerminal, Antrean WA) menegakkannya di
+        # backend, bukan cuma di frontend masing-masing (temuan user
+        # 2026-09-06 — Antrean WA sempat lupa menyaring tampil_pos).
+        publikasi = self.request.query_params.get('publikasi')
+        if publikasi is not None:
+            queryset = queryset.filter(publikasi=_parse_bool_flag(publikasi))
+        tampil_pos = self.request.query_params.get('tampil_pos')
+        if tampil_pos is not None:
+            queryset = queryset.filter(tampil_pos=_parse_bool_flag(tampil_pos))
+        habis_stok = self.request.query_params.get('habis_stok')
+        if habis_stok is not None:
+            queryset = queryset.filter(habis_stok=_parse_bool_flag(habis_stok))
+        return queryset
+
     @action(detail=False, methods=['post'], url_path='import-csv')
     def import_csv(self, request):
         """Import massal Paket Produk dari CSV (format resmi template Olsera):

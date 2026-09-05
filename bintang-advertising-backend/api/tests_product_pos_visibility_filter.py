@@ -13,7 +13,7 @@ muncul di hasil ?is_active=true) sebelum diperbaiki. Ditemukan & diperbaiki
 from django.contrib.auth import get_user_model
 from rest_framework.test import APITestCase
 
-from api.product_models import Product, ProductCategory
+from api.product_models import Product, ProductCategory, ProductPackage
 
 User = get_user_model()
 
@@ -94,3 +94,50 @@ class ProductCategoryTampilPosFilterTests(APITestCase):
         ids = {row['id'] for row in res.data}
         self.assertIn(self.tampil.id, ids)
         self.assertIn(self.sembunyi.id, ids)
+
+
+class ProductPackagePosVisibilityFilterTests(APITestCase):
+    """Regresi: paket produk yang disembunyikan dari POS (tampil_pos=False),
+    belum dipublikasikan (publikasi=False), atau habis stok (habis_stok=True)
+    tetap muncul di Antrean WA (WaOrderQueue.jsx) karena hanya menyaring
+    publikasi & habis_stok di frontend, lupa tampil_pos — beda dengan
+    PosTerminal.jsx yang sudah benar. Ditemukan & diperbaiki 2026-09-06."""
+
+    def setUp(self):
+        self.owner = User.objects.create_user(username='owner_paket_pos', password='pw12345', role='owner')
+        self.client.force_authenticate(user=self.owner)
+        self.siap = ProductPackage.objects.create(
+            nama='Paket Wisuda Hemat', publikasi=True, tampil_pos=True, habis_stok=False,
+        )
+        self.sembunyi_pos = ProductPackage.objects.create(
+            nama='Paket Internal', publikasi=True, tampil_pos=False, habis_stok=False,
+        )
+        self.belum_publikasi = ProductPackage.objects.create(
+            nama='Paket Draft', publikasi=False, tampil_pos=True, habis_stok=False,
+        )
+        self.habis = ProductPackage.objects.create(
+            nama='Paket Habis', publikasi=True, tampil_pos=True, habis_stok=True,
+        )
+
+    def test_filter_pos_menyaring_tidak_siap_jual(self):
+        res = self.client.get('/api/product-packages/', {
+            'publikasi': 'true', 'tampil_pos': 'true', 'habis_stok': 'false', 'page_size': 100,
+        })
+        self.assertEqual(res.status_code, 200, res.content)
+        rows = res.data['results'] if isinstance(res.data, dict) else res.data
+        ids = {row['id'] for row in rows}
+        self.assertIn(self.siap.id, ids)
+        self.assertNotIn(self.sembunyi_pos.id, ids)
+        self.assertNotIn(self.belum_publikasi.id, ids)
+        self.assertNotIn(self.habis.id, ids)
+
+    def test_tanpa_param_semua_paket_tetap_tampil(self):
+        """Halaman admin Paket Produk sengaja tidak kirim param ini."""
+        res = self.client.get('/api/product-packages/', {'page_size': 100})
+        self.assertEqual(res.status_code, 200, res.content)
+        rows = res.data['results'] if isinstance(res.data, dict) else res.data
+        ids = {row['id'] for row in rows}
+        self.assertIn(self.siap.id, ids)
+        self.assertIn(self.sembunyi_pos.id, ids)
+        self.assertIn(self.belum_publikasi.id, ids)
+        self.assertIn(self.habis.id, ids)
