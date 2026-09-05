@@ -357,6 +357,25 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        # is_active=true/false SEBELUMNYA dikirim Kasir (PosTerminal.jsx,
+        # ProductListPage.jsx) tapi diam-diam diabaikan di sini — produk yang
+        # sudah dinonaktifkan tetap muncul & bisa dijual di POS (dibuktikan
+        # lewat query langsung ke server, bug ditemukan & diperbaiki
+        # 2026-09-06 atas pertanyaan user). Halaman Produk (admin) sengaja
+        # TIDAK mengirim param ini sama sekali supaya tetap melihat produk
+        # nonaktif untuk dikelola/diaktifkan lagi — filter ini hanya berlaku
+        # kalau param eksplisit diminta, bukan default queryset.
+        is_active = self.request.query_params.get('is_active')
+        if is_active is not None:
+            is_active_bool = str(is_active).strip().lower() in ('1', 'true', 'yes')
+            queryset = queryset.filter(is_active=is_active_bool)
+            # Toggle "Tidak Tersedia di POS Offline" (Product.tidak_tersedia_offline_pos,
+            # menu Produk > Ketersediaan) juga tidak pernah ditegakkan di sini —
+            # sama sekali tidak berpengaruh ke apa yang tampil di Kasir. Disatukan
+            # dengan gerbang is_active=true karena keduanya sama-sama menandakan
+            # "hanya produk yang boleh dijual", yang cuma dikirim oleh layar Kasir.
+            if is_active_bool:
+                queryset = queryset.filter(tidak_tersedia_offline_pos=False)
         category = self.request.query_params.get('kategori', None)
         if category is not None:
             queryset = queryset.filter(kategori__id=category)
