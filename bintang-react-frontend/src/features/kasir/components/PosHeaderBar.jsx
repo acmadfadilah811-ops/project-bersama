@@ -11,11 +11,15 @@ export default function PosHeaderBar({
   onDeleteCustomer,
   onToggleSidebar,
 }) {
-  const { user } = useAuth();
+  const { user, businessSettings } = useAuth();
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
 
-  const displayName = accountName || user?.nama_lengkap || user?.first_name || user?.username || storeName || '-';
+  // Label di atas layar Kasir sebelumnya menampilkan nama akun kasir yang
+  // login (accountName/user), bukan nama bisnis — sama di semua layar Kasir
+  // yang pakai komponen ini (instruksi user 2026-09-05: tampilkan nama
+  // bisnis "StarPhoto & Advertising", bukan nama akun).
+  const displayName = businessSettings?.nama_bisnis || storeName || accountName || user?.nama_lengkap || user?.first_name || user?.username || '-';
 
   useEffect(() => {
     const handleClickOutside = (e) => {
