@@ -20,7 +20,11 @@ export default function ProductListPage({ onToggleSidebar }) {
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const res = await apiClient.get('/product-categories/');
+        // tampil_pos=true -> kategori yang sengaja disembunyikan dari POS
+        // (menu Produk > Kategori) tidak ikut muncul di filter ini. Sebelumnya
+        // tidak disaring sama sekali, beda dengan PosTerminal.jsx yang sudah
+        // benar (temuan & perbaikan user 2026-09-06).
+        const res = await apiClient.get('/product-categories/', { params: { tampil_pos: true } });
         setCategories(res.data || []);
       } catch (err) {
         console.error('Gagal memuat kategori:', err);

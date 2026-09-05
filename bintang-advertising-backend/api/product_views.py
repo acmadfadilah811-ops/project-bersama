@@ -328,6 +328,23 @@ class ProductCategoryViewSet(viewsets.ModelViewSet):
     serializer_class = ProductCategorySerializer
     permission_classes = [IsOwnerManagerAdminOrReadOnly]
 
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        # ProductCategory.tampil_pos ("Tampilkan di POS", menu Produk > Kategori)
+        # sebelumnya tidak pernah ditegakkan di backend sama sekali — PosTerminal.jsx
+        # menyaringnya sendiri di frontend (aman), tapi ProductListPage.jsx (menu
+        # Kasir > Katalog Produk) lupa melakukan hal yang sama, jadi kategori yang
+        # sengaja disembunyikan dari POS tetap muncul di filter kategorinya (bug
+        # ditemukan & diperbaiki 2026-09-06). Dipindah ke backend (opt-in lewat
+        # param eksplisit) supaya SEMUA konsumen POS konsisten, bukan bergantung
+        # tiap halaman ingat menyaring sendiri. Halaman admin Kategori sengaja
+        # TIDAK mengirim param ini, jadi tetap melihat & bisa kelola semua kategori.
+        tampil_pos = self.request.query_params.get('tampil_pos')
+        if tampil_pos is not None:
+            tampil_pos_bool = str(tampil_pos).strip().lower() in ('1', 'true', 'yes')
+            queryset = queryset.filter(tampil_pos=tampil_pos_bool)
+        return queryset
+
 class BrandViewSet(viewsets.ModelViewSet):
     queryset = Brand.objects.all().order_by('nama')
     serializer_class = BrandSerializer
