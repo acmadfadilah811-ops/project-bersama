@@ -1467,6 +1467,25 @@ class OrderItemViewSet(viewsets.ModelViewSet):
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied('Anda tidak boleh mengubah item order.')
 
+    def _ensure_order_editable(self, order):
+        """Item pesanan yang statusnya sudah 'selesai'/'batal' terkunci —
+        sebelumnya endpoint ini tidak menjaga sama sekali, jadi harga/qty
+        item pada pesanan yang SUDAH LUNAS & DITUTUP tetap bisa diubah lewat
+        API langsung. total_harga/sisa_tagihan Order dihitung ulang otomatis
+        di OrderItem.save() TANPA mengecek status sama sekali — dibuktikan
+        pesanan 'selesai' dengan sisa_tagihan Rp0 bisa mendadak punya
+        "utang" lagi cuma dengan mengubah harga satu item (bug ditemukan &
+        diperbaiki 2026-09-05, audit Transaksi & Pembayaran). Pesanan
+        'selesai' yang perlu dikoreksi WAJIB lewat alur Retur, bukan edit
+        item langsung.
+        """
+        if order.status_global == 'selesai':
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({'error': "Pesanan sudah 'Selesai' — item tidak dapat diubah. Gunakan alur Retur untuk koreksi."})
+        if order.status_global == 'batal':
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({'error': "Pesanan sudah 'Batal' — item tidak dapat diubah."})
+
     def _terapkan_diskon_penjualan_otomatis(self, order):
         """Evaluasi ulang Diskon Penjualan otomatis untuk `order`, HANYA bila
         kasir eksplisit memilih metode 'otomatis' (lihat Order.metode_diskon).
@@ -1520,12 +1539,16 @@ class OrderItemViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def perform_create(self, serializer):
         self._ensure_write_role()
+        target_order = serializer.validated_data.get('order')
+        if target_order is not None:
+            self._ensure_order_editable(target_order)
         instance = serializer.save(_current_user=self.request.user)
         self._terapkan_diskon_penjualan_otomatis(instance.order)
 
     @transaction.atomic
     def perform_update(self, serializer):
         self._ensure_write_role()
+        self._ensure_order_editable(serializer.instance.order)
         serializer.instance._current_user = self.request.user
         instance = serializer.save()
         self._terapkan_diskon_penjualan_otomatis(instance.order)
@@ -1533,6 +1556,7 @@ class OrderItemViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def perform_destroy(self, instance):
         self._ensure_write_role()
+        self._ensure_order_editable(instance.order)
         instance._current_user = self.request.user
         order = instance.order
         instance.delete()
