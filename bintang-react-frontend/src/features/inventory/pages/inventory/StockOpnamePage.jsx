@@ -137,6 +137,28 @@ export function StockOpnamePage({ onToggleCreate, viewState: propViewState }) {
   const [opnameList, setOpnameList] = useState([]);
   const [listLoading, setListLoading] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
+
+  const fetchDocumentDetail = async (id) => {
+    const res = await apiClient.get(`/stock-opname-documents/${id}/`);
+    setActiveDetailDoc(res.data);
+    return res.data;
+  };
+
+  // Form pembuatan dokumen baru
+  const [tanggal, setTanggal] = useState(todayISO());
+  const [catatan, setCatatan] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Pagination & sorting
+  const [pageSize, setPageSize] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [sortKey, setSortKey] = useState('no');
+  const [sortDirection, setSortDirection] = useState('desc');
+  // searchQuery/pageSize/currentPage HARUS sudah dideklarasikan di atas
+  // sebelum blok ini - sempat tertukar urutannya (fetchDocuments dipakai
+  // sebelum state-nya ada), bikin ReferenceError "Cannot access before
+  // initialization" setiap kali halaman dirender (ditemukan lewat laporan
+  // user 2026-09-05: "stok opname terjadi kesalahan system").
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
   const fetchIdRef = useRef(0);
@@ -173,23 +195,6 @@ export function StockOpnamePage({ onToggleCreate, viewState: propViewState }) {
   useEffect(() => {
     fetchDocuments();
   }, [fetchDocuments]);
-
-  const fetchDocumentDetail = async (id) => {
-    const res = await apiClient.get(`/stock-opname-documents/${id}/`);
-    setActiveDetailDoc(res.data);
-    return res.data;
-  };
-
-  // Form pembuatan dokumen baru
-  const [tanggal, setTanggal] = useState(todayISO());
-  const [catatan, setCatatan] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-
-  // Pagination & sorting
-  const [pageSize, setPageSize] = useState(10);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [sortKey, setSortKey] = useState('no');
-  const [sortDirection, setSortDirection] = useState('desc');
 
   // Detail dokumen aktif (objek mentah dari API)
   const [activeDetailDoc, setActiveDetailDoc] = useState(null);
