@@ -1424,6 +1424,43 @@ def rpt_addon_item_penjualan(params):
     }
 
 
+@report('addon-per-item', 'Penjualan Add-On Per Item', [
+    ('addon', 'Add-Ons', 'text'), ('total_qty', 'Total Qty', 'qty'),
+    ('total_jual', 'Total Penjualan', 'money'),
+])
+def rpt_addon_per_item(params):
+    """Ringkasan penjualan add-on (Order + POS) diagregasi per add-on, dari
+    SaleItemAddon — beda dari 'addon-item-penjualan' yang satu baris per
+    transaksi; laporan ini menjumlahkan qty/total per nama add-on. Sebelumnya
+    tab Laporan Produk menandai laporan ini 'unavailable' dengan alasan yang
+    sudah tidak akurat (SaleItemAddon sudah mencatat penjualan add-on sejak
+    apply_addons() di services/addon_sales.py) — ditemukan lewat audit
+    produksi 2026-09-05."""
+    agg = {}
+    for o in _orders_in_range(params):
+        for it in o.items.all():
+            for link in it.addons.all():
+                key = link.addon_id or f"txt:{link.nama_snapshot}"
+                g = agg.setdefault(key, {'label': link.nama_snapshot, 'qty': 0.0, 'total': 0.0})
+                g['qty'] += _num(link.qty)
+                g['total'] += _num(link.subtotal)
+    for s in _pos_sales_in_range(params):
+        for it in s.items.all():
+            for link in it.addons.all():
+                key = link.addon_id or f"txt:{link.nama_snapshot}"
+                g = agg.setdefault(key, {'label': link.nama_snapshot, 'qty': 0.0, 'total': 0.0})
+                g['qty'] += _num(link.qty)
+                g['total'] += _num(link.subtotal)
+    rows = [{'addon': g['label'], 'total_qty': g['qty'], 'total_jual': g['total']} for g in agg.values()]
+    return {
+        'rows': rows,
+        'summary': {'rows': [{
+            'total_qty': sum(r['total_qty'] for r in rows),
+            'total_penjualan': sum(r['total_jual'] for r in rows),
+        }]},
+    }
+
+
 @report('item-brand', 'Item Penjualan Berdasarkan Brand', [
     ('no_pesanan', 'No. Pesanan', 'text'), ('waktu', 'Waktu Pesanan', 'text'),
     ('sumber', 'Sumber Pesanan', 'text'), ('sales_oleh', 'Penjualan Oleh', 'text'),

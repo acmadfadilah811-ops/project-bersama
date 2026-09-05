@@ -95,7 +95,7 @@ export const PRODUK_REPORTS = [
   },
   {
     id: 'addon',
-    unavailable: 'Penjualan add-on tidak pernah dicatat pada baris penjualan — yang ada hanya master Add-On.',
+    dataSource: 'addon-per-item',
     label: 'Penjualan Add-On Per Item',
     toolbar: {
       paket: 'select',
