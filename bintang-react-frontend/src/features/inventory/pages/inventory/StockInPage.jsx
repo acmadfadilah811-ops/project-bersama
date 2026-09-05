@@ -188,8 +188,7 @@ export function StockInPage({ onToggleCreate, viewState: propViewState }) {
     supplier: 180,
     date: 150,
     note: 180,
-    status: 120,
-    receivedBy: 180
+    status: 120
   });
 
   const handleResizeStart = (e, colKey) => {
@@ -338,8 +337,9 @@ export function StockInPage({ onToggleCreate, viewState: propViewState }) {
   };
 
   const handleExport = (rows) => {
-    // Kolom & urutan persis file export asli Olsera (stockincoming-*.xlsx):
-    // no, supplier, transfer from, date, notes, status, received by, receiver name
+    // Kolom mengikuti file export asli Olsera (stockincoming-*.xlsx), minus
+    // "received by" yang dihapus karena redundan dengan "receiver name"
+    // (Nama Penerima) dan tidak dipakai di Laporan — lihat audit 2026-09-05.
     const data = rows.map((row) => ({
       no: row.no,
       supplier: row.supplierRaw,
@@ -347,7 +347,6 @@ export function StockInPage({ onToggleCreate, viewState: propViewState }) {
       date: row.tanggalRaw,
       notes: row.noteRaw,
       status: row.status,
-      'received by': row.receivedByRaw,
       'receiver name': row.receiverNameRaw,
     }));
     const ws = XLSX.utils.json_to_sheet(data);
@@ -1134,43 +1133,12 @@ export function StockInPage({ onToggleCreate, viewState: propViewState }) {
                         />
                       </th>
 
-                      {/* RECEIVED BY HEADER */}
-                      <th 
-                        onClick={() => handleSort('receivedBy')} 
-                        style={{ 
-                          width: `${columnWidths.receivedBy}px`, 
-                          minWidth: `${columnWidths.receivedBy}px`,
-                          maxWidth: `${columnWidths.receivedBy}px`,
-                          padding: '14px 20px', 
-                          fontSize: '13px', 
-                          fontWeight: 'bold', 
-                          color: '#475569', 
-                          cursor: 'pointer', 
-                          userSelect: 'none', 
-                          borderBottom: '1px solid #e2e8f0', 
-                          borderTop: '1px solid #e2e8f0',
-                          borderRight: '1px solid #e2e8f0',
-                          position: 'relative',
-                          overflow: 'hidden'
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <span>Diterima Oleh</span>
-                          <ChevronsUpDown size={14} style={{ color: sortKey === 'receivedBy' ? '#0ea5e9' : '#94a3b8' }} />
-                        </div>
-                        <div 
-                          onMouseDown={(e) => handleResizeStart(e, 'receivedBy')}
-                          onClick={(e) => e.stopPropagation()}
-                          style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '6px', cursor: 'col-resize', zIndex: 20 }}
-                          className="pi-resize-handle"
-                        />
-                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {paginatedList.length === 0 ? (
                       <tr>
-                        <td colSpan={7} style={{ padding: '40px 20px', textAlign: 'center', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0' }}>
+                        <td colSpan={6} style={{ padding: '40px 20px', textAlign: 'center', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0' }}>
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                             <span style={{ fontSize: '14px', color: '#64748b', fontWeight: 'bold' }}>{listLoading ? 'Memuat...' : 'No Data'}</span>
                           </div>
@@ -1222,7 +1190,6 @@ export function StockInPage({ onToggleCreate, viewState: propViewState }) {
                               fontWeight: 'bold' 
                             }}>{row.status}</span>
                           </td>
-                          <td style={{ width: `${columnWidths.receivedBy}px`, minWidth: `${columnWidths.receivedBy}px`, maxWidth: `${columnWidths.receivedBy}px`, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '14px 20px', fontSize: '13px', color: '#475569', borderBottom: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0' }}>{row.receivedBy}</td>
                         </tr>
                       ))
                     )}

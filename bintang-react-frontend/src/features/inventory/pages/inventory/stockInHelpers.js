@@ -1,5 +1,3 @@
-import { receivedByDisplay, receivedByRaw } from '../../../../utils/stockDocument';
-
 // Nama bulan pendek dalam Bahasa Indonesia — salinan kelima di repo ini.
 // Jangan satukan ke src/utils/date.js sebelum semua pemakai diaudit tersendiri.
 export const MONTHS_ID = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
@@ -44,13 +42,11 @@ export const mapDocToRow = (doc) => ({
   date: formatDisplayDate(doc.tanggal),
   note: doc.catatan || '-',
   status: STATUS_LABEL[doc.status] || doc.status,
-  receivedBy: receivedByDisplay(doc),
   // Nilai mentah (bukan untuk tampilan) — dipakai saat export XLSX agar cocok kolom asli Olsera
   supplierRaw: doc.supplier || '',
   tanggalRaw: doc.tanggal || '',
   noteRaw: doc.catatan || '',
   receiverNameRaw: doc.nama_penerima || '',
-  receivedByRaw: receivedByRaw(doc),
 });
 
 export const formatCurrencyRp = (value) =>
