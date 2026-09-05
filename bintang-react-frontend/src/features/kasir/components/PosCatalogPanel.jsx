@@ -19,6 +19,11 @@ export default function PosCatalogPanel({
   setSelectedBrand,
   selectedCollection = '',
   setSelectedCollection,
+  page = 1,
+  pageSize = 30,
+  totalCount = 0,
+  onPageChange,
+  onPageSizeChange,
 }) {
   const [activeTab, setActiveTab] = useState('produk');
   const showingPackages = activeTab === 'paket';
@@ -208,6 +213,46 @@ export default function PosCatalogPanel({
             </div>
           )}
         </div>
+
+        {/* Paginasi katalog — hanya untuk tab Produk (Paket masih daftar
+            pendek, belum perlu). Server sungguhan per-halaman, sama seperti
+            halaman Produk di menu Produk & Inventori. */}
+        {!showingPackages && totalCount > 0 && (
+          <div className="flex items-center justify-between gap-3 shrink-0 text-white text-[11px] font-bold">
+            <div className="flex items-center gap-2">
+              <span className="text-blue-100">Total {totalCount} produk</span>
+              <select
+                value={pageSize}
+                onChange={(e) => onPageSizeChange?.(Number(e.target.value))}
+                className="bg-white/15 hover:bg-white/25 rounded-md px-2 py-1 outline-none cursor-pointer text-white [&>option]:text-slate-800"
+              >
+                <option value={20}>20/hal</option>
+                <option value={30}>30/hal</option>
+                <option value={60}>60/hal</option>
+                <option value={100}>100/hal</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={page <= 1}
+                onClick={() => onPageChange?.(Math.max(1, page - 1))}
+                className="bg-white/15 hover:bg-white/25 disabled:opacity-40 disabled:cursor-not-allowed rounded-md px-2.5 py-1 cursor-pointer"
+              >
+                &lt;
+              </button>
+              <span>{page} / {Math.max(1, Math.ceil(totalCount / pageSize))}</span>
+              <button
+                type="button"
+                disabled={page >= Math.ceil(totalCount / pageSize)}
+                onClick={() => onPageChange?.(Math.min(Math.ceil(totalCount / pageSize) || 1, page + 1))}
+                className="bg-white/15 hover:bg-white/25 disabled:opacity-40 disabled:cursor-not-allowed rounded-md px-2.5 py-1 cursor-pointer"
+              >
+                &gt;
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Bottom Category Chips SS 1 */}
         {!showingPackages && <div className="flex items-center gap-2 overflow-x-auto pb-1 shrink-0">

@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useKasir } from '../context/KasirContext';
 import apiClient from '../../../api/apiClient';
-import { fetchAllPages } from '../../../utils/paginatedApi';
 import { notifyApiError, notifyError, notifySuccess } from '../../../utils/notify';
 import { useAuth } from '../../../context/AuthContext';
 import { getPrintErrorMessage, printReceiptAfterRender } from '../../printing/services/printService';
@@ -120,6 +119,16 @@ export default function PosTerminal({ onToggleSidebar }) {
   const [products, setProducts] = useState([]);
   const [packages, setPackages] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  // Paginasi server sungguhan untuk katalog Kasir — sebelumnya fetchAllPages
+  // menarik SELURUH produk aktif (1500+) setiap kali pencarian/kategori/
+  // brand/koleksi berubah, lalu me-render semuanya sekaligus tanpa
+  // virtualisasi. Itu bikin render katalog lambat & berat tiap kali kasir
+  // mengetik pencarian atau ganti filter (keluhan user 2026-09-06). Sekarang
+  // ikut pola per-page yang sama dengan halaman Produk milik owner.
+  const [catalogPage, setCatalogPage] = useState(1);
+  const [catalogPageSize, setCatalogPageSize] = useState(30);
+  const [catalogTotalCount, setCatalogTotalCount] = useState(0);
+  const catalogFetchIdRef = useRef(0);
   const [staffList, setStaffList] = useState([]);
   const [loyaltyRedemptions, setLoyaltyRedemptions] = useState([]);
 
@@ -262,10 +271,12 @@ export default function PosTerminal({ onToggleSidebar }) {
     }
   };
 
-  // Fetch Products based on search and category
+  // Fetch Products based on search and category — paginasi server sungguhan
+  // (lihat catatan di deklarasi catalogPage di atas).
   const [syncingCatalog, setSyncingCatalog] = useState(false);
   const fetchProducts = async () => {
-    const params = { is_active: true };
+    const fetchId = ++catalogFetchIdRef.current;
+    const params = { is_active: true, page: catalogPage, page_size: catalogPageSize };
     if (selectedCategory && selectedCategory !== 'all') {
       params.kategori = selectedCategory;
     }
@@ -278,9 +289,18 @@ export default function PosTerminal({ onToggleSidebar }) {
     if (selectedCollection) {
       params.koleksi = selectedCollection;
     }
-    const data = await fetchAllPages('/products/', { params });
-    setProducts(data);
+    const res = await apiClient.get('/products/', { params });
+    if (fetchId !== catalogFetchIdRef.current) return; // respons basi, abaikan
+    const data = res.data;
+    setProducts(Array.isArray(data) ? data : data.results || []);
+    setCatalogTotalCount(Array.isArray(data) ? data.length : data.count || 0);
   };
+
+  // Filter berubah -> balik ke halaman 1 (hasil baru belum tentu punya
+  // sebanyak itu halaman).
+  useEffect(() => {
+    setCatalogPage(1);
+  }, [selectedCategory, searchTerm, selectedBrand, selectedCollection]);
 
   useEffect(() => {
     const delayDebounce = setTimeout(() => {
@@ -288,7 +308,7 @@ export default function PosTerminal({ onToggleSidebar }) {
     }, 300);
     return () => clearTimeout(delayDebounce);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCategory, searchTerm, selectedBrand, selectedCollection]);
+  }, [selectedCategory, searchTerm, selectedBrand, selectedCollection, catalogPage, catalogPageSize]);
 
   // Sync manual — kasir bisa tekan kapan saja selama layar Kasir terbuka
   // (harga/stok dari fetch pertama bisa jadi basi kalau layar dibiarkan
@@ -853,6 +873,11 @@ export default function PosTerminal({ onToggleSidebar }) {
             setSelectedBrand={setSelectedBrand}
             selectedCollection={selectedCollection}
             setSelectedCollection={setSelectedCollection}
+            page={catalogPage}
+            pageSize={catalogPageSize}
+            totalCount={catalogTotalCount}
+            onPageChange={setCatalogPage}
+            onPageSizeChange={(size) => { setCatalogPageSize(size); setCatalogPage(1); }}
           />
         )}
       </div>
