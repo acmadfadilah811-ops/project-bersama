@@ -19,7 +19,9 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.test import APITestCase
 
 from accounting.models import Account, AccountClassification, AccountingSettings
-from api.product_models import Product, ProductCategory, StockInDocument, StockInDocumentItem
+from api.product_models import (
+    Product, ProductCategory, ProductStockMovement, StockInDocument, StockInDocumentItem,
+)
 from api.services.purchase_accounting import post_stock_journal
 
 User = get_user_model()
@@ -81,3 +83,47 @@ class PostStockJournalAccountingInactiveTests(APITestCase):
         with self.assertRaises(ValidationError) as ctx:
             post_stock_journal(self.document, self.owner, direction='in')
         self.assertIn('mapping akun pembelian', str(ctx.exception).lower())
+
+
+class PostDocumentEndpointRollbackTests(APITestCase):
+    """Regresi bug KEDUA (lebih serius) yang ditemukan langsung dari data
+    produksi: StockInDocumentViewSet.post_document() dan
+    PurchaseWorkflowView.update_status() sama-sama @transaction.atomic, tapi
+    menangkap ValidationError dari post_stock_in_document() lalu return
+    Response biasa TANPA transaction.set_rollback(True) - melanggar M5
+    (Aturan Engineering: "jurnal gagal = seluruh transaksi rollback").
+    Akibatnya Django mengira transaksi sukses dan COMMIT status='selesai'
+    + stok yang sudah bertambah + ProductStockMovement, padahal API bilang
+    gagal (400) ke user. Dibuktikan langsung di VPS produksi 2026-09-05:
+    dokumen tetap 'selesai' walau endpoint balas 400."""
+
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            username='owner_rollback_test', password='password123', role='owner',
+        )
+        self.client.force_authenticate(user=self.owner)
+        self.kategori = ProductCategory.objects.create(nama='Test Kategori Rollback', key='test-kat-rb')
+        self.produk = Product.objects.create(
+            nama='Produk Uji Rollback', kategori=self.kategori,
+            sku='TEST-RB-1', qty_stok=0, lacak_inventori=True, harga_beli=0,
+        )
+        # AccountingSettings sengaja is_active=False (tanpa mapping akun sama
+        # sekali) - reproduksi persis kondisi VPS produksi saat bug ditemukan.
+        AccountingSettings.objects.create(accounting_start_date=date.today(), is_active=False)
+
+    def test_stock_in_post_document_rolls_back_on_journal_failure(self):
+        document = StockInDocument.objects.create(tanggal=date.today(), supplier='Supplier Uji Rollback')
+        StockInDocumentItem.objects.create(
+            document=document, product=self.produk, harga_beli=Decimal('10000'), qty=Decimal('5'),
+        )
+
+        resp = self.client.post(f'/api/stock-in-documents/{document.id}/post-document/')
+        self.assertEqual(resp.status_code, 400)
+
+        document.refresh_from_db()
+        self.produk.refresh_from_db()
+        # Sebelum fix: status jadi 'selesai' dan qty_stok bertambah walau
+        # response 400 - persis yang dibuktikan manual di VPS produksi.
+        self.assertEqual(document.status, 'draft')
+        self.assertEqual(self.produk.qty_stok, 0)
+        self.assertEqual(ProductStockMovement.objects.filter(product=self.produk).count(), 0)

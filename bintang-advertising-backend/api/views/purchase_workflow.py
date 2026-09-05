@@ -218,6 +218,16 @@ class PurchaseWorkflowView(APIView):
                     try:
                         post_stock_in_document(document, user)
                     except ValidationError as exc:
+                        # M5: update_status() ini @transaction.atomic - menangkap
+                        # exception di sini tanpa set_rollback() bikin Django kira
+                        # transaksi sukses dan commit stok/status dokumen stok masuk
+                        # yang sudah berubah, walau jurnal gagal diposting (ditemukan
+                        # lewat audit produksi 2026-09-05). Purchase.status sendiri
+                        # tidak sempat berubah (assignment ada di bawah), tapi
+                        # StockInDocument-nya bisa terlanjur 'selesai' tanpa jurnal -
+                        # retry berikutnya lolos diam-diam karena document.status
+                        # sudah bukan 'draft' lagi (lihat post_stock_in_document()).
+                        transaction.set_rollback(True)
                         return Response({'error': exc.detail[0] if isinstance(exc.detail, list) else str(exc.detail)}, status=status.HTTP_400_BAD_REQUEST)
 
         doc_status, rec_status, delivery_status = status_map[new_status]

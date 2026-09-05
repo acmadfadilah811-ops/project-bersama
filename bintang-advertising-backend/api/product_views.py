@@ -1811,6 +1811,11 @@ class StockInDocumentViewSet(viewsets.ModelViewSet):
         try:
             post_stock_in_document(document, request.user)
         except ValidationError as exc:
+            # M5: fungsi ini @transaction.atomic - menangkap exception di sini
+            # tanpa set_rollback() bikin Django kira transaksi sukses dan
+            # commit stok/status yang sudah berubah, walau jurnal gagal
+            # diposting (ditemukan lewat audit produksi 2026-09-05).
+            transaction.set_rollback(True)
             return Response({'error': exc.detail[0] if isinstance(exc.detail, list) else str(exc.detail)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(StockInDocumentSerializer(document).data)
 
