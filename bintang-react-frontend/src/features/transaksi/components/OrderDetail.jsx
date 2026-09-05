@@ -9,12 +9,25 @@ import ProdukPesananCard from './ProdukPesananCard';
 import { parseOrderMetadata, serializeOrderMetadata } from './metadataHelper';
 import CancelledOrderDetail from './CancelledOrderDetail';
 import { useTransaksiCrumb } from './TransaksiContext';
+import { useAuth } from '../../../context/AuthContext';
+import VoidOrderModal from '../../kasir/components/VoidOrderModal';
+import VoidOrderOtpModal from '../../kasir/components/VoidOrderOtpModal';
 
 export default function OrderDetail({ orderId, onBack, onSaved }) {
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [metadata, setMetadata] = useState({});
   const { setSubtitle } = useTransaksiCrumb();
+  const { user } = useAuth();
+  const isKasir = user?.role?.toLowerCase() === 'kasir';
+  // Pembatalan pesanan diselaraskan dengan Kasir (PosHistory.jsx): kasir wajib
+  // lewat persetujuan OTP owner (VoidOrderOtpModal), role lain langsung isi
+  // alasan (VoidOrderModal) — dua-duanya memanggil /orders/{id}/batalkan/ yang
+  // sama. Sebelumnya di sini cuma pakai window.prompt() polos tanpa OTP sama
+  // sekali untuk semua role, tidak selaras dengan alur Kasir yang sudah ada
+  // (diperbaiki 2026-09-05 atas permintaan user, audit Transaksi & Pembayaran).
+  const [showVoidModal, setShowVoidModal] = useState(false);
+  const [showVoidOtpModal, setShowVoidOtpModal] = useState(false);
 
   useEffect(() => {
     if (order?.status_global === 'batal') {
@@ -103,25 +116,23 @@ export default function OrderDetail({ orderId, onBack, onSaved }) {
         alert(err.response?.data?.error || 'Gagal menyelesaiakan pesanan.');
       }
     } else if (newStatus === 'batal') {
-      const alasan = window.prompt('Masukkan alasan pembatalan pesanan:');
-      if (alasan === null) return;
-      try {
-        const res = await apiClient.post(`/orders/${orderId}/batalkan/`, { alasan });
-        const data = res.data;
-        setOrder(data);
-        setMetadata(parseOrderMetadata(data));
-        onSaved?.();
-      } catch (err) {
-        alert(err.response?.data?.error || 'Gagal membatalkan pesanan.');
-      }
+      openCancelFlow();
     } else {
       await handleUpdate({ status_global: newStatus });
     }
   };
 
-  const handleCancelOrder = async () => {
-    const alasan = window.prompt('Apakah Anda yakin ingin membatalkan pesanan ini? Masukkan alasan pembatalan:');
-    if (alasan === null) return;
+  const openCancelFlow = () => {
+    if (isKasir) {
+      setShowVoidOtpModal(true);
+    } else {
+      setShowVoidModal(true);
+    }
+  };
+
+  const handleCancelOrder = () => openCancelFlow();
+
+  const handleConfirmVoidLangsung = async (alasan) => {
     try {
       const res = await apiClient.post(`/orders/${orderId}/batalkan/`, { alasan });
       const data = res.data;
@@ -168,6 +179,7 @@ export default function OrderDetail({ orderId, onBack, onSaved }) {
   const canEditItems = order.status_global !== 'selesai' && order.status_global !== 'batal';
 
   return (
+    <>
     <div className="p-6 max-w-6xl mx-auto space-y-5 animate-fade-in text-slate-700">
       {/* 1. Header Section */}
       <OrderHeader
@@ -219,5 +231,23 @@ export default function OrderDetail({ orderId, onBack, onSaved }) {
         readOnly={order.status_global === 'batal'}
       />
     </div>
+
+    <VoidOrderModal
+      isOpen={showVoidModal}
+      onClose={() => setShowVoidModal(false)}
+      onConfirmVoid={handleConfirmVoidLangsung}
+    />
+    <VoidOrderOtpModal
+      isOpen={showVoidOtpModal}
+      onClose={() => setShowVoidOtpModal(false)}
+      tipe="order"
+      target={order}
+      onVoided={() => {
+        setShowVoidOtpModal(false);
+        fetchOrderDetail();
+        onSaved?.();
+      }}
+    />
+    </>
   );
 }

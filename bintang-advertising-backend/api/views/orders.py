@@ -608,6 +608,23 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         self._ensure_write_role()
+        # 'batal'/'selesai' WAJIB lewat /batalkan/ atau /selesaikan/ (pemulihan
+        # stok FIFO + jurnal pembalik/HPP — lihat order_actions.py). PATCH
+        # langsung ke field ini akan menimpa status TANPA efek samping itu
+        # sama sekali. Sebelumnya endpoint generik ini tidak menjaga field ini
+        # sama sekali, sehingga beberapa layar (menu Pesanan, panel Produksi)
+        # memakainya sebagai jalan pintas dan diam-diam merusak stok/jurnal
+        # akuntansi tanpa error apa pun (bug ditemukan & diperbaiki 2026-09-05,
+        # audit modul Transaksi & Pembayaran — sama seperti bug import-status-csv
+        # yang lebih dulu ditemukan & diperbaiki via jalur yang berbeda).
+        new_status = serializer.validated_data.get('status_global')
+        if new_status in ('batal', 'selesai'):
+            raise ValidationError({
+                'status_global': (
+                    f"Ubah status ke '{new_status}' wajib lewat tombol Batalkan/Selesaikan resmi "
+                    "(memastikan stok & jurnal akuntansi ikut benar), bukan lewat edit langsung."
+                ),
+            })
         serializer.instance._current_user = self.request.user
         serializer.save()
 

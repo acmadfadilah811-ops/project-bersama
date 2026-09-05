@@ -15,6 +15,8 @@ import {
 import apiClient from '../../../../api/apiClient';
 import OrderInputForm from '../../../orders/components/OrderInputForm';
 import { useAuth } from '../../../../context/AuthContext';
+import VoidOrderModal from '../../../kasir/components/VoidOrderModal';
+import VoidOrderOtpModal from '../../../kasir/components/VoidOrderOtpModal';
 
 const STATUS_COLORS = {
   review: 'bg-yellow-100 text-yellow-800 border-yellow-200',
@@ -71,6 +73,31 @@ export default function GlobalListPanel() {
   const [filterStatus, setFilterStatus] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [expandedOrder, setExpandedOrder] = useState(null);
+  // Pembatalan pesanan diselaraskan dengan alur Kasir (PosHistory.jsx): kasir
+  // wajib lewat persetujuan OTP owner, role lain langsung isi alasan — bukan
+  // window.prompt() polos tanpa OTP untuk semua role (diperbaiki 2026-09-05
+  // atas permintaan user, audit Transaksi & Pembayaran).
+  const isKasir = user?.role?.toLowerCase() === 'kasir';
+  const [voidTarget, setVoidTarget] = useState(null);
+  const [showVoidModal, setShowVoidModal] = useState(false);
+  const [showVoidOtpModal, setShowVoidOtpModal] = useState(false);
+  const openCancelFlow = (order) => {
+    setVoidTarget(order);
+    if (isKasir) {
+      setShowVoidOtpModal(true);
+    } else {
+      setShowVoidModal(true);
+    }
+  };
+  const handleConfirmVoidLangsung = async (alasan) => {
+    if (!voidTarget) return;
+    try {
+      await apiClient.post(`/orders/${voidTarget.id}/batalkan/`, { alasan });
+      fetchOrders();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Gagal membatalkan pesanan.');
+    }
+  };
 
   // States for printing
   const [activeDropdownId, setActiveDropdownId] = useState(null);
@@ -589,13 +616,28 @@ export default function GlobalListPanel() {
                                 )
                               ) {
                                 try {
-                                  await apiClient.patch(`/orders/${order.id}/`, {
-                                    status_global: nextStatus,
-                                  });
-                                  alert('Status order berhasil diperbarui!');
-                                  fetchOrders();
-                                } catch {
-                                  alert('Gagal memperbarui status order.');
+                                  // 'selesai'/'batal' WAJIB lewat endpoint resmi (bukan
+                                  // PATCH status_global langsung) supaya jurnal HPP /
+                                  // pemulihan stok & jurnal pembalik ikut terposting
+                                  // (M5/M8) — bug ditemukan & diperbaiki 2026-09-05,
+                                  // audit Transaksi & Pembayaran.
+                                  if (nextStatus === 'selesai') {
+                                    await apiClient.post(`/orders/${order.id}/selesaikan/`);
+                                    alert('Status order berhasil diperbarui!');
+                                    fetchOrders();
+                                  } else if (nextStatus === 'batal') {
+                                    // Didelegasikan ke modal Batalkan (OTP utk kasir,
+                                    // meski panel ini hanya tampil utk owner/manager/admin).
+                                    openCancelFlow(order);
+                                  } else {
+                                    await apiClient.patch(`/orders/${order.id}/`, {
+                                      status_global: nextStatus,
+                                    });
+                                    alert('Status order berhasil diperbarui!');
+                                    fetchOrders();
+                                  }
+                                } catch (err) {
+                                  alert(err.response?.data?.error || 'Gagal memperbarui status order.');
                                 }
                               }
                             }}
@@ -618,13 +660,14 @@ export default function GlobalListPanel() {
                                 )
                               ) {
                                 try {
-                                  await apiClient.patch(`/orders/${order.id}/`, {
-                                    status_global: 'selesai',
-                                  });
+                                  // Wajib lewat /selesaikan/ (bukan PATCH status_global
+                                  // langsung) supaya jurnal HPP bahan baku ikut
+                                  // terposting — bug ditemukan & diperbaiki 2026-09-05.
+                                  await apiClient.post(`/orders/${order.id}/selesaikan/`);
                                   alert('Order berhasil diselesaikan!');
                                   fetchOrders();
-                                } catch {
-                                  alert('Gagal menyelesaikan order.');
+                                } catch (err) {
+                                  alert(err.response?.data?.error || 'Gagal menyelesaikan order.');
                                 }
                               }
                             }}
@@ -649,6 +692,22 @@ export default function GlobalListPanel() {
         onClose={() => setShowForm(false)}
         onSuccess={() => {
           setShowForm(false);
+          fetchOrders();
+        }}
+      />
+
+      <VoidOrderModal
+        isOpen={showVoidModal}
+        onClose={() => setShowVoidModal(false)}
+        onConfirmVoid={handleConfirmVoidLangsung}
+      />
+      <VoidOrderOtpModal
+        isOpen={showVoidOtpModal}
+        onClose={() => setShowVoidOtpModal(false)}
+        tipe="order"
+        target={voidTarget}
+        onVoided={() => {
+          setShowVoidOtpModal(false);
           fetchOrders();
         }}
       />

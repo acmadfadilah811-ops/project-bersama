@@ -28,9 +28,36 @@ import {
 } from 'lucide-react';
 import OrderInputForm from '../components/OrderInputForm';
 import KomplainModal from '../components/KomplainModal';
+import VoidOrderModal from '../../kasir/components/VoidOrderModal';
+import VoidOrderOtpModal from '../../kasir/components/VoidOrderOtpModal';
 
 export default function Orders() {
   const { user, businessSettings } = useAuth();
+  const isKasir = user?.role?.toLowerCase() === 'kasir';
+  // Pembatalan pesanan diselaraskan dengan alur Kasir (PosHistory.jsx): kasir
+  // wajib lewat persetujuan OTP owner, role lain langsung isi alasan — bukan
+  // window.prompt() polos tanpa OTP untuk semua role (diperbaiki 2026-09-05
+  // atas permintaan user, audit Transaksi & Pembayaran).
+  const [voidTarget, setVoidTarget] = useState(null);
+  const [showVoidModal, setShowVoidModal] = useState(false);
+  const [showVoidOtpModal, setShowVoidOtpModal] = useState(false);
+  const openCancelFlow = (order) => {
+    setVoidTarget(order);
+    if (isKasir) {
+      setShowVoidOtpModal(true);
+    } else {
+      setShowVoidModal(true);
+    }
+  };
+  const handleConfirmVoidLangsung = async (alasan) => {
+    if (!voidTarget) return;
+    try {
+      await apiClient.post(`/orders/${voidTarget.id}/batalkan/`, { alasan });
+      fetchOrders();
+    } catch (err) {
+      alert(err.response?.data?.error || 'Gagal membatalkan pesanan.');
+    }
+  };
   const location = useLocation();
   const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
@@ -434,10 +461,27 @@ export default function Orders() {
     const metodePembayaran = form.metode_pembayaran?.value || 'tunai';
 
     try {
-      // 1. Update status global
-      await apiClient.patch(`/orders/${editModalData.id}/`, {
-        status_global: newStatus,
-      });
+      // 1. Update status global — 'selesai'/'batal' WAJIB lewat endpoint resmi
+      // (bukan PATCH status_global langsung) supaya jurnal HPP / pemulihan
+      // stok & jurnal pembalik ikut terposting (M5/M8) — bug ditemukan &
+      // diperbaiki 2026-09-05, audit Transaksi & Pembayaran.
+      if (newStatus === 'selesai') {
+        await apiClient.post(`/orders/${editModalData.id}/selesaikan/`);
+      } else if (newStatus === 'batal') {
+        // Pembatalan didelegasikan ke alur modal yang sama dengan tombol
+        // Batalkan di baris tabel (OTP utk kasir) — tidak digabung dengan
+        // edit item/pembayaran/assign SPK di form ini, karena semua itu
+        // tidak relevan untuk pesanan yang sedang dibatalkan.
+        const target = editModalData;
+        closeEditModal();
+        openCancelFlow(target);
+        setSavingChanges(false);
+        return;
+      } else {
+        await apiClient.patch(`/orders/${editModalData.id}/`, {
+          status_global: newStatus,
+        });
+      }
 
       // 1b. Update detail item (jenis_produk, qty, panjang, lebar, bahan, harga_per_m2, harga_jual, biaya_bahan, biaya_desain)
       if (editItems && editItems.length > 0) {
@@ -812,14 +856,7 @@ export default function Orders() {
                           </button>
                           {type !== 'cancelled' && type !== 'completed' && (
                             <button
-                              onClick={async () => {
-                                if (window.confirm(`Batalkan pesanan ${order.id}?`)) {
-                                  await apiClient.patch(`/orders/${order.id}/`, {
-                                    status_global: 'batal',
-                                  });
-                                  fetchOrders();
-                                }
-                              }}
+                              onClick={() => openCancelFlow(order)}
                               title="Batalkan Order"
                               className="p-1 bg-white border border-slate-200 text-slate-400 hover:bg-red-50 hover:text-red-600 hover:border-red-200 rounded-[4px] transition-colors shadow-sm cursor-pointer"
                             >
@@ -915,6 +952,22 @@ export default function Orders() {
         order={editModalData}
         onSuccess={() => {
           setIsKomplainModalOpen(false);
+        }}
+      />
+
+      <VoidOrderModal
+        isOpen={showVoidModal}
+        onClose={() => setShowVoidModal(false)}
+        onConfirmVoid={handleConfirmVoidLangsung}
+      />
+      <VoidOrderOtpModal
+        isOpen={showVoidOtpModal}
+        onClose={() => setShowVoidOtpModal(false)}
+        tipe="order"
+        target={voidTarget}
+        onVoided={() => {
+          setShowVoidOtpModal(false);
+          fetchOrders();
         }}
       />
 
