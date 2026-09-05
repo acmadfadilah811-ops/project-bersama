@@ -3,6 +3,7 @@
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from rest_framework.exceptions import ValidationError
 
 from accounting.models import JournalEntry
 from accounting.services.journal import create_journal_entry
@@ -26,7 +27,10 @@ def post_stock_journal(document, actor, *, direction="in"):
     if existing:
         return existing
 
-    accounts = get_purchase_account_mappings()
+    try:
+        accounts = get_purchase_account_mappings()
+    except DjangoValidationError as exc:
+        raise ValidationError(getattr(exc, "messages", [str(exc)])) from exc
     inventory, payable, advance = accounts["inventory"], accounts["payable"], accounts["advance"]
     label = "Stok masuk" if direction == "in" else "Retur stok"
     lines = [
