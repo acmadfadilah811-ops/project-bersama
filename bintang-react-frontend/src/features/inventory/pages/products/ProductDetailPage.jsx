@@ -1083,11 +1083,12 @@ export default function ProductDetailPage({ product, onBack, onUpdated, categori
                           padding: '8px 16px',
                           fontSize: 13,
                           fontWeight: formKondisi === opt ? 700 : 500,
-                          background: formKondisi === opt ? '#f1f5f9' : '#fff',
-                          color: '#1e293b',
+                          background: formKondisi === opt ? 'linear-gradient(135deg, #3b82f6, #2563eb)' : '#fff',
+                          color: formKondisi === opt ? '#fff' : '#1e293b',
                           border: 0,
                           borderRight: opt !== 'Bekas' ? '1px solid #cbd5e1' : 'none',
                           cursor: 'pointer',
+                          transition: 'background 0.15s, color 0.15s',
                         }}
                       >
                         {opt}
