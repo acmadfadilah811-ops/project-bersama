@@ -685,14 +685,20 @@ class ProductViewSet(viewsets.ModelViewSet):
                         harga_beli=var.harga_beli,
                         harga_jual_toko=var.harga_jual_toko,
                         harga_jual_online=var.harga_jual_online,
-                        lacak_inventori=lacak_inventori,
+                        # Dipertahankan per-varian (var.lacak_inventori), BUKAN
+                        # disamakan ke satu nilai form-level `lacak_inventori` -
+                        # produk dengan varian campuran (sebagian melacak stok,
+                        # sebagian tidak) sebelumnya kehilangan perbedaan ini
+                        # saat disalin (ditemukan lewat audit produksi
+                        # 2026-09-05, sekaligus perbaikan bug crash di bawah).
+                        lacak_inventori=var.lacak_inventori,
                         rack=rack if rack else var.rack,
                         # ProductVariant tidak punya field stok_minimum/is_active
                         # (beda dari Product) - copy_product() sempat memakainya
                         # dan selalu crash 500 tiap kali produk berlacak varian
-                        # di-Salin (ditemukan lewat audit produksi 2026-09-05).
-                        # qty_stok juga sebelumnya terbalik: 0.00 diberikan ke
-                        # varian yang MELACAK inventori, bukan yang tidak.
+                        # di-Salin. qty_stok juga sebelumnya terbalik: 0.00
+                        # diberikan ke varian yang MELACAK inventori, bukan yang
+                        # tidak.
                         qty_stok=qty_stok if var.lacak_inventori else 0.00,
                         qty_fast_moving=var.qty_fast_moving,
                     )

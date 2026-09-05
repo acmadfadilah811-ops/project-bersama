@@ -10,6 +10,11 @@ Dampak nyata: tombol "Salin" di menu aksi baris produk selalu Server Error
 Bug kedua di baris yang sama: qty_stok varian baru terbalik - sebelumnya
 variant yang MELACAK inventori (lacak_inventori=True) selalu dapat 0.00,
 sedangkan yang TIDAK melacak malah dapat qty_stok dari form salin.
+
+Bug ketiga (diperbaiki sesudahnya, sama-sama dari audit 2026-09-05): semua
+varian baru disamakan ke satu nilai `lacak_inventori` form-level, bukan
+mempertahankan nilai asli tiap varian - produk dengan varian campuran
+(sebagian melacak stok, sebagian tidak) kehilangan perbedaan itu saat disalin.
 """
 from django.contrib.auth import get_user_model
 from rest_framework.test import APITestCase
@@ -39,7 +44,10 @@ class CopyProductWithVariantTests(APITestCase):
     def test_copy_dengan_varian_tidak_crash_dan_qty_stok_benar(self):
         res = self.client.post(
             f'/api/products/{self.product.id}/copy/',
-            {'nama': 'Produk Uji Salin Varian (Copy)', 'copy_variant': True, 'qty_stok': 99},
+            # lacak_inventori=False di form sengaja beda dari nilai asli
+            # kedua varian, untuk membuktikan tiap varian mempertahankan
+            # nilainya sendiri-sendiri, bukan ikut nilai form ini.
+            {'nama': 'Produk Uji Salin Varian (Copy)', 'copy_variant': True, 'qty_stok': 99, 'lacak_inventori': False},
             format='json',
         )
         self.assertIn(res.status_code, (200, 201), res.content)
@@ -49,7 +57,11 @@ class CopyProductWithVariantTests(APITestCase):
         self.assertEqual(set(varian_baru.keys()), {'Merah', 'Biru'})
 
         # Varian yang melacak inventori dapat qty_stok dari form salin (99),
-        # bukan 0.00 seperti sebelum fix.
+        # bukan 0.00 seperti sebelum fix - dan tetap melacak inventori
+        # walau form-level lacak_inventori di atas diisi False.
+        self.assertTrue(varian_baru['Merah'].lacak_inventori)
         self.assertEqual(varian_baru['Merah'].qty_stok, 99)
-        # Varian yang TIDAK melacak inventori tetap 0.00.
+        # Varian yang TIDAK melacak inventori tetap 0.00 dan tetap
+        # lacak_inventori=False, sesuai aslinya.
+        self.assertFalse(varian_baru['Biru'].lacak_inventori)
         self.assertEqual(varian_baru['Biru'].qty_stok, 0)
