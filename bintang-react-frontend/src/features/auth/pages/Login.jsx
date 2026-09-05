@@ -194,7 +194,7 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white font-bold h-[52px] transition-colors disabled:opacity-50 text-[16px] shadow-lg shadow-red-950/20 rounded-lg cursor-pointer"
+                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold h-[52px] transition-colors disabled:opacity-50 text-[16px] shadow-lg shadow-blue-950/20 rounded-lg cursor-pointer"
               >
                 {loading ? 'Memverifikasi...' : 'VERIFIKASI OTP'}
               </button>
@@ -259,7 +259,7 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white font-bold h-[52px] transition-colors disabled:opacity-50 text-[16px] shadow-lg shadow-red-950/20 rounded-lg cursor-pointer"
+                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold h-[52px] transition-colors disabled:opacity-50 text-[16px] shadow-lg shadow-blue-950/20 rounded-lg cursor-pointer"
               >
                 {loading ? 'Mengirim OTP...' : 'KIRIM KODE OTP'}
               </button>
@@ -352,7 +352,7 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white font-bold h-[50px] transition-colors disabled:opacity-50 text-[16px] shadow-lg shadow-red-950/20 rounded-lg cursor-pointer"
+                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold h-[50px] transition-colors disabled:opacity-50 text-[16px] shadow-lg shadow-blue-950/20 rounded-lg cursor-pointer"
               >
                 {loading ? 'Mengubah Sandi...' : 'UBAH KATA SANDI'}
               </button>
@@ -463,7 +463,7 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white font-bold h-[52px] transition-colors disabled:opacity-50 text-[16px] shadow-lg shadow-red-950/20 rounded-lg cursor-pointer"
+                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold h-[52px] transition-colors disabled:opacity-50 text-[16px] shadow-lg shadow-blue-950/20 rounded-lg cursor-pointer"
               >
                 {loading ? 'Memuat...' : 'MASUK'}
               </button>
