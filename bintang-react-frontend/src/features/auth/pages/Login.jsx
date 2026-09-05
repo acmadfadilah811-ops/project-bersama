@@ -11,7 +11,7 @@ import {
   CheckCircle2,
   KeyRound,
 } from 'lucide-react';
-import loginBg from '../../../assets/login_bg.jpg';
+import loginDashboardBg from '../../../assets/login_dashboard_bg.jpg';
 
 export default function Login() {
   const [username, setUsername] = useState('');
@@ -139,38 +139,44 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center relative overflow-hidden bg-slate-900 font-sans">
-      {/* Background Image (Gambar Gedung Perusahaan - Lokal) - Sesuai gambar asli tanpa digelapkan */}
-      <div
-        className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat transition-all duration-700"
-        style={{
-          backgroundImage: `url(${loginBg})`,
-        }}
-      ></div>
+    <div className="min-h-screen w-full flex bg-white font-sans">
+      {/* Panel Kiri: Ilustrasi Brand (disembunyikan di layar kecil) */}
+      <div className="hidden lg:flex lg:w-[46%] items-center justify-center bg-gradient-to-br from-sky-50 via-white to-blue-50 p-10 xl:p-16">
+        <img
+          src={loginDashboardBg}
+          alt="StarPhoto & Advertising"
+          className="w-full max-w-xl object-contain drop-shadow-sm"
+        />
+      </div>
 
-      {/* Efek Gradasi Cahaya Menyala di belakang form - Warna gradient cyan & violet yang modern */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[480px] h-[380px] bg-gradient-to-tr from-cyan-400/20 to-violet-500/20 blur-[100px] z-0 rounded-full pointer-events-none"></div>
-
-      {/* Form Container (Card Transparan) */}
-      <div className="relative z-10 w-full max-w-[440px] p-8 flex flex-col gap-6 bg-transparent rounded-2xl mt-4">
+      {/* Panel Kanan: Form Login */}
+      <div className="flex-1 flex items-center justify-center p-6 sm:p-10 bg-white relative">
+        {/* Form Container */}
+        <div className="relative z-10 w-full max-w-[400px] p-8 flex flex-col gap-6 bg-transparent rounded-2xl">
+        {/* Brand kecil - cuma tampil di layar kecil, karena panel ilustrasi kiri disembunyikan di sana */}
+        <img
+          src={loginDashboardBg}
+          alt="StarPhoto & Advertising"
+          className="lg:hidden w-full max-w-[280px] mx-auto object-contain -mt-4 mb-2"
+        />
         {/* Tampilan OTP Verification jika IP Berubah */}
         {verificationRequired ? (
           <form onSubmit={handleVerifyOtp} className="w-full flex flex-col gap-5">
             <div className="flex flex-col items-center text-center gap-2 mb-2">
-              <div className="w-14 h-14 bg-rose-500/20 text-rose-400 flex items-center justify-center rounded-full border border-rose-500/30">
+              <div className="w-14 h-14 bg-rose-50 text-rose-500 flex items-center justify-center rounded-full border border-rose-200">
                 <ShieldAlert size={36} />
               </div>
-              <h2 className="text-xl font-bold text-white tracking-wide">Verifikasi Keamanan</h2>
-              <p className="text-sm text-gray-200">
+              <h2 className="text-xl font-bold text-slate-800 tracking-wide">Verifikasi Keamanan</h2>
+              <p className="text-sm text-slate-500">
                 Deteksi IP baru. Kami telah mengirimkan kode OTP 6 digit ke email{' '}
-                <span className="text-rose-400 font-semibold">{maskedEmail}</span>. Silakan masukkan
+                <span className="text-rose-500 font-semibold">{maskedEmail}</span>. Silakan masukkan
                 kode untuk masuk.
               </p>
             </div>
 
             {/* Pesan Error */}
             {error && (
-              <div className="bg-red-600/90 text-white text-sm p-3 rounded-lg flex items-center justify-center gap-2 shadow-lg">
+              <div className="bg-red-600 text-white text-sm p-3 rounded-lg flex items-center justify-center gap-2 shadow-lg">
                 <AlertTriangle size={18} />
                 <span>{error}</span>
               </div>
@@ -184,7 +190,7 @@ export default function Login() {
                 maxLength={6}
                 value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                className="w-full h-[52px] bg-white/15 border border-white/25 outline-none text-white text-center text-2xl font-bold tracking-[0.5em] placeholder-white/40 focus:border-rose-500 focus:bg-white/25 transition-all rounded-lg"
+                className="w-full h-[52px] bg-slate-50 border border-slate-200 outline-none text-slate-800 text-center text-2xl font-bold tracking-[0.5em] placeholder-slate-300 focus:border-rose-500 focus:bg-white transition-all rounded-lg"
                 placeholder="000000"
                 required
                 autoFocus
@@ -210,7 +216,7 @@ export default function Login() {
                 setError('');
                 setOtp('');
               }}
-              className="flex items-center justify-center gap-2 text-gray-300 hover:text-white text-sm transition-colors mt-2 cursor-pointer"
+              className="flex items-center justify-center gap-2 text-slate-400 hover:text-slate-700 text-sm transition-colors mt-2 cursor-pointer"
             >
               <ArrowLeft size={16} />
               <span>Kembali ke Login</span>
@@ -222,11 +228,11 @@ export default function Login() {
             className="w-full flex flex-col gap-5 animate-fade-in"
           >
             <div className="flex flex-col items-center text-center gap-2 mb-2">
-              <div className="w-14 h-14 bg-indigo-500/20 text-indigo-400 flex items-center justify-center rounded-full border border-indigo-500/30">
+              <div className="w-14 h-14 bg-indigo-50 text-indigo-500 flex items-center justify-center rounded-full border border-indigo-200">
                 <KeyRound size={36} />
               </div>
-              <h2 className="text-xl font-bold text-white tracking-wide">Lupa Kata Sandi</h2>
-              <p className="text-sm text-gray-200">
+              <h2 className="text-xl font-bold text-slate-800 tracking-wide">Lupa Kata Sandi</h2>
+              <p className="text-sm text-slate-500">
                 Masukkan username Anda. Kode OTP pemulihan sandi akan dikirim ke email terdaftar
                 Anda.
               </p>
@@ -234,22 +240,22 @@ export default function Login() {
 
             {/* Pesan Error */}
             {error && (
-              <div className="bg-red-600/90 text-white text-sm p-3 rounded-lg flex items-center justify-center gap-2 shadow-lg">
+              <div className="bg-red-600 text-white text-sm p-3 rounded-lg flex items-center justify-center gap-2 shadow-lg">
                 <AlertTriangle size={18} />
                 <span>{error}</span>
               </div>
             )}
 
             {/* Username Input */}
-            <div className="flex h-[52px] shadow-md rounded-lg overflow-hidden border border-white/20 focus-within:border-cyan-400 focus-within:ring-1 focus-within:ring-cyan-400 transition-all bg-white/10">
-              <div className="w-[52px] h-full bg-white/10 flex items-center justify-center text-white/80 border-r border-white/15">
+            <div className="flex h-[52px] shadow-sm rounded-lg overflow-hidden border border-slate-200 focus-within:border-blue-400 focus-within:ring-1 focus-within:ring-blue-400 transition-all bg-slate-50">
+              <div className="w-[52px] h-full bg-slate-100 flex items-center justify-center text-slate-400 border-r border-slate-200">
                 <User size={20} strokeWidth={2.5} />
               </div>
               <input
                 type="text"
                 value={forgotUsername}
                 onChange={(e) => setForgotPasswordUsername(e.target.value)}
-                className="flex-1 h-full bg-transparent px-4 outline-none text-white placeholder-white/60 text-sm font-semibold"
+                className="flex-1 h-full bg-transparent px-4 outline-none text-slate-800 placeholder-slate-400 text-sm font-semibold"
                 placeholder="Username"
                 required
                 autoFocus
@@ -274,7 +280,7 @@ export default function Login() {
                 setForgotPasswordMode('');
                 setError('');
               }}
-              className="flex items-center justify-center gap-2 text-gray-300 hover:text-white text-sm transition-colors mt-2 cursor-pointer"
+              className="flex items-center justify-center gap-2 text-slate-400 hover:text-slate-700 text-sm transition-colors mt-2 cursor-pointer"
             >
               <ArrowLeft size={16} />
               <span>Kembali ke Login</span>
@@ -286,20 +292,20 @@ export default function Login() {
             className="w-full flex flex-col gap-4 animate-fade-in"
           >
             <div className="flex flex-col items-center text-center gap-2 mb-2">
-              <div className="w-14 h-14 bg-emerald-500/20 text-emerald-400 flex items-center justify-center rounded-full border border-emerald-500/30">
+              <div className="w-14 h-14 bg-emerald-50 text-emerald-500 flex items-center justify-center rounded-full border border-emerald-200">
                 <ShieldAlert size={36} />
               </div>
-              <h2 className="text-xl font-bold text-white tracking-wide">Ubah Kata Sandi</h2>
-              <p className="text-sm text-gray-200">
+              <h2 className="text-xl font-bold text-slate-800 tracking-wide">Ubah Kata Sandi</h2>
+              <p className="text-sm text-slate-500">
                 Kode OTP telah dikirim ke{' '}
-                <span className="text-indigo-400 font-semibold">{forgotMaskedEmail}</span>. Masukkan
+                <span className="text-indigo-500 font-semibold">{forgotMaskedEmail}</span>. Masukkan
                 OTP dan kata sandi baru Anda.
               </p>
             </div>
 
             {/* Pesan Error */}
             {error && (
-              <div className="bg-red-600/90 text-white text-sm p-3 rounded-lg flex items-center justify-center gap-2 shadow-lg">
+              <div className="bg-red-600 text-white text-sm p-3 rounded-lg flex items-center justify-center gap-2 shadow-lg">
                 <AlertTriangle size={18} />
                 <span>{error}</span>
               </div>
@@ -307,13 +313,13 @@ export default function Login() {
 
             {/* OTP Input */}
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-gray-300">Kode OTP 6 Digit</label>
+              <label className="text-xs font-semibold text-slate-500">Kode OTP 6 Digit</label>
               <input
                 type="text"
                 maxLength={6}
                 value={forgotOtp}
                 onChange={(e) => setForgotPasswordOtp(e.target.value.replace(/\D/g, ''))}
-                className="w-full h-[45px] bg-white/15 border border-white/20 outline-none text-white text-center text-xl font-bold tracking-[0.5em] placeholder-white/40 focus:border-indigo-500 rounded-lg"
+                className="w-full h-[45px] bg-slate-50 border border-slate-200 outline-none text-slate-800 text-center text-xl font-bold tracking-[0.5em] placeholder-slate-300 focus:border-indigo-500 rounded-lg"
                 placeholder="000000"
                 required
               />
@@ -321,14 +327,14 @@ export default function Login() {
 
             {/* Password Baru */}
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-gray-300">
+              <label className="text-xs font-semibold text-slate-500">
                 Password Baru (Min. 8 Karakter)
               </label>
               <input
                 type="password"
                 value={forgotNewPassword}
                 onChange={(e) => setForgotPasswordNewPassword(e.target.value)}
-                className="w-full h-[45px] bg-white/15 border border-white/20 outline-none text-white px-3 text-sm focus:border-indigo-500 rounded-lg"
+                className="w-full h-[45px] bg-slate-50 border border-slate-200 outline-none text-slate-800 px-3 text-sm focus:border-indigo-500 rounded-lg"
                 placeholder="Password Baru"
                 required
               />
@@ -336,14 +342,14 @@ export default function Login() {
 
             {/* Konfirmasi Password */}
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-gray-300">
+              <label className="text-xs font-semibold text-slate-500">
                 Konfirmasi Password Baru
               </label>
               <input
                 type="password"
                 value={forgotConfirmPassword}
                 onChange={(e) => setForgotPasswordConfirmPassword(e.target.value)}
-                className="w-full h-[45px] bg-white/15 border border-white/20 outline-none text-white px-3 text-sm focus:border-indigo-500 rounded-lg"
+                className="w-full h-[45px] bg-slate-50 border border-slate-200 outline-none text-slate-800 px-3 text-sm focus:border-indigo-500 rounded-lg"
                 placeholder="Konfirmasi Password"
                 required
               />
@@ -367,7 +373,7 @@ export default function Login() {
                 setForgotPasswordMode('request');
                 setError('');
               }}
-              className="flex items-center justify-center gap-2 text-gray-300 hover:text-white text-sm transition-colors mt-2 cursor-pointer"
+              className="flex items-center justify-center gap-2 text-slate-400 hover:text-slate-700 text-sm transition-colors mt-2 cursor-pointer"
             >
               <ArrowLeft size={16} />
               <span>Ganti Username</span>
@@ -377,7 +383,7 @@ export default function Login() {
           <form onSubmit={handleSubmit} className="w-full flex flex-col gap-5">
             {/* Pesan Error */}
             {error && (
-              <div className="bg-red-600/90 text-white text-sm p-3 rounded-lg flex items-center justify-center gap-2 shadow-lg">
+              <div className="bg-red-600 text-white text-sm p-3 rounded-lg flex items-center justify-center gap-2 shadow-lg">
                 <AlertTriangle size={18} />
                 <span>{error}</span>
               </div>
@@ -385,15 +391,15 @@ export default function Login() {
 
             {/* Pesan Sukses */}
             {successMsg && (
-              <div className="bg-emerald-600/90 text-white text-sm p-3 rounded-lg flex items-center justify-center gap-2 shadow-lg">
+              <div className="bg-emerald-600 text-white text-sm p-3 rounded-lg flex items-center justify-center gap-2 shadow-lg">
                 <CheckCircle2 size={18} />
                 <span>{successMsg}</span>
               </div>
             )}
 
             {/* Username Input */}
-            <div className="flex h-[52px] shadow-md rounded-lg overflow-hidden border border-white/20 focus-within:border-cyan-400 focus-within:ring-1 focus-within:ring-cyan-400 transition-all bg-white/10">
-              <div className="w-[52px] h-full bg-white/10 flex items-center justify-center text-white/80 border-r border-white/15">
+            <div className="flex h-[52px] shadow-sm rounded-lg overflow-hidden border border-slate-200 focus-within:border-blue-400 focus-within:ring-1 focus-within:ring-blue-400 transition-all bg-slate-50">
+              <div className="w-[52px] h-full bg-slate-100 flex items-center justify-center text-slate-400 border-r border-slate-200">
                 <User size={20} strokeWidth={2.5} />
               </div>
               <input
@@ -401,7 +407,7 @@ export default function Login() {
                 id="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="flex-1 h-full bg-transparent px-4 outline-none text-white placeholder-white/60 text-sm font-semibold"
+                className="flex-1 h-full bg-transparent px-4 outline-none text-slate-800 placeholder-slate-400 text-sm font-semibold"
                 placeholder="Username"
                 required
                 autoFocus
@@ -409,8 +415,8 @@ export default function Login() {
             </div>
 
             {/* Password Input */}
-            <div className="flex h-[52px] shadow-md rounded-lg overflow-hidden border border-white/20 focus-within:border-cyan-400 focus-within:ring-1 focus-within:ring-cyan-400 transition-all bg-white/10">
-              <div className="w-[52px] h-full bg-white/10 flex items-center justify-center text-white/80 border-r border-white/15">
+            <div className="flex h-[52px] shadow-sm rounded-lg overflow-hidden border border-slate-200 focus-within:border-blue-400 focus-within:ring-1 focus-within:ring-blue-400 transition-all bg-slate-50">
+              <div className="w-[52px] h-full bg-slate-100 flex items-center justify-center text-slate-400 border-r border-slate-200">
                 <Lock size={20} strokeWidth={2.5} />
               </div>
               <input
@@ -418,18 +424,18 @@ export default function Login() {
                 id="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="flex-1 h-full bg-transparent px-4 outline-none text-white placeholder-white/60 text-sm font-semibold tracking-wider"
+                className="flex-1 h-full bg-transparent px-4 outline-none text-slate-800 placeholder-slate-400 text-sm font-semibold tracking-wider"
                 placeholder="Password"
                 required
               />
             </div>
 
             {/* Remember Me & Forgot Password */}
-            <div className="flex items-center justify-between text-white mt-1">
+            <div className="flex items-center justify-between mt-1">
               {/* Custom Checkbox Remember Me */}
               <label className="flex items-center gap-2 cursor-pointer group select-none">
                 <div
-                  className={`w-[18px] h-[18px] border-2 border-white/40 rounded flex items-center justify-center transition-colors group-hover:border-white ${remember ? 'bg-cyan-500 border-cyan-500' : 'bg-transparent'}`}
+                  className={`w-[18px] h-[18px] border-2 border-slate-300 rounded flex items-center justify-center transition-colors group-hover:border-blue-400 ${remember ? 'bg-blue-500 border-blue-500' : 'bg-transparent'}`}
                 >
                   <input
                     type="checkbox"
@@ -439,7 +445,7 @@ export default function Login() {
                   />
                   {remember && <div className="w-1.5 h-1.5 bg-white rounded-sm"></div>}
                 </div>
-                <span className="text-[12px] font-bold text-gray-200 group-hover:text-white transition-colors">
+                <span className="text-[12px] font-bold text-slate-500 group-hover:text-slate-800 transition-colors">
                   Remember me
                 </span>
               </label>
@@ -454,7 +460,7 @@ export default function Login() {
                 }}
                 className="flex items-center gap-1 group bg-transparent border-0 cursor-pointer text-left outline-none"
               >
-                <span className="text-[12px] font-bold text-cyan-200/80 group-hover:text-white transition-colors">
+                <span className="text-[12px] font-bold text-blue-600 group-hover:text-blue-700 transition-colors">
                   Lupa Password?
                 </span>
               </button>
@@ -472,6 +478,7 @@ export default function Login() {
             </div>
           </form>
         )}
+        </div>
       </div>
     </div>
   );
