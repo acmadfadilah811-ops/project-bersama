@@ -66,8 +66,10 @@ export default function KasirApp() {
               <Route path="buat-order" element={<Navigate to="/kasir/terminal" replace />} />
               <Route path="produk" element={<ProductListPage onToggleSidebar={handleToggleSidebar} />} />
               <Route path="pesanan" element={<PesananPage onToggleSidebar={handleToggleSidebar} />} />
-              <Route path="antrean-wa" element={<WaOrderQueue onToggleSidebar={handleToggleSidebar} />} />
-              <Route path="antrean-staff" element={<WaOrderQueue sumber="staff" judulAntrean="Order Dibantu Staff" onToggleSidebar={handleToggleSidebar} />} />
+              {/* Satu antrean untuk order WhatsApp & order dibantu staff (walk-in) --
+                  sebelumnya 2 menu terpisah ("Antrean WA" / "Bantuan Staff"),
+                  digabung atas permintaan user 2026-09-06. */}
+              <Route path="antrean-wa" element={<WaOrderQueue sumber="wa,staff" judulAntrean="Antrean Online & Offline" onToggleSidebar={handleToggleSidebar} />} />
               <Route path="wa-live" element={<WhatsAppChat onToggleSidebar={handleToggleSidebar} />} />
               <Route path="pelanggan-supplier" element={<KasirPelangganSupplier onToggleSidebar={handleToggleSidebar} />} />
               <Route path="riwayat" element={<PosHistory onToggleSidebar={handleToggleSidebar} />} />

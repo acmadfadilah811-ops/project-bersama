@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Cloud, Search, Filter, MoreVertical, Banknote, Clock, User, DollarSign, Printer, Mail, Smartphone, Factory, XCircle, Eye, X, Check, FileText, Send } from 'lucide-react';
+import { Cloud, Search, Filter, MoreVertical, Banknote, Clock, User, DollarSign, Printer, Mail, Smartphone, Factory, XCircle, Eye, X, Check, FileText, Send, Calendar, Globe2 } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import { fetchAllPages } from '../../../utils/paginatedApi';
 import { notifyApiError, notifyError, notifySuccess } from '../../../utils/notify';
@@ -87,12 +87,29 @@ export default function PosHistory({ onToggleSidebar }) {
   const [returLangsungKonfirmasi, setReturLangsungKonfirmasi] = useState(false);
   const [processingRetur, setProcessingRetur] = useState(false);
 
+  // Volume transaksi advertising bisa ~100/hari -- filter tanggal (default
+  // hari ini) supaya jumlah baris yang ditarik dari server tetap terbatas
+  // (kelas masalah sama dengan fetch-all katalog produk yang diperbaiki
+  // sebelumnya), plus paginasi di sisi render supaya daftar tidak makin
+  // berat seiring waktu. "Cari Semua" mengabaikan rentang tanggal.
+  // Riwayat menggabungkan 2 sumber (/pos/sales/ & /orders/) jadi satu daftar
+  // -- paginasi gabungan lintas-sumber di server tidak sepele, jadi di sini
+  // paginasinya di sisi render atas hasil yang SUDAH dibatasi tanggal
+  // (bukan lagi seluruh riwayat sepanjang masa seperti sebelumnya).
+  const todayStr = () => new Date().toISOString().slice(0, 10);
+  const [dateFrom, setDateFrom] = useState(todayStr());
+  const [dateTo, setDateTo] = useState(todayStr());
+  const [cariSemua, setCariSemua] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
   const fetchSales = async () => {
     setLoading(true);
     try {
+      const dateParams = cariSemua ? {} : { date_from: dateFrom, date_to: dateTo };
       const [posData, orderData] = await Promise.all([
-        fetchAllPages('/pos/sales/'),
-        fetchAllPages('/orders/'),
+        fetchAllPages('/pos/sales/', { params: dateParams }),
+        fetchAllPages('/orders/', { params: dateParams }),
       ]);
 
       const posFormatted = posData.map((item) => {
@@ -189,7 +206,11 @@ export default function PosHistory({ onToggleSidebar }) {
 
   useEffect(() => {
     fetchSales();
-  }, []);
+  }, [dateFrom, dateTo, cariSemua]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, paymentFilter, dateFrom, dateTo, cariSemua]);
 
   const handleKirimResiWaSubmit = async (e) => {
     e.preventDefault();
@@ -306,6 +327,9 @@ export default function PosHistory({ onToggleSidebar }) {
     return item.metode_bayar.toUpperCase() === paymentFilter.toUpperCase();
   });
 
+  const totalPages = Math.max(1, Math.ceil(filteredSales.length / pageSize));
+  const pagedSales = filteredSales.slice((page - 1) * pageSize, page * pageSize);
+
   const paymentOptions = [
     { id: 'ALL', label: 'Semua Tipe Pembayaran' },
     { id: 'CASH', label: 'CASH' },
@@ -355,9 +379,34 @@ export default function PosHistory({ onToggleSidebar }) {
           </button>
         </div>
 
-        {/* Right Section: Date Display & Header Vertical Dots */}
-        <div className="flex items-center gap-3 shrink-0">
-          <span className="font-semibold text-xs">Fri, 31 Jul 2026</span>
+        {/* Right Section: Filter Tanggal, Cari Semua & Header Vertical Dots */}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className={`flex items-center gap-1 bg-white/10 rounded px-2 py-1 ${cariSemua ? 'opacity-40 pointer-events-none' : ''}`}>
+            <Calendar size={13} />
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="bg-transparent text-white text-[11px] font-bold outline-none [color-scheme:dark]"
+            />
+            <span className="text-white/50 text-[10px]">–</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="bg-transparent text-white text-[11px] font-bold outline-none [color-scheme:dark]"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setCariSemua((v) => !v)}
+            title="Cari semua tanggal (abaikan filter tanggal)"
+            className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-black uppercase tracking-wide cursor-pointer transition-all ${
+              cariSemua ? 'bg-white text-[#0088FF]' : 'bg-white/10 hover:bg-white/20'
+            }`}
+          >
+            <Globe2 size={12} /> Semua
+          </button>
           <button type="button" className="hover:bg-white/10 p-1 rounded cursor-pointer">
             <MoreVertical size={16} />
           </button>
@@ -374,7 +423,7 @@ export default function PosHistory({ onToggleSidebar }) {
           ) : filteredSales.length === 0 ? (
             <div className="p-8 text-center text-slate-400 text-xs font-semibold">Tidak ada transaksi ditemukan</div>
           ) : (
-            filteredSales.map((sale) => {
+            pagedSales.map((sale) => {
               const isSelected = selectedSale?.id === sale.id;
 
               return (
@@ -431,6 +480,42 @@ export default function PosHistory({ onToggleSidebar }) {
                 </div>
               );
             })
+          )}
+
+          {!loading && filteredSales.length > 0 && (
+            <div className="flex items-center justify-between gap-2 px-4 py-2.5 text-[10px] font-bold text-slate-500 bg-slate-50/60 shrink-0">
+              <div className="flex items-center gap-1.5">
+                <span>{filteredSales.length} transaksi</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+                  className="bg-white border border-slate-200 rounded-lg px-1.5 py-1 outline-none cursor-pointer text-slate-700"
+                >
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  className="bg-white border border-slate-200 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg px-2 py-1 cursor-pointer"
+                >
+                  &lt;
+                </button>
+                <span>{page}/{totalPages}</span>
+                <button
+                  type="button"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  className="bg-white border border-slate-200 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg px-2 py-1 cursor-pointer"
+                >
+                  &gt;
+                </button>
+              </div>
+            </div>
           )}
         </div>
 

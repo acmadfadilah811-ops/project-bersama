@@ -48,11 +48,12 @@ export default function KasirTopbar() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const profileRef = useRef(null);
 
-  // Poll count of incoming WA orders (status_global=review, sumber=wa)
+  // Poll count order masuk (status_global=review) dari WA maupun dibantu
+  // staff -- satu antrean gabungan "Antrean Online & Offline".
   const fetchWaOrdersCount = async () => {
     try {
       const response = await apiClient.get('/orders/', {
-        params: { status_global: 'review', sumber: 'wa' },
+        params: { status_global: 'review', sumber: 'wa,staff' },
       });
       const data = response.data || [];
       setWaOrderCount(data.length);
@@ -96,7 +97,7 @@ export default function KasirTopbar() {
     { path: '/kasir/terminal', label: 'Terminal', icon: CreditCard },
     { path: '/kasir/produk', label: 'Produk', icon: Package },
     { path: '/kasir/pesanan', label: 'Pesanan', icon: PackageCheck },
-    { path: '/kasir/antrean-wa', label: 'Antrean WA', icon: MessageCircle, badge: waOrderCount },
+    { path: '/kasir/antrean-wa', label: 'Antrean Online & Offline', icon: MessageCircle, badge: waOrderCount },
     { path: '/kasir/wa-live', label: 'WA Live', icon: MessageSquare },
     { path: '/kasir/riwayat', label: 'Riwayat', icon: History },
     { path: '/kasir/shift', label: 'Kas & Shift', icon: Wallet },

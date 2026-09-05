@@ -143,7 +143,7 @@ const menuKasir = [
   { path: '/kasir/dashboard', label: 'Dashboard', icon: LayoutDashboard, isGroup: false },
   { path: '/kasir/terminal', label: 'Kasir (POS)', icon: CreditCard, isGroup: false },
   { path: '/kasir/produk', label: 'Daftar Produk', icon: Package, isGroup: false },
-  { path: '/kasir/antrean-wa', label: 'Antrean WA', icon: MessageSquare, isGroup: false },
+  { path: '/kasir/antrean-wa', label: 'Antrean Online & Offline', icon: MessageSquare, isGroup: false },
   { path: '/kasir/riwayat', label: 'Riwayat Transaksi', icon: History, isGroup: false },
   { path: '/kasir/shift', label: 'Shift & Kas', icon: Wallet, isGroup: false },
   { path: '/attendance', label: 'Absensi Kehadiran', icon: CalendarClock, isGroup: false },

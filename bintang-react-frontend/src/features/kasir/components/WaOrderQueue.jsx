@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import NumericInput from '../../../components/NumericInput';
 import {
   MessageCircle,
@@ -64,25 +64,48 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
   const [publishing, setPublishing] = useState(false);
   const [orderDibayar, setOrderDibayar] = useState(null);
 
-  // Seluruh order dari sumber ini ditampilkan; status tetap tampil agar order
-  // yang sudah masuk produksi tak disangka order baru perlu SPK ulang.
-  // Komponen ini dipakai untuk 2 antrean (prop `sumber`): order dari
-  // WhatsApp ('wa') dan order yang dibantu dibuatkan staff ('staff') --
-  // logic edit/Pelunasan/publish SPK di bawah sama persis untuk keduanya.
+  // Volume order advertising bisa ~100/hari -- filter tanggal (default hari
+  // ini) + paginasi server sungguhan, supaya daftar tidak makin lambat
+  // seiring waktu (kelas masalah sama dengan fetch-all katalog produk yang
+  // diperbaiki sebelumnya). "Cari Semua" mengabaikan rentang tanggal supaya
+  // kasir tetap bisa menemukan order lama lewat pencarian. Status tetap
+  // tampil apa adanya (tidak difilter) agar order yang sudah masuk produksi
+  // tak disangka order baru perlu SPK ulang -- setelah SPK terbit statusnya
+  // pindah dari 'review' dan otomatis juga terlihat di Pesanan & Pelunasan.
+  const todayStr = () => new Date().toISOString().slice(0, 10);
+  const [dateFrom, setDateFrom] = useState(todayStr());
+  const [dateTo, setDateTo] = useState(todayStr());
+  const [searchQuery, setSearchQuery] = useState('');
+  const [cariSemua, setCariSemua] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [totalCount, setTotalCount] = useState(0);
+
+  // Komponen ini dipakai untuk antrean gabungan (prop `sumber` = "wa,staff")
+  // -- order dari WhatsApp maupun yang dibantu dibuatkan staff -- logic
+  // edit/Pelunasan/publish SPK di bawah sama persis untuk keduanya.
   const fetchQueue = async () => {
     setLoading(true);
     try {
-      const res = await apiClient.get('/orders/', {
-        params: { sumber },
-      });
-      setOrders(res.data || []);
+      const params = { sumber, page, page_size: pageSize };
+      const q = searchQuery.trim();
+      if (q) params.search = q;
+      if (!cariSemua) {
+        if (dateFrom) params.date_from = dateFrom;
+        if (dateTo) params.date_to = dateTo;
+      }
+      const res = await apiClient.get('/orders/', { params });
+      const data = res.data;
+      const list = Array.isArray(data) ? data : (data.results || []);
+      setOrders(list);
+      setTotalCount(Array.isArray(data) ? list.length : (data.count || 0));
       if (selectedOrder) {
         // Poll tiap 15 detik ini TIDAK BOLEH menimpa form yang sedang
         // diedit kasir (nama/harga/item) — cuma sinkronkan header ringan
         // (status_global, sisa_tagihan) yang dibaca langsung dari
         // selectedOrder. Reload penuh form terjadi saat kasir klik ulang
         // kartu order di daftar kiri (lihat handleSelectOrder).
-        const refreshed = (res.data || []).find(o => o.id === selectedOrder.id);
+        const refreshed = list.find(o => o.id === selectedOrder.id);
         if (refreshed) {
           setSelectedOrder(refreshed);
         } else {
@@ -152,12 +175,29 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
   };
 
   useEffect(() => {
-    fetchQueue();
     fetchAssignmentData();
     fetchPackages();
     fetchProducts();
+  }, []);
 
-    const interval = setInterval(fetchQueue, 15000);
+  // fetchQueue dipanggil ulang tiap filter/halaman berubah (debounced 300ms
+  // untuk pencarian) DAN dipoll tiap 15 detik. Interval dipisah dari efek
+  // filter supaya tidak kena stale closure (menutup nilai filter/page lama)
+  // -- lewat ref yang selalu diperbarui ke fungsi fetchQueue terbaru.
+  const fetchQueueRef = useRef(fetchQueue);
+  fetchQueueRef.current = fetchQueue;
+
+  useEffect(() => {
+    setPage(1);
+  }, [sumber, dateFrom, dateTo, searchQuery, cariSemua]);
+
+  useEffect(() => {
+    const t = setTimeout(() => fetchQueueRef.current(), 250);
+    return () => clearTimeout(t);
+  }, [sumber, dateFrom, dateTo, searchQuery, cariSemua, page, pageSize]);
+
+  useEffect(() => {
+    const interval = setInterval(() => fetchQueueRef.current(), 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -532,11 +572,24 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
           loading={loading}
           selectedOrder={selectedOrder}
           onSelectOrder={handleSelectOrder}
-          onRefresh={fetchQueue}
+          onRefresh={() => fetchQueueRef.current()}
           judul={judulAntrean}
-          subjudul={sumber === 'staff' ? 'Order dari staff, menunggu diverifikasi kasir' : 'Semua pesanan WA, diperbarui otomatis'}
-          judulKosong={sumber === 'staff' ? 'Belum Ada Order dari Staff' : 'Belum Ada Pesanan WhatsApp'}
-          pesanKosong={sumber === 'staff' ? 'Order yang dibuatkan staff untuk membantu pelanggan akan muncul di sini.' : 'Pesanan yang dibuat otomatis dari WhatsApp akan muncul di sini.'}
+          subjudul={sumber.includes(',') ? 'Order dari WhatsApp & dibantu staff, diperbarui otomatis' : sumber === 'staff' ? 'Order dari staff, menunggu diverifikasi kasir' : 'Semua pesanan WA, diperbarui otomatis'}
+          judulKosong={sumber.includes(',') ? 'Belum Ada Pesanan' : sumber === 'staff' ? 'Belum Ada Order dari Staff' : 'Belum Ada Pesanan WhatsApp'}
+          pesanKosong={sumber.includes(',') ? 'Pesanan dari WhatsApp maupun yang dibantu staff akan muncul di sini.' : sumber === 'staff' ? 'Order yang dibuatkan staff untuk membantu pelanggan akan muncul di sini.' : 'Pesanan yang dibuat otomatis dari WhatsApp akan muncul di sini.'}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          onDateFromChange={setDateFrom}
+          onDateToChange={setDateTo}
+          cariSemua={cariSemua}
+          onToggleCariSemua={setCariSemua}
+          page={page}
+          pageSize={pageSize}
+          totalCount={totalCount}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
         />
 
       {/* Kanan: Editor / Verification Panel */}

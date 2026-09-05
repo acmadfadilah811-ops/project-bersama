@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { MessageCircle, Clock, Phone, CheckCircle, Search, X } from 'lucide-react';
+import { MessageCircle, Clock, Phone, CheckCircle, Search, X, Calendar, Globe2 } from 'lucide-react';
 
 const formatCurrency = (val) =>
   new Intl.NumberFormat('id-ID', {
@@ -8,33 +7,29 @@ const formatCurrency = (val) =>
     minimumFractionDigits: 0,
   }).format(val);
 
-/** Panel kiri Antrean WA/Bantuan Staff: daftar pesanan + pencarian pesan/
- * order (nama, nomor WA, ID pesanan, catatan, atau nama item) — dipisah
- * dari WaOrderQueue.jsx supaya file utama tidak makin melebihi limit baris.
- * Dipakai untuk 2 antrean (props judul/subjudul/pesanKosong), lihat
- * WaOrderQueue.jsx prop `sumber`. */
+/** Panel kiri Antrean Online & Offline: daftar pesanan + filter tanggal +
+ * pencarian (nama, nomor WA, ID pesanan, catatan, atau nama item) + halaman
+ * server sungguhan — dipisah dari WaOrderQueue.jsx supaya file utama tidak
+ * makin melebihi limit baris. Dipakai untuk 2 antrean (props judul/subjudul/
+ * pesanKosong), lihat WaOrderQueue.jsx prop `sumber`.
+ *
+ * Filter/pencarian/pagination SEMUA server-side sekarang (props terkontrol
+ * dari WaOrderQueue.jsx) -- volume order advertising bisa ~100/hari, dulu
+ * pencarian client-side saja & tanpa halaman jadi makin lambat seiring
+ * waktu (kelas masalah sama dengan fetch-all katalog produk yang diperbaiki
+ * sebelumnya). "Cari Semua" mengabaikan rentang tanggal (fitur 2026-09-06). */
 export default function WaOrderList({
   orders, loading, selectedOrder, onSelectOrder, onRefresh,
   judul = 'Pesanan WhatsApp Otomatis',
   subjudul = 'Semua pesanan WA, diperbarui otomatis',
   judulKosong = 'Belum Ada Pesanan WhatsApp',
   pesanKosong = 'Pesanan yang dibuat otomatis dari WhatsApp akan muncul di sini.',
+  searchQuery, onSearchChange,
+  dateFrom, dateTo, onDateFromChange, onDateToChange,
+  cariSemua, onToggleCariSemua,
+  page = 1, pageSize = 20, totalCount = 0, onPageChange, onPageSizeChange,
 }) {
-  const [searchQuery, setSearchQuery] = useState('');
-
-  const query = searchQuery.trim().toLowerCase();
-  const filteredOrders = !query
-    ? orders
-    : orders.filter((order) => {
-        const itemsText = (order.items || []).map((i) => i.jenis_produk).join(' ').toLowerCase();
-        return (
-          (order.nama || '').toLowerCase().includes(query) ||
-          (order.nomor_wa || '').toLowerCase().includes(query) ||
-          String(order.id || '').toLowerCase().includes(query) ||
-          (order.catatan_pelanggan || '').toLowerCase().includes(query) ||
-          itemsText.includes(query)
-        );
-      });
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   return (
     <div className="w-full lg:w-[380px] border-r border-slate-200 bg-white flex flex-col h-full shrink-0">
@@ -63,20 +58,50 @@ export default function WaOrderList({
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Cari nama, nomor WA, ID pesanan, atau item..."
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="Cari nama, nomor WA, atau ID pesanan..."
             className="w-full pl-8 pr-8 py-2 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
           />
           {searchQuery && (
             <button
               type="button"
-              onClick={() => setSearchQuery('')}
+              onClick={() => onSearchChange('')}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
             >
               <X size={14} />
             </button>
           )}
         </div>
+      </div>
+
+      {/* Filter tanggal + Cari Semua */}
+      <div className="px-3 pt-2.5 flex items-center gap-1.5">
+        <div className={`flex items-center gap-1 flex-1 min-w-0 ${cariSemua ? 'opacity-40 pointer-events-none' : ''}`}>
+          <Calendar size={12} className="text-slate-400 shrink-0" />
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => onDateFromChange(e.target.value)}
+            className="w-full min-w-0 border border-slate-200 rounded-lg px-1.5 py-1 text-[10px] font-bold text-slate-600 outline-none focus:ring-1 focus:ring-indigo-400"
+          />
+          <span className="text-slate-300 text-[10px]">–</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => onDateToChange(e.target.value)}
+            className="w-full min-w-0 border border-slate-200 rounded-lg px-1.5 py-1 text-[10px] font-bold text-slate-600 outline-none focus:ring-1 focus:ring-indigo-400"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => onToggleCariSemua(!cariSemua)}
+          title="Cari semua tanggal (abaikan filter tanggal)"
+          className={`shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wide cursor-pointer transition-all ${
+            cariSemua ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+          }`}
+        >
+          <Globe2 size={11} /> Semua
+        </button>
       </div>
 
       {/* List of cards */}
@@ -88,21 +113,17 @@ export default function WaOrderList({
         ) : orders.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center p-6 bg-slate-50/50 border border-dashed border-slate-200 rounded-2xl">
             <div className="bg-white p-3 rounded-full text-slate-400 mb-2">
-              <CheckCircle size={24} />
+              {searchQuery ? <Search size={24} /> : <CheckCircle size={24} />}
             </div>
-            <p className="text-xs text-slate-500 font-bold">{judulKosong}</p>
-            <p className="text-[10px] text-slate-400 max-w-[200px] mt-0.5">{pesanKosong}</p>
-          </div>
-        ) : filteredOrders.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-center p-6 bg-slate-50/50 border border-dashed border-slate-200 rounded-2xl">
-            <div className="bg-white p-3 rounded-full text-slate-400 mb-2">
-              <Search size={24} />
-            </div>
-            <p className="text-xs text-slate-500 font-bold">Tidak Ada Hasil</p>
-            <p className="text-[10px] text-slate-400 max-w-[200px] mt-0.5">Tidak ada pesanan yang cocok dengan pencarian "{searchQuery}".</p>
+            <p className="text-xs text-slate-500 font-bold">
+              {searchQuery ? 'Tidak Ada Hasil' : judulKosong}
+            </p>
+            <p className="text-[10px] text-slate-400 max-w-[200px] mt-0.5">
+              {searchQuery ? `Tidak ada pesanan yang cocok dengan pencarian "${searchQuery}".` : pesanKosong}
+            </p>
           </div>
         ) : (
-          filteredOrders.map((order) => {
+          orders.map((order) => {
             const itemsText = order.items?.map(i => `${i.jenis_produk} (x${i.qty})`).join(', ') || 'Tanpa detail item';
             const isSelected = selectedOrder?.id === order.id;
             return (
@@ -163,6 +184,43 @@ export default function WaOrderList({
           })
         )}
       </div>
+
+      {/* Paginasi */}
+      {!loading && totalCount > 0 && (
+        <div className="px-3 py-2.5 border-t border-slate-200 bg-slate-50/50 flex items-center justify-between gap-2 text-[10px] font-bold text-slate-500">
+          <div className="flex items-center gap-1.5">
+            <span>{totalCount} pesanan</span>
+            <select
+              value={pageSize}
+              onChange={(e) => onPageSizeChange(Number(e.target.value))}
+              className="bg-white border border-slate-200 rounded-lg px-1.5 py-1 outline-none cursor-pointer text-slate-700"
+            >
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => onPageChange(Math.max(1, page - 1))}
+              className="bg-white border border-slate-200 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg px-2 py-1 cursor-pointer"
+            >
+              &lt;
+            </button>
+            <span>{page}/{totalPages}</span>
+            <button
+              type="button"
+              disabled={page >= totalPages}
+              onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+              className="bg-white border border-slate-200 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg px-2 py-1 cursor-pointer"
+            >
+              &gt;
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

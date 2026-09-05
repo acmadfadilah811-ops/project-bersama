@@ -106,9 +106,28 @@ class OrderViewSet(viewsets.ModelViewSet):
             if status_global in valid_status:
                 base_qs = base_qs.filter(status_global=status_global)
 
+        # ?sumber=wa,staff -> gabung beberapa sumber sekaligus (dipakai
+        # antrean kasir "Antrean Online & Offline" yang menyatukan order WA
+        # & order dibantu staff dalam satu daftar, fitur 2026-09-06).
         sumber = self.request.query_params.get('sumber')
         if sumber:
-            base_qs = base_qs.filter(sumber=sumber)
+            sumber_list = [s.strip() for s in sumber.split(',') if s.strip()]
+            if len(sumber_list) > 1:
+                base_qs = base_qs.filter(sumber__in=sumber_list)
+            elif sumber_list:
+                base_qs = base_qs.filter(sumber=sumber_list[0])
+
+        # ?date_from=&date_to= -- nama param sama dengan POSSaleViewSet
+        # (api/pos_views.py) supaya konsisten. Dipakai filter per-tanggal di
+        # Antrean Online & Offline dan Riwayat Transaksi (volume order bisa
+        # ~100/hari, tanpa ini daftar makin lambat seiring waktu — sama
+        # seperti bug fetch-all katalog produk yang diperbaiki sebelumnya).
+        date_from = parse_date(self.request.query_params.get('date_from') or '')
+        date_to = parse_date(self.request.query_params.get('date_to') or '')
+        if date_from:
+            base_qs = base_qs.filter(waktu__date__gte=date_from)
+        if date_to:
+            base_qs = base_qs.filter(waktu__date__lte=date_to)
 
         # ✅ Filter tab/status di database level
         tab = self.request.query_params.get('tab')

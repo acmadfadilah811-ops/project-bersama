@@ -47,11 +47,11 @@ export default function KasirDashboard({ onToggleSidebar }) {
     const load = async () => {
       try {
         const resWa = await apiClient.get('/orders/', {
-          params: { status_global: 'review', sumber: 'wa' },
+          params: { status_global: 'review', sumber: 'wa,staff' },
         });
         setWaCount((resWa.data || []).length);
       } catch (err) {
-        console.error('Gagal memuat antrean WA:', err);
+        console.error('Gagal memuat antrean online & offline:', err);
       }
       try {
         const today = new Date().toISOString().slice(0, 10);
@@ -152,7 +152,7 @@ export default function KasirDashboard({ onToggleSidebar }) {
 
   const actions = [
     { label: 'Terminal Kasir', desc: 'Proses transaksi penjualan dan penerbitan SPK', icon: CreditCard, path: '/kasir/terminal', color: 'indigo' },
-    { label: 'Antrean WA', desc: 'Verifikasi pesanan masuk dari kanal WhatsApp', icon: MessageCircle, path: '/kasir/antrean-wa', color: 'rose', badge: waCount },
+    { label: 'Antrean Online & Offline', desc: 'Verifikasi pesanan dari WhatsApp maupun yang dibantu staff', icon: MessageCircle, path: '/kasir/antrean-wa', color: 'rose', badge: waCount },
     { label: 'Daftar Produk', desc: 'Katalog produk beserta harga dan ketersediaan stok', icon: Package, path: '/kasir/produk', color: 'blue' },
   ];
 

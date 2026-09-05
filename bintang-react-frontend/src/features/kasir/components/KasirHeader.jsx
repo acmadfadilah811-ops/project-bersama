@@ -35,7 +35,7 @@ const pageTitles = {
   '/kasir/terminal': 'Terminal Kasir (POS)',
   '/kasir/produk': 'Katalog & Stok Produk',
   '/kasir/pesanan': 'Pesanan & Pelunasan',
-  '/kasir/antrean-wa': 'Antrean Pesanan WhatsApp',
+  '/kasir/antrean-wa': 'Antrean Online & Offline',
   '/kasir/pelanggan-supplier': 'Pelanggan',
   '/kasir/riwayat': 'Riwayat Transaksi POS',
   '/kasir/shift': 'Kelola Kas & Shift Harian',

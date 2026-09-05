@@ -16,6 +16,8 @@ mengabaikan apa pun yang dikirim client. Role lain (owner/manager/admin/
 kasir) tidak terdampak.
 """
 
+import datetime
+
 from django.contrib.auth import get_user_model
 from rest_framework.test import APITestCase
 
@@ -174,3 +176,68 @@ class OrderItemStaffWriteGuardTests(APITestCase):
         self.client.force_authenticate(user=self.staff)
         res = self.client.delete(f'/api/order-items/{item.id}/')
         self.assertEqual(res.status_code, 404, res.content)
+
+
+class OrderSumberMultiFilterTests(APITestCase):
+    """GET /api/orders/?sumber=wa,staff -- antrean kasir "Antrean Online &
+    Offline" menyatukan order WA & order dibantu staff dalam satu daftar
+    (fitur 2026-09-06). Sebelumnya param `sumber` cuma menerima satu nilai
+    persis (exact match)."""
+
+    def setUp(self):
+        self.owner = User.objects.create_user(username='owner_sumber_multi', password='pw12345', role='owner')
+        self.client.force_authenticate(user=self.owner)
+        Order.objects.create(id='ORD-SUMBERMULTI-WA', nomor_wa='08111111111', nama='Order WA', sumber='wa')
+        Order.objects.create(id='ORD-SUMBERMULTI-STAFF', nomor_wa='08222222222', nama='Order Staff', sumber='staff')
+        Order.objects.create(id='ORD-SUMBERMULTI-POS', nomor_wa='08333333333', nama='Order POS', sumber='pos')
+
+    def test_sumber_gabungan_menyaring_dua_nilai_sekaligus(self):
+        res = self.client.get('/api/orders/', {'sumber': 'wa,staff'})
+        self.assertEqual(res.status_code, 200, res.content)
+        ids = {row['id'] for row in res.data}
+        self.assertIn('ORD-SUMBERMULTI-WA', ids)
+        self.assertIn('ORD-SUMBERMULTI-STAFF', ids)
+        self.assertNotIn('ORD-SUMBERMULTI-POS', ids)
+
+    def test_sumber_tunggal_tetap_bekerja_seperti_sebelumnya(self):
+        res = self.client.get('/api/orders/', {'sumber': 'pos'})
+        self.assertEqual(res.status_code, 200, res.content)
+        ids = {row['id'] for row in res.data}
+        self.assertIn('ORD-SUMBERMULTI-POS', ids)
+        self.assertNotIn('ORD-SUMBERMULTI-WA', ids)
+
+
+class OrderDateFilterTests(APITestCase):
+    """GET /api/orders/?date_from=&date_to= -- nama param sama dengan
+    POSSaleViewSet (api/pos_views.py) supaya konsisten. Dipakai filter
+    per-tanggal di Antrean Online & Offline & Riwayat Transaksi, volume
+    order advertising bisa ~100/hari (fitur 2026-09-06)."""
+
+    def setUp(self):
+        from django.utils import timezone
+        self.owner = User.objects.create_user(username='owner_date_filter', password='pw12345', role='owner')
+        self.client.force_authenticate(user=self.owner)
+        self.hari_ini = timezone.now()
+        self.order_hari_ini = Order.objects.create(
+            id='ORD-DATEFILTER-TODAY', nomor_wa='08144444444', nama='Order Hari Ini',
+            waktu=self.hari_ini,
+        )
+        self.order_lama = Order.objects.create(
+            id='ORD-DATEFILTER-OLD', nomor_wa='08155555555', nama='Order Lama',
+            waktu=self.hari_ini - datetime.timedelta(days=10),
+        )
+
+    def test_date_from_menyaring_order_lama(self):
+        tanggal = self.hari_ini.strftime('%Y-%m-%d')
+        res = self.client.get('/api/orders/', {'date_from': tanggal})
+        self.assertEqual(res.status_code, 200, res.content)
+        ids = {row['id'] for row in res.data}
+        self.assertIn('ORD-DATEFILTER-TODAY', ids)
+        self.assertNotIn('ORD-DATEFILTER-OLD', ids)
+
+    def test_tanpa_date_filter_semua_tetap_tampil(self):
+        res = self.client.get('/api/orders/')
+        self.assertEqual(res.status_code, 200, res.content)
+        ids = {row['id'] for row in res.data}
+        self.assertIn('ORD-DATEFILTER-TODAY', ids)
+        self.assertIn('ORD-DATEFILTER-OLD', ids)

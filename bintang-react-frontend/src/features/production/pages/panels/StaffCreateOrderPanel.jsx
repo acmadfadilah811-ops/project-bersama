@@ -28,8 +28,9 @@ const buatItemKosong = () => ({
  * status_global='review', dp_dibayar=0, dilayani_oleh=staff yang login,
  * sumber='staff' di OrderViewSet.perform_create() -- pengaman ini bukan
  * cuma disembunyikan di UI. Order yang tersimpan muncul di antrean kasir
- * "Bantuan Staff" (/kasir/antrean-staff) untuk diverifikasi harga,
- * diproses pembayarannya, baru diterbitkan SPK oleh kasir.
+ * "Antrean Online & Offline" (/kasir/antrean-wa, satu daftar gabungan
+ * dengan order WA, dilabeli "Order via Offline") untuk diverifikasi
+ * harga, diproses pembayarannya, baru diterbitkan SPK oleh kasir.
  *
  * Pola pemilihan produk/harga direplikasi dari WaOrderQueue.jsx (Antrean
  * WA) yang sudah modern -- katalog Produk/Paket asli (bukan daftar harga
@@ -344,9 +345,9 @@ export default function StaffCreateOrderPanel() {
       <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-3 py-2 mb-4 flex items-start gap-2">
         <Info size={14} className="text-indigo-500 shrink-0 mt-0.5" />
         <p className="text-[11px] font-semibold text-indigo-700">
-          Order ini otomatis tercatat atas nama Anda dan masuk ke antrean kasir "Bantuan Staff"
-          untuk diverifikasi & diproses pembayarannya. SPK baru diterbitkan setelah kasir
-          memverifikasi pembayaran.
+          Order ini otomatis tercatat atas nama Anda dan masuk ke antrean kasir "Antrean Online
+          & Offline" untuk diverifikasi & diproses pembayarannya. SPK baru diterbitkan setelah
+          kasir memverifikasi pembayaran.
         </p>
       </div>
 
