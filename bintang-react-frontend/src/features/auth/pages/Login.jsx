@@ -139,31 +139,18 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen w-full flex bg-white font-sans">
-      {/* Panel Kiri: Ilustrasi Brand (disembunyikan di layar kecil). Gambar
-          ditampilkan UTUH (object-contain, tidak di-crop) supaya maskot & teks
-          "Hallo Star Friends" tidak ada yang kepotong sama sekali. Warna
-          gradient panel disamakan dengan warna asli sudut gambar (dicek
-          lewat sampling piksel) supaya area kosong di sekeliling gambar
-          menyatu, bukan kelihatan seperti kotak kosong terpisah. */}
-      <div className="hidden lg:flex lg:w-1/2 items-center justify-center bg-gradient-to-b from-[#f9f8fd] to-[#cee2fd]">
-        <img
-          src={loginDashboardBg}
-          alt="StarPhoto & Advertising"
-          className="w-full h-full object-contain"
-        />
-      </div>
-
-      {/* Panel Kanan: Form Login */}
-      <div className="flex-1 flex items-center justify-center p-6 sm:p-10 bg-white relative">
-        {/* Form Container */}
-        <div className="relative z-10 w-full max-w-[400px] p-8 flex flex-col gap-6 bg-transparent rounded-2xl">
-        {/* Brand kecil - cuma tampil di layar kecil, karena panel ilustrasi kiri disembunyikan di sana */}
-        <img
-          src={loginDashboardBg}
-          alt="StarPhoto & Advertising"
-          className="lg:hidden w-full max-w-[280px] mx-auto object-contain -mt-4 mb-2"
-        />
+    // Satu gambar penuh layar (bukan dipotong dua panel) — gambarnya sendiri
+    // sudah didesain dengan ruang kosong di sisi kanan supaya form login
+    // muat diletakkan di situ, jadi form cukup diposisikan di area kosong
+    // itu, bukan gambarnya yang dipaksa pas ke kotak terpisah.
+    <div
+      className="min-h-screen w-full flex items-center justify-center lg:justify-end bg-cover bg-center bg-no-repeat font-sans p-6 sm:p-10 lg:pr-20 xl:pr-28"
+      style={{ backgroundImage: `url(${loginDashboardBg})`, backgroundColor: '#f9f8fd' }}
+    >
+      {/* Form Container - di layar besar diletakkan di ruang kosong sisi
+          kanan gambar (justify-end); di layar kecil tetap di tengah supaya
+          tidak mepet ke tepi. */}
+      <div className="relative z-10 w-full max-w-[400px] p-8 flex flex-col gap-6 bg-white/70 backdrop-blur-sm lg:bg-transparent lg:backdrop-blur-none rounded-2xl">
         {/* Tampilan OTP Verification jika IP Berubah */}
         {verificationRequired ? (
           <form onSubmit={handleVerifyOtp} className="w-full flex flex-col gap-5">
@@ -483,7 +470,6 @@ export default function Login() {
             </div>
           </form>
         )}
-        </div>
       </div>
     </div>
   );
