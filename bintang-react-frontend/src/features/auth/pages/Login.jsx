@@ -140,14 +140,11 @@ export default function Login() {
 
   return (
     <div className="min-h-screen w-full flex bg-white font-sans">
-      {/* Panel Kiri: Ilustrasi Brand (disembunyikan di layar kecil) */}
-      <div className="hidden lg:flex lg:w-[46%] items-center justify-center bg-gradient-to-br from-sky-50 via-white to-blue-50 p-10 xl:p-16">
-        <img
-          src={loginDashboardBg}
-          alt="StarPhoto & Advertising"
-          className="w-full max-w-xl object-contain drop-shadow-sm"
-        />
-      </div>
+      {/* Panel Kiri: Ilustrasi Brand penuh satu sisi (disembunyikan di layar kecil) */}
+      <div
+        className="hidden lg:block lg:w-1/2 bg-cover bg-center bg-no-repeat"
+        style={{ backgroundImage: `url(${loginDashboardBg})` }}
+      ></div>
 
       {/* Panel Kanan: Form Login */}
       <div className="flex-1 flex items-center justify-center p-6 sm:p-10 bg-white relative">
