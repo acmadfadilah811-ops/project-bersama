@@ -27,8 +27,9 @@ def post_stock_journal(document, actor, *, direction="in"):
     if existing:
         return existing
 
+    supplier = getattr(getattr(document, "purchase", None), "supplier_ref", None)
     try:
-        accounts = get_purchase_account_mappings()
+        accounts = get_purchase_account_mappings(supplier=supplier)
     except DjangoValidationError as exc:
         raise ValidationError(getattr(exc, "messages", [str(exc)])) from exc
     inventory, payable, advance = accounts["inventory"], accounts["payable"], accounts["advance"]

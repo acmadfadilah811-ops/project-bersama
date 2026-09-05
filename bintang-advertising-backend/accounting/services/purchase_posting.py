@@ -26,7 +26,11 @@ def post_purchase_payment_journal(payment, cash_account, actor=None):
     if existing:
         return existing
 
-    accounts = get_purchase_account_mappings()
+    # Akun hutang harus konsisten dengan yang dipakai saat stok masuk (M5-adjacent:
+    # kalau payment pakai akun berbeda dari kredit awalnya, hutang supplier ini
+    # "tersangkut" di akun lama selamanya - lihat get_purchase_account_mappings()).
+    supplier = getattr(payment.purchase, 'supplier_ref', None)
+    accounts = get_purchase_account_mappings(supplier=supplier)
     debit_account = (
         accounts['advance']
         if payment.jenis == payment.Jenis.ADVANCE

@@ -19,8 +19,9 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.test import APITestCase
 
 from accounting.models import Account, AccountClassification, AccountingSettings
+from api.customer_models import Supplier
 from api.product_models import (
-    Product, ProductCategory, ProductStockMovement, StockInDocument, StockInDocumentItem,
+    Product, ProductCategory, ProductStockMovement, Purchase, StockInDocument, StockInDocumentItem,
 )
 from api.services.purchase_accounting import post_stock_journal
 
@@ -127,3 +128,60 @@ class PostDocumentEndpointRollbackTests(APITestCase):
         self.assertEqual(document.status, 'draft')
         self.assertEqual(self.produk.qty_stok, 0)
         self.assertEqual(ProductStockMovement.objects.filter(product=self.produk).count(), 0)
+
+
+class PostStockJournalSupplierAkunHutangTests(APITestCase):
+    """Supplier.akun_hutang (Pengaturan Supplier) sebelumnya bisa diisi &
+    tampil di layar tapi tidak pernah benar-benar dipakai saat posting
+    jurnal stok masuk - selalu jatuh ke akun hutang global, terlepas dari
+    pengaturan supplier (ditemukan lewat audit produksi 2026-09-05)."""
+
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            username='owner_supplier_akun_test', password='x', role='owner',
+        )
+        self.kategori = ProductCategory.objects.create(nama='Test Kategori Supplier Akun', key='test-kat-sa')
+        self.produk = Product.objects.create(
+            nama='Produk Uji Supplier Akun', kategori=self.kategori,
+            sku='TEST-SA-1', qty_stok=0, lacak_inventori=True, harga_beli=0,
+        )
+
+        asset_cls = AccountClassification.objects.create(
+            name='Persediaan Test SA', account_type='asset', code_range_start=11000, code_range_end=11999,
+        )
+        liability_cls = AccountClassification.objects.create(
+            name='Hutang Test SA', account_type='liability', code_range_start=21000, code_range_end=21999,
+        )
+        inventory = Account.objects.create(code='11402', name='Persediaan Uji SA', account_type='asset', classification=asset_cls)
+        self.payable_default = Account.objects.create(code='21002', name='Hutang Default Uji', account_type='liability', classification=liability_cls)
+        self.payable_supplier = Account.objects.create(code='21003', name='Hutang Supplier Khusus Uji', account_type='liability', classification=liability_cls)
+        advance = Account.objects.create(code='11702', name='Uang Muka Uji SA', account_type='asset', classification=asset_cls)
+        AccountingSettings.objects.create(
+            accounting_start_date=date.today(), is_active=True,
+            purchase_inventory_account=inventory, purchase_payable_account=self.payable_default,
+            purchase_advance_account=advance,
+        )
+
+        self.supplier = Supplier.objects.create(nama='CV Uji Akun Hutang', akun_hutang=self.payable_supplier)
+        self.purchase = Purchase.objects.create(nomor='PO-SA-TEST', tanggal=date.today(), supplier_ref=self.supplier)
+        self.document = StockInDocument.objects.create(
+            tanggal=date.today(), supplier=self.supplier.nama, purchase=self.purchase,
+        )
+        StockInDocumentItem.objects.create(
+            document=self.document, product=self.produk,
+            harga_beli=Decimal('10000'), qty=Decimal('5'),
+        )
+
+    def test_stock_in_journal_pakai_akun_hutang_supplier_bukan_default(self):
+        entry = post_stock_journal(self.document, self.owner, direction='in')
+        lines = entry.lines.all()
+        self.assertTrue(lines.filter(account=self.payable_supplier, kredit=Decimal('50000')).exists())
+        self.assertFalse(lines.filter(account=self.payable_default).exists())
+
+    def test_stock_in_journal_tetap_pakai_default_saat_supplier_tanpa_akun_hutang(self):
+        self.supplier.akun_hutang = None
+        self.supplier.save(update_fields=['akun_hutang'])
+
+        entry = post_stock_journal(self.document, self.owner, direction='in')
+        lines = entry.lines.all()
+        self.assertTrue(lines.filter(account=self.payable_default, kredit=Decimal('50000')).exists())
