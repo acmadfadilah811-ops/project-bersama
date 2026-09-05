@@ -123,6 +123,34 @@ export default function PosTerminal({ onToggleSidebar }) {
   const [staffList, setStaffList] = useState([]);
   const [loyaltyRedemptions, setLoyaltyRedemptions] = useState([]);
 
+  // Filter katalog (ikon Filter di PosCatalogPanel) — sebelumnya cuma UI
+  // tanpa fungsi (temuan user 2026-09-05). Brand & Koleksi dipilih karena
+  // /products/ backend sudah mendukung query param-nya (lihat
+  // ProductViewSet.get_queryset), risiko rendah untuk disambungkan.
+  const [brands, setBrands] = useState([]);
+  const [collections, setCollections] = useState([]);
+  const [selectedBrand, setSelectedBrand] = useState('');
+  const [selectedCollection, setSelectedCollection] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiClient.get('/brands/');
+        setBrands(res.data?.results || res.data || []);
+      } catch {
+        setBrands([]);
+      }
+    })();
+    (async () => {
+      try {
+        const res = await apiClient.get('/collections/');
+        setCollections(res.data?.results || res.data || []);
+      } catch {
+        setCollections([]);
+      }
+    })();
+  }, []);
+
   // Fetch Contacts
   const fetchContacts = async () => {
     try {
@@ -244,6 +272,12 @@ export default function PosTerminal({ onToggleSidebar }) {
     if (searchTerm) {
       params.search = searchTerm;
     }
+    if (selectedBrand) {
+      params.brand = selectedBrand;
+    }
+    if (selectedCollection) {
+      params.koleksi = selectedCollection;
+    }
     const data = await fetchAllPages('/products/', { params });
     setProducts(data);
   };
@@ -254,7 +288,7 @@ export default function PosTerminal({ onToggleSidebar }) {
     }, 300);
     return () => clearTimeout(delayDebounce);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCategory, searchTerm]);
+  }, [selectedCategory, searchTerm, selectedBrand, selectedCollection]);
 
   // Sync manual — kasir bisa tekan kapan saja selama layar Kasir terbuka
   // (harga/stok dari fetch pertama bisa jadi basi kalau layar dibiarkan
@@ -813,6 +847,12 @@ export default function PosTerminal({ onToggleSidebar }) {
             setSelectedCategory={setSelectedCategory}
             onSync={handleSyncCatalog}
             syncing={syncingCatalog}
+            brands={brands}
+            collections={collections}
+            selectedBrand={selectedBrand}
+            setSelectedBrand={setSelectedBrand}
+            selectedCollection={selectedCollection}
+            setSelectedCollection={setSelectedCollection}
           />
         )}
       </div>

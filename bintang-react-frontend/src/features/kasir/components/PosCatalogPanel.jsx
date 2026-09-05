@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Search, Filter, Image, RefreshCw } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Search, Filter, Image, RefreshCw, X } from 'lucide-react';
 
 export default function PosCatalogPanel({
   products = [],
@@ -13,10 +13,33 @@ export default function PosCatalogPanel({
   setSelectedCategory,
   onSync,
   syncing = false,
+  brands = [],
+  collections = [],
+  selectedBrand = '',
+  setSelectedBrand,
+  selectedCollection = '',
+  setSelectedCollection,
 }) {
   const [activeTab, setActiveTab] = useState('produk');
   const showingPackages = activeTab === 'paket';
   const catalogItems = showingPackages ? packages : products;
+
+  // Panel Filter (sebelumnya ikon ini cuma UI tanpa fungsi, temuan user
+  // 2026-09-05) — Brand & Koleksi, dua kriteria yang backend /products/
+  // sudah dukung filternya langsung.
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const filterPanelRef = useRef(null);
+  const activeFilterCount = (selectedBrand ? 1 : 0) + (selectedCollection ? 1 : 0);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (filterPanelRef.current && !filterPanelRef.current.contains(e.target)) {
+        setShowFilterPanel(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   return (
     <div className="flex-1 bg-[#0088FF] flex flex-col h-full overflow-hidden">
@@ -70,19 +93,76 @@ export default function PosCatalogPanel({
               className="w-full text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none bg-transparent"
             />
           </div>
-          <button
-            type="button"
-            onClick={onSync}
-            disabled={syncing}
-            title="Sinkronkan harga & stok produk terbaru"
-            className="flex items-center gap-1.5 bg-white/15 hover:bg-white/25 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
-            <span>{syncing ? 'Sync...' : 'Sync'}</span>
-          </button>
-          <button className="text-white hover:bg-white/10 p-2 rounded-lg transition-all cursor-pointer">
-            <Filter size={18} />
-          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={onSync}
+              disabled={syncing}
+              title="Sinkronkan harga & stok produk terbaru"
+              className="flex items-center gap-1.5 bg-white/15 hover:bg-white/25 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
+              <span>{syncing ? 'Sync...' : 'Sync'}</span>
+            </button>
+            <div className="relative" ref={filterPanelRef}>
+              <button
+                type="button"
+                onClick={() => setShowFilterPanel((v) => !v)}
+                title="Filter produk (Brand & Koleksi)"
+                className={`relative text-white p-2 rounded-lg transition-all cursor-pointer ${
+                  showFilterPanel || activeFilterCount > 0 ? 'bg-white/25' : 'hover:bg-white/10'
+                }`}
+              >
+                <Filter size={18} />
+                {activeFilterCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-400 text-[9px] font-black text-slate-900 flex items-center justify-center">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
+
+              {showFilterPanel && (
+                <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 p-3 text-slate-700">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-extrabold text-slate-800">Filter Produk</span>
+                    {activeFilterCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => { setSelectedBrand(''); setSelectedCollection(''); }}
+                        className="flex items-center gap-1 text-[10px] font-bold text-rose-500 hover:text-rose-700 cursor-pointer"
+                      >
+                        <X size={11} /> Reset
+                      </button>
+                    )}
+                  </div>
+
+                  <label className="text-[10px] font-bold text-slate-400 block mb-1 mt-2">Brand</label>
+                  <select
+                    value={selectedBrand}
+                    onChange={(e) => setSelectedBrand(e.target.value)}
+                    className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-400 cursor-pointer"
+                  >
+                    <option value="">Semua Brand</option>
+                    {brands.map((b) => (
+                      <option key={b.id} value={b.id}>{b.nama}</option>
+                    ))}
+                  </select>
+
+                  <label className="text-[10px] font-bold text-slate-400 block mb-1 mt-3">Koleksi</label>
+                  <select
+                    value={selectedCollection}
+                    onChange={(e) => setSelectedCollection(e.target.value)}
+                    className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-400 cursor-pointer"
+                  >
+                    <option value="">Semua Koleksi</option>
+                    {collections.map((c) => (
+                      <option key={c.id} value={c.id}>{c.nama}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Product Grid Cards SS 1 */}
