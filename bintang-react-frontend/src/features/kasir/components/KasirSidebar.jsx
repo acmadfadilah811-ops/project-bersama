@@ -40,6 +40,7 @@ export default function KasirSidebar({ isCollapsed, setIsCollapsed }) {
   const { shiftAktif } = useKasir();
 
   const [waOrderCount, setWaOrderCount] = useState(0);
+  const [staffOrderCount, setStaffOrderCount] = useState(0);
 
   // Poll count of incoming WA orders (status_global=review, sumber=wa)
   const fetchWaOrdersCount = async () => {
@@ -54,9 +55,27 @@ export default function KasirSidebar({ isCollapsed, setIsCollapsed }) {
     }
   };
 
+  // Poll count of order yang dibuatkan staff, belum diverifikasi kasir
+  // (status_global=review, sumber=staff) -- antrean "Bantuan Staff".
+  const fetchStaffOrdersCount = async () => {
+    try {
+      const response = await apiClient.get('/orders/', {
+        params: { status_global: 'review', sumber: 'staff' },
+      });
+      const data = response.data || [];
+      setStaffOrderCount(data.length);
+    } catch (error) {
+      console.error('Error fetching staff orders count in sidebar:', error);
+    }
+  };
+
   useEffect(() => {
     fetchWaOrdersCount();
-    const interval = setInterval(fetchWaOrdersCount, 15000);
+    fetchStaffOrdersCount();
+    const interval = setInterval(() => {
+      fetchWaOrdersCount();
+      fetchStaffOrdersCount();
+    }, 15000);
     return () => clearInterval(interval);
   }, []);
 
@@ -70,6 +89,7 @@ export default function KasirSidebar({ isCollapsed, setIsCollapsed }) {
     { path: '/kasir/produk', label: 'Katalog Produk', icon: Package },
     { path: '/kasir/pesanan', label: 'Pesanan & Pelunasan', icon: PackageCheck },
     { path: '/kasir/antrean-wa', label: 'Antrean WA', icon: MessageCircle, badge: waOrderCount },
+    { path: '/kasir/antrean-staff', label: 'Bantuan Staff', icon: Users, badge: staffOrderCount },
     { path: '/kasir/wa-live', label: 'WA Live', icon: MessageSquare },
     { path: '/kasir/pelanggan-supplier', label: 'Pelanggan', icon: Users },
     { path: '/kasir/riwayat', label: 'Riwayat Transaksi', icon: History },

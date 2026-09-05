@@ -169,7 +169,10 @@ class Order(models.Model):
     metode_pembayaran = models.CharField(max_length=20, default='tunai')
     sumber = models.CharField(
         max_length=10,
-        choices=(('wa', 'WhatsApp'), ('pos', 'POS Terminal'), ('manual', 'Input Manual')),
+        choices=(
+            ('wa', 'WhatsApp'), ('pos', 'POS Terminal'), ('manual', 'Input Manual'),
+            ('staff', 'Dibantu Staff'),
+        ),
         default='manual',
         db_index=True
     )

@@ -67,6 +67,7 @@ export default function KasirApp() {
               <Route path="produk" element={<ProductListPage onToggleSidebar={handleToggleSidebar} />} />
               <Route path="pesanan" element={<PesananPage onToggleSidebar={handleToggleSidebar} />} />
               <Route path="antrean-wa" element={<WaOrderQueue onToggleSidebar={handleToggleSidebar} />} />
+              <Route path="antrean-staff" element={<WaOrderQueue sumber="staff" judulAntrean="Order Dibantu Staff" onToggleSidebar={handleToggleSidebar} />} />
               <Route path="wa-live" element={<WhatsAppChat onToggleSidebar={handleToggleSidebar} />} />
               <Route path="pelanggan-supplier" element={<KasirPelangganSupplier onToggleSidebar={handleToggleSidebar} />} />
               <Route path="riwayat" element={<PosHistory onToggleSidebar={handleToggleSidebar} />} />

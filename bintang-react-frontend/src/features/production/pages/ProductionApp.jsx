@@ -14,6 +14,7 @@ import {
   ChevronRight,
   ArrowLeft,
   Kanban,
+  ShoppingCart,
 } from 'lucide-react';
 
 // Staff Modals & Views
@@ -21,6 +22,7 @@ import ClaimPool from './components/ClaimPool';
 import KanbanPersonal from './components/KanbanPersonal';
 import WorkspaceSPK from './components/WorkspaceSPK';
 import ForwardJobModal from '../components/modals/ForwardJobModal';
+import StaffCreateOrderPanel from './panels/StaffCreateOrderPanel';
 
 // Admin / Manager Panels
 import GlobalListPanel from './panels/GlobalListPanel';
@@ -346,6 +348,8 @@ export default function ProductionApp() {
               onComplete={handleComplete}
             />
           );
+        case 'create_order':
+          return <StaffCreateOrderPanel />;
         case 'logs':
           return <ActivityLogsPanel logs={logs} />;
         default:
@@ -379,6 +383,7 @@ export default function ProductionApp() {
     menuItems = [
       { id: 'claim_pool', label: 'Antrean Global', icon: Inbox },
       { id: 'kanban_personal', label: 'Pekerjaan Saya', icon: ClipboardList },
+      { id: 'create_order', label: 'Buat Order', icon: ShoppingCart },
       { id: 'logs', label: 'Log Aktivitas', icon: Bell },
     ];
   }

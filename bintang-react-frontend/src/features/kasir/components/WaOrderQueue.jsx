@@ -15,14 +15,14 @@ import {
   Wallet,
 } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
-import { fetchAllPages } from '../../../utils/paginatedApi';
 import { useAuth } from '../../../context/AuthContext';
 import PosHeaderBar from './PosHeaderBar';
 import PelunasanModal from './PelunasanModal';
 import WaOrderItemProductSource from './WaOrderItemProductSource';
 import WaOrderList from './WaOrderList';
+import { fetchActiveProducts, fetchActivePackages, fetchHargaKatalog } from '../utils/orderCatalogPricing';
 
-export default function WaOrderQueue({ onToggleSidebar }) {
+export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntrean = 'Pesanan WhatsApp Otomatis' }) {
   // Kasir hanya boleh menerbitkan SPK ke antrean divisi — aturan sama dgn
   // SpkPublishModal (ditegakkan backend di api/spk.py), gate diulang di sini.
   const { user } = useAuth();
@@ -64,13 +64,16 @@ export default function WaOrderQueue({ onToggleSidebar }) {
   const [publishing, setPublishing] = useState(false);
   const [orderDibayar, setOrderDibayar] = useState(null);
 
-  // Seluruh order dari WhatsApp ditampilkan; status tetap tampil agar order
+  // Seluruh order dari sumber ini ditampilkan; status tetap tampil agar order
   // yang sudah masuk produksi tak disangka order baru perlu SPK ulang.
+  // Komponen ini dipakai untuk 2 antrean (prop `sumber`): order dari
+  // WhatsApp ('wa') dan order yang dibantu dibuatkan staff ('staff') --
+  // logic edit/Pelunasan/publish SPK di bawah sama persis untuk keduanya.
   const fetchQueue = async () => {
     setLoading(true);
     try {
       const res = await apiClient.get('/orders/', {
-        params: { sumber: 'wa' },
+        params: { sumber },
       });
       setOrders(res.data || []);
       if (selectedOrder) {
@@ -132,13 +135,7 @@ export default function WaOrderQueue({ onToggleSidebar }) {
 
   const fetchPackages = async () => {
     try {
-      // tampil_pos disaring di backend sekarang -- sebelumnya cuma publikasi
-      // & habis_stok, jadi paket yang disembunyikan dari POS tetap muncul di
-      // sini padahal PosTerminal.jsx sudah benar (temuan user 2026-09-06).
-      const res = await apiClient.get('/product-packages/', {
-        params: { page: 1, page_size: 1000, publikasi: true, tampil_pos: true, habis_stok: false },
-      });
-      const list = res.data?.results || res.data || [];
+      const list = await fetchActivePackages();
       setPackages(list);
     } catch {
       setPackages([]);
@@ -147,12 +144,7 @@ export default function WaOrderQueue({ onToggleSidebar }) {
 
   const fetchProducts = async () => {
     try {
-      // is_active=true -> backend juga menyaring tidak_tersedia_offline_pos
-      // ("Sembunyikan dari POS"), diselaraskan dengan PosTerminal.jsx &
-      // ProductListPage.jsx. Sebelumnya cuma filter is_active di frontend,
-      // jadi produk yang sengaja disembunyikan dari POS tetap bisa dipakai
-      // saat staf membuat pesanan dari Antrean WA (temuan user 2026-09-06).
-      const list = await fetchAllPages('/products/', { params: { is_active: true } });
+      const list = await fetchActiveProducts();
       setProducts(list);
     } catch {
       setProducts([]);
@@ -268,19 +260,6 @@ export default function WaOrderQueue({ onToggleSidebar }) {
       lebar: 0,
     };
     setEditItems(updated);
-  };
-
-  // Harga dihitung server-side (sumber sama dgn bot WA); paksaPerM2 = P x L
-  // selalu jadi pengali harga kalau diisi, apa pun price_type-nya.
-  const fetchHargaKatalog = async (productId, { variantId, qty, panjang, lebar, paksaPerM2 } = {}) => {
-    const params = new URLSearchParams();
-    if (variantId) params.set('variant_id', variantId);
-    params.set('qty', qty || 1);
-    if (panjang) params.set('panjang', panjang);
-    if (lebar) params.set('lebar', lebar);
-    if (paksaPerM2) params.set('paksa_per_m2', 'true');
-    const res = await apiClient.get(`/products/${productId}/hitung-harga/?${params.toString()}`);
-    return res.data.harga_satuan;
   };
 
   const handleProductChange = async (index, productId) => {
@@ -554,6 +533,10 @@ export default function WaOrderQueue({ onToggleSidebar }) {
           selectedOrder={selectedOrder}
           onSelectOrder={handleSelectOrder}
           onRefresh={fetchQueue}
+          judul={judulAntrean}
+          subjudul={sumber === 'staff' ? 'Order dari staff, menunggu diverifikasi kasir' : 'Semua pesanan WA, diperbarui otomatis'}
+          judulKosong={sumber === 'staff' ? 'Belum Ada Order dari Staff' : 'Belum Ada Pesanan WhatsApp'}
+          pesanKosong={sumber === 'staff' ? 'Order yang dibuatkan staff untuk membantu pelanggan akan muncul di sini.' : 'Pesanan yang dibuat otomatis dari WhatsApp akan muncul di sini.'}
         />
 
       {/* Kanan: Editor / Verification Panel */}

@@ -8,10 +8,18 @@ const formatCurrency = (val) =>
     minimumFractionDigits: 0,
   }).format(val);
 
-/** Panel kiri Antrean WA: daftar pesanan + pencarian pesan/order (nama,
- * nomor WA, ID pesanan, catatan, atau nama item) — dipisah dari
- * WaOrderQueue.jsx supaya file utama tidak makin melebihi limit baris. */
-export default function WaOrderList({ orders, loading, selectedOrder, onSelectOrder, onRefresh }) {
+/** Panel kiri Antrean WA/Bantuan Staff: daftar pesanan + pencarian pesan/
+ * order (nama, nomor WA, ID pesanan, catatan, atau nama item) — dipisah
+ * dari WaOrderQueue.jsx supaya file utama tidak makin melebihi limit baris.
+ * Dipakai untuk 2 antrean (props judul/subjudul/pesanKosong), lihat
+ * WaOrderQueue.jsx prop `sumber`. */
+export default function WaOrderList({
+  orders, loading, selectedOrder, onSelectOrder, onRefresh,
+  judul = 'Pesanan WhatsApp Otomatis',
+  subjudul = 'Semua pesanan WA, diperbarui otomatis',
+  judulKosong = 'Belum Ada Pesanan WhatsApp',
+  pesanKosong = 'Pesanan yang dibuat otomatis dari WhatsApp akan muncul di sini.',
+}) {
   const [searchQuery, setSearchQuery] = useState('');
 
   const query = searchQuery.trim().toLowerCase();
@@ -36,8 +44,8 @@ export default function WaOrderList({ orders, loading, selectedOrder, onSelectOr
             <MessageCircle size={18} />
           </div>
           <div>
-            <h5 className="font-extrabold text-slate-800 text-sm">Pesanan WhatsApp Otomatis</h5>
-            <p className="text-[10px] text-slate-500 font-semibold">Semua pesanan WA, diperbarui otomatis</p>
+            <h5 className="font-extrabold text-slate-800 text-sm">{judul}</h5>
+            <p className="text-[10px] text-slate-500 font-semibold">{subjudul}</p>
           </div>
         </div>
         <button
@@ -82,8 +90,8 @@ export default function WaOrderList({ orders, loading, selectedOrder, onSelectOr
             <div className="bg-white p-3 rounded-full text-slate-400 mb-2">
               <CheckCircle size={24} />
             </div>
-            <p className="text-xs text-slate-500 font-bold">Belum Ada Pesanan WhatsApp</p>
-            <p className="text-[10px] text-slate-400 max-w-[200px] mt-0.5">Pesanan yang dibuat otomatis dari WhatsApp akan muncul di sini.</p>
+            <p className="text-xs text-slate-500 font-bold">{judulKosong}</p>
+            <p className="text-[10px] text-slate-400 max-w-[200px] mt-0.5">{pesanKosong}</p>
           </div>
         ) : filteredOrders.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center p-6 bg-slate-50/50 border border-dashed border-slate-200 rounded-2xl">
@@ -123,6 +131,19 @@ export default function WaOrderList({ orders, loading, selectedOrder, onSelectOr
                   <Phone size={10} />
                   <span>{order.nomor_wa}</span>
                 </div>
+
+                {order.sumber === 'staff' && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[8px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded font-black tracking-wider uppercase">
+                      Order via Offline
+                    </span>
+                    {order.dilayani_oleh_nama && (
+                      <span className="text-[9px] text-slate-500 font-bold truncate">
+                        Pelayan: {order.dilayani_oleh_nama}
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 <p className="text-[10px] text-slate-500 font-medium line-clamp-1 italic">
                   "{itemsText}"

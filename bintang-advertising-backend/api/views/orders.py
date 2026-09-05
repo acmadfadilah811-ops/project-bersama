@@ -139,6 +139,23 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def perform_create(self, serializer):
+        # ── Staff hanya boleh mencatat detail pesanan (pelanggan + item) ──
+        # Uang & status TETAP wewenang kasir — dipaksa di sini, bukan
+        # dipercaya dari body request, supaya staff tidak bisa langsung
+        # menandai order "selesai" atau mencatat DP tanpa uang benar-benar
+        # diterima kasir (kelas bug sama dengan guard status_global di
+        # perform_update, sekarang versi CREATE-nya). Order staff masuk
+        # sumber='staff', diproses kasir lewat antrean terpisah sebelum
+        # diterbitkan SPK (fitur "Buat Order" staff, 2026-09-06).
+        if self.request.user.role == 'staff':
+            serializer.validated_data['sumber'] = 'staff'
+            serializer.validated_data['dilayani_oleh'] = self.request.user
+            serializer.validated_data['status_global'] = 'review'
+            serializer.validated_data['dp_dibayar'] = 0
+            serializer.validated_data['diskon_persen'] = 0
+            serializer.validated_data['metode_diskon'] = 'tidak_ada'
+            serializer.validated_data.pop('kupon', None)
+
         # ── Validasi data pelanggan & pelayan WAJIB sebelum order tersimpan ──
         # Sebelumnya order bisa dibuat dengan nomor asal-asalan (mis. bukan
         # format WA sama sekali) — hanya field kosong yang tertolak DRF secara
@@ -1462,10 +1479,25 @@ class OrderItemViewSet(viewsets.ModelViewSet):
             return qs
         return qs.filter(order__items__jobs__pic_staff=user).distinct()
 
-    def _ensure_write_role(self):
-        if self.request.user.role not in ('owner', 'manager', 'admin', 'kasir'):
-            from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied('Anda tidak boleh mengubah item order.')
+    def _ensure_write_role(self, order=None):
+        role = self.request.user.role
+        if role in ('owner', 'manager', 'admin', 'kasir'):
+            return
+        # Staff dikecualikan HANYA untuk mengisi item pesanan miliknya
+        # sendiri lewat fitur "Buat Order" (sumber='staff'), selama order
+        # itu masih 'review' -- begitu kasir mulai memverifikasi/mengubah
+        # statusnya, staff tidak boleh lagi ikut mengubah item (mencegah
+        # race condition dengan verifikasi harga kasir). Order lain (WA/POS/
+        # manual/order staff lain) tetap tertutup total untuk staff.
+        if (
+            role == 'staff' and order is not None
+            and order.sumber == 'staff'
+            and order.dilayani_oleh_id == self.request.user.id
+            and order.status_global == 'review'
+        ):
+            return
+        from rest_framework.exceptions import PermissionDenied
+        raise PermissionDenied('Anda tidak boleh mengubah item order.')
 
     def _ensure_order_editable(self, order):
         """Item pesanan yang statusnya sudah 'selesai'/'batal' terkunci —
@@ -1538,8 +1570,8 @@ class OrderItemViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def perform_create(self, serializer):
-        self._ensure_write_role()
         target_order = serializer.validated_data.get('order')
+        self._ensure_write_role(target_order)
         if target_order is not None:
             self._ensure_order_editable(target_order)
         instance = serializer.save(_current_user=self.request.user)
@@ -1547,7 +1579,7 @@ class OrderItemViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def perform_update(self, serializer):
-        self._ensure_write_role()
+        self._ensure_write_role(serializer.instance.order)
         self._ensure_order_editable(serializer.instance.order)
         serializer.instance._current_user = self.request.user
         instance = serializer.save()
@@ -1555,7 +1587,7 @@ class OrderItemViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def perform_destroy(self, instance):
-        self._ensure_write_role()
+        self._ensure_write_role(instance.order)
         self._ensure_order_editable(instance.order)
         instance._current_user = self.request.user
         order = instance.order
