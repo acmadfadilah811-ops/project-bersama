@@ -100,3 +100,44 @@ def batalkan_order(order, actor, alasan=""):
     post_order_reversal_journal(order=order, actor=actor, description_prefix="Pembatalan Order")
 
     return order
+
+
+class SelesaikanOrderError(Exception):
+    """Order tidak bisa diselesaikan (sudah selesai/sudah batal)."""
+
+
+@transaction.atomic
+def selesaikan_order(order, actor):
+    """
+    Selesaikan `order` (harus belum berstatus 'selesai'/'batal'): ubah status,
+    posting jurnal HPP bahan baku. Logic diekstrak dari OrderViewSet.selesaikan()
+    (T-204) supaya jalur lain — mis. import_status_csv() — memakai satu-satunya
+    sumber kebenaran ini, bukan menyalin ulang status_global secara mentah
+    (yang akan melewatkan jurnal HPP; bug ditemukan & diperbaiki 2026-09-05).
+    """
+    order = Order.objects.select_for_update().get(pk=order.pk)
+
+    if order.status_global == 'selesai':
+        raise SelesaikanOrderError('Pesanan sudah berstatus selesai.')
+    if order.status_global == 'batal':
+        raise SelesaikanOrderError('Pesanan yang sudah dibatalkan tidak dapat diselesaikan.')
+
+    old_status = order.status_global
+    order.status_global = 'selesai'
+    order._current_user = actor
+    order.save()
+
+    complete_log = OrderActivityLog.objects.create(
+        order=order,
+        user=actor,
+        tindakan='COMPLETE',
+        keterangan=f'Status pesanan diubah dari [{old_status}] menjadi [selesai]',
+    )
+
+    # T-204: HPP bahan baku (JobBoard) diposting saat order selesai. Gating
+    # internal (akun belum diatur/HPP nol) mengembalikan None dengan aman,
+    # tidak melempar — konsisten pola fail-open task lain di file ini.
+    from accounting.services.order_posting import post_order_material_hpp_journal
+    post_order_material_hpp_journal(order=order, actor=actor, activity_log=complete_log)
+
+    return order

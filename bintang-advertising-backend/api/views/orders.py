@@ -960,40 +960,25 @@ class OrderViewSet(viewsets.ModelViewSet):
         return Response(OrderSerializer(order, context={'request': request}).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='selesaikan')
-    @transaction.atomic
     def selesaikan(self, request, pk=None):
         """
         POST /api/orders/{id}/selesaikan/
-        Aksi dedicated untuk menyelesaiakan pesanan.
+        Aksi dedicated untuk menyelesaiakan pesanan. Logic sesungguhnya ada di
+        api/services/order_actions.py::selesaikan_order() — dipakai bareng
+        dengan import_status_csv() supaya jurnal HPP tidak pernah terlewat
+        lewat jalur mana pun (bug ditemukan & diperbaiki 2026-09-05).
         """
         self._ensure_write_role()
         try:
-            order = Order.objects.select_for_update().get(pk=pk)
+            order = Order.objects.get(pk=pk)
         except Order.DoesNotExist:
             return Response({'error': 'Pesanan tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
 
-        if order.status_global == 'selesai':
-            return Response({'error': 'Pesanan sudah berstatus selesai.'}, status=status.HTTP_400_BAD_REQUEST)
-        if order.status_global == 'batal':
-            return Response({'error': 'Pesanan yang sudah dibatalkan tidak dapat diselesaikan.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        old_status = order.status_global
-        order.status_global = 'selesai'
-        order._current_user = request.user
-        order.save()
-
-        complete_log = OrderActivityLog.objects.create(
-            order=order,
-            user=request.user,
-            tindakan='COMPLETE',
-            keterangan=f'Status pesanan diubah dari [{old_status}] menjadi [selesai]'
-        )
-
-        # T-204: HPP bahan baku (JobBoard) diposting saat order selesai. Gating
-        # internal (akun belum diatur/HPP nol) mengembalikan None dengan aman,
-        # tidak melempar — konsisten pola fail-open task lain di file ini.
-        from accounting.services.order_posting import post_order_material_hpp_journal
-        post_order_material_hpp_journal(order=order, actor=request.user, activity_log=complete_log)
+        from ..services.order_actions import selesaikan_order, SelesaikanOrderError
+        try:
+            order = selesaikan_order(order, actor=request.user)
+        except SelesaikanOrderError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(OrderSerializer(order, context={'request': request}).data, status=status.HTTP_200_OK)
 
@@ -1255,6 +1240,26 @@ class OrderViewSet(viewsets.ModelViewSet):
                 })
                 continue
 
+            # Kode Z/X (selesai/batal) WAJIB lewat batalkan_order()/selesaikan_order()
+            # (lihat loop eksekusi di bawah) supaya stok & jurnal ikut benar — cek
+            # transisi tidak valid di sini SEBELUM tulis apa pun, konsisten dengan
+            # validasi baris lain di atas (satu file CSV: semua valid atau ditolak
+            # semua, tidak ada commit sebagian). Pesan disamakan persis dengan
+            # BatalkanOrderError/SelesaikanOrderError supaya tidak menyimpang kalau
+            # salah satu diubah nanti (bug ditemukan & diperbaiki 2026-09-05 — CSV
+            # ini sebelumnya menimpa status_global mentah, melewati pemulihan stok,
+            # jurnal pembalik/HPP, dan validasi transisi ini sama sekali).
+            if new_status == 'batal' and order.status_global in ('batal', 'selesai'):
+                pesan = ('Pesanan sudah berstatus dibatalkan.' if order.status_global == 'batal'
+                         else "Pesanan yang sudah selesai tidak dapat dibatalkan langsung. Gunakan alur Retur.")
+                row_errors.append({'row': idx, 'order_id': order_id, 'tanggal_kirim': shipping_date_str, 'message': pesan})
+                continue
+            if new_status == 'selesai' and order.status_global in ('selesai', 'batal'):
+                pesan = ('Pesanan sudah berstatus selesai.' if order.status_global == 'selesai'
+                         else 'Pesanan yang sudah dibatalkan tidak dapat diselesaikan.')
+                row_errors.append({'row': idx, 'order_id': order_id, 'tanggal_kirim': shipping_date_str, 'message': pesan})
+                continue
+
             # Validasi format tanggal kirim jika ada
             parsed_date = None
             if shipping_date_str:
@@ -1289,32 +1294,41 @@ class OrderViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_200_OK)
 
         # Proses pembaruan dalam satu transaksi database atomic
+        from ..services.order_actions import batalkan_order, selesaikan_order
         updated_count = 0
         with transaction.atomic():
             for order, new_status, parsed_date, orig_date_str in orders_to_update:
-                changed = False
-                ket_parts = []
+                row_changed = False
 
                 if new_status and order.status_global != new_status:
-                    order.status_global = new_status
-                    changed = True
-                    ket_parts.append(f"Status diperbarui menjadi '{new_status}'")
+                    # Z/X WAJIB lewat service resmi (pemulihan stok FIFO + jurnal
+                    # pembalik/HPP) — bukan menimpa status_global mentah seperti
+                    # sebelumnya. Guard transisi tidak valid sudah dicek di loop
+                    # validasi di atas, jadi di sini tidak akan pernah melempar,
+                    # tapi service tetap idempoten-aman (select_for_update) kalau
+                    # status berubah di antara kedua loop.
+                    if new_status == 'batal':
+                        order = batalkan_order(order, actor=request.user, alasan='Diimpor lewat Perbarui Status (CSV).')
+                    elif new_status == 'selesai':
+                        order = selesaikan_order(order, actor=request.user)
+                    else:
+                        order._current_user = request.user
+                        order.status_global = new_status
+                        order.save()
+                        OrderActivityLog.objects.create(
+                            order=order, user=request.user, tindakan="UPDATE_STATUS",
+                            keterangan=f"Status diperbarui menjadi '{new_status}' via impor CSV.",
+                        )
+                    row_changed = True
 
                 if orig_date_str:
-                    ket_parts.append(f"Tanggal Kirim: {orig_date_str}")
-                    changed = True
-
-                if changed:
-                    order._current_user = request.user
-                    order.save()
-
-                    ket = ", ".join(ket_parts) + " via impor CSV."
                     OrderActivityLog.objects.create(
-                        order=order,
-                        user=request.user,
-                        tindakan="UPDATE_STATUS",
-                        keterangan=ket
+                        order=order, user=request.user, tindakan="UPDATE_STATUS",
+                        keterangan=f"Tanggal Kirim: {orig_date_str} (via impor CSV).",
                     )
+                    row_changed = True
+
+                if row_changed:
                     updated_count += 1
 
         return Response({
