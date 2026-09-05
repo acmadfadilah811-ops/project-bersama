@@ -687,10 +687,14 @@ class ProductViewSet(viewsets.ModelViewSet):
                         harga_jual_online=var.harga_jual_online,
                         lacak_inventori=lacak_inventori,
                         rack=rack if rack else var.rack,
-                        qty_stok=qty_stok if not var.lacak_inventori else 0.00,
-                        stok_minimum=var.stok_minimum,
+                        # ProductVariant tidak punya field stok_minimum/is_active
+                        # (beda dari Product) - copy_product() sempat memakainya
+                        # dan selalu crash 500 tiap kali produk berlacak varian
+                        # di-Salin (ditemukan lewat audit produksi 2026-09-05).
+                        # qty_stok juga sebelumnya terbalik: 0.00 diberikan ke
+                        # varian yang MELACAK inventori, bukan yang tidak.
+                        qty_stok=qty_stok if var.lacak_inventori else 0.00,
                         qty_fast_moving=var.qty_fast_moving,
-                        is_active=var.is_active
                     )
                     # Uniqueness checks for variant sku/barcode
                     if new_var.sku:
