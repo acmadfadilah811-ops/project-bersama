@@ -257,7 +257,21 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
   }, [isOpen, selectedCategory, searchTerm]);
 
   // Add Product from Left Catalog to Right Order Items
-  const addProductToOrder = (product) => {
+  const addProductToOrder = async (productFromCatalog) => {
+    // Katalog kiri di-fetch sekali per ganti kategori/pencarian (lihat effect
+    // "Fetch Products" di atas) - kalau modal dibiarkan terbuka lama sebelum
+    // produk diklik, harga di objek itu bisa sudah basi. Ambil ulang harga
+    // sekali lagi tepat saat produk dipilih supaya harga yang terkunci ke
+    // item pesanan pasti yang terbaru (instruksi user 2026-09-05, sama
+    // dengan alasan tombol Sync di Kasir).
+    let product = productFromCatalog;
+    try {
+      const fresh = await apiClient.get(`/products/${productFromCatalog.id}/`);
+      product = fresh.data;
+    } catch {
+      // Gagal refresh - tetap lanjut pakai data katalog yang sudah ada
+      // daripada memblokir kasir/staff menambah item.
+    }
     const detectedPrice = product.harga_jual_toko ?? product.harga_jual ?? 0;
     const isMeteran = checkIsMeteran(product);
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Minus, X, Flag, HelpCircle, Check, Trash2 } from 'lucide-react';
+import { Plus, Minus, X, Flag, HelpCircle, Check, Trash2, RefreshCw } from 'lucide-react';
 import PosHeaderBar from '../components/PosHeaderBar';
 import DeleteConfirmModal from '../components/DeleteConfirmModal';
 import apiClient from '../../../api/apiClient';
@@ -367,6 +367,18 @@ export default function PosShift({ onToggleSidebar }) {
               <Check size={18} strokeWidth={3} />
               <span>{startingShift ? 'Membuka Shift...' : 'Mulai Shift'}</span>
             </button>
+
+            {/* Pengingat sync katalog — harga/stok bisa berubah sejak shift
+                terakhir; kasir disarankan tekan tombol Sync di layar Kasir
+                sebelum melayani pelanggan pertama (instruksi user 2026-09-05,
+                supaya kasir tidak sempat infokan harga lama ke pelanggan). */}
+            <div className="w-full flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 text-left">
+              <RefreshCw size={14} className="text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-[11px] font-semibold text-amber-800 leading-relaxed">
+                Setelah shift dimulai, tekan tombol <b>Sync</b> di layar Kasir terlebih dahulu
+                agar harga & stok produk yang tampil pasti yang terbaru sebelum melayani pelanggan.
+              </p>
+            </div>
 
           </form>
         </div>

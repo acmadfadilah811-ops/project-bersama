@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Filter, Image } from 'lucide-react';
+import { Search, Filter, Image, RefreshCw } from 'lucide-react';
 
 export default function PosCatalogPanel({
   products = [],
@@ -11,6 +11,8 @@ export default function PosCatalogPanel({
   setSearchTerm,
   selectedCategory,
   setSelectedCategory,
+  onSync,
+  syncing = false,
 }) {
   const [activeTab, setActiveTab] = useState('produk');
   const showingPackages = activeTab === 'paket';
@@ -68,6 +70,16 @@ export default function PosCatalogPanel({
               className="w-full text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none bg-transparent"
             />
           </div>
+          <button
+            type="button"
+            onClick={onSync}
+            disabled={syncing}
+            title="Sinkronkan harga & stok produk terbaru"
+            className="flex items-center gap-1.5 bg-white/15 hover:bg-white/25 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
+            <span>{syncing ? 'Sync...' : 'Sync'}</span>
+          </button>
           <button className="text-white hover:bg-white/10 p-2 rounded-lg transition-all cursor-pointer">
             <Filter size={18} />
           </button>

@@ -235,24 +235,45 @@ export default function PosTerminal({ onToggleSidebar }) {
   };
 
   // Fetch Products based on search and category
+  const [syncingCatalog, setSyncingCatalog] = useState(false);
+  const fetchProducts = async () => {
+    const params = { is_active: true };
+    if (selectedCategory && selectedCategory !== 'all') {
+      params.kategori = selectedCategory;
+    }
+    if (searchTerm) {
+      params.search = searchTerm;
+    }
+    const data = await fetchAllPages('/products/', { params });
+    setProducts(data);
+  };
+
   useEffect(() => {
-    const delayDebounce = setTimeout(async () => {
-      try {
-        const params = { is_active: true };
-        if (selectedCategory && selectedCategory !== 'all') {
-          params.kategori = selectedCategory;
-        }
-        if (searchTerm) {
-          params.search = searchTerm;
-        }
-        const data = await fetchAllPages('/products/', { params });
-        setProducts(data);
-      } catch {
-        setProducts([]);
-      }
+    const delayDebounce = setTimeout(() => {
+      fetchProducts().catch(() => setProducts([]));
     }, 300);
     return () => clearTimeout(delayDebounce);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCategory, searchTerm]);
+
+  // Sync manual — kasir bisa tekan kapan saja selama layar Kasir terbuka
+  // (harga/stok dari fetch pertama bisa jadi basi kalau layar dibiarkan
+  // terbuka lama tanpa ganti pencarian/kategori, karena effect di atas cuma
+  // jalan ulang saat searchTerm/selectedCategory berubah). Instruksi user
+  // 2026-09-05: sediakan tombol sync eksplisit, plus pengingat di layar Buka
+  // Shift (lihat PosShift.jsx) supaya kasir terbiasa sync sebelum melayani.
+  const handleSyncCatalog = async () => {
+    if (syncingCatalog) return;
+    setSyncingCatalog(true);
+    try {
+      await fetchProducts();
+      notifySuccess('Katalog disinkronkan', 'Harga & stok produk sudah diperbarui.');
+    } catch (err) {
+      notifyApiError(err, 'Gagal menyinkronkan katalog produk.');
+    } finally {
+      setSyncingCatalog(false);
+    }
+  };
 
   useEffect(() => {
     (async () => {
@@ -790,6 +811,8 @@ export default function PosTerminal({ onToggleSidebar }) {
             setSearchTerm={setSearchTerm}
             selectedCategory={selectedCategory}
             setSelectedCategory={setSelectedCategory}
+            onSync={handleSyncCatalog}
+            syncing={syncingCatalog}
           />
         )}
       </div>
