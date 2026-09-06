@@ -30,6 +30,8 @@ import {
   ShieldAlert,
   KeyRound,
   History,
+  ArrowRight,
+  Lock,
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -589,32 +591,78 @@ export default function Dashboard() {
 
   const toggleSection = (key) => setExpandedSection((prev) => (prev === key ? null : key));
 
+  // Sapaan dinamis sesuai jam (dashboard baru bergaya cream + coral).
+  const jamSekarang = currentTime.getHours();
+  const sapaan =
+    jamSekarang < 11 ? 'Selamat pagi' : jamSekarang < 15 ? 'Selamat siang' : jamSekarang < 18 ? 'Selamat sore' : 'Selamat malam';
+
+  // 4 bulan terakhir untuk widget lingkaran bersarang (data sama dengan
+  // grafik omset di bawah, cuma diambil 4 bulan terakhir saja).
+  const omset4Bulan = omsetBulan.slice(-4);
+  const nestedCircleSizes = [230, 175, 125, 80];
+
+  // Total job selesai + insentif dari top_staff (data yang sama dipakai
+  // leaderboard tab SPK) -- tidak fabrikasi angka baru.
+  const totalJobSelesaiTopStaff = (data?.top_staff || []).reduce((sum, s) => sum + (s.jumlah_job_selesai || 0), 0);
+  const totalInsentifTopStaff = (data?.top_staff || []).reduce((sum, s) => sum + (s.total_insentif || 0), 0);
+
+  // Ringkasan komplain real dari state `complaints` yang sudah di-fetch.
+  const totalKomplain = complaints.length;
+  const komplainSelesai = complaints.filter((c) => c.status === 'selesai').length;
+  const persenKomplainSelesai = totalKomplain > 0 ? Math.round((komplainSelesai / totalKomplain) * 100) : 0;
+
   return (
     <div className="space-y-6 w-full select-none">
 
-      {/* ── HEADER SELAMAT DATANG ──────────────────────────── */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-2xs">
-        <h1 className="text-xl font-extrabold text-slate-800 tracking-tight flex items-center gap-2">
-          Selamat Datang, <span className="text-indigo-650 capitalize">{user?.username}</span>
-        </h1>
-        <p className="text-xs text-slate-400 mt-0.5 font-medium">
-          {currentTime.toLocaleDateString('id-ID', {
-            weekday: 'long',
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric',
-          })}
-        </p>
+      {/* ── HERO ──────────────────────────────────────────── */}
+      <div className="bg-[#FBF8F4] border border-[#ECE5DB] rounded-[28px] p-5 md:p-6 flex flex-wrap items-center gap-5">
+        <div className="w-16 h-16 md:w-20 md:h-20 rounded-full border-[1.5px] border-slate-800 flex items-center justify-center shrink-0">
+          <span className="text-xl md:text-2xl font-extrabold text-slate-800 tabular-nums">
+            {currentTime.getDate()}
+          </span>
+        </div>
+        <div className="leading-tight shrink-0">
+          <div className="text-xs md:text-sm font-bold text-slate-600">
+            {currentTime.toLocaleDateString('id-ID', { weekday: 'short' })},
+          </div>
+          <div className="text-xs md:text-sm font-bold text-slate-600">
+            {currentTime.toLocaleDateString('id-ID', { month: 'long' })}
+          </div>
+        </div>
+        <a
+          href="/produksi"
+          className="flex items-center gap-2 bg-[#EE6A50] hover:bg-[#DD5A41] text-white font-bold text-xs px-5 py-3.5 rounded-full shadow-sm transition-all shrink-0"
+        >
+          Lihat Papan Kerja
+          <ArrowRight size={14} />
+        </a>
+
+        <div className="flex-1 min-w-[140px]" />
+
+        <div className="text-right shrink-0">
+          <h1 className="text-xl md:text-2xl font-extrabold text-slate-800 tracking-tight">
+            {sapaan}, <span className="capitalize">{user?.username}</span>
+          </h1>
+          <p className="text-xs md:text-sm italic text-slate-400 font-medium mt-0.5">
+            Semoga bisnis hari ini lancar!
+          </p>
+        </div>
+        <div className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-white border border-[#ECE5DB] flex flex-col items-center justify-center gap-0.5 shrink-0">
+          <Clock size={13} className="text-[#EE6A50]" />
+          <span className="text-[9px] font-extrabold text-slate-600 tabular-nums">
+            {currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        </div>
       </div>
 
       {/* ── APP SWITCHER (Premium Horizontal Cards) ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {[
-          { name: 'Penjualan', path: '/orders', icon: ShoppingCart, desc: 'Quotations & Sales', color: 'bg-gradient-to-r from-rose-500 to-orange-400' },
-          { name: 'Papan Kerja', path: '/produksi', icon: ClipboardList, desc: 'Production SPK', color: 'bg-gradient-to-r from-blue-600 to-cyan-400' },
-          { name: 'Inventori', path: '/product-inventory', icon: Package, desc: 'Inventory & BoM', color: 'bg-gradient-to-r from-purple-600 to-indigo-600' },
-          { name: 'Kepegawaian', path: '/attendance', icon: CalendarClock, desc: 'HR & Timesheets', color: 'bg-gradient-to-r from-teal-600 to-emerald-400' },
-          { name: 'Pengaturan', path: '/settings', icon: Settings, desc: 'System Settings', color: 'bg-gradient-to-r from-slate-700 to-slate-500' }
+          { name: 'Penjualan', path: '/orders', icon: ShoppingCart, desc: 'Quotations & Sales', color: 'bg-gradient-to-r from-[#EE6A50] to-[#F3927C]' },
+          { name: 'Papan Kerja', path: '/produksi', icon: ClipboardList, desc: 'Production SPK', color: 'bg-gradient-to-r from-slate-800 to-slate-600' },
+          { name: 'Inventori', path: '/product-inventory', icon: Package, desc: 'Inventory & BoM', color: 'bg-gradient-to-r from-[#D98A1C] to-[#EFB65B]' },
+          { name: 'Kepegawaian', path: '/attendance', icon: CalendarClock, desc: 'HR & Timesheets', color: 'bg-gradient-to-r from-[#159A6B] to-[#4CC195]' },
+          { name: 'Pengaturan', path: '/settings', icon: Settings, desc: 'System Settings', color: 'bg-gradient-to-r from-slate-500 to-slate-400' }
         ].map((app, idx) => {
           const AppIcon = app.icon;
           return (
@@ -647,7 +695,7 @@ export default function Dashboard() {
       </div>
 
       {/* ── SUB-TAB NAVIGATION BAR ─────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 pb-px">
+      <div className="flex flex-wrap items-center gap-2">
         {[
           { id: 'finansial', label: 'Ringkasan Finansial', icon: TrendingUp },
           { id: 'spk', label: 'Papan Kerja (SPK)', icon: ClipboardList },
@@ -661,17 +709,17 @@ export default function Dashboard() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2 text-xs font-bold transition-all border-b-2 cursor-pointer
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold transition-all cursor-pointer
                 ${
                   isActive
-                    ? 'border-indigo-600 text-indigo-600 bg-indigo-50/50 rounded-t-lg font-black'
-                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                    ? 'bg-slate-800 text-white'
+                    : 'text-slate-500 hover:bg-[#F6F2EC]'
                 }`}
             >
               <TabIcon size={14} />
               {tab.label}
               {!!tab.badge && (
-                <span className="bg-rose-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full">
+                <span className="bg-[#EE6A50] text-white text-[8px] font-black px-1.5 py-0.5 rounded-full">
                   {tab.badge}
                 </span>
               )}
@@ -685,36 +733,92 @@ export default function Dashboard() {
         
         {/* TAB 1: RINGKASAN FINANSIAL */}
         {activeTab === 'finansial' && (
-          <div className="space-y-6">
-            {/* KPI Cards Grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              {statCards.map((card, i) => {
-                const Icon = card.icon;
-                return (
-                  <div
-                    key={i}
-                    className="bg-white border border-slate-100 rounded-2xl p-4 flex items-center justify-between shadow-2xs hover:shadow-xs transition-all"
-                  >
-                    <div>
-                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-0.5 truncate">
-                        {card.label}
-                      </p>
-                      <h3 className="text-sm font-black text-slate-800 leading-none truncate">
-                        {card.value}
-                      </h3>
-                    </div>
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ml-1 ${card.iconBg}`}>
-                      <Icon size={14} className={card.iconColor} />
-                    </div>
+          <div className="space-y-5">
+            {/* ── WIDGET ROW 1 ────────────────────────────────── */}
+            <div className="flex flex-wrap gap-4 items-stretch">
+              {/* Omset -- kartu gelap besar */}
+              <div className="w-full sm:w-[300px] bg-slate-900 rounded-[22px] p-5 text-white flex flex-col justify-between">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Omset Bulan Ini</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">Total pendapatan tercatat</p>
                   </div>
-                );
-              })}
+                  <div className="bg-white/10 px-2.5 py-1 rounded-lg text-[9px] font-bold text-slate-200">
+                    {currentTime.toLocaleDateString('id-ID', { month: 'long' })}
+                  </div>
+                </div>
+                <div className="text-xl font-black mt-4">{formatRupiah(data?.omset_bulan_ini)}</div>
+                <div className={`text-[10px] font-bold mt-1 ${statCards[0].badgeUp ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {statCards[0].badge} dari bulan lalu
+                </div>
+              </div>
+
+              {/* Stacked: Total Order + Order Hari Ini */}
+              <div className="flex flex-col gap-4 w-full sm:w-[260px]">
+                <div className="bg-white border border-[#ECE5DB] rounded-[18px] p-4 flex-1 flex flex-col justify-center">
+                  <div className="flex items-center justify-between">
+                    <div className="w-8 h-8 rounded-full bg-[#FBE7E1] flex items-center justify-center">
+                      <ShoppingCart size={14} className="text-[#DD5A41]" />
+                    </div>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase">Bulan Ini</span>
+                  </div>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mt-2.5">Total Order</p>
+                  <p className="text-lg font-black text-slate-800 leading-none mt-0.5">{data?.total_order_bulan_ini || 0} Order</p>
+                </div>
+                <div className="bg-white border border-[#ECE5DB] rounded-[18px] p-4 flex-1 flex flex-col justify-center">
+                  <div className="flex items-center justify-between">
+                    <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center">
+                      <Package size={14} className="text-emerald-600" />
+                    </div>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase">Hari Ini</span>
+                  </div>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mt-2.5">Order Hari Ini</p>
+                  <p className="text-lg font-black text-slate-800 leading-none mt-0.5">{data?.total_order_hari_ini || 0} Order</p>
+                </div>
+              </div>
+
+              {/* Sesi Absensi */}
+              <div className="bg-white border border-[#ECE5DB] rounded-[18px] p-4 flex flex-col items-center justify-center gap-2.5 w-[130px]">
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${sessionData?.is_active ? 'bg-slate-900' : 'bg-slate-300'}`}>
+                  <Lock size={18} className="text-white" />
+                </div>
+                <p className="text-[10px] font-bold text-slate-600 text-center leading-tight">
+                  Sesi Absensi<br />{sessionData?.is_active ? 'Aktif' : 'Tutup'}
+                </p>
+              </div>
+
+              {/* Kehadiran hari ini -- grid per staff (real, bukan kalender bulanan) */}
+              <div className="bg-white border border-[#ECE5DB] rounded-[18px] p-4 w-[220px]">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-base font-black text-slate-800">{countHadir + countTerlambat}/{totalStaff}</span>
+                  <span className="text-[9.5px] text-slate-400 font-medium">hadir hari ini</span>
+                </div>
+                <div className="grid grid-cols-8 gap-1.5 mt-3">
+                  {staffList.map((s, i) => {
+                    const st = s.absensi_hari_ini?.status;
+                    const dot = st === 'hadir' ? 'bg-[#EE6A50]' : st === 'terlambat' ? 'bg-amber-400' : 'bg-slate-200';
+                    return <div key={i} title={s.username} className={`w-3.5 h-3.5 rounded-[4px] ${dot}`} />;
+                  })}
+                  {staffList.length === 0 && (
+                    <span className="text-[10px] text-slate-300 italic col-span-8">Belum ada staff</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Pelanggan baru */}
+              <div className="bg-white border border-[#ECE5DB] rounded-[18px] p-4 flex-1 min-w-[140px] flex flex-col justify-center">
+                <div className="w-8 h-8 rounded-full bg-[#FBE7E1] flex items-center justify-center">
+                  <Users size={14} className="text-[#DD5A41]" />
+                </div>
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mt-2.5">Pelanggan Baru</p>
+                <p className="text-lg font-black text-slate-800 leading-none mt-0.5">{data?.total_pelanggan || 0}</p>
+              </div>
             </div>
 
             {/* Line Chart & Status Pipeline */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
               {/* Left: Line Chart */}
-              <div className="lg:col-span-8 bg-white border border-slate-100 rounded-2xl p-5 shadow-sm relative overflow-hidden">
+              <div className="lg:col-span-8 bg-white border border-[#ECE5DB] rounded-[22px] p-5 shadow-sm relative overflow-hidden">
                 {/* Company Building watermark background */}
                 <div className="absolute right-4 bottom-10 opacity-[0.06] pointer-events-none select-none text-slate-800">
                   <svg width="220" height="180" viewBox="0 0 220 180" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -760,20 +864,20 @@ export default function Dashboard() {
                     >
                       <defs>
                         <linearGradient id="omsetGradientSleek" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#4318FF" stopOpacity="0.2" />
-                          <stop offset="100%" stopColor="#4318FF" stopOpacity="0.0" />
+                          <stop offset="0%" stopColor="#EE6A50" stopOpacity="0.2" />
+                          <stop offset="100%" stopColor="#EE6A50" stopOpacity="0.0" />
                         </linearGradient>
                       </defs>
-                      <line x1="20" y1={svgHeight - 15} x2={svgWidth - 20} y2={svgHeight - 15} stroke="#F1F5F9" strokeWidth="1" />
-                      <line x1="20" y1={svgHeight / 2} x2={svgWidth - 20} y2={svgHeight / 2} stroke="#F1F5F9" strokeWidth="0.5" strokeDasharray="3" />
-                      <line x1="20" y1="20" x2={svgWidth - 20} y2="20" stroke="#F1F5F9" strokeWidth="0.5" strokeDasharray="3" />
+                      <line x1="20" y1={svgHeight - 15} x2={svgWidth - 20} y2={svgHeight - 15} stroke="#F1EDE6" strokeWidth="1" />
+                      <line x1="20" y1={svgHeight / 2} x2={svgWidth - 20} y2={svgHeight / 2} stroke="#F1EDE6" strokeWidth="0.5" strokeDasharray="3" />
+                      <line x1="20" y1="20" x2={svgWidth - 20} y2="20" stroke="#F1EDE6" strokeWidth="0.5" strokeDasharray="3" />
 
                       {areaD && <path d={areaD} fill="url(#omsetGradientSleek)" />}
                       {pathD && (
                         <path
                           d={pathD}
                           fill="none"
-                          stroke="#4318FF"
+                          stroke="#EE6A50"
                           strokeWidth="2.5"
                           strokeLinecap="round"
                           strokeLinejoin="round"
@@ -781,7 +885,7 @@ export default function Dashboard() {
                       )}
                       {points.map((p, idx) => (
                         <g key={idx}>
-                          <circle cx={p.x} cy={p.y} r="3" fill="#4318FF" stroke="#FFFFFF" strokeWidth="1.5" />
+                          <circle cx={p.x} cy={p.y} r="3" fill="#EE6A50" stroke="#FFFFFF" strokeWidth="1.5" />
                         </g>
                       ))}
                     </svg>
@@ -801,7 +905,7 @@ export default function Dashboard() {
 
               {/* Right: Presensi Hari Ini (Replacing Status Operasional) */}
               <div className="lg:col-span-4 flex flex-col gap-4">
-                <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm flex flex-col justify-between h-full">
+                <div className="bg-white border border-[#ECE5DB] rounded-[22px] p-5 shadow-sm flex flex-col justify-between h-full">
                   <div>
                     <div className="flex items-center justify-between pb-3 border-b border-slate-50 mb-3">
                       <div>
@@ -864,10 +968,90 @@ export default function Dashboard() {
                   {/* Navigation Button */}
                   <button
                     onClick={() => setActiveTab('presensi')}
-                    className="w-full mt-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 text-[10px] font-black rounded-xl border border-indigo-100 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                    className="w-full mt-4 py-2 bg-[#FBE7E1] hover:bg-[#F6CFC4] text-[#DD5A41] text-[10px] font-black rounded-xl border border-[#F1B6A6] transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                   >
                     Atur Presensi Karyawan
                   </button>
+                </div>
+              </div>
+            </div>
+
+            {/* ── BENTO BAWAH: Omset per periode, pipeline order, insentif & komplain ── */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+              {/* Nested circles -- omset 4 bulan terakhir */}
+              <div className="lg:col-span-3 bg-white border border-[#ECE5DB] rounded-[22px] p-5">
+                <h2 className="text-xs font-black uppercase tracking-wider text-slate-700">Omset 4 Bulan Terakhir</h2>
+                {omset4Bulan.length > 0 ? (
+                  <div className="relative h-[210px] mt-4">
+                    {omset4Bulan.map((item, idx) => {
+                      const size = nestedCircleSizes[idx] || 60;
+                      const isLast = idx === omset4Bulan.length - 1;
+                      const bg = ['#FBE7E1', '#F6CFC4', '#F1B6A6', '#EE6A50'][idx] || '#EE6A50';
+                      return (
+                        <div
+                          key={idx}
+                          className="absolute left-1/2 bottom-0 rounded-full flex justify-center pt-3"
+                          style={{ width: size, height: size, background: bg, transform: 'translateX(-50%)' }}
+                        >
+                          <span className={`text-[10px] font-black ${isLast ? 'text-white' : 'text-[#8A2E1D]'}`}>
+                            {(item.total / 1000000).toFixed(1)}Jt
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="h-[210px] flex items-center justify-center text-slate-300 text-xs mt-4">
+                    Data belum tersedia
+                  </div>
+                )}
+                <div className="flex justify-around mt-2 text-[9px] font-bold text-slate-400 uppercase">
+                  {omset4Bulan.map((item, idx) => (
+                    <span key={idx}>{item.bulan.slice(0, 3)}</span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Status pipeline order */}
+              <div className="lg:col-span-5 bg-white border border-[#ECE5DB] rounded-[22px] p-5">
+                <h2 className="text-xs font-black uppercase tracking-wider text-slate-700">Status Pipeline Order</h2>
+                <p className="text-[10px] text-slate-400 mt-0.5 mb-4">Sebaran order aktif berdasarkan tahapannya.</p>
+                <div className="flex flex-col gap-3">
+                  {statusCards.map((s, i) => (
+                    <div key={i} className="flex items-center gap-2.5">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: s.chartColor }} />
+                      <span className="text-xs font-semibold text-slate-600 flex-1">{s.title}</span>
+                      <span className="text-xs font-black text-slate-800">{s.count}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="bg-[#FBF8F4] border border-[#ECE5DB] rounded-xl p-3 mt-4 flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-slate-500">Job Selesai (Top Staff)</span>
+                  <span className="text-sm font-black text-slate-800">{totalJobSelesaiTopStaff} Job</span>
+                </div>
+              </div>
+
+              {/* Insentif & Komplain */}
+              <div className="lg:col-span-4 flex flex-col gap-4">
+                <div className="bg-white border border-[#ECE5DB] rounded-[18px] p-4 flex-1">
+                  <div className="flex items-center justify-between">
+                    <TrendingUp size={16} className="text-[#DD5A41]" />
+                    <span className="text-[9px] font-bold text-slate-400 uppercase">Top Staff</span>
+                  </div>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mt-2">Insentif Terbayar</p>
+                  <p className="text-base font-black text-slate-800 mt-0.5">{formatRupiah(totalInsentifTopStaff)}</p>
+                </div>
+                <div className="bg-white border border-[#ECE5DB] rounded-[18px] p-4 flex-1">
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Komplain Tercatat</p>
+                  <p className="text-sm font-black text-slate-800 mt-0.5">
+                    {komplainSelesai} dari {totalKomplain} terselesaikan
+                  </p>
+                  <div className="w-full h-1.5 bg-[#F1EDE6] rounded-full mt-3 overflow-hidden">
+                    <div
+                      className="h-full bg-[#EE6A50] rounded-full"
+                      style={{ width: `${persenKomplainSelesai}%` }}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
