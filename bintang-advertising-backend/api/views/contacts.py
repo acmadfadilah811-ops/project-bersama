@@ -19,14 +19,24 @@ class ProductionCustomerLiteView(APIView):
     """BE-24: endpoint SEMPIT khusus papan produksi.
 
     Papan produksi (dipakai staff) hanya butuh mencocokkan nama pelanggan
-    dengan nomor WhatsApp untuk keperluan menghubungi terkait pekerjaan.
-    Endpoint ini SENGAJA hanya mengembalikan `nama` + `nomor_wa` — TANPA
-    piutang, total belanja, atau catatan pelanggan. Endpoint `/contacts/`
-    penuh dikunci (lihat ContactViewSet) agar staff tidak bisa membaca seluruh
-    database pelanggan beserta data finansialnya.
+    dengan nomor WhatsApp untuk keperluan menghubungi terkait pekerjaan, dan
+    (fitur "Buat Order" staff, 2026-09-06) memilih pelanggan terdaftar
+    berdasarkan tipe (Agen/MOU/dst). Endpoint ini SENGAJA hanya mengembalikan
+    `nama` + `nomor_wa` + `tipe` — TANPA piutang, total belanja, deposit,
+    batas kredit, atau catatan pelanggan. Endpoint `/contacts/` dan
+    `/customers/` penuh dikunci untuk staff (lihat ContactViewSet,
+    CustomerViewSet) agar staff tidak bisa membaca seluruh database
+    pelanggan beserta data finansialnya.
 
-    Penyaringan dilakukan di server (`?search=`) dan hasilnya dibatasi
-    `MAX_ROWS`. Sebagai APIView, endpoint ini tidak melewati
+    Sumber gabungan: Contact (riwayat order WA, tidak punya tipe) dan
+    Customer (modul Pelanggan & Supplier, punya tipe/customer_group).
+    `?tipe=` menyaring KHUSUS ke Customer bertipe itu (Contact tidak punya
+    tipe jadi tidak relevan lagi begitu tipe dipilih). `tipe_list` selalu
+    dikirim supaya frontend bisa mengisi dropdown filter tanpa staff perlu
+    akses `/customer-groups/` (juga dikunci BE-24).
+
+    Penyaringan dilakukan di server (`?search=`, `?tipe=`) dan hasilnya
+    dibatasi `MAX_ROWS`. Sebagai APIView, endpoint ini tidak melewati
     OptionalPageNumberPagination, jadi tanpa batas di sini papan produksi akan
     menarik seluruh tabel kontak setiap kali dibuka. `truncated` dikirim
     eksplisit supaya UI bisa memberi tahu user bahwa hasilnya terpotong —
@@ -37,18 +47,44 @@ class ProductionCustomerLiteView(APIView):
     MAX_ROWS = 200
 
     def get(self, request):
-        search = (request.query_params.get('search') or '').strip()
+        from ..customer_models import Customer, CustomerGroup
 
-        qs = Contact.objects.all()
+        search = (request.query_params.get('search') or '').strip()
+        tipe = (request.query_params.get('tipe') or '').strip()
+
+        tipe_list = list(
+            CustomerGroup.objects.order_by('nama').values_list('nama', flat=True)
+        )
+
+        customer_qs = Customer.objects.select_related('customer_group')
+        contact_qs = Contact.objects.all()
+
         if search:
-            qs = qs.filter(Q(nama__icontains=search) | Q(nomor_wa__icontains=search))
+            customer_qs = customer_qs.filter(Q(nama__icontains=search) | Q(handphone__icontains=search))
+            contact_qs = contact_qs.filter(Q(nama__icontains=search) | Q(nomor_wa__icontains=search))
+
+        if tipe:
+            customer_qs = customer_qs.filter(customer_group__nama__iexact=tipe)
+            # Tipe cuma berlaku untuk Customer terdaftar -- Contact (riwayat WA
+            # tanpa tipe) tidak relevan lagi begitu kasir/staff menyaring tipe.
+            contact_qs = Contact.objects.none()
+
+        customer_rows = [
+            {'nama': r['nama'], 'nomor_wa': r['handphone'], 'tipe': r['customer_group__nama']}
+            for r in customer_qs.order_by('nama').values('nama', 'handphone', 'customer_group__nama')[:self.MAX_ROWS + 1]
+        ]
+        contact_rows = [
+            {'nama': r['nama'], 'nomor_wa': r['nomor_wa'], 'tipe': None}
+            for r in contact_qs.order_by('nama').values('nama', 'nomor_wa')[:self.MAX_ROWS + 1]
+        ]
 
         # Ambil satu baris lebih agar bisa membedakan "pas MAX_ROWS" dari "lebih".
-        rows = list(qs.order_by('nama').values('nama', 'nomor_wa')[:self.MAX_ROWS + 1])
+        rows = (customer_rows + contact_rows)[:self.MAX_ROWS + 1]
         truncated = len(rows) > self.MAX_ROWS
 
         return Response({
             'results': rows[:self.MAX_ROWS],
+            'tipe_list': tipe_list,
             'truncated': truncated,
             'limit': self.MAX_ROWS,
         })

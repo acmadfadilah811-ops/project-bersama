@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { ShoppingCart, Plus, Trash2, User, Info, CheckCircle2, Search, UserPlus } from 'lucide-react';
+import { ShoppingCart, Plus, Trash2, User, Info, CheckCircle2, Search } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
 import NumericInput from '../../../../components/NumericInput';
 import WaOrderItemProductSource from '../../../kasir/components/WaOrderItemProductSource';
-import CustomerEditModal from '../../../kasir/components/CustomerEditModal';
 import { fetchActiveProducts, fetchActivePackages, fetchHargaKatalog } from '../../../kasir/utils/orderCatalogPricing';
 
 const formatCurrency = (val) =>
@@ -48,18 +47,23 @@ export default function StaffCreateOrderPanel() {
   const [error, setError] = useState('');
   const [sukses, setSukses] = useState(false);
 
-  // Cari Pelanggan Terdaftar — pola sama seperti CreateOrderModal.jsx
-  // (kotak nama jadi type-ahead ke /contacts/?search=), supaya staff tidak
-  // perlu ketik ulang data pelanggan yang sudah pernah order sebelumnya.
+  // Cari Pelanggan Terdaftar + filter Tipe Pelanggan (Agen/MOU/dst) --
+  // staff TIDAK bisa akses /customers/ atau /customer-groups/ penuh (BE-24,
+  // database pelanggan finansial dikunci untuk staff), jadi dilayani lewat
+  // endpoint sempit /contacts/production-lite/ yang cuma mengembalikan
+  // nama+nomor_wa+tipe (tanpa piutang/deposit/batas kredit). Menggabungkan
+  // Contact (riwayat WA) & Customer (Pelanggan & Supplier, punya tipe).
   const [customerSuggestions, setCustomerSuggestions] = useState([]);
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const customerDropdownRef = useRef(null);
+  const [tipeList, setTipeList] = useState([]);
+  const [tipeFilter, setTipeFilter] = useState('');
 
-  // "+ Pelanggan Baru (Data Lengkap)" — pakai CustomerEditModal yang sama
-  // dengan menu Kasir/Terminal POS (tipe pelanggan, gender, email, alamat,
-  // kode pos, negara/provinsi/kota/kecamatan), bukan cuma nama+nomor WA.
-  const [showCustomerModal, setShowCustomerModal] = useState(false);
-  const [savingCustomer, setSavingCustomer] = useState(false);
+  useEffect(() => {
+    apiClient.get('/contacts/production-lite/')
+      .then((res) => setTipeList(res.data?.tipe_list || []))
+      .catch((err) => console.error('[StaffCreateOrderPanel] Gagal memuat tipe pelanggan:', err));
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -86,66 +90,32 @@ export default function StaffCreateOrderPanel() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const searchCustomers = async (query) => {
-    if (!query || !query.trim()) {
+  const searchCustomers = async (query, tipe) => {
+    if (!(query || '').trim() && !tipe) {
       setCustomerSuggestions([]);
       return;
     }
     try {
-      const res = await apiClient.get('/contacts/', { params: { search: query } });
-      setCustomerSuggestions(res.data?.results || res.data || []);
+      const params = {};
+      if (query && query.trim()) params.search = query.trim();
+      if (tipe) params.tipe = tipe;
+      const res = await apiClient.get('/contacts/production-lite/', { params });
+      setCustomerSuggestions(res.data?.results || []);
     } catch (err) {
       console.error('[StaffCreateOrderPanel] Gagal mencari pelanggan:', err);
     }
   };
 
-  const handleSelectCustomer = (contact) => {
-    setNama(contact.nama);
-    setNomorWa(contact.nomor_wa);
+  const handleSelectCustomer = (row) => {
+    setNama(row.nama);
+    setNomorWa(row.nomor_wa || '');
     setShowCustomerDropdown(false);
   };
 
-  // Pelanggan baru dengan data lengkap (tipe pelanggan, email, alamat, dst) --
-  // pola sama persis dengan PosTerminal.jsx handleSaveEditCustomer cabang
-  // "pelanggan baru": buat akun Customer dulu, lalu Contact yang ditautkan.
-  const handleSaveNewCustomer = async (formData) => {
-    setSavingCustomer(true);
-    try {
-      const nomorBersih = (formData.telepon || '').replace(/[\s\-()]+/g, '');
-      if (!/^\+?\d{8,15}$/.test(nomorBersih)) {
-        alert('Nomor HP tidak valid. Gunakan format angka 8-15 digit (boleh diawali +).');
-        return;
-      }
-      const custRes = await apiClient.post('/customers/', {
-        nama: formData.nama,
-        customer_group: formData.tipe_pelanggan || null,
-        jenis_kelamin: formData.gender === 'Female' ? 'P' : 'L',
-        handphone: nomorBersih,
-        email: formData.email,
-        tanggal_lahir: formData.tanggal_lahir || null,
-        alamat: formData.alamat,
-        negara: formData.negara,
-        provinsi: formData.provinsi,
-        kota: formData.kota,
-        kecamatan: formData.kecamatan,
-        kode_pos: formData.kode_pos,
-        kode_pelanggan: formData.no_keanggotaan,
-        catatan: formData.catatan,
-      });
-      await apiClient.post('/contacts/', {
-        nomor_wa: nomorBersih,
-        nama: formData.nama,
-        customer: custRes.data.id,
-      });
-      setNama(formData.nama);
-      setNomorWa(nomorBersih);
-      setShowCustomerModal(false);
-    } catch (err) {
-      console.error('[StaffCreateOrderPanel] Gagal menyimpan pelanggan baru:', err);
-      alert('Gagal menyimpan data pelanggan. Coba lagi.');
-    } finally {
-      setSavingCustomer(false);
-    }
+  const handleTipeFilterChange = (value) => {
+    setTipeFilter(value);
+    searchCustomers(nama, value);
+    setShowCustomerDropdown(true);
   };
 
   const handleItemChange = (index, field, value) => {
@@ -371,13 +341,6 @@ export default function StaffCreateOrderPanel() {
             <h3 className="text-[11px] font-black uppercase tracking-wide text-slate-500 flex items-center gap-1.5">
               <User size={12} /> Data Pelanggan
             </h3>
-            <button
-              type="button"
-              onClick={() => setShowCustomerModal(true)}
-              className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 px-2.5 py-1.5 rounded-lg cursor-pointer hover:bg-indigo-100"
-            >
-              <UserPlus size={12} /> Pelanggan Baru (Data Lengkap)
-            </button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="relative" ref={customerDropdownRef}>
@@ -389,11 +352,11 @@ export default function StaffCreateOrderPanel() {
                   value={nama}
                   onChange={(e) => {
                     setNama(e.target.value);
-                    searchCustomers(e.target.value);
+                    searchCustomers(e.target.value, tipeFilter);
                     setShowCustomerDropdown(true);
                   }}
                   onFocus={() => {
-                    if (nama.trim()) searchCustomers(nama);
+                    if (nama.trim() || tipeFilter) searchCustomers(nama, tipeFilter);
                     setShowCustomerDropdown(true);
                   }}
                   placeholder="Ketik nama untuk cari pelanggan terdaftar"
@@ -403,21 +366,39 @@ export default function StaffCreateOrderPanel() {
               </div>
               {showCustomerDropdown && customerSuggestions.length > 0 && (
                 <div className="absolute inset-x-0 top-full mt-1 bg-white rounded-lg border border-slate-200 shadow-xl z-50 overflow-hidden max-h-48 overflow-y-auto">
-                  {customerSuggestions.map((c) => (
+                  {customerSuggestions.map((c, i) => (
                     <button
-                      key={c.id || c.nomor_wa}
+                      key={`${c.nomor_wa || 'x'}-${i}`}
                       type="button"
                       onClick={() => handleSelectCustomer(c)}
-                      className="w-full px-3 py-2 hover:bg-indigo-50 text-left text-xs font-semibold text-slate-700 flex justify-between cursor-pointer border-b border-slate-100"
+                      className="w-full px-3 py-2 hover:bg-indigo-50 text-left text-xs font-semibold text-slate-700 flex items-center justify-between gap-2 cursor-pointer border-b border-slate-100"
                     >
-                      <span className="font-bold text-slate-800">{c.nama}</span>
-                      <span className="text-slate-400">{c.nomor_wa}</span>
+                      <span className="font-bold text-slate-800 truncate">{c.nama}</span>
+                      <span className="flex items-center gap-1.5 shrink-0">
+                        {c.tipe && (
+                          <span className="text-[9px] font-black uppercase bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded">{c.tipe}</span>
+                        )}
+                        <span className="text-slate-400">{c.nomor_wa}</span>
+                      </span>
                     </button>
                   ))}
                 </div>
               )}
             </div>
             <div>
+              <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Tipe Pelanggan</label>
+              <select
+                value={tipeFilter}
+                onChange={(e) => handleTipeFilterChange(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-semibold outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white cursor-pointer"
+              >
+                <option value="">Semua Tipe</option>
+                {tipeList.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+            <div className="sm:col-span-2">
               <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Nomor WhatsApp *</label>
               <input
                 type="text"
@@ -547,13 +528,6 @@ export default function StaffCreateOrderPanel() {
           Kirim Order ke Antrean Kasir
         </button>
       </form>
-
-      <CustomerEditModal
-        isOpen={showCustomerModal}
-        contact={null}
-        onSave={handleSaveNewCustomer}
-        onClose={() => !savingCustomer && setShowCustomerModal(false)}
-      />
     </div>
   );
 }

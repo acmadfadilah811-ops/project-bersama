@@ -372,11 +372,13 @@ class SecurityPermissionTestCase(APITestCase):
         self.client.force_authenticate(user=self.owner)
         self.assertEqual(self.client.get("/api/contacts/").status_code, status.HTTP_200_OK)
 
-    def test_be24_production_lite_endpoint_exposes_only_name_and_wa(self):
+    def test_be24_production_lite_endpoint_exposes_only_name_wa_and_tipe(self):
         """
         BE-24: endpoint sempit papan produksi dapat diakses staff, namun HANYA
-        mengembalikan nama + nomor_wa — tidak boleh membocorkan data finansial
-        (total_spent / piutang / keterangan).
+        mengembalikan nama + nomor_wa + tipe (tipe pelanggan, ditambahkan untuk
+        fitur "Buat Order" staff 2026-09-06 -- tetap bukan data finansial) —
+        tidak boleh membocorkan piutang/total belanja/deposit/batas kredit/
+        catatan pelanggan.
         """
         Contact.objects.create(
             nomor_wa="628123456789", nama="Pelanggan Uji",
@@ -388,9 +390,50 @@ class SecurityPermissionTestCase(APITestCase):
         rows = response.data["results"]
         self.assertGreaterEqual(len(rows), 1)
         row = rows[0]
-        self.assertEqual(set(row.keys()), {"nama", "nomor_wa"})
+        self.assertEqual(set(row.keys()), {"nama", "nomor_wa", "tipe"})
         self.assertNotIn("total_spent", row)
         self.assertNotIn("keterangan", row)
+        self.assertNotIn("deposit", row)
+        self.assertNotIn("batas_kredit", row)
+
+    def test_be24_production_lite_includes_customer_with_tipe_filter(self):
+        """Fitur "Buat Order" staff 2026-09-06: endpoint sempit juga mencakup
+        Customer (Pelanggan & Supplier, punya tipe/customer_group) selain
+        Contact (riwayat WA) -- staff tetap tidak bisa akses /customers/ atau
+        /customer-groups/ penuh, tapi bisa memilih pelanggan terdaftar
+        berdasarkan tipe lewat endpoint sempit ini."""
+        from api.customer_models import Customer, CustomerGroup
+
+        agen = CustomerGroup.objects.create(nama="agen")
+        CustomerGroup.objects.create(nama="MOU")
+        Customer.objects.create(nama="Toko Agen Satu", handphone="6281100000001", customer_group=agen)
+        Customer.objects.create(nama="Pelanggan Tanpa Tipe", handphone="6281100000002")
+
+        self.client.force_authenticate(user=self.staff)
+
+        # tipe_list selalu dikirim -- staff butuh ini untuk mengisi dropdown
+        # filter tanpa akses /customer-groups/ (juga dikunci BE-24).
+        response = self.client.get("/api/contacts/production-lite/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("agen", response.data["tipe_list"])
+        self.assertIn("MOU", response.data["tipe_list"])
+        namas = {r["nama"] for r in response.data["results"]}
+        self.assertIn("Toko Agen Satu", namas)
+
+        # ?tipe=agen -> hanya Customer bertipe itu, Contact/Customer lain hilang.
+        response = self.client.get("/api/contacts/production-lite/", {"tipe": "agen"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        rows = response.data["results"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["nama"], "Toko Agen Satu")
+        self.assertEqual(rows[0]["tipe"], "agen")
+
+    def test_be24_customers_and_customer_groups_still_blocked_for_staff(self):
+        """Regresi: perluasan endpoint sempit TIDAK membuka /customers/ atau
+        /customer-groups/ penuh untuk staff -- keduanya harus tetap 403."""
+        self.client.force_authenticate(user=self.staff)
+        self.assertEqual(self.client.get("/api/customers/").status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(self.client.get("/api/customer-groups/").status_code, status.HTTP_403_FORBIDDEN)
 
     def test_be24_production_lite_filters_and_caps_results(self):
         """
