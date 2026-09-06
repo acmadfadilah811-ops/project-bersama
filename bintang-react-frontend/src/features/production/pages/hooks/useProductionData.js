@@ -1,7 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import apiClient from '../../../../api/apiClient';
-
-const todayStr = () => new Date().toISOString().slice(0, 10);
+import { todayISO } from '../../../../utils/date';
 
 const extractList = (data) => {
   const list = Array.isArray(data) ? data : (data?.results || []);
@@ -59,7 +58,10 @@ export default function useProductionData() {
   // Fitur redesign kanban 2026-09-07.
   const claimPoolParamsRef = useRef({ page: 1, pageSize: 30, tahap: '' });
   const activeJobsParamsRef = useRef({ page: 1, pageSize: 100 });
-  const doneJobsParamsRef = useRef({ page: 1, pageSize: 20, dateFrom: todayStr(), dateTo: todayStr() });
+  // todayISO() (utils/date.js) -- BUKAN toISOString().slice(0,10): itu
+  // tanggal UTC, jadi dini hari WIB (00:00-07:00) salah jatuh ke "kemarin"
+  // (bug ditemukan user 2026-09-07).
+  const doneJobsParamsRef = useRef({ page: 1, pageSize: 20, dateFrom: todayISO(), dateTo: todayISO() });
 
   const fetchClaimPool = useCallback(async (params = {}, isSilent = false) => {
     const merged = { ...claimPoolParamsRef.current, ...params };

@@ -10,6 +10,7 @@ import ReceiptPrint from '../components/ReceiptPrint';
 import VoidOrderModal from '../components/VoidOrderModal';
 import VoidOrderOtpModal from '../components/VoidOrderOtpModal';
 import { getPrintErrorMessage, printReceipt } from '../../printing/services/printService';
+import { todayISO } from '../../../utils/date';
 
 const ORDER_STATUS_LABEL = {
   draft: 'DRAFT',
@@ -96,9 +97,11 @@ export default function PosHistory({ onToggleSidebar }) {
   // -- paginasi gabungan lintas-sumber di server tidak sepele, jadi di sini
   // paginasinya di sisi render atas hasil yang SUDAH dibatasi tanggal
   // (bukan lagi seluruh riwayat sepanjang masa seperti sebelumnya).
-  const todayStr = () => new Date().toISOString().slice(0, 10);
-  const [dateFrom, setDateFrom] = useState(todayStr());
-  const [dateTo, setDateTo] = useState(todayStr());
+  // todayISO() (utils/date.js) -- BUKAN toISOString().slice(0,10): itu
+  // tanggal UTC, jadi dini hari WIB (00:00-07:00) salah jatuh ke "kemarin"
+  // (bug ditemukan user 2026-09-07, kasus serupa di Kanban Personal).
+  const [dateFrom, setDateFrom] = useState(todayISO());
+  const [dateTo, setDateTo] = useState(todayISO());
   const [cariSemua, setCariSemua] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);

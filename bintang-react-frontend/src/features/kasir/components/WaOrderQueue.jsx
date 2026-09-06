@@ -21,6 +21,7 @@ import PelunasanModal from './PelunasanModal';
 import WaOrderItemProductSource from './WaOrderItemProductSource';
 import WaOrderList from './WaOrderList';
 import { fetchActiveProducts, fetchActivePackages, fetchHargaKatalog } from '../utils/orderCatalogPricing';
+import { todayISO } from '../../../utils/date';
 
 export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntrean = 'Pesanan WhatsApp Otomatis' }) {
   // Kasir hanya boleh menerbitkan SPK ke antrean divisi — aturan sama dgn
@@ -72,9 +73,12 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
   // tampil apa adanya (tidak difilter) agar order yang sudah masuk produksi
   // tak disangka order baru perlu SPK ulang -- setelah SPK terbit statusnya
   // pindah dari 'review' dan otomatis juga terlihat di Pesanan & Pelunasan.
-  const todayStr = () => new Date().toISOString().slice(0, 10);
-  const [dateFrom, setDateFrom] = useState(todayStr());
-  const [dateTo, setDateTo] = useState(todayStr());
+  // todayISO() (utils/date.js) -- BUKAN toISOString().slice(0,10): itu
+  // tanggal UTC, jadi dini hari WIB (00:00-07:00) salah jatuh ke "kemarin"
+  // (bug ditemukan user 2026-09-07, ditemukan lewat kasus serupa di
+  // Kanban Personal).
+  const [dateFrom, setDateFrom] = useState(todayISO());
+  const [dateTo, setDateTo] = useState(todayISO());
   const [searchQuery, setSearchQuery] = useState('');
   const [cariSemua, setCariSemua] = useState(false);
   const [page, setPage] = useState(1);

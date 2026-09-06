@@ -1,10 +1,9 @@
 import { Play, CheckCircle2, Clock, FileText, Layers, Calendar } from 'lucide-react';
 import DeadlineBadge from '../../components/DeadlineBadge';
-
-const todayStr = () => new Date().toISOString().slice(0, 10);
+import { todayISO } from '../../../../utils/date';
 
 const formatRentangTanggal = (dari, sampai) => {
-  const hariIni = todayStr();
+  const hariIni = todayISO();
   if (dari === hariIni && sampai === hariIni) return 'Hari Ini';
   if (dari === sampai) return dari;
   return `${dari} s/d ${sampai}`;
@@ -49,7 +48,7 @@ export default function KanbanPersonal({
   onDonePageChange, onDoneDateFromChange, onDoneDateToChange,
   onSelectJob, onStart, onComplete,
 }) {
-  const rentangLabel = formatRentangTanggal(doneDateFrom || todayStr(), doneDateTo || todayStr());
+  const rentangLabel = formatRentangTanggal(doneDateFrom || todayISO(), doneDateTo || todayISO());
   const doneTotalPages = Math.max(1, Math.ceil(doneJobsCount / donePageSize));
 
   // "Selesai" sudah difilter tanggal dari server (lihat useProductionData.js
@@ -105,14 +104,14 @@ export default function KanbanPersonal({
             <span className="text-[10px] font-bold text-slate-400 shrink-0">Selesai:</span>
             <input
               type="date"
-              value={doneDateFrom || todayStr()}
+              value={doneDateFrom || todayISO()}
               onChange={(e) => onDoneDateFromChange(e.target.value)}
               className="text-[11px] font-bold text-slate-600 outline-none"
             />
             <span className="text-slate-300 text-[10px]">–</span>
             <input
               type="date"
-              value={doneDateTo || todayStr()}
+              value={doneDateTo || todayISO()}
               onChange={(e) => onDoneDateToChange(e.target.value)}
               className="text-[11px] font-bold text-slate-600 outline-none"
             />

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import useProductionData from './hooks/useProductionData';
+import { todayISO } from '../../../utils/date';
 import {
   Globe,
   Package,
@@ -183,11 +184,15 @@ export default function ProductionApp() {
   const [kanbanCategory, setKanbanCategory] = useState('todo');
 
   // Pekerjaan Saya -- kolom Selesai, rentang tanggal default hari ini.
-  const todayStr = () => new Date().toISOString().slice(0, 10);
+  // Pakai todayISO() (utils/date.js, tanggal lokal) -- BUKAN
+  // toISOString().slice(0,10) yang sebelumnya dipakai di sini: itu tanggal
+  // UTC, jadi dini hari WIB (00:00-07:00) selalu jatuh ke "kemarin" dan
+  // pekerjaan yang baru diselesaikan hari itu tidak ketemu di kolom Selesai
+  // (bug ditemukan user 2026-09-07).
   const [donePage, setDonePage] = useState(1);
   const [donePageSize] = useState(20);
-  const [doneDateFrom, setDoneDateFrom] = useState(todayStr());
-  const [doneDateTo, setDoneDateTo] = useState(todayStr());
+  const [doneDateFrom, setDoneDateFrom] = useState(todayISO());
+  const [doneDateTo, setDoneDateTo] = useState(todayISO());
 
   const getDashboardUrl = () => {
     if (['owner', 'manager', 'admin'].includes(user?.role?.toLowerCase())) return '/dashboard';
