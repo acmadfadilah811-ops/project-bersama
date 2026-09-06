@@ -1,5 +1,14 @@
-import { Play, CheckCircle2, Clock, FileText, Layers } from 'lucide-react';
+import { Play, CheckCircle2, Clock, FileText, Layers, Calendar } from 'lucide-react';
 import DeadlineBadge from '../../components/DeadlineBadge';
+
+const todayStr = () => new Date().toISOString().slice(0, 10);
+
+const formatRentangTanggal = (dari, sampai) => {
+  const hariIni = todayStr();
+  if (dari === hariIni && sampai === hariIni) return 'Hari Ini';
+  if (dari === sampai) return dari;
+  return `${dari} s/d ${sampai}`;
+};
 
 // Kelompokkan job per order/transaksi asal (sumber + nomor_sumber) — dipakai
 // bareng di tiap kolom kanban supaya 1 order dengan beberapa item (yang tadi
@@ -27,36 +36,51 @@ function groupByOrder(items) {
   return [...map.values()];
 }
 
-export default function KanbanPersonal({ jobs, onSelectJob, onStart, onComplete }) {
-  // Group jobs by status
+export default function KanbanPersonal({
+  activeJobs = [], doneJobs = [], doneJobsCount = 0,
+  donePage = 1, donePageSize = 20, doneDateFrom, doneDateTo,
+  onDonePageChange, onDoneDateFromChange, onDoneDateToChange,
+  onSelectJob, onStart, onComplete,
+}) {
+  const rentangLabel = formatRentangTanggal(doneDateFrom || todayStr(), doneDateTo || todayStr());
+  const doneTotalPages = Math.max(1, Math.ceil(doneJobsCount / donePageSize));
+
+  // Group jobs by status -- "Selesai" sudah difilter tanggal dari server
+  // (lihat useProductionData.js fetchMyDoneJobs), tidak perlu disaring
+  // status lagi di sini. Kolom lain (todo/progress/failed) tetap dari
+  // activeJobs (status antrean/dikerjakan/gagal/batal/kendala, tanpa batas
+  // tanggal -- kerja aktif secara alami kecil). Fitur redesign kanban
+  // 2026-09-07: sebelumnya kolom "Selesai" labelnya "Hari Ini" tapi
+  // datanya SEMUA job selesai sepanjang riwayat staff (bug).
   const columns = {
     todo: {
       title: 'Antrean Kerja (Todo)',
       color: 'border-amber-400 bg-amber-50/50',
       iconColor: 'text-amber-500',
       badgeColor: 'bg-amber-100 text-amber-800',
-      items: jobs.filter((j) => j.status_pekerjaan === 'antrean'),
+      items: activeJobs.filter((j) => j.status_pekerjaan === 'antrean'),
     },
     progress: {
       title: 'Sedang Dikerjakan (Progress)',
       color: 'border-indigo-400 bg-indigo-50/50',
       iconColor: 'text-indigo-500',
       badgeColor: 'bg-indigo-100 text-indigo-800',
-      items: jobs.filter((j) => j.status_pekerjaan === 'dikerjakan'),
+      items: activeJobs.filter((j) => j.status_pekerjaan === 'dikerjakan'),
     },
     done: {
-      title: 'Selesai Hari Ini (Done)',
+      title: `Selesai (${rentangLabel})`,
       color: 'border-emerald-400 bg-emerald-50/50',
       iconColor: 'text-emerald-500',
       badgeColor: 'bg-emerald-100 text-emerald-800',
-      items: jobs.filter((j) => j.status_pekerjaan === 'selesai'),
+      items: doneJobs,
+      count: doneJobsCount,
     },
     failed: {
       title: 'Gagal / Batal / Kendala',
       color: 'border-rose-400 bg-rose-50/50',
       iconColor: 'text-rose-500',
       badgeColor: 'bg-rose-100 text-rose-800',
-      items: jobs.filter((j) => ['gagal', 'batal', 'kendala'].includes(j.status_pekerjaan)),
+      items: activeJobs.filter((j) => ['gagal', 'batal', 'kendala'].includes(j.status_pekerjaan)),
     },
   };
 
@@ -66,11 +90,32 @@ export default function KanbanPersonal({ jobs, onSelectJob, onStart, onComplete 
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-sm font-bold text-slate-800">Kanban Personal</h2>
-        <p className="text-[11px] text-slate-400">
-          Kelola dan update status pekerjaan aktif Anda di bawah ini.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-bold text-slate-800">Kanban Personal</h2>
+          <p className="text-[11px] text-slate-400">
+            Kelola dan update status pekerjaan aktif Anda di bawah ini.
+          </p>
+        </div>
+        {/* Rentang tanggal kolom Selesai -- default hari ini, bisa diperlebar
+            untuk menelusuri riwayat pekerjaan selesai yang lebih lama. */}
+        <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5">
+          <Calendar size={12} className="text-slate-400 shrink-0" />
+          <span className="text-[10px] font-bold text-slate-400 shrink-0">Selesai:</span>
+          <input
+            type="date"
+            value={doneDateFrom || todayStr()}
+            onChange={(e) => onDoneDateFromChange(e.target.value)}
+            className="text-[11px] font-bold text-slate-600 outline-none"
+          />
+          <span className="text-slate-300 text-[10px]">–</span>
+          <input
+            type="date"
+            value={doneDateTo || todayStr()}
+            onChange={(e) => onDoneDateToChange(e.target.value)}
+            className="text-[11px] font-bold text-slate-600 outline-none"
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
@@ -93,7 +138,7 @@ export default function KanbanPersonal({ jobs, onSelectJob, onStart, onComplete 
                 <h3 className="text-xs font-bold text-slate-700">{col.title}</h3>
               </div>
               <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${col.badgeColor}`}>
-                {col.items.length}
+                {col.count ?? col.items.length}
               </span>
             </div>
 
@@ -234,6 +279,29 @@ export default function KanbanPersonal({ jobs, onSelectJob, onStart, onComplete 
                 ))
               )}
             </div>
+
+            {/* Paginasi -- cuma kolom Selesai (kolom lain ukurannya alami kecil). */}
+            {colKey === 'done' && doneJobsCount > 0 && (
+              <div className="flex items-center justify-between gap-2 mt-3 pt-2 border-t border-slate-200 text-[10px] font-bold text-slate-500">
+                <button
+                  type="button"
+                  disabled={donePage <= 1}
+                  onClick={() => onDonePageChange(Math.max(1, donePage - 1))}
+                  className="bg-white border border-slate-200 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed rounded-md px-2 py-0.5 cursor-pointer"
+                >
+                  &lt;
+                </button>
+                <span>{donePage} / {doneTotalPages}</span>
+                <button
+                  type="button"
+                  disabled={donePage >= doneTotalPages}
+                  onClick={() => onDonePageChange(Math.min(doneTotalPages, donePage + 1))}
+                  className="bg-white border border-slate-200 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed rounded-md px-2 py-0.5 cursor-pointer"
+                >
+                  &gt;
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>

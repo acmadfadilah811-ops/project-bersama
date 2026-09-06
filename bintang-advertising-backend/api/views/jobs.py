@@ -6,6 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
@@ -409,18 +410,55 @@ class JobBoardViewSet(viewsets.ModelViewSet):
             'order_item',
             'order_item__order'
         ).order_by('-id')
-        
+
         # Owner, Manager & Admin bisa lihat semua job
         if user.role in ['owner', 'manager', 'admin']:
-            return base_qs
-            
+            scoped_qs = base_qs
         # Staff: bisa lihat job miliknya ATAU job unassigned di divisinya
-        if user.divisi:
-            return base_qs.filter(
-                Q(pic_staff=user) | 
+        elif user.divisi:
+            scoped_qs = base_qs.filter(
+                Q(pic_staff=user) |
                 Q(pic_staff__isnull=True, tahap__divisi=user.divisi)
             )
-        return base_qs.filter(pic_staff=user)
+        else:
+            scoped_qs = base_qs.filter(pic_staff=user)
+
+        # ── Filter opsional (papan produksi staff, fitur 2026-09-07) ──
+        # Sebelumnya frontend menarik SELURUH riwayat job (semua status,
+        # semua waktu) setiap buka Papan Kerja SPK -- job 'selesai' dari
+        # bulan/tahun lalu tetap ikut tertarik, dan tanpa page/page_size
+        # OptionalPageNumberPagination diam-diam berhenti di 1000 baris
+        # (job lebih lama hilang tanpa peringatan). Filter ini DITERAPKAN
+        # SETELAH scoping role di atas -- tidak pernah menggantikannya,
+        # jadi staff tetap tidak bisa lihat job staff lain / divisi lain
+        # walau filter ini dipasang.
+        status_pekerjaan = self.request.query_params.get('status_pekerjaan')
+        if status_pekerjaan:
+            status_list = [s.strip() for s in status_pekerjaan.split(',') if s.strip()]
+            if status_list:
+                scoped_qs = scoped_qs.filter(status_pekerjaan__in=status_list)
+
+        if str(self.request.query_params.get('unassigned') or '').strip().lower() in ('1', 'true', 'yes'):
+            scoped_qs = scoped_qs.filter(pic_staff__isnull=True)
+
+        if str(self.request.query_params.get('mine') or '').strip().lower() in ('1', 'true', 'yes'):
+            scoped_qs = scoped_qs.filter(pic_staff=user)
+
+        tahap = self.request.query_params.get('tahap')
+        if tahap:
+            scoped_qs = scoped_qs.filter(tahap__nama__iexact=tahap.strip())
+
+        # waktu_selesai sudah punya index gabungan (pic_staff, waktu_selesai)
+        # -- dipakai kolom "Selesai" Kanban Personal supaya default terbatas
+        # ke hari ini, bukan seluruh riwayat.
+        date_from = parse_date(self.request.query_params.get('date_from') or '')
+        date_to = parse_date(self.request.query_params.get('date_to') or '')
+        if date_from:
+            scoped_qs = scoped_qs.filter(waktu_selesai__date__gte=date_from)
+        if date_to:
+            scoped_qs = scoped_qs.filter(waktu_selesai__date__lte=date_to)
+
+        return scoped_qs
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsClockedIn])
     def claim(self, request, pk=None):

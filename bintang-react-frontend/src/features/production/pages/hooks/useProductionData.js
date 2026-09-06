@@ -1,9 +1,25 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import apiClient from '../../../../api/apiClient';
 
+const todayStr = () => new Date().toISOString().slice(0, 10);
+
+const extractList = (data) => {
+  const list = Array.isArray(data) ? data : (data?.results || []);
+  const count = Array.isArray(data) ? list.length : (data?.count || 0);
+  return { list, count };
+};
+
 export default function useProductionData() {
-  const [jobs, setJobs] = useState([]);
+  // Antrean Global Divisi (job unassigned yang bisa diklaim).
   const [claimPool, setClaimPool] = useState([]);
+  const [claimPoolCount, setClaimPoolCount] = useState(0);
+  // Pekerjaan Saya -- kerja aktif (Antrean/Progress/Gagal-Batal-Kendala).
+  const [jobs, setJobs] = useState([]);
+  const [jobsCount, setJobsCount] = useState(0);
+  // Pekerjaan Saya -- kolom Selesai, dibatasi rentang tanggal (default hari ini).
+  const [doneJobs, setDoneJobs] = useState([]);
+  const [doneJobsCount, setDoneJobsCount] = useState(0);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [tahapList, setTahapList] = useState([]);
@@ -22,33 +38,103 @@ export default function useProductionData() {
     }
   });
 
-  // Fetch jobs for staff (includes personal kanban and claim pool)
-  const fetchJobs = useCallback(async (isSilent = false) => {
+  const handleFetchError = (err, isSilent) => {
+    console.error('Failed to fetch jobs:', err);
+    if (err.response?.status === 403) {
+      setError(
+        'Akses ditolak. Anda harus absen masuk (Clock-In) terlebih dahulu untuk membuka papan produksi.'
+      );
+    } else if (!isSilent) {
+      setError('Gagal memuat data papan produksi.');
+    }
+  };
+
+  // Papan produksi TIDAK boleh lagi menarik seluruh riwayat job sekaligus --
+  // job 'selesai' dari bulan/tahun lalu dulu ikut tertarik tanpa filter/
+  // paginasi, dan tanpa page/page_size OptionalPageNumberPagination diam-
+  // diam berhenti di 1000 baris (job lebih lama hilang tanpa peringatan).
+  // Dipecah jadi 3 fetch bertarget, masing-masing mengingat parameter
+  // terakhirnya (lewat ref) supaya refetch setelah aksi (klaim/mulai/
+  // selesai) bisa dipanggil ulang tanpa perlu parameter dari pemanggil.
+  // Fitur redesign kanban 2026-09-07.
+  const claimPoolParamsRef = useRef({ page: 1, pageSize: 30, tahap: '' });
+  const activeJobsParamsRef = useRef({ page: 1, pageSize: 100 });
+  const doneJobsParamsRef = useRef({ page: 1, pageSize: 20, dateFrom: todayStr(), dateTo: todayStr() });
+
+  const fetchClaimPool = useCallback(async (params = {}, isSilent = false) => {
+    const merged = { ...claimPoolParamsRef.current, ...params };
+    claimPoolParamsRef.current = merged;
     if (!isSilent) setLoading(true);
     setError(null);
     try {
-      const res = await apiClient.get('/jobs/');
-      const allJobs = Array.isArray(res.data) ? res.data : (res.data?.results || []);
-
-      // Separate personal jobs and unassigned division jobs (claim pool)
-      const personal = allJobs.filter((j) => j.pic_staff !== null);
-      const pool = allJobs.filter((j) => j.pic_staff === null);
-
-      setJobs(personal);
-      setClaimPool(pool);
+      const query = { unassigned: true, status_pekerjaan: 'antrean', page: merged.page, page_size: merged.pageSize };
+      if (merged.tahap) query.tahap = merged.tahap;
+      const res = await apiClient.get('/jobs/', { params: query });
+      const { list, count } = extractList(res.data);
+      setClaimPool(list);
+      setClaimPoolCount(count);
     } catch (err) {
-      console.error('Failed to fetch jobs:', err);
-      if (err.response?.status === 403) {
-        setError(
-          'Akses ditolak. Anda harus absen masuk (Clock-In) terlebih dahulu untuk membuka papan produksi.'
-        );
-      } else if (!isSilent) {
-        setError('Gagal memuat data papan produksi.');
-      }
+      handleFetchError(err, isSilent);
     } finally {
       if (!isSilent) setLoading(false);
     }
   }, []);
+
+  const fetchMyActiveJobs = useCallback(async (params = {}, isSilent = false) => {
+    const merged = { ...activeJobsParamsRef.current, ...params };
+    activeJobsParamsRef.current = merged;
+    if (!isSilent) setLoading(true);
+    setError(null);
+    try {
+      const res = await apiClient.get('/jobs/', {
+        params: {
+          mine: true,
+          status_pekerjaan: 'antrean,dikerjakan,kendala,gagal,batal',
+          page: merged.page,
+          page_size: merged.pageSize,
+        },
+      });
+      const { list, count } = extractList(res.data);
+      setJobs(list);
+      setJobsCount(count);
+    } catch (err) {
+      handleFetchError(err, isSilent);
+    } finally {
+      if (!isSilent) setLoading(false);
+    }
+  }, []);
+
+  const fetchMyDoneJobs = useCallback(async (params = {}, isSilent = false) => {
+    const merged = { ...doneJobsParamsRef.current, ...params };
+    doneJobsParamsRef.current = merged;
+    if (!isSilent) setLoading(true);
+    setError(null);
+    try {
+      const res = await apiClient.get('/jobs/', {
+        params: {
+          mine: true,
+          status_pekerjaan: 'selesai',
+          date_from: merged.dateFrom,
+          date_to: merged.dateTo,
+          page: merged.page,
+          page_size: merged.pageSize,
+        },
+      });
+      const { list, count } = extractList(res.data);
+      setDoneJobs(list);
+      setDoneJobsCount(count);
+    } catch (err) {
+      handleFetchError(err, isSilent);
+    } finally {
+      if (!isSilent) setLoading(false);
+    }
+  }, []);
+
+  // Refetch pakai parameter terakhir -- dipakai action handler (klaim/mulai/
+  // selesai/forward) yang tidak perlu tahu halaman/filter yang sedang aktif.
+  const refetchClaimPool = useCallback((isSilent = true) => fetchClaimPool(claimPoolParamsRef.current, isSilent), [fetchClaimPool]);
+  const refetchMyActiveJobs = useCallback((isSilent = true) => fetchMyActiveJobs(activeJobsParamsRef.current, isSilent), [fetchMyActiveJobs]);
+  const refetchMyDoneJobs = useCallback((isSilent = true) => fetchMyDoneJobs(doneJobsParamsRef.current, isSilent), [fetchMyDoneJobs]);
 
   // Fetch metadata needed for forwarding/assigning
   const fetchMetadata = useCallback(async () => {
@@ -79,14 +165,11 @@ export default function useProductionData() {
     try {
       const [resInv, resGlobal] = await Promise.all([
         apiClient.get('/inventory/'),
-        apiClient.get('/jobs/'), // All jobs
+        apiClient.get('/jobs/'), // All jobs (admin/owner/manager -- tidak dibatasi filter staff)
       ]);
       setInventory(Array.isArray(resInv.data) ? resInv.data : (resInv.data?.results || []));
       const allJobs = Array.isArray(resGlobal.data) ? resGlobal.data : (resGlobal.data?.results || []);
       setGlobalJobs(allJobs);
-      // Sync ke jobs/claimPool juga supaya Staff Mode view bisa langsung terisi saat switch
-      setJobs(allJobs.filter((j) => j.pic_staff !== null));
-      setClaimPool(allJobs.filter((j) => j.pic_staff === null));
     } catch (err) {
       console.error('Failed to fetch admin data:', err);
     }
@@ -129,7 +212,8 @@ export default function useProductionData() {
   const claimJobs = async (jobIds) => {
     const hasil = await Promise.allSettled(jobIds.map((id) => apiClient.post(`/jobs/${id}/claim/`)));
     const gagal = hasil.filter((r) => r.status === 'rejected');
-    await fetchJobs();
+    // Klaim memindahkan job dari Antrean Global -> Pekerjaan Saya (aktif).
+    await Promise.all([refetchClaimPool(false), refetchMyActiveJobs()]);
     if (gagal.length === 0) {
       addLocalLog(`${jobIds.length} pekerjaan dalam satu order diklaim oleh Anda.`);
       return { ok: true };
@@ -149,7 +233,7 @@ export default function useProductionData() {
   const startJob = async (jobId) => {
     try {
       const res = await apiClient.post(`/jobs/${jobId}/start/`);
-      await fetchJobs();
+      await refetchMyActiveJobs(false);
       addLocalLog(`Pekerjaan #${jobId} mulai dikerjakan.`);
       return { ok: true, data: res.data };
     } catch (err) {
@@ -161,7 +245,8 @@ export default function useProductionData() {
   const completeJob = async (jobId) => {
     try {
       const res = await apiClient.post(`/jobs/${jobId}/complete/`);
-      await fetchJobs();
+      // Selesai memindahkan job dari kolom aktif -> kolom Selesai.
+      await Promise.all([refetchMyActiveJobs(false), refetchMyDoneJobs()]);
       addLocalLog(`Pekerjaan #${jobId} selesai dikerjakan.`);
       return { ok: true, data: res.data };
     } catch (err) {
@@ -173,7 +258,10 @@ export default function useProductionData() {
   const forwardJob = async (jobId, payload) => {
     try {
       const res = await apiClient.post(`/jobs/${jobId}/forward/`, payload);
-      await fetchJobs();
+      // Forward bisa memindahkan job ke tahap/divisi lain (hilang dari
+      // Pekerjaan Saya) atau mengubah statusnya -- refresh kedua kelompok
+      // aktif supaya papan tidak menampilkan data basi.
+      await Promise.all([refetchMyActiveJobs(false), refetchClaimPool()]);
       addLocalLog(`Pekerjaan #${jobId} diteruskan ke tahap/divisi lain.`);
       return { ok: true, data: res.data };
     } catch (err) {
@@ -201,8 +289,12 @@ export default function useProductionData() {
   };
 
   return {
-    jobs,
     claimPool,
+    claimPoolCount,
+    jobs,
+    jobsCount,
+    doneJobs,
+    doneJobsCount,
     loading,
     tahapList,
     staffList,
@@ -214,7 +306,9 @@ export default function useProductionData() {
     logs,
     error,
     setError,
-    fetchJobs,
+    fetchClaimPool,
+    fetchMyActiveJobs,
+    fetchMyDoneJobs,
     fetchMetadata,
     fetchAdminData,
     fetchCustomers,

@@ -145,6 +145,9 @@ export default function ProductionApp() {
   const {
     jobs,
     claimPool,
+    claimPoolCount,
+    doneJobs,
+    doneJobsCount,
     loading,
     tahapList,
     staffList,
@@ -155,7 +158,9 @@ export default function ProductionApp() {
     globalJobs,
     logs,
     error,
-    fetchJobs,
+    fetchClaimPool,
+    fetchMyActiveJobs,
+    fetchMyDoneJobs,
     fetchMetadata,
     fetchAdminData,
     fetchCustomers,
@@ -165,6 +170,18 @@ export default function ProductionApp() {
     startJob,
     forwardJob,
   } = useProductionData();
+
+  // Antrean Global Divisi -- filter/paginasi (fitur redesign kanban 2026-09-07).
+  const [claimPoolPage, setClaimPoolPage] = useState(1);
+  const [claimPoolPageSize, setClaimPoolPageSize] = useState(30);
+  const [claimPoolTahap, setClaimPoolTahap] = useState('');
+
+  // Pekerjaan Saya -- kolom Selesai, rentang tanggal default hari ini.
+  const todayStr = () => new Date().toISOString().slice(0, 10);
+  const [donePage, setDonePage] = useState(1);
+  const [donePageSize] = useState(20);
+  const [doneDateFrom, setDoneDateFrom] = useState(todayStr());
+  const [doneDateTo, setDoneDateTo] = useState(todayStr());
 
   const getDashboardUrl = () => {
     if (['owner', 'manager', 'admin'].includes(user?.role?.toLowerCase())) return '/dashboard';
@@ -213,30 +230,74 @@ export default function ProductionApp() {
     if (!modeInitialized) return;
     fetchMetadata();
     if (isAdminMode) {
-      // Admin: fetchAdminData sudah include /jobs/ — tidak perlu fetchJobs() lagi
+      // Admin: fetchAdminData sudah include /jobs/ — tidak perlu fetch lain lagi
       fetchAdminData();
-    } else {
-      fetchJobs();
     }
-  }, [isAdminMode, modeInitialized, fetchJobs, fetchMetadata, fetchAdminData]);
+    // Staff: claim pool/kerja aktif/selesai di-lazy-load per tab (lihat efek
+    // di bawah) -- tidak perlu ditarik semua sekaligus di sini.
+  }, [isAdminMode, modeInitialized, fetchMetadata, fetchAdminData]);
 
-  // Real-time background polling every 5 seconds
+  // Staff: muat/segarkan data tab yang sedang aktif saja -- sebelumnya satu
+  // fetch tunggal menarik SELURUH riwayat job (semua status, semua waktu)
+  // begitu Papan Kerja SPK dibuka, tanpa peduli tab mana yang sedang
+  // dilihat staff. Sekarang cuma tab aktif yang ditarik & dipoll (fitur
+  // redesign kanban 2026-09-07).
+  useEffect(() => {
+    if (!modeInitialized || isAdminMode) return;
+    if (activeTab === 'claim_pool') {
+      fetchClaimPool({ page: claimPoolPage, pageSize: claimPoolPageSize, tahap: claimPoolTahap });
+    } else if (activeTab === 'kanban_personal') {
+      fetchMyActiveJobs();
+      fetchMyDoneJobs({ page: donePage, pageSize: donePageSize, dateFrom: doneDateFrom, dateTo: doneDateTo });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modeInitialized, isAdminMode, activeTab]);
+
+  // Filter/halaman Antrean Global Divisi berubah -> refetch (reset ke
+  // halaman 1 saat tahap berubah, bukan saat page itu sendiri berubah).
+  useEffect(() => {
+    if (!modeInitialized || isAdminMode || activeTab !== 'claim_pool') return;
+    fetchClaimPool({ page: claimPoolPage, pageSize: claimPoolPageSize, tahap: claimPoolTahap }, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [claimPoolPage, claimPoolPageSize, claimPoolTahap]);
+
+  useEffect(() => {
+    setClaimPoolPage(1);
+  }, [claimPoolTahap]);
+
+  // Filter/halaman kolom Selesai berubah -> refetch.
+  useEffect(() => {
+    if (!modeInitialized || isAdminMode || activeTab !== 'kanban_personal') return;
+    fetchMyDoneJobs({ page: donePage, pageSize: donePageSize, dateFrom: doneDateFrom, dateTo: doneDateTo }, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [donePage, doneDateFrom, doneDateTo]);
+
+  useEffect(() => {
+    setDonePage(1);
+  }, [doneDateFrom, doneDateTo]);
+
+  // Real-time background polling every 5 seconds -- staff cuma poll tab yang
+  // sedang aktif (bukan ketiganya sekaligus), dan kolom Selesai TIDAK
+  // dipoll supaya tidak mengganggu staff yang sedang menelusuri tanggal lama.
   useEffect(() => {
     if (!modeInitialized) return;
     const intervalId = setInterval(() => {
       if (isAdminMode) {
         fetchAdminData();
-      } else {
-        fetchJobs(true); // Silent refresh
+      } else if (activeTab === 'claim_pool') {
+        fetchClaimPool({}, true);
+      } else if (activeTab === 'kanban_personal') {
+        fetchMyActiveJobs({}, true);
       }
     }, 5000);
     return () => clearInterval(intervalId);
-  }, [modeInitialized, isAdminMode, fetchAdminData, fetchJobs]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modeInitialized, isAdminMode, activeTab]);
 
   // Sync selectedWorkspaceJob with background updates
   useEffect(() => {
     if (selectedWorkspaceJob) {
-      const listToSearch = isAdminMode ? globalJobs : jobs;
+      const listToSearch = isAdminMode ? globalJobs : [...jobs, ...doneJobs];
       const freshJob = listToSearch.find((j) => j.id === selectedWorkspaceJob.id);
       if (freshJob) {
         if (JSON.stringify(freshJob) !== JSON.stringify(selectedWorkspaceJob)) {
@@ -244,7 +305,7 @@ export default function ProductionApp() {
         }
       }
     }
-  }, [jobs, globalJobs, selectedWorkspaceJob, isAdminMode]);
+  }, [jobs, doneJobs, globalJobs, selectedWorkspaceJob, isAdminMode]);
 
   // Lazy load tab data dynamically on activeTab change
   useEffect(() => {
@@ -336,11 +397,34 @@ export default function ProductionApp() {
       // Staff Mode Panels
       switch (activeTab) {
         case 'claim_pool':
-          return <ClaimPool claimPool={claimPool} onClaimMany={handleClaimMany} loading={loading} />;
+          return (
+            <ClaimPool
+              claimPool={claimPool}
+              claimPoolCount={claimPoolCount}
+              tahapOptions={tahapList.filter((t) => t.divisi === user?.divisi)}
+              tahapFilter={claimPoolTahap}
+              onTahapFilterChange={setClaimPoolTahap}
+              page={claimPoolPage}
+              pageSize={claimPoolPageSize}
+              onPageChange={setClaimPoolPage}
+              onPageSizeChange={(size) => { setClaimPoolPageSize(size); setClaimPoolPage(1); }}
+              onClaimMany={handleClaimMany}
+              loading={loading}
+            />
+          );
         case 'kanban_personal':
           return (
             <KanbanPersonal
-              jobs={jobs}
+              activeJobs={jobs}
+              doneJobs={doneJobs}
+              doneJobsCount={doneJobsCount}
+              donePage={donePage}
+              donePageSize={donePageSize}
+              doneDateFrom={doneDateFrom}
+              doneDateTo={doneDateTo}
+              onDonePageChange={setDonePage}
+              onDoneDateFromChange={setDoneDateFrom}
+              onDoneDateToChange={setDoneDateTo}
               onSelectJob={(job) => setSelectedWorkspaceJob(job)}
               onStart={handleStart}
               onComplete={handleComplete}
@@ -349,7 +433,21 @@ export default function ProductionApp() {
         case 'logs':
           return <ActivityLogsPanel logs={logs} />;
         default:
-          return <ClaimPool claimPool={claimPool} onClaimMany={handleClaimMany} loading={loading} />;
+          return (
+            <ClaimPool
+              claimPool={claimPool}
+              claimPoolCount={claimPoolCount}
+              tahapOptions={tahapList.filter((t) => t.divisi === user?.divisi)}
+              tahapFilter={claimPoolTahap}
+              onTahapFilterChange={setClaimPoolTahap}
+              page={claimPoolPage}
+              pageSize={claimPoolPageSize}
+              onPageChange={setClaimPoolPage}
+              onPageSizeChange={(size) => { setClaimPoolPageSize(size); setClaimPoolPage(1); }}
+              onClaimMany={handleClaimMany}
+              loading={loading}
+            />
+          );
       }
     }
   };

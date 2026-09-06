@@ -1,21 +1,25 @@
-import { useState, useMemo } from 'react';
-import { Inbox, UserCheck, Ruler, Clipboard, AlertCircle, Cpu, Layers } from 'lucide-react';
+import { useMemo } from 'react';
+import { Inbox, UserCheck, Ruler, Clipboard, AlertCircle, Layers, ClipboardList } from 'lucide-react';
 import DeadlineBadge from '../../components/DeadlineBadge';
 
-export default function ClaimPool({ claimPool, onClaimMany, loading }) {
-  const [selectedTahap, setSelectedTahap] = useState('');
-
-  // Ekstrak nama tahap unik (mesin/stasiun kerja) dari antrean yang tersedia
-  const uniqueTahap = useMemo(() => {
-    return [...new Set(claimPool.map((job) => job.tahap_nama))].filter(Boolean);
-  }, [claimPool]);
-
-  // Saring antrean berdasarkan stasiun kerja / mesin yang dipilih oleh operator
-  const filteredPool = useMemo(() => {
-    return selectedTahap
-      ? claimPool.filter((job) => job.tahap_nama === selectedTahap)
-      : claimPool;
-  }, [claimPool, selectedTahap]);
+/** Antrean Global Divisi -- job unassigned yang bisa diklaim staff di
+ * divisinya. Filter & paginasi server sungguhan (fitur redesign kanban
+ * 2026-09-07): sebelumnya menarik SELURUH antrean tanpa halaman, dan
+ * filter tahap murni client-side di atas data yang sudah lengkap -- begitu
+ * dipaginasi, filter client-side jadi salah (cuma menyaring 1 halaman yang
+ * kebetulan sedang dimuat). Sekarang page & filter tahap sama-sama dikirim
+ * ke server (lihat ProductionApp.jsx & useProductionData.js).
+ *
+ * Perbaikan istilah (temuan user 2026-09-07): panel ini sebelumnya
+ * menyebut "mesin" ("Antrean Stasiun Kerja / Mesin"), padahal yang
+ * ditampilkan/disaring adalah data ORDER per TAHAP PRODUKSI (field
+ * TahapProses, mis. Edit/Cetak/Laminasi) -- bukan mesin fisik. */
+export default function ClaimPool({
+  claimPool, claimPoolCount = 0, onClaimMany, loading,
+  tahapOptions = [], tahapFilter = '', onTahapFilterChange,
+  page = 1, pageSize = 30, onPageChange, onPageSizeChange,
+}) {
+  const totalPages = Math.max(1, Math.ceil(claimPoolCount / pageSize));
 
   // Kelompokkan per order/transaksi (nomor_sumber + sumber) — sebelumnya
   // tiap job (= tiap item pesanan) dirender sebagai kartu lepas satu-satu,
@@ -25,7 +29,7 @@ export default function ClaimPool({ claimPool, onClaimMany, loading }) {
   // (lihat api/models.py JobBoard.sumber/nomor_sumber), dipakai apa adanya.
   const grouped = useMemo(() => {
     const map = new Map();
-    filteredPool.forEach((job) => {
+    claimPool.forEach((job) => {
       const key = `${job.sumber || 'order'}-${job.nomor_sumber || job.id}`;
       if (!map.has(key)) {
         map.set(key, {
@@ -39,7 +43,7 @@ export default function ClaimPool({ claimPool, onClaimMany, loading }) {
       map.get(key).jobs.push(job);
     });
     return [...map.values()];
-  }, [filteredPool]);
+  }, [claimPool]);
 
   if (loading) {
     return (
@@ -50,76 +54,67 @@ export default function ClaimPool({ claimPool, onClaimMany, loading }) {
     );
   }
 
-  if (claimPool.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200">
-        <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mb-3">
-          <Inbox size={24} />
-        </div>
-        <h3 className="text-sm font-bold text-slate-700">Antrean Bersih!</h3>
-        <p className="text-xs text-slate-400 mt-1">
-          Saat ini tidak ada pekerjaan unassigned untuk divisi Anda.
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-4">
       {/* Header Panel */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 border border-slate-200 rounded-xl shadow-2xs">
         <div>
           <h2 className="text-sm font-extrabold text-slate-800 flex items-center gap-1.5">
-            <Cpu className="w-4 h-4 text-indigo-500" />
-            Claim Pool (Antrean Stasiun Kerja / Mesin)
+            <ClipboardList className="w-4 h-4 text-indigo-500" />
+            Claim Pool (Antrean Tahap Produksi)
           </h2>
           <p className="text-[11px] text-slate-400 mt-0.5">
-            Pilih mesin yang Anda operasikan untuk memfilter antrean, lalu klaim tugas untuk mulai bekerja.
+            Pilih tahap produksi untuk memfilter antrean, lalu klaim tugas untuk mulai bekerja.
           </p>
         </div>
         <span className="bg-indigo-55 text-indigo-700 text-[10.5px] font-extrabold px-3 py-1 rounded-full border border-indigo-150 self-start sm:self-auto shrink-0 shadow-3xs">
-          {claimPool.length} Total Antrean
+          {claimPoolCount} Total Antrean
         </span>
       </div>
 
-      {/* FILTER BAR STASIUN KERJA / MESIN */}
-      {uniqueTahap.length > 0 && (
+      {/* FILTER BAR TAHAP PRODUKSI */}
+      {tahapOptions.length > 0 && (
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none select-none">
           <button
-            onClick={() => setSelectedTahap('')}
+            onClick={() => onTahapFilterChange('')}
             className={`px-3 py-1.5 rounded-lg text-[10.5px] font-extrabold border transition-all cursor-pointer ${
-              selectedTahap === ''
+              tahapFilter === ''
                 ? 'bg-[#714B67] text-white border-[#714B67] shadow-sm'
                 : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
             }`}
           >
-            Semua Mesin ({claimPool.length})
+            Semua Tahap
           </button>
-          {uniqueTahap.map((tahap) => {
-            const count = claimPool.filter((j) => j.tahap_nama === tahap).length;
-            return (
-              <button
-                key={tahap}
-                onClick={() => setSelectedTahap(tahap)}
-                className={`px-3 py-1.5 rounded-lg text-[10.5px] font-extrabold border transition-all cursor-pointer whitespace-nowrap ${
-                  selectedTahap === tahap
-                    ? 'bg-[#714B67] text-white border-[#714B67] shadow-sm'
-                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                }`}
-              >
-                {tahap} ({count})
-              </button>
-            );
-          })}
+          {tahapOptions.map((tahap) => (
+            <button
+              key={tahap.id}
+              onClick={() => onTahapFilterChange(tahap.nama)}
+              className={`px-3 py-1.5 rounded-lg text-[10.5px] font-extrabold border transition-all cursor-pointer whitespace-nowrap ${
+                tahapFilter === tahap.nama
+                  ? 'bg-[#714B67] text-white border-[#714B67] shadow-sm'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              {tahap.nama}
+            </button>
+          ))}
         </div>
       )}
 
       {/* Grid Hasil Filter — dikelompokkan per order/transaksi */}
-      {filteredPool.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 bg-slate-50 border border-dashed border-slate-200 rounded-xl">
-          <Inbox className="w-8 h-8 text-slate-350 mb-2" />
-          <p className="text-xs font-bold text-slate-500">Antrean Kosong</p>
-          <p className="text-[10px] text-slate-400 mt-0.5">Tidak ada antrean pekerjaan pada stasiun kerja ini.</p>
+      {claimPool.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200">
+          <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mb-3">
+            <Inbox size={24} />
+          </div>
+          <h3 className="text-sm font-bold text-slate-700">
+            {tahapFilter ? 'Antrean Kosong' : 'Antrean Bersih!'}
+          </h3>
+          <p className="text-xs text-slate-400 mt-1 text-center max-w-xs">
+            {tahapFilter
+              ? `Tidak ada antrean pekerjaan pada tahap "${tahapFilter}".`
+              : 'Saat ini tidak ada pekerjaan unassigned untuk divisi Anda.'}
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -238,6 +233,43 @@ export default function ClaimPool({ claimPool, onClaimMany, loading }) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Paginasi */}
+      {claimPoolCount > 0 && (
+        <div className="flex items-center justify-between gap-3 bg-white px-4 py-2.5 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-500">
+          <div className="flex items-center gap-2">
+            <span>{claimPoolCount} antrean</span>
+            <select
+              value={pageSize}
+              onChange={(e) => onPageSizeChange(Number(e.target.value))}
+              className="bg-white border border-slate-200 rounded-lg px-2 py-1 outline-none cursor-pointer text-slate-700"
+            >
+              <option value={15}>15/hal</option>
+              <option value={30}>30/hal</option>
+              <option value={60}>60/hal</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => onPageChange(Math.max(1, page - 1))}
+              className="bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg px-2.5 py-1 cursor-pointer text-slate-700"
+            >
+              &lt;
+            </button>
+            <span>{page} / {totalPages}</span>
+            <button
+              type="button"
+              disabled={page >= totalPages}
+              onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+              className="bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg px-2.5 py-1 cursor-pointer text-slate-700"
+            >
+              &gt;
+            </button>
+          </div>
         </div>
       )}
     </div>
