@@ -30,7 +30,6 @@ import {
   ShieldAlert,
   KeyRound,
   History,
-  ArrowRight,
   Lock,
 } from 'lucide-react';
 
@@ -629,14 +628,6 @@ export default function Dashboard() {
             {currentTime.toLocaleDateString('id-ID', { month: 'long' })}
           </div>
         </div>
-        <a
-          href="/produksi"
-          className="flex items-center gap-2 bg-[#EE6A50] hover:bg-[#DD5A41] text-white font-bold text-xs px-5 py-3.5 rounded-full shadow-sm transition-all shrink-0"
-        >
-          Lihat Papan Kerja
-          <ArrowRight size={14} />
-        </a>
-
         <div className="flex-1 min-w-[140px]" />
 
         <div className="text-right shrink-0">
@@ -648,7 +639,7 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-white border border-[#ECE5DB] flex flex-col items-center justify-center gap-0.5 shrink-0">
-          <Clock size={13} className="text-[#EE6A50]" />
+          <Clock size={13} className="text-[#4F46E5]" />
           <span className="text-[9px] font-extrabold text-slate-600 tabular-nums">
             {currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
           </span>
@@ -658,11 +649,11 @@ export default function Dashboard() {
       {/* ── APP SWITCHER (Premium Horizontal Cards) ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {[
-          { name: 'Penjualan', path: '/orders', icon: ShoppingCart, desc: 'Quotations & Sales', color: 'bg-gradient-to-r from-[#EE6A50] to-[#F3927C]' },
-          { name: 'Papan Kerja', path: '/produksi', icon: ClipboardList, desc: 'Production SPK', color: 'bg-gradient-to-r from-slate-800 to-slate-600' },
-          { name: 'Inventori', path: '/product-inventory', icon: Package, desc: 'Inventory & BoM', color: 'bg-gradient-to-r from-[#D98A1C] to-[#EFB65B]' },
-          { name: 'Kepegawaian', path: '/attendance', icon: CalendarClock, desc: 'HR & Timesheets', color: 'bg-gradient-to-r from-[#159A6B] to-[#4CC195]' },
-          { name: 'Pengaturan', path: '/settings', icon: Settings, desc: 'System Settings', color: 'bg-gradient-to-r from-slate-500 to-slate-400' }
+          { name: 'Penjualan', path: '/orders', icon: ShoppingCart, desc: 'Quotations & Sales', color: 'bg-[#4F46E5]' },
+          { name: 'Papan Kerja', path: '/produksi', icon: ClipboardList, desc: 'Production SPK', color: 'bg-slate-800' },
+          { name: 'Inventori', path: '/product-inventory', icon: Package, desc: 'Inventory & BoM', color: 'bg-amber-600' },
+          { name: 'Kepegawaian', path: '/attendance', icon: CalendarClock, desc: 'HR & Timesheets', color: 'bg-emerald-600' },
+          { name: 'Pengaturan', path: '/settings', icon: Settings, desc: 'System Settings', color: 'bg-slate-500' }
         ].map((app, idx) => {
           const AppIcon = app.icon;
           return (
@@ -719,7 +710,7 @@ export default function Dashboard() {
               <TabIcon size={14} />
               {tab.label}
               {!!tab.badge && (
-                <span className="bg-[#EE6A50] text-white text-[8px] font-black px-1.5 py-0.5 rounded-full">
+                <span className="bg-[#4F46E5] text-white text-[8px] font-black px-1.5 py-0.5 rounded-full">
                   {tab.badge}
                 </span>
               )}
@@ -757,8 +748,8 @@ export default function Dashboard() {
               <div className="flex flex-col gap-4 w-full sm:w-[260px]">
                 <div className="bg-white border border-[#ECE5DB] rounded-[18px] p-4 flex-1 flex flex-col justify-center">
                   <div className="flex items-center justify-between">
-                    <div className="w-8 h-8 rounded-full bg-[#FBE7E1] flex items-center justify-center">
-                      <ShoppingCart size={14} className="text-[#DD5A41]" />
+                    <div className="w-8 h-8 rounded-full bg-[#EEF2FF] flex items-center justify-center">
+                      <ShoppingCart size={14} className="text-[#4338CA]" />
                     </div>
                     <span className="text-[9px] font-bold text-slate-400 uppercase">Bulan Ini</span>
                   </div>
@@ -796,7 +787,7 @@ export default function Dashboard() {
                 <div className="grid grid-cols-8 gap-1.5 mt-3">
                   {staffList.map((s, i) => {
                     const st = s.absensi_hari_ini?.status;
-                    const dot = st === 'hadir' ? 'bg-[#EE6A50]' : st === 'terlambat' ? 'bg-amber-400' : 'bg-slate-200';
+                    const dot = st === 'hadir' ? 'bg-[#4F46E5]' : st === 'terlambat' ? 'bg-amber-400' : 'bg-slate-200';
                     return <div key={i} title={s.username} className={`w-3.5 h-3.5 rounded-[4px] ${dot}`} />;
                   })}
                   {staffList.length === 0 && (
@@ -807,8 +798,8 @@ export default function Dashboard() {
 
               {/* Pelanggan baru */}
               <div className="bg-white border border-[#ECE5DB] rounded-[18px] p-4 flex-1 min-w-[140px] flex flex-col justify-center">
-                <div className="w-8 h-8 rounded-full bg-[#FBE7E1] flex items-center justify-center">
-                  <Users size={14} className="text-[#DD5A41]" />
+                <div className="w-8 h-8 rounded-full bg-[#EEF2FF] flex items-center justify-center">
+                  <Users size={14} className="text-[#4338CA]" />
                 </div>
                 <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mt-2.5">Pelanggan Baru</p>
                 <p className="text-lg font-black text-slate-800 leading-none mt-0.5">{data?.total_pelanggan || 0}</p>
@@ -864,8 +855,8 @@ export default function Dashboard() {
                     >
                       <defs>
                         <linearGradient id="omsetGradientSleek" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#EE6A50" stopOpacity="0.2" />
-                          <stop offset="100%" stopColor="#EE6A50" stopOpacity="0.0" />
+                          <stop offset="0%" stopColor="#4F46E5" stopOpacity="0.2" />
+                          <stop offset="100%" stopColor="#4F46E5" stopOpacity="0.0" />
                         </linearGradient>
                       </defs>
                       <line x1="20" y1={svgHeight - 15} x2={svgWidth - 20} y2={svgHeight - 15} stroke="#F1EDE6" strokeWidth="1" />
@@ -877,7 +868,7 @@ export default function Dashboard() {
                         <path
                           d={pathD}
                           fill="none"
-                          stroke="#EE6A50"
+                          stroke="#4F46E5"
                           strokeWidth="2.5"
                           strokeLinecap="round"
                           strokeLinejoin="round"
@@ -885,7 +876,7 @@ export default function Dashboard() {
                       )}
                       {points.map((p, idx) => (
                         <g key={idx}>
-                          <circle cx={p.x} cy={p.y} r="3" fill="#EE6A50" stroke="#FFFFFF" strokeWidth="1.5" />
+                          <circle cx={p.x} cy={p.y} r="3" fill="#4F46E5" stroke="#FFFFFF" strokeWidth="1.5" />
                         </g>
                       ))}
                     </svg>
@@ -968,7 +959,7 @@ export default function Dashboard() {
                   {/* Navigation Button */}
                   <button
                     onClick={() => setActiveTab('presensi')}
-                    className="w-full mt-4 py-2 bg-[#FBE7E1] hover:bg-[#F6CFC4] text-[#DD5A41] text-[10px] font-black rounded-xl border border-[#F1B6A6] transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                    className="w-full mt-4 py-2 bg-[#EEF2FF] hover:bg-[#E0E7FF] text-[#4338CA] text-[10px] font-black rounded-xl border border-[#C7D2FE] transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                   >
                     Atur Presensi Karyawan
                   </button>
@@ -986,14 +977,14 @@ export default function Dashboard() {
                     {omset4Bulan.map((item, idx) => {
                       const size = nestedCircleSizes[idx] || 60;
                       const isLast = idx === omset4Bulan.length - 1;
-                      const bg = ['#FBE7E1', '#F6CFC4', '#F1B6A6', '#EE6A50'][idx] || '#EE6A50';
+                      const bg = ['#EEF2FF', '#E0E7FF', '#C7D2FE', '#4F46E5'][idx] || '#4F46E5';
                       return (
                         <div
                           key={idx}
                           className="absolute left-1/2 bottom-0 rounded-full flex justify-center pt-3"
                           style={{ width: size, height: size, background: bg, transform: 'translateX(-50%)' }}
                         >
-                          <span className={`text-[10px] font-black ${isLast ? 'text-white' : 'text-[#8A2E1D]'}`}>
+                          <span className={`text-[10px] font-black ${isLast ? 'text-white' : 'text-[#3730A3]'}`}>
                             {(item.total / 1000000).toFixed(1)}Jt
                           </span>
                         </div>
@@ -1035,7 +1026,7 @@ export default function Dashboard() {
               <div className="lg:col-span-4 flex flex-col gap-4">
                 <div className="bg-white border border-[#ECE5DB] rounded-[18px] p-4 flex-1">
                   <div className="flex items-center justify-between">
-                    <TrendingUp size={16} className="text-[#DD5A41]" />
+                    <TrendingUp size={16} className="text-[#4338CA]" />
                     <span className="text-[9px] font-bold text-slate-400 uppercase">Top Staff</span>
                   </div>
                   <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mt-2">Insentif Terbayar</p>
@@ -1048,7 +1039,7 @@ export default function Dashboard() {
                   </p>
                   <div className="w-full h-1.5 bg-[#F1EDE6] rounded-full mt-3 overflow-hidden">
                     <div
-                      className="h-full bg-[#EE6A50] rounded-full"
+                      className="h-full bg-[#4F46E5] rounded-full"
                       style={{ width: `${persenKomplainSelesai}%` }}
                     />
                   </div>
