@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Play, CheckCircle, Save, Trash, ChevronLeft, Download, Printer, RefreshCw, Plus, Search, AlertTriangle } from 'lucide-react';
+import { Play, CheckCircle, Save, Trash, ChevronLeft, Download, RefreshCw, Plus, Search, AlertTriangle, Check, AlertCircle, X } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
 import KomplainModal from '../../../orders/components/KomplainModal';
 import DeadlineBadge from '../../components/DeadlineBadge';
@@ -34,10 +34,9 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
   const [updating, setUpdating] = useState(false);
   const [staffNote, setStaffNote] = useState('');
 
-  // Excel sheet state and custom calculator parameters
+  // Excel sheet state
   const [activeSheet, setActiveSheet] = useState('detail');
-  const [tarifPerm2, setTarifPerm2] = useState(15000);
-  const [komisiPersen, setKomisiPersen] = useState(5);
+  const [materialConfirmOpen, setMaterialConfirmOpen] = useState(false);
 
   // Free-form Catatan Bebas grid
   const [freeGrid, setFreeGrid] = useState(mkEmpty);
@@ -97,6 +96,7 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
           satuan: m.satuan || '',
           qty: m.qty || m.jumlah || '',
           catatan: m.catatan || '',
+          status: m.status === 'kendala' ? 'kendala' : 'sesuai',
         }))
       );
       setHistoryNotes(historyRows);
@@ -114,7 +114,7 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
   const addMaterialRow = () => {
     setMaterialUsage((prev) => [
       ...prev,
-      { item_id: '', item_nama: '', satuan: '', qty: '', catatan: '' },
+      { item_id: '', item_nama: '', satuan: '', qty: '', catatan: '', status: 'sesuai' },
     ]);
   };
 
@@ -179,6 +179,7 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
         satuan: row.satuan,
         catatan: row.catatan,
         item_id: row.item_id,
+        status: row.status || 'sesuai',
       }));
 
       // Append staff note if present
@@ -212,16 +213,7 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
   const item = job?.order_item_detail || {};
   const panjang = parseFloat(item.panjang) || 0;
   const lebar = parseFloat(item.lebar) || 0;
-  const luas = panjang * lebar;
   const orderQty = parseFloat(item.jumlah) || parseFloat(item.qty) || 1;
-  const orderTotal =
-    parseFloat(item.total_harga) ||
-    parseFloat(item.subtotal) ||
-    parseFloat(item.harga) * orderQty ||
-    0;
-
-  const baseValue = luas > 0 ? luas * tarifPerm2 * orderQty : orderTotal;
-  const computedIncentive = Math.round(baseValue * (komisiPersen / 100) + designFee);
 
   const fetchComplaints = useCallback(async () => {
     const orderId = job?.order_id || job?.order_item_detail?.order || job?.order_item;
@@ -238,13 +230,6 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
     fetchComplaints();
   }, [fetchComplaints]);
 
-  // Must be ABOVE early return to comply with Rules of Hooks
-  useEffect(() => {
-    if (activeSheet === 'incentive') {
-      setIncentive(computedIncentive);
-    }
-  }, [computedIncentive, activeSheet]);
-
   if (!job) return null;
 
   const formatUkuran = panjang > 0 && lebar > 0 ? `${panjang} x ${lebar} m` : null;
@@ -255,7 +240,7 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
       <div className="bg-[#107c41] text-white shrink-0">
         {/* File / Home Menu Tabs */}
         <div className="flex items-center px-3 pt-1 gap-1 text-[10px] select-none font-semibold overflow-x-auto">
-          {[['detail','SPK Detail'],['materials','Bahan Baku'],['incentive','Insentif'],['notes','Catatan Bebas']].map(([id, label]) => (
+          {[['detail','SPK Detail'],['materials','Bahan Baku'],['notes','Catatan Bebas']].map(([id, label]) => (
             <button key={id} onClick={() => setActiveSheet(id)}
               className={`px-3 py-1 rounded-t-sm whitespace-nowrap border-none outline-none cursor-pointer transition-all ${
                 activeSheet === id ? 'bg-[#f3f3f3] text-[#107c41] font-black' : 'opacity-80 text-white hover:bg-[#185e37]'
@@ -667,88 +652,38 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
           </table>
         )}
 
-        {/* SHEET 2: BAHAN BAKU TERPAKAI */}
+        {/* SHEET 2: KONFIRMASI BAHAN BAKU */}
         {activeSheet === 'materials' && (
-          <table className="w-full border-collapse table-fixed text-[10.5px]">
-            <thead>
-              <tr className="bg-[#f3f3f3] select-none text-slate-500 font-normal">
-                <th className="w-8 border border-[#ccc] bg-[#f3f3f3] text-[8.5px] font-bold py-1"></th>
-                <th className="w-48 border border-[#ccc] text-center font-semibold text-slate-500">
-                  A
-                </th>
-                <th className="w-24 border border-[#ccc] text-center font-semibold text-slate-500">
-                  B
-                </th>
-                <th className="w-20 border border-[#ccc] text-center font-semibold text-slate-500">
-                  C
-                </th>
-                <th className="w-64 border border-[#ccc] text-center font-semibold text-slate-500">
-                  D
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="h-8">
-                <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                  1
-                </td>
-                <td
-                  colSpan={4}
-                  className="bg-[#107c41] text-white font-extrabold px-3 uppercase text-[9px] tracking-wide border border-[#ccc]"
-                >
-                  <div className="flex justify-between items-center w-full">
-                    <span>LAPORAN PEMAKAIAN BAHAN BAKU / INVENTORI TERPAKAI</span>
-                    <button
-                      type="button"
-                      onClick={addMaterialRow}
-                      className="bg-white hover:bg-slate-100 text-[#107c41] text-[8.5px] font-black px-2.5 py-0.5 rounded shadow-sm cursor-pointer transition-all uppercase border-none"
-                    >
-                      + Tambah Baris Bahan
-                    </button>
-                  </div>
-                </td>
-              </tr>
-              <tr className="bg-[#f3f3f3] select-none text-slate-600 font-bold h-6 text-[9.5px]">
-                <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                  2
-                </td>
-                <td className="border border-[#ccc] text-center uppercase tracking-wide">
-                  PILIH INVENTORI BAHAN
-                </td>
-                <td className="border border-[#ccc] text-center uppercase tracking-wide">
-                  QTY JUMLAH
-                </td>
-                <td className="border border-[#ccc] text-center uppercase tracking-wide">SATUAN</td>
-                <td className="border border-[#ccc] text-center uppercase tracking-wide">
-                  CATATAN DETAIL OPERATOR (HAPUS)
-                </td>
-              </tr>
-              {materialUsage.length === 0 ? (
-                <tr className="h-12">
-                  <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                    3
-                  </td>
-                  <td
-                    colSpan={4}
-                    className="px-4 text-center text-slate-400 italic border border-[#ccc] bg-[#fafafa] py-4"
-                  >
-                    Belum ada pemakaian bahan dicatat. Klik "+ Tambah Baris Bahan" di pojok kanan
-                    atas.
-                  </td>
-                </tr>
-              ) : (
-                materialUsage.map((row, idx) => {
-                  const rowNum = 3 + idx;
+          <div className="p-3 space-y-2.5">
+            <div className="flex items-center justify-between bg-[#107c41] text-white px-3 py-2 rounded-sm">
+              <div>
+                <p className="text-[10px] font-extrabold uppercase tracking-wide">Konfirmasi Pemakaian Bahan Baku</p>
+                <p className="text-[9px] opacity-80 mt-0.5">Cek bahan yang dipakai di tahap ini. Kalau ada kendala (reject/kurang), tandai & kasih keterangan.</p>
+              </div>
+              <button
+                type="button"
+                onClick={addMaterialRow}
+                className="flex items-center gap-1 bg-white hover:bg-slate-100 text-[#107c41] text-[9px] font-black px-2.5 py-1 rounded shadow-sm cursor-pointer transition-all uppercase border-none shrink-0"
+              >
+                <Plus size={11} /> Tambah Bahan
+              </button>
+            </div>
+
+            {materialUsage.length === 0 ? (
+              <div className="text-center text-slate-400 italic border border-dashed border-[#ccc] rounded py-6 text-[10.5px] bg-[#fafafa]">
+                Belum ada bahan baku dicatat untuk tahap ini. Klik "+ Tambah Bahan" bila ada bahan yang dipakai.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {materialUsage.map((row, idx) => {
+                  const isKendala = row.status === 'kendala';
                   return (
-                    <tr key={idx} className="h-8 hover:bg-slate-50/50">
-                      <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                        {rowNum}
-                      </td>
-                      <td className="p-0 border border-[#ccc] bg-white">
+                    <div key={idx} className={`border rounded-md overflow-hidden ${isKendala ? 'border-amber-300 bg-amber-50/40' : 'border-[#ccc] bg-white'}`}>
+                      <div className="flex flex-wrap items-center gap-2 p-2">
                         <select
                           value={row.item_id}
                           onChange={(e) => selectInventoryItem(idx, e.target.value)}
-                          className="w-full h-full bg-transparent px-2 outline-none text-slate-700 border-none font-bold"
+                          className="flex-1 min-w-[160px] bg-white border border-[#ccc] rounded px-2 py-1 outline-none text-slate-700 font-bold text-[10.5px]"
                         >
                           <option value="">-- Pilih Bahan --</option>
                           {inventoryItems.map((inv) => (
@@ -757,287 +692,72 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
                             </option>
                           ))}
                         </select>
-                      </td>
-                      <td className="p-0 border border-[#ccc] bg-white">
                         <input
                           type="number"
                           value={row.qty}
                           onChange={(e) => updateMaterialField(idx, 'qty', e.target.value)}
-                          placeholder="0"
-                          className="w-full h-full bg-transparent px-2 text-center font-bold text-slate-800 outline-none border border-transparent focus:border-[#107c41]"
+                          placeholder="Qty"
+                          className="w-20 bg-white border border-[#ccc] rounded px-2 py-1 text-center font-bold text-slate-800 outline-none text-[10.5px]"
                         />
-                      </td>
-                      <td className="px-2 text-center text-slate-500 font-extrabold border border-[#ccc] bg-[#fafafa]">
-                        {row.satuan || '-'}
-                      </td>
-                      <td className="p-0 border border-[#ccc] bg-white">
-                        <div className="flex items-center h-full w-full">
+                        <span className="text-slate-500 font-extrabold text-[9.5px] w-10 text-center shrink-0">
+                          {row.satuan || '-'}
+                        </span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => updateMaterialField(idx, 'status', 'sesuai')}
+                            className={`flex items-center gap-1 px-2 py-1 rounded text-[9px] font-black uppercase cursor-pointer border transition-all ${
+                              !isKendala ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-400 border-[#ccc] hover:bg-slate-50'
+                            }`}
+                          >
+                            <Check size={10} /> Sesuai
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateMaterialField(idx, 'status', 'kendala')}
+                            className={`flex items-center gap-1 px-2 py-1 rounded text-[9px] font-black uppercase cursor-pointer border transition-all ${
+                              isKendala ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-slate-400 border-[#ccc] hover:bg-slate-50'
+                            }`}
+                          >
+                            <AlertCircle size={10} /> Kendala
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeMaterialRow(idx)}
+                          className="p-1 text-red-500 hover:text-red-700 transition-colors shrink-0 cursor-pointer border-none bg-transparent"
+                          title="Hapus baris"
+                        >
+                          <Trash size={13} />
+                        </button>
+                      </div>
+                      {isKendala && (
+                        <div className="px-2 pb-2">
                           <input
                             type="text"
                             value={row.catatan}
                             onChange={(e) => updateMaterialField(idx, 'catatan', e.target.value)}
-                            placeholder="Tulis catatan pemakaian..."
-                            className="flex-1 h-full bg-transparent px-2 outline-none border border-transparent focus:border-[#107c41]"
+                            placeholder="Jelaskan kendala (mis: bahan reject, stok kurang, ganti bahan alternatif)..."
+                            className="w-full bg-white border border-amber-300 rounded px-2 py-1 outline-none text-amber-800 font-semibold text-[10px]"
                           />
-                          <button
-                            type="button"
-                            onClick={() => removeMaterialRow(idx)}
-                            className="px-2 text-red-500 hover:text-red-700 transition-colors shrink-0 cursor-pointer border-none bg-transparent"
-                            title="Hapus baris"
-                          >
-                            <Trash size={12} />
-                          </button>
                         </div>
-                      </td>
-                    </tr>
+                      )}
+                    </div>
                   );
-                })
-              )}
-              <tr className="h-6">
-                <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                  {3 + Math.max(materialUsage.length, 1) + 1}
-                </td>
-                <td className="border border-[#ccc] bg-white"></td>
-                <td className="border border-[#ccc] bg-white"></td>
-                <td className="border border-[#ccc] bg-white"></td>
-                <td className="border border-[#ccc] bg-white"></td>
-              </tr>
-            </tbody>
-          </table>
-        )}
+                })}
+              </div>
+            )}
 
-        {/* SHEET 3: RUMUS INSENTIF */}
-        {activeSheet === 'incentive' && (
-          <table className="w-full border-collapse table-fixed text-[10.5px]">
-            <thead>
-              <tr className="bg-[#f3f3f3] select-none text-slate-500 font-normal">
-                <th className="w-8 border border-[#ccc] bg-[#f3f3f3] text-[8.5px] font-bold py-1"></th>
-                <th className="w-48 border border-[#ccc] text-center font-semibold text-slate-500">
-                  A
-                </th>
-                <th className="w-64 border border-[#ccc] text-center font-semibold text-slate-500">
-                  B
-                </th>
-                <th className="w-48 border border-[#ccc] text-center font-semibold text-slate-500">
-                  C
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="h-8">
-                <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                  1
-                </td>
-                <td
-                  colSpan={3}
-                  className="bg-[#107c41] text-white font-extrabold px-3 uppercase text-[9px] tracking-wide border border-[#ccc]"
-                >
-                  RUMUS KALKULASI & ESTIMASI INSENTIF KERJA
-                </td>
-              </tr>
-              <tr className="bg-[#f3f3f3] select-none text-slate-600 font-bold h-6 text-[9.5px]">
-                <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                  2
-                </td>
-                <td className="border border-[#ccc] text-center uppercase tracking-wide">
-                  NAMA PARAMETER
-                </td>
-                <td className="border border-[#ccc] text-center uppercase tracking-wide">
-                  NILAI / INPUT SEL
-                </td>
-                <td className="border border-[#ccc] text-center uppercase tracking-wide">
-                  KETERANGAN RUMUS
-                </td>
-              </tr>
-              <tr className="h-7 hover:bg-slate-50/30">
-                <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                  3
-                </td>
-                <td className="bg-[#f9f9f9] px-2 font-bold text-slate-500 border border-[#ccc]">
-                  PANJANG ORDER ITEM (m)
-                </td>
-                <td className="px-2 font-bold text-slate-800 border border-[#ccc] bg-slate-50">
-                  {panjang} m
-                </td>
-                <td className="px-2 text-slate-400 border border-[#ccc] italic">
-                  Diambil dari nota penjualan
-                </td>
-              </tr>
-              <tr className="h-7 hover:bg-slate-50/30">
-                <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                  4
-                </td>
-                <td className="bg-[#f9f9f9] px-2 font-bold text-slate-500 border border-[#ccc]">
-                  LEBAR ORDER ITEM (m)
-                </td>
-                <td className="px-2 font-bold text-slate-800 border border-[#ccc] bg-slate-50">
-                  {lebar} m
-                </td>
-                <td className="px-2 text-slate-400 border border-[#ccc] italic">
-                  Diambil dari nota penjualan
-                </td>
-              </tr>
-              <tr className="h-7 hover:bg-slate-50/30">
-                <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                  5
-                </td>
-                <td className="bg-[#f9f9f9] px-2 font-bold text-slate-500 border border-[#ccc]">
-                  LUAS TOTAL CETAK (m²)
-                </td>
-                <td className="px-2 font-black text-indigo-700 border border-[#ccc] bg-slate-50">
-                  {luas.toFixed(2)} m²
-                </td>
-                <td className="px-2 text-slate-400 border border-[#ccc] font-mono">=A3 * A4</td>
-              </tr>
-              <tr className="h-7 hover:bg-slate-50/30">
-                <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                  6
-                </td>
-                <td className="bg-[#e2f0d9] px-2 font-extrabold text-emerald-800 border border-[#ccc]">
-                  TARIF JASA CETAK / m² (Rp)
-                </td>
-                <td className="p-0 border border-[#ccc] bg-white">
-                  <input
-                    type="number"
-                    value={tarifPerm2}
-                    onChange={(e) => setTarifPerm2(parseFloat(e.target.value) || 0)}
-                    className="w-full h-full bg-transparent px-2 font-bold text-slate-800 outline-none border border-transparent focus:border-[#107c41]"
-                  />
-                </td>
-                <td className="px-2 text-slate-400 border border-[#ccc] italic">
-                  Bisa diubah (Tarif dasar: Rp15,000)
-                </td>
-              </tr>
-              <tr className="h-7 hover:bg-slate-50/30">
-                <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                  7
-                </td>
-                <td className="bg-[#f9f9f9] px-2 font-bold text-slate-500 border border-[#ccc]">
-                  JUMLAH BARANG (Qty)
-                </td>
-                <td className="px-2 font-bold text-slate-800 border border-[#ccc] bg-slate-50">
-                  {orderQty} Pcs
-                </td>
-                <td className="px-2 text-slate-400 border border-[#ccc] italic">
-                  Jumlah pesanan di nota
-                </td>
-              </tr>
-              <tr className="h-7 hover:bg-slate-50/30">
-                <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                  8
-                </td>
-                <td className="bg-[#e2f0d9] px-2 font-extrabold text-emerald-800 border border-[#ccc]">
-                  PERSENTASE KOMISI (%)
-                </td>
-                <td className="p-0 border border-[#ccc] bg-white">
-                  <input
-                    type="number"
-                    value={komisiPersen}
-                    onChange={(e) => setKomisiPersen(parseFloat(e.target.value) || 0)}
-                    className="w-full h-full bg-transparent px-2 font-bold text-slate-800 outline-none border border-transparent focus:border-[#107c41]"
-                  />
-                </td>
-                <td className="px-2 text-slate-400 border border-[#ccc] italic">
-                  Bisa diubah (Standar: 5%)
-                </td>
-              </tr>
-              <tr className="h-7 hover:bg-slate-50/30">
-                <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                  9
-                </td>
-                <td className="bg-[#f9f9f9] px-2 font-bold text-slate-500 border border-[#ccc]">
-                  BIAYA TAMBAHAN DESAIN (Rp)
-                </td>
-                <td className="px-2 font-bold text-slate-800 border border-[#ccc] bg-slate-50">
-                  Rp{designFee.toLocaleString()}
-                </td>
-                <td className="px-2 text-slate-400 border border-[#ccc] italic">
-                  Diambil dari Input Sel A4 Sheet1
-                </td>
-              </tr>
-              <tr className="h-8 hover:bg-slate-50/30">
-                <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                  10
-                </td>
-                <td className="bg-[#f9f9f9] px-2 font-extrabold text-slate-500 border border-[#ccc]">
-                  RUMUS EXCEL AKHIR
-                </td>
-                <td
-                  colSpan={2}
-                  className="px-2 font-mono text-[#107c41] font-bold border border-[#ccc] bg-[#f9f9f9]"
-                >
-                  {luas > 0
-                    ? `=ROUND(((A5 * A6 * A7) * (A8 / 100)) + A9, 0)`
-                    : `=ROUND((TOTAL_NOTA * (A8 / 100)) + A9, 0)`}
-                </td>
-              </tr>
-              <tr className="h-10 hover:bg-slate-50/30 bg-[#e2f0d9]/30">
-                <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                  11
-                </td>
-                <td className="bg-[#e2f0d9] px-2 font-black text-[#107c41] border border-[#ccc] text-[11px]">
-                  ESTIMASI INSENTIF BERHASIL (Rp)
-                </td>
-                <td
-                  colSpan={2}
-                  className="px-3 font-black text-lg text-[#107c41] border border-[#ccc] font-mono"
-                >
-                  Rp{computedIncentive.toLocaleString()}
-                </td>
-              </tr>
-              <tr className="h-8">
-                <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                  12
-                </td>
-                <td
-                  colSpan={3}
-                  className="bg-[#107c41] text-white font-extrabold px-3 uppercase text-[9px] tracking-wide border border-[#ccc] py-1"
-                >
-                  ℹ️ INFORMASI & PANDUAN KUSTOMISASI FORMULA
-                </td>
-              </tr>
-              <tr className="hover:bg-slate-50/30">
-                <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                  13
-                </td>
-                <td className="bg-[#fafafa] px-2 font-bold text-slate-500 border border-[#ccc] uppercase align-top py-2">
-                  RUMUS UTAMA (ADA UKURAN)
-                </td>
-                <td colSpan={2} className="px-3 py-2 text-slate-700 border border-[#ccc] font-medium leading-relaxed bg-white">
-                  <strong>Rumus:</strong> (Luas m² x Tarif per m² x Qty) x (Persentase Komisi / 100) + Biaya Tambahan Desain <br />
-                  <span className="text-slate-500 italic">Digunakan apabila barang memiliki ukuran panjang dan lebar yang valid di nota penjualan.</span>
-                </td>
-              </tr>
-              <tr className="hover:bg-slate-50/30">
-                <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                  14
-                </td>
-                <td className="bg-[#fafafa] px-2 font-bold text-slate-500 border border-[#ccc] uppercase align-top py-2">
-                  RUMUS ALTERNATIF (TANPA UKURAN)
-                </td>
-                <td colSpan={2} className="px-3 py-2 text-slate-700 border border-[#ccc] font-medium leading-relaxed bg-white">
-                  <strong>Rumus:</strong> Subtotal Harga Nota x (Persentase Komisi / 100) + Biaya Tambahan Desain <br />
-                  <span className="text-slate-500 italic">Secara otomatis aktif sebagai fallback apabila ukuran panjang/lebar produk bernilai 0 atau tidak didefinisikan.</span>
-                </td>
-              </tr>
-              <tr className="hover:bg-slate-50/30">
-                <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
-                  15
-                </td>
-                <td className="bg-[#e8f5e9] px-2 font-bold text-[#1b5e20] border border-[#ccc] uppercase align-top py-2">
-                  CARA KUSTOMISASI MANDIRI
-                </td>
-                <td colSpan={2} className="px-3 py-2 text-slate-700 border border-[#ccc] font-medium leading-relaxed bg-[#e8f5e9]/10">
-                  <ol className="list-decimal pl-4 space-y-1">
-                    <li>Pindah ke sel input berwarna <strong>hijau muda</strong> di atas pada Baris 6 (Tarif Jasa Cetak) atau Baris 8 (Persentase Komisi).</li>
-                    <li>Ubah angka secara langsung sesuai kebutuhan kesepakatan baru dengan staff.</li>
-                    <li>Hasil akhir <strong>ESTIMASI INSENTIF (Baris 11)</strong> akan terkalkulasi ulang secara otomatis dan presisi!</li>
-                    <li>Klik <strong>"Simpan Draft"</strong> untuk mengunci nilai insentif baru ini ke dalam SPK.</li>
-                  </ol>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+            {materialUsage.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setMaterialConfirmOpen(true)}
+                className="w-full flex items-center justify-center gap-1.5 bg-[#107c41] hover:bg-[#0d6233] text-white font-extrabold text-[10.5px] uppercase py-2 rounded shadow-sm cursor-pointer transition-all"
+              >
+                <Check size={13} /> Konfirmasi & Simpan Pemakaian Bahan
+              </button>
+            )}
+          </div>
         )}
         {/* SHEET 4: CATATAN BEBAS */}
         {activeSheet === 'notes' && (
@@ -1098,7 +818,7 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
       {/* EXCEL STATUS BAR / SHEET TABS */}
       <div className="bg-[#f3f3f3] border-t border-[#ccc] px-2 py-0.5 flex items-center justify-between text-[9px] text-slate-500 shrink-0 font-semibold select-none">
         <div className="flex items-center gap-0.5">
-          {[['detail','Sheet1 · SPK Detail'],['materials','Sheet2 · Bahan'],['incentive','Sheet3 · Insentif'],['notes','Sheet4 · Catatan Bebas']].map(([id, label]) => (
+          {[['detail','Sheet1 · SPK Detail'],['materials','Sheet2 · Bahan'],['notes','Sheet3 · Catatan Bebas']].map(([id, label]) => (
             <button key={id} onClick={() => setActiveSheet(id)}
               className={`px-2.5 py-0.5 border-none outline-none cursor-pointer transition-all ${
                 activeSheet === id
@@ -1135,6 +855,60 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
           fetchComplaints();
         }}
       />
+
+      {materialConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[80vh] flex flex-col overflow-hidden">
+            <div className="bg-[#107c41] text-white px-4 py-3 flex items-center justify-between shrink-0">
+              <h3 className="font-extrabold text-[12px] uppercase">Konfirmasi Pemakaian Bahan Baku</h3>
+              <button onClick={() => setMaterialConfirmOpen(false)} className="text-white/80 hover:text-white cursor-pointer border-none bg-transparent">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto space-y-2 flex-1">
+              <p className="text-[10.5px] text-slate-600 leading-relaxed">
+                Stok inventori akan otomatis terpotong sesuai data di bawah setelah dikonfirmasi. Pastikan datanya sudah benar.
+              </p>
+              {materialUsage.map((row, idx) => (
+                <div key={idx} className={`flex items-start gap-2 border rounded p-2 text-[10.5px] ${row.status === 'kendala' ? 'border-amber-300 bg-amber-50/50' : 'border-slate-200 bg-slate-50'}`}>
+                  {row.status === 'kendala' ? (
+                    <AlertCircle size={14} className="text-amber-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <Check size={14} className="text-emerald-600 shrink-0 mt-0.5" />
+                  )}
+                  <div className="min-w-0">
+                    <p className="font-bold text-slate-800">
+                      {row.item_nama || <span className="italic text-slate-400">(belum dipilih)</span>} — {row.qty || 0} {row.satuan}
+                    </p>
+                    {row.status === 'kendala' && (
+                      <p className="text-amber-700 font-medium mt-0.5">{row.catatan || 'Tidak ada keterangan kendala.'}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="p-3 border-t border-slate-200 flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => setMaterialConfirmOpen(false)}
+                className="flex-1 px-3 py-2 rounded font-bold text-[10.5px] uppercase border border-slate-300 text-slate-600 hover:bg-slate-50 cursor-pointer bg-white"
+              >
+                Batal
+              </button>
+              <button
+                onClick={async () => {
+                  await handleSaveDraft();
+                  setSavedAt(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
+                  setMaterialConfirmOpen(false);
+                }}
+                disabled={updating}
+                className="flex-1 px-3 py-2 rounded font-extrabold text-[10.5px] uppercase bg-[#107c41] text-white hover:bg-[#0d6233] disabled:opacity-50 cursor-pointer"
+              >
+                Konfirmasi & Simpan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
