@@ -117,101 +117,93 @@ export default function ClaimPool({
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {grouped.map((grup) => (
             <div
               key={grup.key}
-              className="bg-white border border-slate-200 hover:border-indigo-300 rounded-xl shadow-3xs hover:shadow-md transition-all overflow-hidden flex flex-col"
+              className="bg-white border border-slate-200 hover:border-indigo-300 rounded-lg shadow-3xs hover:shadow-md transition-all overflow-hidden flex flex-col self-start"
             >
               {/* Group Header — identitas order/transaksi asal */}
-              <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
+              <div className="px-3 py-2 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
                   <span
-                    className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 ${
+                    className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 ${
                       grup.sumber === 'pos' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'
                     }`}
                   >
                     {grup.sumber === 'pos' ? 'POS' : 'Order'}
                   </span>
-                  <span className="text-xs font-extrabold text-slate-800 truncate">{grup.nomorSumber}</span>
+                  <span className="text-[11px] font-extrabold text-slate-800 truncate">{grup.nomorSumber}</span>
                   {grup.pelangganNama && (
-                    <span className="text-[11px] text-slate-500 font-semibold truncate">&middot; {grup.pelangganNama}</span>
+                    <span className="text-[10px] text-slate-500 font-semibold truncate">&middot; {grup.pelangganNama}</span>
                   )}
                 </div>
                 {grup.jobs.length > 1 && (
-                  <span className="flex items-center gap-1 text-[10px] font-bold text-slate-400 shrink-0">
-                    <Layers size={11} /> {grup.jobs.length} item
+                  <span className="flex items-center gap-1 text-[9px] font-bold text-slate-400 shrink-0">
+                    <Layers size={10} /> {grup.jobs.length}
                   </span>
                 )}
               </div>
 
-              {/* Item-item dalam order/transaksi ini */}
+              {/* Item-item dalam order/transaksi ini — kompak (1-3 baris per
+                  item), sebelumnya tiap item bisa 5-6 baris penuh (label
+                  "Ukuran:"/"Bahan:" eksplisit, kotak catatan besar, dst)
+                  sehingga order dengan banyak item bikin kartu jadi sangat
+                  panjang & boros tempat (temuan user 2026-09-07). */}
               <div className="divide-y divide-slate-100">
                 {grup.jobs.map((job) => {
                   const item = job.order_item_detail || {};
                   const formatUkuran =
                     parseFloat(item.panjang) > 0 && parseFloat(item.lebar) > 0
-                      ? `${parseFloat(item.panjang)} x ${parseFloat(item.lebar)} m`
+                      ? `${parseFloat(item.panjang)}x${parseFloat(item.lebar)}m`
                       : null;
 
                   return (
-                    <div key={job.id} className="p-4 space-y-2.5">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <span className="text-[9px] bg-slate-200 text-slate-700 font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider">
+                    <div key={job.id} className="px-3 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                          <span className="text-[8px] bg-slate-200 text-slate-700 font-extrabold px-1 py-0.5 rounded uppercase tracking-wider shrink-0">
                             {job.tahap_nama}
                           </span>
-                          <h3 className="text-sm font-extrabold text-slate-800 mt-1">
+                          <span className="text-[11px] font-bold text-slate-800 truncate" title={item.jenis_produk || 'Produk'}>
                             {item.jenis_produk || 'Produk'}
-                          </h3>
-                          <div className="mt-1.5"><DeadlineBadge deadline={job.deadline} /></div>
+                          </span>
                         </div>
-                        <span className="text-[10px] text-slate-450 font-semibold font-mono shrink-0">
-                          ID: #{job.id}
+                        <span className="text-[9.5px] font-black text-slate-500 shrink-0">
+                          {item.qty || 1}x
                         </span>
                       </div>
 
-                      {/* Size and Material */}
-                      <div className="flex flex-wrap gap-2 text-[11px] text-slate-600">
+                      {/* Baris ringkasan: ukuran/bahan/biaya desain digabung
+                          satu baris kecil, deadline & ID di kanan. */}
+                      <div className="flex items-center flex-wrap gap-x-1.5 gap-y-0.5 mt-1 text-[9.5px] text-slate-500">
                         {formatUkuran && (
-                          <span className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded font-medium">
-                            <Ruler size={12} className="text-slate-400" />
-                            <strong>Ukuran:</strong> {formatUkuran}
+                          <span className="flex items-center gap-0.5">
+                            <Ruler size={9} className="text-slate-400" /> {formatUkuran}
                           </span>
                         )}
                         {item.bahan && (
-                          <span className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded font-medium">
-                            <Clipboard size={12} className="text-slate-400" />
-                            <strong>Bahan:</strong> {item.bahan}
+                          <span className="flex items-center gap-0.5 truncate max-w-[110px]" title={item.bahan}>
+                            <Clipboard size={9} className="text-slate-400" /> {item.bahan}
                           </span>
                         )}
+                        {job.biaya_desain > 0 && (
+                          <span className="text-emerald-600 font-bold">Rp{job.biaya_desain.toLocaleString()}</span>
+                        )}
+                        <DeadlineBadge deadline={job.deadline} />
+                        <span className="ml-auto text-slate-300 font-mono shrink-0">#{job.id}</span>
                       </div>
 
-                      {/* Instructions */}
+                      {/* Catatan CS — dipotong 1 baris, judul lengkap di tooltip. */}
                       {item.keterangan_detail && (
-                        <div className="p-2.5 bg-amber-50/80 border border-amber-150 rounded-lg text-[10px] text-amber-800 leading-relaxed font-semibold">
-                          <div className="flex items-center gap-1 mb-0.5 text-amber-900 font-bold">
-                            <AlertCircle size={11} /> Catatan CS (Finishing):
-                          </div>
-                          {item.keterangan_detail}
+                        <div
+                          className="flex items-start gap-1 mt-1 px-1.5 py-1 bg-amber-50 text-amber-800 rounded text-[9.5px] font-semibold truncate"
+                          title={item.keterangan_detail}
+                        >
+                          <AlertCircle size={10} className="text-amber-500 shrink-0 mt-px" />
+                          <span className="truncate">{item.keterangan_detail}</span>
                         </div>
                       )}
-
-                      {/* Design Fee Info (Admin configures) */}
-                      {job.biaya_desain > 0 && (
-                        <div className="text-[10px] text-slate-500">
-                          Biaya Desain:{' '}
-                          <span className="font-bold text-slate-700">
-                            Rp{job.biaya_desain.toLocaleString()}
-                          </span>
-                        </div>
-                      )}
-
-                      <div className="pt-1">
-                        <span className="text-[10px] text-slate-450 font-bold">
-                          Qty: <strong className="text-slate-750 text-xs">{item.qty || 1}</strong> Pcs
-                        </span>
-                      </div>
                     </div>
                   );
                 })}
@@ -222,12 +214,12 @@ export default function ClaimPool({
                   qty 2 dengan finishing beda per unit) butuh 2x klik klaim
                   padahal itu tetap satu pekerjaan/satu order yang sama (bug
                   ditemukan 2026-08-13). */}
-              <div className="px-4 py-3 bg-slate-50 border-t border-slate-100">
+              <div className="px-3 py-2 bg-slate-50 border-t border-slate-100">
                 <button
                   onClick={() => onClaimMany(grup.jobs.map((j) => j.id))}
-                  className="w-full flex items-center justify-center gap-1.5 px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-sm hover:shadow-md transition-all cursor-pointer border-none"
+                  className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold shadow-sm hover:shadow-md transition-all cursor-pointer border-none"
                 >
-                  <UserCheck size={14} />
+                  <UserCheck size={13} />
                   {grup.jobs.length > 1 ? `Klaim Semua (${grup.jobs.length} Item)` : 'Klaim Pekerjaan'}
                 </button>
               </div>
