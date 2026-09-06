@@ -201,6 +201,15 @@ export default function ProductionApp() {
 
   // Selected states for modals
   const [selectedWorkspaceJob, setSelectedWorkspaceJob] = useState(null);
+
+  // Pindah menu navigasi harus menutup workspace SPK yang sedang terbuka --
+  // sebelumnya klik menu lain saat workspace terbuka cuma ganti activeTab di
+  // belakang layar, tampilan tengah tetap "nyangkut" di WorkspaceSPK karena
+  // render utama cuma cek `selectedWorkspaceJob` (bug ditemukan user 2026-09-07).
+  const handleTabChange = (tabId) => {
+    setSelectedWorkspaceJob(null);
+    setActiveTab(tabId);
+  };
   const [selectedForwardJob, setSelectedForwardJob] = useState(null);
   const [savingAction, setSavingAction] = useState(false);
 
@@ -707,7 +716,7 @@ export default function ProductionApp() {
                   return (
                     <button
                       key={item.id}
-                      onClick={() => setActiveTab(item.id)}
+                      onClick={() => handleTabChange(item.id)}
                       className={`w-full flex items-center gap-2 p-2 rounded-md transition-all text-left text-[10.5px] cursor-pointer ${
                         isActive
                           ? 'bg-indigo-50 text-indigo-600 font-bold border-l-2 border-indigo-600'
@@ -738,7 +747,7 @@ export default function ProductionApp() {
                     return (
                       <button
                         key={cat.id}
-                        onClick={() => setKanbanCategory(cat.id)}
+                        onClick={() => { setSelectedWorkspaceJob(null); setKanbanCategory(cat.id); }}
                         className={`w-full flex items-center gap-2 p-2 rounded-md transition-all text-left text-[10.5px] cursor-pointer ${
                           isActive
                             ? 'bg-indigo-50 text-indigo-600 font-bold border-l-2 border-indigo-600'
