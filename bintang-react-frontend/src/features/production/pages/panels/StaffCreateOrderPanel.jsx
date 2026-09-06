@@ -21,7 +21,12 @@ const buatItemKosong = () => ({
 });
 
 /** Panel "Buat Order" untuk staff (Papan Kerja SPK, tab khusus staff) --
- * staff cuma mencatat data pelanggan & item pesanan, TIDAK ADA input
+ * Dipakai berdiri sendiri di halaman /buat-order, dipasang lewat menu
+ * "Buat Order" di sidebar utama akun staff (BUKAN di dalam Papan Kerja SPK
+ * -- sengaja dipindah keluar dari sana atas permintaan user 2026-09-06,
+ * supaya tidak tercampur dengan alur klaim/kerjakan SPK).
+ *
+ * Staff cuma mencatat data pelanggan & item pesanan, TIDAK ADA input
  * status/DP/metode bayar/diskon sama sekali di sini (wewenang kasir
  * sepenuhnya, instruksi eksplisit user). Backend juga memaksa ulang
  * status_global='review', dp_dibayar=0, dilayani_oleh=staff yang login,
@@ -299,7 +304,7 @@ export default function StaffCreateOrderPanel() {
   };
 
   return (
-    <div className="h-full overflow-y-auto p-1">
+    <div className="max-w-3xl">
       <div className="flex items-center gap-2 mb-4">
         <div className="bg-indigo-100 text-indigo-600 p-2 rounded-xl">
           <ShoppingCart size={18} />

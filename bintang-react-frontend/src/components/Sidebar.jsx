@@ -136,6 +136,7 @@ const groupedMenuOwnerManager = [
 const menuStaff = [
   { path: '/staff-dashboard', label: 'Dashboard', icon: LayoutDashboard, isGroup: false },
   { path: '/produksi', label: 'Papan Kerja (SPK)', icon: Kanban, isGroup: false },
+  { path: '/buat-order', label: 'Buat Order', icon: ShoppingCart, isGroup: false },
   { path: '/profile', label: 'Profil', icon: User, isGroup: false },
 ];
 
