@@ -56,6 +56,21 @@ export default function KasirPelangganSupplier({ onToggleSidebar }) {
     return customers.filter((c) => `${c.nama} ${c.handphone} ${c.email}`.toLowerCase().includes(q));
   }, [customers, query]);
 
+  // Paginasi -- sebelumnya render SEMUA hasil pencarian tanpa halaman sama
+  // sekali, pola sama dengan halaman Produk (temuan user 2026-09-06).
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredCustomers.length / pageSize));
+  const pagedCustomers = useMemo(
+    () => filteredCustomers.slice((page - 1) * pageSize, page * pageSize),
+    [filteredCustomers, page, pageSize]
+  );
+
   const handleCustomerSaved = () => {
     setShowAddCustomer(false);
     fetchCustomers();
@@ -110,7 +125,7 @@ export default function KasirPelangganSupplier({ onToggleSidebar }) {
                   ) : filteredCustomers.length === 0 ? (
                     <tr><td colSpan={4} className="px-4 py-6 text-center text-xs text-slate-400 font-semibold">Belum ada pelanggan.</td></tr>
                   ) : (
-                    filteredCustomers.map((c) => (
+                    pagedCustomers.map((c) => (
                       <tr key={c.id} className="border-b border-slate-100 text-xs font-semibold text-slate-700">
                         <td className="px-4 py-2 font-bold text-slate-800">{c.nama}</td>
                         <td className="px-4 py-2 text-slate-500">{c.handphone || '-'}</td>
@@ -128,6 +143,42 @@ export default function KasirPelangganSupplier({ onToggleSidebar }) {
                 </tbody>
               </table>
             </div>
+
+            {!loadingCustomers && filteredCustomers.length > 0 && (
+              <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-t border-slate-100 text-[11px] font-bold text-slate-500">
+                <div className="flex items-center gap-2">
+                  <span>{filteredCustomers.length} pelanggan</span>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => setPageSize(Number(e.target.value))}
+                    className="bg-white border border-slate-200 rounded-lg px-2 py-1 outline-none cursor-pointer text-slate-700"
+                  >
+                    <option value={10}>10/hal</option>
+                    <option value={20}>20/hal</option>
+                    <option value={50}>50/hal</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={page <= 1}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    className="bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg px-2.5 py-1 cursor-pointer text-slate-700"
+                  >
+                    &lt;
+                  </button>
+                  <span>{page} / {totalPages}</span>
+                  <button
+                    type="button"
+                    disabled={page >= totalPages}
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    className="bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg px-2.5 py-1 cursor-pointer text-slate-700"
+                  >
+                    &gt;
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

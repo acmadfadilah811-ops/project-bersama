@@ -266,6 +266,23 @@ function CustomerSupplierInner() {
     });
   }, [customers, customerQuery, selectedGroupFilter, appliedFilters]);
 
+  // Paginasi daftar Pelanggan — pola sama dengan tab Supplier (rows-dropdown +
+  // prev/next + go-to-page), sebelumnya tab ini render SEMUA hasil filter
+  // tanpa halaman sama sekali (temuan user 2026-09-06).
+  const [customerPageSize, setCustomerPageSize] = useState(10);
+  const [customerCurrentPage, setCustomerCurrentPage] = useState(1);
+
+  useEffect(() => {
+    setCustomerCurrentPage(1);
+  }, [customerQuery, selectedGroupFilter, appliedFilters, customerPageSize]);
+
+  const paginatedCustomers = useMemo(() => {
+    const start = (customerCurrentPage - 1) * customerPageSize;
+    return filteredCustomers.slice(start, start + customerPageSize);
+  }, [filteredCustomers, customerCurrentPage, customerPageSize]);
+
+  const totalCustomerPages = Math.ceil(filteredCustomers.length / customerPageSize) || 1;
+
   // ── Catatan Pelanggan ────────────────────────────────────────────
   const [notes, setNotes] = useState([]);
   const [loadingNotes, setLoadingNotes] = useState(true);
@@ -733,6 +750,16 @@ function CustomerSupplierInner() {
           {activeTab === 'customer' && !activeCustomer && (
             <>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center', background: '#ffffff', border: '1px solid #e2e8f0', padding: '12px', borderRadius: '10px', marginBottom: '16px' }}>
+                <select
+                  value={customerPageSize}
+                  onChange={e => setCustomerPageSize(Number(e.target.value))}
+                  style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '0 10px', height: '38px', fontSize: '13px', fontWeight: 'bold', color: '#475569', outline: 'none', cursor: 'pointer' }}
+                >
+                  <option value={10}>10 Baris</option>
+                  <option value={25}>25 Baris</option>
+                  <option value={50}>50 Baris</option>
+                  <option value={100}>100 Baris</option>
+                </select>
                 <button onClick={() => setShowFilterDrawer(true)} style={{ background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '0 16px', height: '38px', fontSize: '13px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: '#475569' }}>
                   <Filter size={15} /><span>Filter</span>
                 </button>
@@ -770,6 +797,7 @@ function CustomerSupplierInner() {
                   desc="Hubungkan kontak WhatsApp pelanggan Anda, kelompokkan berdasarkan grup tertentu, dan catat saldo deposit mereka untuk proses pengerjaan yang lebih cepat."
                 />
               ) : (
+                <>
                 <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
                     <thead>
@@ -793,7 +821,7 @@ function CustomerSupplierInner() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredCustomers.map(cust => (
+                      {paginatedCustomers.map(cust => (
                         <tr key={cust.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                           {/* Kolom Aksi dihapus mengikuti Olsera; Ubah & Hapus
                               pindah ke halaman rincian yang dibuka dari sini. */}
@@ -835,6 +863,54 @@ function CustomerSupplierInner() {
                     </tbody>
                   </table>
                 </div>
+
+                {/* Bottom Pagination Controls */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '16px', fontSize: '13px', color: '#475569' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <button
+                      disabled={customerCurrentPage === 1}
+                      onClick={() => setCustomerCurrentPage(p => Math.max(1, p - 1))}
+                      style={{
+                        background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '4px',
+                        width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        cursor: customerCurrentPage === 1 ? 'not-allowed' : 'pointer',
+                        opacity: customerCurrentPage === 1 ? 0.5 : 1,
+                      }}
+                    >
+                      &lt;
+                    </button>
+                    <span style={{ padding: '0 8px', fontWeight: 'bold' }}>{customerCurrentPage}</span>
+                    <button
+                      disabled={customerCurrentPage === totalCustomerPages}
+                      onClick={() => setCustomerCurrentPage(p => Math.min(totalCustomerPages, p + 1))}
+                      style={{
+                        background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '4px',
+                        width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        cursor: customerCurrentPage === totalCustomerPages ? 'not-allowed' : 'pointer',
+                        opacity: customerCurrentPage === totalCustomerPages ? 0.5 : 1,
+                      }}
+                    >
+                      &gt;
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>Go to</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={totalCustomerPages}
+                      value={customerCurrentPage}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        if (val >= 1 && val <= totalCustomerPages) setCustomerCurrentPage(val);
+                      }}
+                      style={{ width: '45px', height: '28px', border: '1px solid #cbd5e1', borderRadius: '6px', textAlign: 'center', outline: 'none', fontSize: '13px' }}
+                    />
+                    <span>dari {totalCustomerPages}</span>
+                  </div>
+                  <span style={{ color: '#94a3b8' }}>{filteredCustomers.length} pelanggan</span>
+                </div>
+                </>
               )}
 
               <CustomerFilterDrawer
