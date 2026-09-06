@@ -31,6 +31,7 @@ import {
   KeyRound,
   History,
   Lock,
+  LineChart,
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -646,6 +647,23 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* ── LAPORAN EKSEKUTIF (kedepankan data lintas perusahaan utk owner) ── */}
+      <a
+        href="/dashboard-eksekutif"
+        className="flex flex-wrap items-center gap-4 bg-[#4F46E5] text-white rounded-[22px] p-5 shadow-sm hover:bg-[#4338CA] transition-all"
+      >
+        <div className="w-11 h-11 rounded-full bg-white/15 flex items-center justify-center shrink-0">
+          <LineChart size={20} />
+        </div>
+        <div className="flex-1 min-w-[220px]">
+          <h2 className="text-sm font-black">Laporan Eksekutif Perusahaan</h2>
+          <p className="text-xs text-indigo-100 mt-0.5">
+            Pendapatan, HPP, laba kotor, dan tren 12 bulan lintas seluruh perusahaan.
+          </p>
+        </div>
+        <span className="text-xs font-bold bg-white/15 px-4 py-2 rounded-full shrink-0">Buka Laporan →</span>
+      </a>
+
       {/* ── APP SWITCHER (Premium Horizontal Cards) ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {[
@@ -703,7 +721,7 @@ export default function Dashboard() {
               className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-xs font-bold transition-all cursor-pointer
                 ${
                   isActive
-                    ? 'bg-slate-800 text-white'
+                    ? 'bg-[#4F46E5] text-white'
                     : 'text-slate-500 hover:bg-[#F6F2EC]'
                 }`}
             >
