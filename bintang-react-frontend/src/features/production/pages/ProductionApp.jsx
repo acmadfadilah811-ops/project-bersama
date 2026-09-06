@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import useProductionData from './hooks/useProductionData';
 import {
@@ -31,7 +31,7 @@ import DivisionPanel from './panels/DivisionPanel';
 import ActivityLogsPanel from './panels/ActivityLogsPanel';
 import KanbanGlobalPanel from './panels/KanbanGlobalPanel';
 import PapanKerjaSpkPanel from './panels/PapanKerjaSpkPanel';
-import DeadlineBadge from '../components/DeadlineBadge';
+import DeadlineBadge, { getDeadlineTier } from '../components/DeadlineBadge';
 
 // --- DYNAMIC MINI CALENDAR COMPONENT ---
 function MiniCalendar() {
@@ -175,6 +175,12 @@ export default function ProductionApp() {
   const [claimPoolPage, setClaimPoolPage] = useState(1);
   const [claimPoolPageSize, setClaimPoolPageSize] = useState(30);
   const [claimPoolTahap, setClaimPoolTahap] = useState('');
+
+  // Kanban Personal -- kategori aktif yang ditampilkan penuh di tengah
+  // (redesign navigasi 2026-09-07: sebelumnya 4 kolom sekaligus berdampingan,
+  // sekarang kategori jadi sub-menu di kiri, tengah cuma render 1 kategori
+  // penuh lebar biar tetap rapi/scalable kalau isinya banyak).
+  const [kanbanCategory, setKanbanCategory] = useState('todo');
 
   // Pekerjaan Saya -- kolom Selesai, rentang tanggal default hari ini.
   const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -415,6 +421,7 @@ export default function ProductionApp() {
         case 'kanban_personal':
           return (
             <KanbanPersonal
+              category={kanbanCategory}
               activeJobs={jobs}
               doneJobs={doneJobs}
               doneJobsCount={doneJobsCount}
@@ -480,6 +487,23 @@ export default function ProductionApp() {
       { id: 'logs', label: 'Log Aktivitas', icon: Bell },
     ];
   }
+
+  // Alert Deadline Pekerjaan (ganti Monitor Stok Kritis, fitur 2026-09-07):
+  // job mana yang harus dikerjakan duluan berdasarkan urgensi deadline,
+  // bertingkat (Terlambat > Hari Ini > Besok > Minggu Ini) lewat
+  // getDeadlineTier() -- lihat DeadlineBadge.jsx. Hanya job yang masih
+  // butuh dikerjakan (belum selesai/batal) dan punya deadline dalam 7 hari
+  // ke depan (atau sudah lewat) yang ditampilkan; job jauh dari deadline
+  // tidak perlu bikin panik di widget ini.
+  const deadlineAlertJobs = useMemo(() => {
+    const sumber = isAdminMode
+      ? globalJobs.filter((j) => !['selesai', 'batal'].includes(j.status_pekerjaan))
+      : jobs.filter((j) => ['antrean', 'dikerjakan', 'kendala'].includes(j.status_pekerjaan));
+    return sumber
+      .map((job) => ({ job, tier: getDeadlineTier(job.deadline) }))
+      .filter((row) => row.tier && row.tier.priority <= 3)
+      .sort((a, b) => a.tier.priority - b.tier.priority || a.tier.daysRemaining - b.tier.daysRemaining);
+  }, [isAdminMode, jobs, globalJobs]);
 
   if (error) {
     return (
@@ -691,6 +715,41 @@ export default function ProductionApp() {
                   );
                 })}
               </div>
+
+              {/* Sub-menu Kanban Personal -- klik kategori -> panel tengah
+                  full render kategori itu saja (bukan 4 kolom sekaligus). */}
+              {!isAdminMode && activeTab === 'kanban_personal' && (
+                <div className="bg-white border border-[#e2e8f0] rounded-lg p-3 flex flex-col gap-1 shadow-sm">
+                  <div className="text-[8.5px] font-extrabold uppercase tracking-wide text-slate-400 border-b border-slate-100 pb-1.5 mb-1">
+                    KANBAN PERSONAL
+                  </div>
+                  {[
+                    { id: 'todo', label: 'Antrean Kerja', dot: 'bg-amber-500', count: jobs.filter((j) => j.status_pekerjaan === 'antrean').length },
+                    { id: 'progress', label: 'Sedang Dikerjakan', dot: 'bg-indigo-500', count: jobs.filter((j) => j.status_pekerjaan === 'dikerjakan').length },
+                    { id: 'done', label: 'Selesai', dot: 'bg-emerald-500', count: doneJobsCount },
+                    { id: 'failed', label: 'Gagal/Batal/Kendala', dot: 'bg-rose-500', count: jobs.filter((j) => ['gagal', 'batal', 'kendala'].includes(j.status_pekerjaan)).length },
+                  ].map((cat) => {
+                    const isActive = kanbanCategory === cat.id;
+                    return (
+                      <button
+                        key={cat.id}
+                        onClick={() => setKanbanCategory(cat.id)}
+                        className={`w-full flex items-center gap-2 p-2 rounded-md transition-all text-left text-[10.5px] cursor-pointer ${
+                          isActive
+                            ? 'bg-indigo-50 text-indigo-600 font-bold border-l-2 border-indigo-600'
+                            : 'hover:bg-slate-50 text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${cat.dot}`} />
+                        <span className="flex-1">{cat.label}</span>
+                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full shrink-0 ${isActive ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}>
+                          {cat.count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </>
           ) : (
             // Collapsed Icons
@@ -846,50 +905,39 @@ export default function ProductionApp() {
               <MiniCalendar />
             </div>
 
-            {/* Critical Stock Alerts */}
+            {/* Alert Deadline Pekerjaan (ganti Monitor Stok Kritis, fitur 2026-09-07) */}
             <div className="bg-white border border-[#e2e8f0] rounded-lg p-3 flex flex-col gap-2 shadow-sm flex-1 min-h-[150px]">
               <div className="text-[8.5px] font-extrabold uppercase tracking-wide text-slate-400 border-b border-slate-100 pb-1.5 flex items-center justify-between">
-                <span>MONITOR STOK KRITIS</span>
+                <span>ALERT DEADLINE PEKERJAAN</span>
                 <span className="bg-red-100 text-red-700 px-1 rounded font-black text-[7.5px] uppercase">
                   Alert
                 </span>
               </div>
               <div className="flex flex-col gap-1.5 overflow-y-auto max-h-[220px] pr-0.5">
-                {inventory.filter((item) => item.stok <= item.min_stok).length > 0 ? (
-                  inventory
-                    .filter((item) => item.stok <= item.min_stok)
-                    .map((item) => (
-                      <div
-                        key={item.id}
-                        className={`border-l-[3px] p-2 rounded flex flex-col gap-0.5 ${
-                          item.stok === 0
-                            ? 'border-red-500 bg-red-550 bg-red-50 text-red-950 text-red-900'
-                            : 'border-amber-500 bg-amber-550 bg-amber-50 text-amber-950 text-amber-900'
-                        }`}
-                        style={{
-                          backgroundColor:
-                            item.stok === 0
-                              ? 'rgba(239, 68, 68, 0.05)'
-                              : 'rgba(245, 158, 11, 0.05)',
-                        }}
-                      >
-                        <div className="flex justify-between items-start text-[10px] font-bold text-slate-800 leading-tight gap-2">
-                          <span className="uppercase break-words flex-1">{item.nama}</span>
-                          <span
-                            className={`font-extrabold shrink-0 ${item.stok === 0 ? 'text-red-600' : 'text-amber-600'}`}
-                          >
-                            {item.stok} {item.satuan}
-                          </span>
-                        </div>
-                        <span className="text-[8px] text-slate-400 font-extrabold uppercase tracking-wider">
-                          {item.stok === 0 ? 'Stok Habis!' : `Min: ${item.min_stok} ${item.satuan}`}
-                        </span>
+                {deadlineAlertJobs.length > 0 ? (
+                  deadlineAlertJobs.map(({ job, tier }) => (
+                    <button
+                      key={job.id}
+                      onClick={() => setSelectedWorkspaceJob(job)}
+                      className={`border-l-[3px] p-2 rounded flex flex-col gap-0.5 text-left cursor-pointer hover:brightness-95 transition-all ${tier.alertClassName}`}
+                      style={{ backgroundColor: tier.alertBg }}
+                    >
+                      <div className="flex justify-between items-start text-[10px] font-bold text-slate-800 leading-tight gap-2">
+                        <span className="break-words flex-1">{job.nama_produk || job.tahap_nama || `Job #${job.id}`}</span>
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 mt-1 ${tier.dotClassName}`} />
                       </div>
-                    ))
+                      <span className="text-[9px] text-slate-500 font-semibold truncate">
+                        {job.pelanggan_nama || 'Umum'} &middot; {job.tahap_nama}
+                      </span>
+                      <span className="text-[8px] font-extrabold uppercase tracking-wider" style={{ color: 'inherit' }}>
+                        {tier.label}
+                      </span>
+                    </button>
+                  ))
                 ) : (
                   <div className="text-slate-400 text-center py-6 italic text-[10px] flex flex-col items-center gap-1">
                     <span className="text-emerald-500 font-black text-[14px]">✓</span>
-                    <span>Semua stok bahan baku aman.</span>
+                    <span>Tidak ada pekerjaan mendekati deadline.</span>
                   </div>
                 )}
               </div>
