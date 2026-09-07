@@ -12,6 +12,7 @@ Dipakai oleh AssignOrderView (api/views/orders.py) dan POSSaleSpkView
 import logging
 from datetime import date
 
+from django.utils import timezone
 from django.utils.dateparse import parse_date
 
 from .models import CustomUser, JobBoard, TahapProses
@@ -124,6 +125,25 @@ def terbitkan(items, *, field, tahap, staff, biaya_desain=0, insentif=0, deadlin
 
     dibuat = []
     for item in items:
+        # Tutup job "hantu" -- OrderItemSerializer/POSSaleItemSerializer
+        # auto-membuat 1 job default di tahap pertama global (by urutan)
+        # begitu item dibuat, sebelum kasir sempat memilih tahap SPK yang
+        # sebenarnya (mis. "Langsung Cetak / Produksi" yang skip Desain).
+        # Kalau tahap SPK yang diterbitkan sekarang BEDA dari job default
+        # itu dan job default itu tak pernah disentuh staf (belum diklaim/
+        # dimulai), job itu jadi permanen mengganjal -- order tak pernah
+        # "Siap Diambil" walau tahap yang benar-benar dituju sudah tuntas.
+        # Bug ditemukan user 2026-09-07 (ORD-20260907-59F1, ORD-20260905-C652).
+        JobBoard.objects.filter(
+            **{field: item},
+            status_pekerjaan='antrean',
+            pic_staff__isnull=True,
+            waktu_mulai__isnull=True,
+        ).exclude(tahap=tahap).update(
+            status_pekerjaan='batal',
+            waktu_selesai=timezone.now(),
+        )
+
         job, created = JobBoard.objects.update_or_create(
             **{field: item},
             tahap=tahap,
