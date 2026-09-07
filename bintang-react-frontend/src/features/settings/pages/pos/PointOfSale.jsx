@@ -3489,38 +3489,38 @@ export default function PointOfSale() {
               </div>
 
               {/* Section 1: Kas Diharapkan & Breakdown SS 2 */}
-              <div className="space-y-2 bg-[#F8FAFC] p-4 rounded-lg border border-slate-100">
+              <div className="space-y-2 bg-gradient-to-r from-indigo-50/50 to-[#F8FAFC] p-4 rounded-lg border border-slate-100 border-l-4 border-l-indigo-300">
                 <div className="flex justify-between items-center font-extrabold text-slate-900 text-xs pb-1">
                   <span>Kas Diharapkan</span>
                   <span>IDR {Number(selectedShiftDetail.expected || 0).toLocaleString('de-DE')}</span>
                 </div>
 
-                <div className="space-y-2 pt-2 text-slate-600 pl-2">
-                  <div className="flex justify-between items-center">
+                <div className="pt-2 pl-2 text-slate-600 divide-y divide-slate-200">
+                  <div className="flex justify-between items-center py-2 first:pt-0">
                     <span>Awal di Laci</span>
                     <span className="font-bold text-slate-800">IDR {Number(selectedShiftDetail.kas_awal || 0).toLocaleString('de-DE')}</span>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span>Penjualan Tunai</span>
-                    <span className="font-bold text-slate-800">IDR {Number(selectedShiftDetail.penjualan_tunai || 0).toLocaleString('de-DE')}</span>
+                  <div className="flex justify-between items-center py-2">
+                    <span className="text-emerald-700">+ Penjualan Tunai</span>
+                    <span className="font-bold text-emerald-700">IDR {Number(selectedShiftDetail.penjualan_tunai || 0).toLocaleString('de-DE')}</span>
                   </div>
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-center py-2">
                     <span>Pembayaran Kredit</span>
                     <span className="font-bold text-slate-800">IDR {Number(selectedShiftDetail.pembayaran_kredit || 0).toLocaleString('de-DE')}</span>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span>Pengembalian Tunai</span>
-                    <span className="font-bold text-slate-800">IDR {Number(selectedShiftDetail.pengembalian_tunai || 0).toLocaleString('de-DE')}</span>
+                  <div className="flex justify-between items-center py-2">
+                    <span className="text-rose-700">− Pengembalian Tunai</span>
+                    <span className="font-bold text-rose-700">IDR {Number(selectedShiftDetail.pengembalian_tunai || 0).toLocaleString('de-DE')}</span>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span>Void Tunai</span>
-                    <span className="font-bold text-slate-800">IDR {Number(selectedShiftDetail.void_tunai || 0).toLocaleString('de-DE')}</span>
+                  <div className="flex justify-between items-center py-2">
+                    <span className="text-rose-700">− Void Tunai</span>
+                    <span className="font-bold text-rose-700">IDR {Number(selectedShiftDetail.void_tunai || 0).toLocaleString('de-DE')}</span>
                   </div>
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-center py-2">
                     <span>Kas Masuk</span>
                     <span className="font-bold text-slate-800">IDR {Number(selectedShiftDetail.kas_masuk || 0).toLocaleString('de-DE')}</span>
                   </div>
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-center py-2 last:pb-0">
                     <span>Kas Keluar</span>
                     <span className="font-bold text-slate-800">{Number(selectedShiftDetail.kas_keluar || 0) > 0 ? `IDR -${Number(selectedShiftDetail.kas_keluar).toLocaleString('de-DE')}` : 'IDR 0'}</span>
                   </div>
@@ -3528,13 +3528,19 @@ export default function PointOfSale() {
               </div>
 
               {/* Section 2: Kas Aktual SS 2 */}
-              <div className="flex justify-between items-center font-extrabold text-slate-900 bg-[#F8FAFC] p-4 rounded-lg border border-slate-100">
+              <div className="flex justify-between items-center font-extrabold text-slate-900 bg-gradient-to-r from-blue-50/50 to-[#F8FAFC] p-4 rounded-lg border border-slate-100 border-l-4 border-l-blue-300">
                 <span>Kas Aktual</span>
                 <span>IDR {Number(selectedShiftDetail.aktual || 0).toLocaleString('de-DE')}</span>
               </div>
 
-              {/* Section 3: Kas Selisih SS 2 */}
-              <div className="flex justify-between items-center font-extrabold text-slate-900 bg-[#F8FAFC] p-4 rounded-lg border border-slate-100">
+              {/* Section 3: Kas Selisih SS 2 -- aksen warna ikut nilai selisih
+                  (0 = cocok/hijau, selain itu perlu perhatian/amber) supaya
+                  kasir/owner langsung lihat status tanpa baca angka dulu. */}
+              <div className={`flex justify-between items-center font-extrabold text-slate-900 p-4 rounded-lg border border-slate-100 border-l-4 ${
+                Number(selectedShiftDetail.selisih || 0) === 0
+                  ? 'bg-gradient-to-r from-emerald-50/50 to-[#F8FAFC] border-l-emerald-300'
+                  : 'bg-gradient-to-r from-amber-50/50 to-[#F8FAFC] border-l-amber-300'
+              }`}>
                 <span>Kas Selisih</span>
                 <span>IDR {Number(selectedShiftDetail.selisih || 0).toLocaleString('de-DE')}</span>
               </div>
