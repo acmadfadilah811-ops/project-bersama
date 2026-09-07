@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useKasir } from '../context/KasirContext';
 import apiClient from '../../../api/apiClient';
+import { fetchAllPages } from '../../../utils/paginatedApi';
 import { notifyApiError, notifyError, notifySuccess } from '../../../utils/notify';
 import { useAuth } from '../../../context/AuthContext';
 import { getPrintErrorMessage, printReceiptAfterRender } from '../../printing/services/printService';
@@ -160,11 +161,13 @@ export default function PosTerminal({ onToggleSidebar }) {
     })();
   }, []);
 
-  // Fetch Contacts
+  // Fetch Contacts -- seluruh halaman, bukan cuma page 1/page_size 100
+  // (bug ditemukan user 2026-09-07: pelanggan >100, sisanya hilang diam-diam
+  // dari daftar icon akun customer di kasir; sekarang 360+ pelanggan nyata).
   const fetchContacts = async () => {
     try {
-      const res = await apiClient.get('/contacts/', { params: { page: 1, page_size: 100 } });
-      setContacts(res.data?.results || res.data || []);
+      const rows = await fetchAllPages('/contacts/', { pageSize: 200 });
+      setContacts(rows);
     } catch {
       setContacts([]);
     }
