@@ -95,7 +95,12 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
       const params = { sumber, page, page_size: pageSize };
       const q = searchQuery.trim();
       if (q) params.search = q;
-      if (!cariSemua) {
+      // Sedang mengetik pencarian -- abaikan filter tanggal otomatis (tidak
+      // perlu klik toggle "Cari Semua" manual dulu), supaya kasir langsung
+      // ketemu order dari hari lain tanpa langkah tambahan (permintaan user
+      // 2026-09-07). Toggle "Cari Semua" tetap berlaku sendiri kalau kasir
+      // mau browsing semua tanggal TANPA mengetik kata kunci apa pun.
+      if (!cariSemua && !q) {
         if (dateFrom) params.date_from = dateFrom;
         if (dateTo) params.date_to = dateTo;
       }

@@ -73,7 +73,7 @@ export default function WaOrderList({
             )}
           </div>
 
-          <div className={`flex items-center gap-1 shrink-0 ${cariSemua ? 'opacity-40 pointer-events-none' : ''}`}>
+          <div className={`flex items-center gap-1 shrink-0 ${(cariSemua || searchQuery) ? 'opacity-40 pointer-events-none' : ''}`}>
             <Calendar size={12} className="text-slate-400 shrink-0" />
             <input
               type="date"
@@ -95,12 +95,21 @@ export default function WaOrderList({
             onClick={() => onToggleCariSemua(!cariSemua)}
             title="Cari semua tanggal (abaikan filter tanggal)"
             className={`shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wide cursor-pointer transition-all ${
-              cariSemua ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+              cariSemua || searchQuery ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
             }`}
           >
             <Globe2 size={11} /> Semua
           </button>
         </div>
+
+        {/* Petunjuk kecil: filter tanggal otomatis diabaikan selagi mengetik
+            pencarian, supaya kasir tidak bingung kenapa tanggal jadi abu-abu
+            padahal toggle "Cari Semua" tidak diklik. */}
+        {searchQuery && !cariSemua && (
+          <p className="text-[9px] text-indigo-500 font-bold -mt-1">
+            Mencari di semua tanggal (filter tanggal diabaikan selama ada kata kunci pencarian).
+          </p>
+        )}
       </div>
 
       {/* Grid Kartu */}
