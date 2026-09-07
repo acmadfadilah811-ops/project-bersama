@@ -15,6 +15,7 @@ import {
   ChevronRight,
   ArrowLeft,
   Kanban,
+  Wrench,
 } from 'lucide-react';
 
 // Staff Modals & Views
@@ -32,6 +33,7 @@ import DivisionPanel from './panels/DivisionPanel';
 import ActivityLogsPanel from './panels/ActivityLogsPanel';
 import KanbanGlobalPanel from './panels/KanbanGlobalPanel';
 import PapanKerjaSpkPanel from './panels/PapanKerjaSpkPanel';
+import MesinPanel from './panels/MesinPanel';
 import DeadlineBadge, { getDeadlineTier } from '../components/DeadlineBadge';
 
 // --- DYNAMIC MINI CALENDAR COMPONENT ---
@@ -405,6 +407,8 @@ export default function ProductionApp() {
               refresh={fetchAdminData}
             />
           );
+        case 'mesin':
+          return <MesinPanel divisions={divisions} />;
         case 'logs':
           return <ActivityLogsPanel logs={logs} />;
         default:
@@ -483,6 +487,7 @@ export default function ProductionApp() {
       { id: 'customers', label: 'Database Konsumen', icon: Users },
       { id: 'pricelist', label: 'Daftar Harga', icon: Tag },
       { id: 'divisions', label: 'Monitoring Divisi', icon: FolderTree },
+      { id: 'mesin', label: 'Penggunaan Mesin', icon: Wrench },
       { id: 'logs', label: 'Log Aktivitas', icon: Bell },
     ];
   } else if (roleLower === 'admin') {
@@ -492,6 +497,7 @@ export default function ProductionApp() {
       { id: 'customers', label: 'Database Konsumen', icon: Users },
       { id: 'pricelist', label: 'Daftar Harga', icon: Tag },
       { id: 'divisions', label: 'Monitoring Divisi', icon: FolderTree },
+      { id: 'mesin', label: 'Penggunaan Mesin', icon: Wrench },
       { id: 'logs', label: 'Log Aktivitas', icon: Bell },
     ];
   } else {

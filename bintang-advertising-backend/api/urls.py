@@ -40,6 +40,9 @@ router.register(r'pos-antrian-device', views.POSAntrianDeviceViewSet, basename='
 router.register(r'saldo-kas-harian', views.SaldoKasHarianViewSet, basename='saldo-kas-harian')
 router.register(r'ringkasan-shift', views.RingkasanShiftViewSet, basename='ringkasan-shift')
 router.register(r'pos-payment-methods', views.POSPaymentMethodViewSet, basename='pos-payment-method')
+router.register(r'mesin', views.MesinViewSet, basename='mesin')
+router.register(r'penggunaan-mesin', views.PenggunaanMesinViewSet, basename='penggunaan-mesin')
+router.register(r'maintenance-mesin', views.MaintenanceMesinViewSet, basename='maintenance-mesin')
 
 # Product & Inventory Phase 1
 router.register(r'product-categories', product_views.ProductCategoryViewSet, basename='product-category')

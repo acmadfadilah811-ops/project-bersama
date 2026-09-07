@@ -1164,3 +1164,6 @@ from .finance_models import *
 # sehingga tidak ada saat models.py dimuat. JobBoard.pos_sale_item merujuk
 # POSSaleItem, jadi registrasinya harus pasti — bukan efek samping impor URL.
 from .pos_models import *
+
+# Import model Penggunaan Mesin (Mesin, PenggunaanMesin, MaintenanceMesin)
+from .machine_models import *

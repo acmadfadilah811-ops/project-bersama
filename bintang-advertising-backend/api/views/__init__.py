@@ -39,6 +39,9 @@ from .public import (
     HealthCheckView, ClientLogView, PublicOrderDetailsView, PublicSubmitDesignView
 )
 from .order_invoice import OrderInvoiceWhatsAppView
+from .machine import (
+    MesinViewSet, PenggunaanMesinViewSet, MaintenanceMesinViewSet
+)
 
 
 

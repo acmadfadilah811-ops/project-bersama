@@ -1211,3 +1211,6 @@ from .serializers_support import (
     BillOfMaterialsSerializer, BoMItemSerializer, CustomerActivitySerializer, FAQSerializer,
     KomplainLogSerializer, KomplainOrderSerializer,
 )
+from .serializers_machine import (
+    MesinSerializer, PenggunaanMesinSerializer, MaintenanceMesinSerializer,
+)
