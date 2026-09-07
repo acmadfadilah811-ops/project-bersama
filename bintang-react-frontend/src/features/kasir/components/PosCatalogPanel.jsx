@@ -59,28 +59,12 @@ export default function PosCatalogPanel({
           Produk
         </button>
         <button
-          onClick={() => setActiveTab('barcode')}
-          className={`pb-2.5 font-bold text-xs border-b-2 transition-all cursor-pointer ${
-            activeTab === 'barcode' ? 'border-white text-white' : 'border-transparent text-blue-100 hover:text-white'
-          }`}
-        >
-          Barcode
-        </button>
-        <button
           onClick={() => setActiveTab('paket')}
           className={`pb-2.5 font-bold text-xs border-b-2 transition-all cursor-pointer ${
             activeTab === 'paket' ? 'border-white text-white' : 'border-transparent text-blue-100 hover:text-white'
           }`}
         >
           Paket
-        </button>
-        <button
-          onClick={() => setActiveTab('custom')}
-          className={`pb-2.5 font-bold text-xs border-b-2 transition-all cursor-pointer ${
-            activeTab === 'custom' ? 'border-white text-white' : 'border-transparent text-blue-100 hover:text-white'
-          }`}
-        >
-          Custom/Deposit
         </button>
       </div>
 
