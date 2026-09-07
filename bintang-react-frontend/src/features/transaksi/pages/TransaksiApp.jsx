@@ -4,7 +4,6 @@ import { TransaksiProvider } from '../components/TransaksiContext';
 import Penjualan from './Penjualan';
 import Pembelian from './Pembelian';
 import PendapatanPengeluaran from './PendapatanPengeluaran';
-import DigitalPayment from './DigitalPayment';
 
 /**
  * Pembungkus area Transaksi & Pembayaran (full-screen, flush tanpa gap).
@@ -20,7 +19,6 @@ export default function TransaksiApp() {
             <Route path="penjualan" element={<Penjualan />} />
             <Route path="pembelian" element={<Pembelian />} />
             <Route path="pendapatan-pengeluaran" element={<PendapatanPengeluaran />} />
-            <Route path="digital-payment" element={<DigitalPayment />} />
             <Route path="*" element={<Navigate to="penjualan" replace />} />
           </Routes>
         </div>

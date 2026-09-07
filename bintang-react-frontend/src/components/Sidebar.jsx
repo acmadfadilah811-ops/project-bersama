@@ -90,7 +90,6 @@ const groupedMenuOwnerManager = [
       { path: '/transaksi/penjualan', label: 'Penjualan', icon: ShoppingCart },
       { path: '/transaksi/pembelian', label: 'Pembelian', icon: ShoppingBag },
       { path: '/transaksi/pendapatan-pengeluaran', label: 'Pendapatan/Pengeluaran', icon: ArrowLeftRight },
-      { path: '/transaksi/digital-payment', label: 'Digital Payment', icon: CreditCard },
     ],
   },
   {

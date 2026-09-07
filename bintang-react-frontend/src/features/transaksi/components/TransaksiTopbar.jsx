@@ -18,7 +18,6 @@ const LABELS = {
   '/transaksi/penjualan': 'Penjualan',
   '/transaksi/pembelian': 'Pembelian',
   '/transaksi/pendapatan-pengeluaran': 'Pendapatan/Pengeluaran',
-  '/transaksi/digital-payment': 'Digital Payment',
   '/laporan/pencairan-dana': 'Pencairan Dana',
   '/laporan/laporan': 'Laporan',
   '/marketing/voucher-diskon': 'Marketing',
