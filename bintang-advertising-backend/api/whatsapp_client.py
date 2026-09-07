@@ -209,10 +209,12 @@ class EvolutionAPIClient:
             data = response.json()
             # Handle both list and paginated dict response
             if isinstance(data, list):
-                return data
-            if isinstance(data, dict):
-                return data.get("chats") or data.get("records") or []
-            return []
+                chats = data
+            elif isinstance(data, dict):
+                chats = data.get("chats") or data.get("records") or []
+            else:
+                chats = []
+            return self._merge_lid_chats(chats)
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
             logger.error(f"Evolution API get_chats failed/timed out: {e}")
             self._mark_failed()
@@ -221,9 +223,71 @@ class EvolutionAPIClient:
             logger.error(f"Error fetching WhatsApp chats: {e}", exc_info=True)
             return []
 
+    def _merge_lid_chats(self, chats):
+        """WhatsApp mode multi-device memberi 2 alamat berbeda untuk 1 kontak
+        yang sama: JID nomor (@s.whatsapp.net) dan LID (@lid, privasi). Pesan
+        MASUK dari kontak sering tercatat di sisi LID sementara balasan bot
+        (keluar) tercatat di sisi nomor -- Evolution API melaporkan keduanya
+        sebagai chat TERPISAH walau orangnya sama (bug ditemukan user
+        2026-09-07: "2 percakapan beda" padahal 1 kontak). `lastMessage.key.
+        remoteJidAlt` (kalau ada) menautkan sisi LID ke nomor aslinya --
+        dipakai di sini untuk menyatukan tampilan daftar chat menjadi 1 baris
+        per nomor. Riwayat pesan lengkap digabung terpisah di get_messages().
+        """
+        by_phone = {}
+        others = []
+        for chat in chats:
+            jid = chat.get('remoteJid') or chat.get('id') or ''
+            last_key = (chat.get('lastMessage') or {}).get('key') or {}
+            alt = last_key.get('remoteJidAlt')
+            if jid.endswith('@lid') and alt and alt.endswith('@s.whatsapp.net'):
+                entry = by_phone.setdefault(alt, {'phone_chat': None, 'lid_chats': []})
+                entry['lid_chats'].append(chat)
+            elif jid.endswith('@s.whatsapp.net'):
+                entry = by_phone.setdefault(jid, {'phone_chat': None, 'lid_chats': []})
+                entry['phone_chat'] = chat
+            else:
+                # Grup, atau @lid tanpa remoteJidAlt diketahui -- tampilkan apa adanya.
+                others.append(chat)
+
+        merged = []
+        for phone_jid, entry in by_phone.items():
+            phone_chat = entry['phone_chat']
+            lid_chats = entry['lid_chats']
+            if phone_chat is None:
+                if not lid_chats:
+                    continue
+                # Belum pernah ada balasan keluar di JID nomor -- pakai chat
+                # LID sebagai basis, tapi paksa id ke JID nomor supaya kirim
+                # pesan & lookup Contact (Contact.nomor_wa) tetap konsisten.
+                phone_chat = dict(lid_chats[0])
+                phone_chat['remoteJid'] = phone_jid
+                phone_chat['id'] = phone_jid
+                lid_chats = lid_chats[1:]
+            else:
+                phone_chat = dict(phone_chat)
+
+            candidates = [c for c in ([phone_chat] + lid_chats) if c.get('lastMessage')]
+            if candidates:
+                newest = max(candidates, key=lambda c: c['lastMessage'].get('messageTimestamp', 0))
+                phone_chat['lastMessage'] = newest['lastMessage']
+                phone_chat['messageTimestamp'] = newest['lastMessage'].get('messageTimestamp')
+
+            unread_total = sum((c.get('unreadCount') or 0) for c in ([phone_chat] + lid_chats))
+            if unread_total:
+                phone_chat['unreadCount'] = unread_total
+
+            merged.append(phone_chat)
+
+        merged.extend(others)
+        return merged
+
     def get_messages(self, number, limit=50):
         """
-        Retrieves message history for a specific WhatsApp contact.
+        Retrieves message history for a specific WhatsApp contact -- digabung
+        dengan pesan yang tercatat di sisi LID (@lid) kontak yang sama kalau
+        ada (lihat _merge_lid_chats), supaya 1 nomor = 1 riwayat percakapan
+        utuh, bukan cuma separuh sisi bot atau separuh sisi pelanggan.
         """
         if self._is_offline():
             return []
@@ -234,45 +298,58 @@ class EvolutionAPIClient:
         else:
             clean_number = number.replace('+', '').replace(' ', '').replace('-', '')
             remote_jid = f"{clean_number}@s.whatsapp.net"
-            
+
+        logger.info(f"Fetching messages for {clean_number} ({remote_jid}) from Evolution API...")
+        records = self._find_messages(remote_jid=remote_jid, limit=limit)
+
+        if remote_jid.endswith('@s.whatsapp.net'):
+            alt_records = self._find_messages(remote_jid_alt=remote_jid, limit=limit)
+            if alt_records:
+                seen_ids = {r.get('key', {}).get('id') for r in records if r.get('key')}
+                for r in alt_records:
+                    rid = r.get('key', {}).get('id')
+                    if not rid or rid not in seen_ids:
+                        records.append(r)
+                        if rid:
+                            seen_ids.add(rid)
+                records.sort(key=lambda r: r.get('messageTimestamp', 0))
+                if limit and len(records) > limit:
+                    records = records[-limit:]
+
+        return records
+
+    def _find_messages(self, remote_jid=None, remote_jid_alt=None, limit=50):
+        """Panggilan mentah ke chat/findMessages, difilter berdasarkan
+        key.remoteJid ATAU key.remoteJidAlt (persis salah satu, tidak dua-duanya)."""
+        if self._is_offline():
+            return []
+
+        where_key = {"remoteJid": remote_jid} if remote_jid else {"remoteJidAlt": remote_jid_alt}
         url = f"{self.base_url}/chat/findMessages/{self.instance_name}"
-        payload = {
-            "where": {
-                "key": {
-                    "remoteJid": remote_jid
-                }
-            },
-            "page": 1,
-            "limit": limit
-        }
+        payload = {"where": {"key": where_key}, "page": 1, "limit": limit}
         try:
-            logger.info(f"Fetching messages for {clean_number} ({remote_jid}) from Evolution API...")
             response = requests.post(url, json=payload, headers=self.headers, timeout=5)
             response.raise_for_status()
             res_data = response.json()
             if isinstance(res_data, dict):
-                # Handle nested messages dictionary containing records list
                 msgs = res_data.get("messages")
                 if isinstance(msgs, dict):
                     return msgs.get("records", [])
                 elif isinstance(msgs, list):
                     return msgs
-                
-                # Handle records directly at top level
                 records = res_data.get("records")
                 if isinstance(records, list):
                     return records
-                
                 return []
             if isinstance(res_data, list):
                 return res_data
             return []
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
-            logger.error(f"Evolution API get_messages failed/timed out: {e}")
+            logger.error(f"Evolution API findMessages failed/timed out: {e}")
             self._mark_failed()
             return []
         except Exception as e:
-            logger.error(f"Error fetching WhatsApp messages for {clean_number}: {e}", exc_info=True)
+            logger.error(f"Error fetching WhatsApp messages ({where_key}): {e}", exc_info=True)
             return []
 
     def send_media_message(self, number, media_url, media_type, mime_type, file_name, caption=""):
