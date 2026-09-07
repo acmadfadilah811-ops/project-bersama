@@ -20,7 +20,7 @@ from django.core.management.base import BaseCommand
 from django.db.models import Q
 from django.utils import timezone
 
-from api.models import JobBoard, Order, OrderActivityLog
+from api.models import JobBoard, Order, OrderActivityLog, TahapProses
 
 
 class Command(BaseCommand):
@@ -38,7 +38,25 @@ class Command(BaseCommand):
         if order_ids:
             orders = orders.filter(pk__in=order_ids)
 
+        # Job hantu HANYA bisa lahir di tahap default global (yang dipakai
+        # OrderItemSerializer.create()/update() saat item dibuat, sebelum SPK
+        # sungguhan diterbitkan) -- lihat api/serializers.py. Job "antrean tak
+        # tersentuh" di tahap LAIN (bukan default) adalah pekerjaan sungguhan
+        # yang memang belum dikerjakan (mis. tahap Cetak menunggu giliran
+        # setelah tahap Edit selesai) -- BUKAN hantu, jangan pernah dibatalkan.
+        # Bug ditemukan saat verifikasi ulang 2026-09-07: heuristik lama
+        # (cuma "antrean tak tersentuh + item punya job selesai lain") salah
+        # menandai ORD-20260905-4B99 dkk. sebagai hantu, padahal tahap Cetak-
+        # nya genuinely belum dikerjakan -- kalau dijalankan nyata order itu
+        # akan salah ditandai "Siap Diambil" padahal belum benar-benar tuntas.
+        tahap_default = TahapProses.objects.order_by('urutan').first()
+        tahap_default_id = tahap_default.id if tahap_default else None
+
         dibereskan = 0
+        if tahap_default_id is None:
+            self.stdout.write(self.style.WARNING("Tidak ada TahapProses sama sekali -- tidak ada yang bisa diperiksa."))
+            return
+
         for order in orders.iterator():
             item_ids = list(order.items.values_list('id', flat=True))
             if not item_ids:
@@ -58,6 +76,7 @@ class Command(BaseCommand):
                 if j.status_pekerjaan == 'antrean'
                 and j.pic_staff_id is None
                 and j.waktu_mulai is None
+                and j.tahap_id == tahap_default_id
                 and j.order_item_id in selesai_per_item
             ]
             if not hantu:

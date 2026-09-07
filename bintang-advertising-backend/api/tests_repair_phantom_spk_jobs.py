@@ -65,6 +65,27 @@ class RepairPhantomSpkJobsTest(TestCase):
         order.refresh_from_db()
         self.assertEqual(order.status_global, 'proses')
 
+    def test_tahap_lanjutan_belum_dikerjakan_tidak_disentuh(self):
+        """Kebalikan dari kasus hantu: tahap DEFAULT (Edit, urutan terkecil)
+        sudah genuinely dikerjakan & selesai oleh staf, tahap LANJUTAN
+        (Cetak) masih 'antrean' murni belum diklaim siapa pun -- ini
+        pekerjaan sungguhan yang belum tuntas, BUKAN job hantu. Order tidak
+        boleh dipaksa 'ready' (bug ditemukan saat verifikasi ulang
+        2026-09-07: heuristik lama salah menandai kasus persis ini)."""
+        order = Order.objects.create(nomor_wa='6281200000005', nama='Masih Cetak', status_global='review')
+        item = OrderItem.objects.create(order=order, jenis_produk='Banner')
+        JobBoard.objects.create(
+            order_item=item, tahap=self.tahap_edit, status_pekerjaan='selesai', pic_staff=self.staff,
+        )
+        JobBoard.objects.create(order_item=item, tahap=self.tahap_cetak, status_pekerjaan='antrean')
+
+        call_command('repair_phantom_spk_jobs', stdout=StringIO())
+
+        order.refresh_from_db()
+        self.assertEqual(order.status_global, 'review')
+        cetak = JobBoard.objects.get(order_item__order=order, tahap=self.tahap_cetak)
+        self.assertEqual(cetak.status_pekerjaan, 'antrean')
+
     def test_filter_order_id_membatasi_cakupan(self):
         target = self._order_tersangkut('3')
         lain = self._order_tersangkut('4')
