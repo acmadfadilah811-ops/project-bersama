@@ -22,7 +22,7 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "cari_produk",
             "description": (
-                "Cari produk, paket, atau jasa cetak yang tersedia di Bintang Advertising "
+                "Cari produk, paket, atau jasa cetak yang tersedia di StarPhoto & Advertising "
                 "berdasarkan kata kunci (nama produk atau kategori). Gunakan ini setiap kali "
                 "pelanggan bertanya produk/jasa apa saja yang tersedia, atau menyebut nama "
                 "produk tertentu. JANGAN PERNAH mengarang nama atau daftar produk sendiri — "

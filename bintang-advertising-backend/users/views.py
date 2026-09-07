@@ -161,7 +161,7 @@ class CustomLoginView(TokenObtainPairView):
             )
 
             # Kirim OTP via email
-            subject = "[Brandy CRM] Kode Verifikasi Keamanan Login"
+            subject = "[StarPhoto & Advertising] Kode Verifikasi Keamanan Login"
             message = f"""Halo {user.username},
 
 Sistem kami mendeteksi upaya login dari alamat IP yang berbeda ({ip}) dibandingkan dengan sesi Anda sebelumnya.
@@ -172,7 +172,7 @@ KODE VERIFIKASI: {otp}
 Kode ini hanya berlaku selama 5 menit. Jika ini bukan Anda, segera hubungi Owner atau ganti password Anda.
 
 Terima kasih,
-Tim Keamanan Brandy CRM
+Tim Keamanan StarPhoto & Advertising
 """
             send_mail(
                 subject,
@@ -625,7 +625,7 @@ class ForgotPasswordRequestView(APIView):
             cache.set(f"pw_reset:{reset_token}", {
                 "username": user.username, "otp": otp, "attempts": 0,
             }, 300)
-            subject = "[Brandy CRM] Kode OTP Lupa Password"
+            subject = "[StarPhoto & Advertising] Kode OTP Lupa Password"
             message = (
                 f"Halo {user.username},\n\nKode OTP reset password Anda: {otp}\n"
                 "Kode berlaku 5 menit. Abaikan bila Anda tidak meminta reset."

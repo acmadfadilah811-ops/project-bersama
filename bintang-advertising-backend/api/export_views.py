@@ -833,7 +833,7 @@ class ExportCustomerNotesView(APIView):
                 tags_list = [t.nama for t in note.tags.all()]
                 tag_text = ", ".join(tags_list) if tags_list else None
 
-                created_by = note.dibuat_oleh.get_full_name() or note.dibuat_oleh.username if note.dibuat_oleh else 'Brandy'
+                created_by = note.dibuat_oleh.get_full_name() or note.dibuat_oleh.username if note.dibuat_oleh else 'StarPhoto & Advertising'
 
                 ws.append([
                     note.id,
@@ -875,7 +875,7 @@ class ExportCustomerNotesView(APIView):
             tags_list = [f'<span class="badge">{t.nama}</span>' for t in note.tags.all()]
             tags_html = " ".join(tags_list) if tags_list else "-"
 
-            created_by = note.dibuat_oleh.get_full_name() or note.dibuat_oleh.username if note.dibuat_oleh else 'Brandy'
+            created_by = note.dibuat_oleh.get_full_name() or note.dibuat_oleh.username if note.dibuat_oleh else 'StarPhoto & Advertising'
 
             rows_html += f"""
             <tr>
@@ -987,7 +987,7 @@ class ExportCustomerNotesView(APIView):
     <div class="header">
         <div>
             <div class="title">LAPORAN CATATAN PELANGGAN</div>
-            <div style="font-size: 13px; color: #475569; margin-top: 4px;">Bintang Advertising ERP</div>
+            <div style="font-size: 13px; color: #475569; margin-top: 4px;">StarPhoto &amp; Advertising ERP</div>
         </div>
         <div style="text-align: right; font-size: 12px; color: #64748b;">
             Waktu Cetak: {now_str}
@@ -1176,7 +1176,7 @@ class ExportSalesItemsByBrandView(APIView):
                     group_name, product_name, variant_label, '', brand_name, 0,
                     0, subtotal, 0, subtotal,
                     cost_price, total_cost, gross_profit, sku, barcode,
-                    '', qty, 'POS / Toko Direct', 'Bintang Advertising',
+                    '', qty, 'POS / Toko Direct', 'StarPhoto & Advertising',
                     0, 0, 0, 0,
                     0, 0, 0, 0
                 ])
@@ -1198,10 +1198,10 @@ class ExportSalesItemsByBrandView(APIView):
                 gross_profit = subtotal - total_cost
 
                 ws.append([
-                    'Produksi', product_name, variant_label, '', 'Bintang', 0,
+                    'Produksi', product_name, variant_label, '', 'StarPhoto & Advertising', 0,
                     0, subtotal, 0, subtotal,
                     cost_price, total_cost, gross_profit, '', '',
-                    '', qty, 'Order Produksi', 'Bintang Advertising',
+                    '', qty, 'Order Produksi', 'StarPhoto & Advertising',
                     0, 0, 0, 0,
                     0, 0, 0, 0
                 ])
@@ -1295,7 +1295,7 @@ class ExportSalesDetailsView(APIView):
                     '', '', '', '',
                     '', '', '', '', '', '',
                     customer_name, '', s.catatan or '', 0,
-                    'Bintang', 'Bintang Advertising', 0, 0, 0,
+                    'StarPhoto & Advertising', 'StarPhoto & Advertising', 0, 0, 0,
                     0, total_harga, 0,
                     0, 0, float(s.pajak or 0), 0,
                     total_harga, 0,
@@ -1340,7 +1340,7 @@ class ExportSalesDetailsView(APIView):
                     '', '', '', '',
                     '', '', '', '', '', '',
                     customer_name, o.nomor_wa or '', o.catatan_pelanggan or '', 0,
-                    'Bintang', 'Bintang Advertising', 0, 0, 0,
+                    'StarPhoto & Advertising', 'StarPhoto & Advertising', 0, 0, 0,
                     0, total_harga, 0,
                     0, 0, 0, 0,
                     total_harga, 0,

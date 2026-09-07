@@ -1,7 +1,7 @@
 """
 ============================================================
  System Health & Auto-Healing Bot
- Brandy CRM Backend — Diagnostic Tool
+ StarPhoto & Advertising CRM Backend — Diagnostic Tool
 ============================================================
 
 Cara Pakai:

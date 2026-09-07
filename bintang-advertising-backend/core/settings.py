@@ -1,7 +1,7 @@
 """
 Django settings for core project.
 
-Django configuration for Bintang Advertising CRM.
+Django configuration for StarPhoto & Advertising CRM.
 
 For more information on this file, see
 https://docs.djangoproject.com/en/6.0/topics/settings/
@@ -320,8 +320,8 @@ REST_FRAMEWORK = {
 
 # --- Konfigurasi DRF Spectacular (OpenAPI 3.0) ---
 SPECTACULAR_SETTINGS = {
-    'TITLE': 'Bintang Advertising CRM API',
-    'DESCRIPTION': 'Dokumentasi interaktif API Bintang Advertising CRM & Kasir.',
+    'TITLE': 'StarPhoto & Advertising CRM API',
+    'DESCRIPTION': 'Dokumentasi interaktif API StarPhoto & Advertising CRM & Kasir.',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
 }
@@ -481,4 +481,4 @@ EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
 EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').lower() == 'true'
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
-DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'Brandy CRM Security <security@elhayyu.co.id>')
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'StarPhoto & Advertising Security <security@elhayyu.co.id>')

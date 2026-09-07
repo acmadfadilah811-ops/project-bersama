@@ -103,7 +103,7 @@ def _info_bisnis_resi():
     keys = ['bisnis_nama', 'bisnis_alamat', 'bisnis_no_telepon']
     values = {row.key: row.value for row in SystemConfig.objects.filter(key__in=keys)}
     return {
-        'nama': values.get('bisnis_nama') or 'Bintang Advertising',
+        'nama': values.get('bisnis_nama') or 'StarPhoto & Advertising',
         'alamat': values.get('bisnis_alamat') or 'Jl. Produksi No. 123, Kota',
         'telepon': values.get('bisnis_no_telepon') or '0812-3456-7890',
     }

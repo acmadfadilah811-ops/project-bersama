@@ -695,13 +695,13 @@ class BaseWhatsAppWebhookView(APIView):
         if not nama_pelanggan and sender_number not in menunggu_nama:
             menunggu_nama.add(sender_number)
             try:
-                biz_name = SystemConfig.objects.get(key='bisnis_nama').value or 'Brandy'
+                biz_name = SystemConfig.objects.get(key='bisnis_nama').value or 'StarPhoto & Advertising'
             except Exception as e:
                 logger.warning(f"Gagal mengambil nama bisnis: {e}")
-                biz_name = 'Brandy'
+                biz_name = 'StarPhoto & Advertising'
             jawaban = (
                 f"Halo Kak! 👋 Selamat datang di *{biz_name}*.\n\n"
-                "Saya adalah *Asisten Virtual* Bintang Advertising yang siap membantu Kakak secara otomatis 24/7. 🤖\n\n"
+                f"Saya adalah *Asisten Virtual* {biz_name} yang siap membantu Kakak secara otomatis 24/7. 🤖\n\n"
                 "Sebelum kita mulai, boleh tahu dengan Kakak siapa ini biar lebih enak ngobrolnya? 😊"
             )
             self._kirim_balas_async(sender_number, jawaban)

@@ -63,10 +63,10 @@ TOMBOL_MARKER_2 = "\x00TOMBOL_PRODUK\x00"
 def get_business_name():
     from .models import SystemConfig
     try:
-        return SystemConfig.objects.get(key='bisnis_nama').value or 'Brandy'
+        return SystemConfig.objects.get(key='bisnis_nama').value or 'StarPhoto & Advertising'
     except Exception as e:
         logger.warning(f"Gagal mengambil nama bisnis: {e}")
-        return 'Brandy'
+        return 'StarPhoto & Advertising'
 
 
 # ── AI Client (KoboiLLM — OpenAI-compatible) ──────────────────────────

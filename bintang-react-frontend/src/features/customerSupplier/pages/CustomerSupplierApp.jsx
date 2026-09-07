@@ -1075,7 +1075,7 @@ function CustomerSupplierInner() {
                               </div>
                             </td>
                             <td style={{ padding: '12px 16px', color: '#334155', borderRight: '1px solid #f1f5f9' }}>
-                              {note.dibuat_oleh_nama || 'Brandy'}
+                              {note.dibuat_oleh_nama || 'StarPhoto & Advertising'}
                             </td>
                             <td style={{ padding: '12px 16px' }}>
                               <button
