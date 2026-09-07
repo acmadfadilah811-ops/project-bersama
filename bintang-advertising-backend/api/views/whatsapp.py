@@ -523,7 +523,7 @@ class BaseWhatsAppWebhookView(APIView):
         """Pesan konfirmasi setelah Order benar-benar dibuat (setelah pelanggan
         ketik 'sesuai')."""
         order_instance = Order.objects.prefetch_related('items').get(id=order_id)
-        label = "Pesanan Anda telah masuk ke sistem kami"
+        label = "Pesanan Kakak telah masuk ke sistem kami"
 
         item_lines = []
         total_estimasi = 0
@@ -555,16 +555,28 @@ class BaseWhatsAppWebhookView(APIView):
             f"Tim kami akan segera memverifikasi pesanan Kakak. Mohon ditunggu 🙏"
         )
         from django.db.models import Q
-        has_no_design = order_instance.items.filter(Q(gdrive_customer_link__isnull=True) | Q(gdrive_customer_link='')).exists()
+        items_tanpa_file = order_instance.items.filter(Q(gdrive_customer_link__isnull=True) | Q(gdrive_customer_link=''))
+        has_no_design = items_tanpa_file.exists()
+        # Form order gabungan sudah bisa memuat konsep desain (Tulisan/Warna/
+        # Bentuk/dst, lihat brief_desain di _parse_form_order) tanpa pelanggan
+        # perlu isi Form Konsep Desain terpisah -- kalau sudah ada, jangan
+        # minta isi ulang form kosong (bug ditemukan user 2026-09-07 lewat
+        # log Evolution API: pelanggan sudah isi & balas "sesuai" di rekap,
+        # tapi langsung diminta isi ulang dari nol).
+        sudah_ada_konsep = items_tanpa_file.filter(keterangan_detail__icontains='Konsep desain —').exists()
         if has_no_design:
             if is_desain_ready:
                 jawaban += (
                     f"\n\nSilakan kirimkan file desain Kakak langsung ke chat ini (sebagai Gambar atau Dokumen) "
                     f"dengan mencantumkan keterangan/caption ID Pesanan: *{order_id}* pada file tersebut ya Kak! 😊"
                 )
+            elif sudah_ada_konsep:
+                jawaban += (
+                    f"\n\nKonsep desain yang Kakak kirim tadi sudah kami catat ✅ Tim desainer kami akan langsung memprosesnya."
+                )
             else:
                 jawaban += (
-                    f"\n\nSilakan *copy-paste* dan isi **Form Konsep Desain** di bawah ini agar tim desainer kami bisa langsung memprosesnya:\n\n"
+                    f"\n\nSilakan *copy-paste* dan isi *Form Konsep Desain* di bawah ini agar tim desainer kami bisa langsung memprosesnya:\n\n"
                     f"📋 *FORM KONSEP DESAIN*\n"
                     f"- ID Pesanan: {order_id}\n"
                     f"- Tulisan yang dimuat:\n"

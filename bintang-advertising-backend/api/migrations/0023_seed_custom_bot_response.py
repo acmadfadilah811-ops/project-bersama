@@ -4,7 +4,7 @@ def seed_custom_bot_response(apps, schema_editor):
     SystemConfig = apps.get_model('api', 'SystemConfig')
     SystemConfig.objects.update_or_create(
         key='custom_bot_response',
-        defaults={'value': 'Selamat malam juga Kak! 😊 Saya adalah Cutomer Service AI, Ada yang bisa Bintang Advertising bantu terkait kebutuhan cetak Kakak?'}
+        defaults={'value': 'Selamat malam juga Kak! 😊 Saya adalah Customer Service AI, ada yang bisa StarPhoto & Advertising bantu terkait kebutuhan cetak Kakak?'}
     )
 
     # Also update system_prompt if it exists in the database to include Rule 5

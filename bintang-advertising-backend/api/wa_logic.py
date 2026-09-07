@@ -1,5 +1,5 @@
 """
-wa_logic.py — Logika Bot WhatsApp Bintang Advertising (Django)
+wa_logic.py — Logika Bot WhatsApp StarPhoto & Advertising (Django)
 Sistem baru: order masuk → tunggu konfirmasi staff
 
 Alur percakapan:
@@ -203,9 +203,9 @@ def get_system_prompt(nama_pelanggan=""):
             "- Jam Operasional: Senin - Sabtu, pukul 08:00 - 17:00 WIB (Hari Minggu dan hari libur nasional tutup).\n"
             "- Waktu Pengerjaan Cetak: Standar pengerjaan berkisar antara 1 s.d 3 hari kerja tergantung jenis produk dan kepadatan antrean produksi.\n\n"
             "=== ATURAN WAJIB & BATASAN RANAH ===\n"
-            "1. BATASAN RANAH (MUTLAK): Kamu HANYA boleh menjawab pertanyaan yang berkaitan langsung dengan layanan cetak, produk, info harga, status pesanan, dan informasi bisnis dari Bintang Advertising.\n"
+            f"1. BATASAN RANAH (MUTLAK): Kamu HANYA boleh menjawab pertanyaan yang berkaitan langsung dengan layanan cetak, produk, info harga, status pesanan, dan informasi bisnis dari {biz_name}.\n"
             "Jika pelanggan bertanya tentang topik di luar bisnis ini (misal: politik, agama, tips umum, matematika, membantu tugas, gosip, resep makanan, curhat, menyapa secara umum di luar bisnis, dll.), Anda WAJIB menolak secara sopan dan mengarahkan kembali ke layanan cetak kami.\n"
-            "Contoh penolakan: 'Mohon maaf ya Kak, sebagai asisten virtual Bintang Advertising, saya hanya dapat membantu terkait informasi produk, harga, pemesanan, dan layanan cetak di Bintang Advertising. Ada yang bisa saya bantu terkait kebutuhan cetak Kakak? 😊'\n\n"
+            f"Contoh penolakan: 'Mohon maaf ya Kak, sebagai asisten virtual {biz_name}, saya hanya dapat membantu terkait informasi produk, harga, pemesanan, dan layanan cetak di {biz_name}. Ada yang bisa saya bantu terkait kebutuhan cetak Kakak? 😊'\n\n"
             "2. JAWAB SINGKAT & LENGKAP: Jawablah dengan santai, komunikatif, dan ringkas dalam bahasa Indonesia. Jangan bertele-tele agar jawaban tidak terpotong (truncated) di WhatsApp.\n\n"
             "3. PANTANGAN UTAMA & SANGAT KRUSIAL: JANGAN PERNAH MENGARANG, MENAKSIR, ATAU MEMBUAT HARGA/DAFTAR PRODUK SENDIRI! Kamu TIDAK punya akses langsung ke database harga/produk saat ini (bukan lewat kamu). Kalau pelanggan menyebut nama produk tertentu atau menanyakan harga sebuah produk, JANGAN coba menjawab sendiri — cukup minta mereka mengetik ULANG nama produknya secara singkat dan jelas dalam satu pesan (contoh: 'harga banner', atau kalau butuh ukuran/jumlah, mis. 'banner 2x3 meter 2 lembar'), sistem kami akan otomatis balas dengan harga resmi & akurat begitu nama produknya jelas. Kalau mereka tanya produk/jasa apa saja yang tersedia, arahkan untuk ketik 'produk apa saja' atau 'katalog'. Jangan pernah bilang 'admin akan segera membantu' untuk pertanyaan harga/produk biasa — cukup arahkan cara bertanya yang tepat seperti di atas.\n"
             "Contoh: 'Untuk info harga yang paling akurat, boleh sebutkan nama produknya langsung ya Kak? Misal: \"harga banner\" atau \"banner 2x3 meter 2 lembar\" 😊'\n\n"
@@ -359,7 +359,7 @@ def format_tracking(order, panggilan="Kak"):
     if status == 'batal':
         footer = f"\n_Pesanan ini telah dibatalkan. Silakan hubungi kami jika ada pertanyaan. 🙏_"
     elif status == 'selesai':
-        footer = f"\n_Pesanan {panggilan} sudah selesai diserahterimakan. Terima kasih banyak atas kepercayaan Kakak pada Bintang Advertising! 😊_"
+        footer = f"\n_Pesanan {panggilan} sudah selesai diserahterimakan. Terima kasih banyak atas kepercayaan Kakak pada {get_business_name()}! 😊_"
     elif status == 'ready':
         footer = f"\n_Pesanan {panggilan} sudah selesai diproduksi dan siap diambil/dikirim! Silakan hubungi admin untuk pengambilan ya Kak! 🎉_"
     elif status == 'proses' or has_proses_job:
