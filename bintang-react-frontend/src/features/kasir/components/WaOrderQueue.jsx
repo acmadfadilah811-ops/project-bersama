@@ -13,6 +13,7 @@ import {
   ToggleLeft,
   ToggleRight,
   Wallet,
+  ChevronLeft,
 } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import { useAuth } from '../../../context/AuthContext';
@@ -82,7 +83,7 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
   const [searchQuery, setSearchQuery] = useState('');
   const [cariSemua, setCariSemua] = useState(false);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(40);
   const [totalCount, setTotalCount] = useState(0);
 
   // Komponen ini dipakai untuk antrean gabungan (prop `sumber` = "wa,staff")
@@ -570,47 +571,47 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
       )}
       <PosHeaderBar onToggleSidebar={onToggleSidebar} />
 
-      <div className="flex-1 flex flex-col lg:flex-row h-full overflow-hidden w-full">
-        <WaOrderList
-          orders={orders}
-          loading={loading}
-          selectedOrder={selectedOrder}
-          onSelectOrder={handleSelectOrder}
-          onRefresh={() => fetchQueueRef.current()}
-          judul={judulAntrean}
-          subjudul={sumber.includes(',') ? 'Order dari WhatsApp & dibantu staff, diperbarui otomatis' : sumber === 'staff' ? 'Order dari staff, menunggu diverifikasi kasir' : 'Semua pesanan WA, diperbarui otomatis'}
-          judulKosong={sumber.includes(',') ? 'Belum Ada Pesanan' : sumber === 'staff' ? 'Belum Ada Order dari Staff' : 'Belum Ada Pesanan WhatsApp'}
-          pesanKosong={sumber.includes(',') ? 'Pesanan dari WhatsApp maupun yang dibantu staff akan muncul di sini.' : sumber === 'staff' ? 'Order yang dibuatkan staff untuk membantu pelanggan akan muncul di sini.' : 'Pesanan yang dibuat otomatis dari WhatsApp akan muncul di sini.'}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          dateFrom={dateFrom}
-          dateTo={dateTo}
-          onDateFromChange={setDateFrom}
-          onDateToChange={setDateTo}
-          cariSemua={cariSemua}
-          onToggleCariSemua={setCariSemua}
-          page={page}
-          pageSize={pageSize}
-          totalCount={totalCount}
-          onPageChange={setPage}
-          onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
-        />
-
-      {/* Kanan: Editor / Verification Panel */}
-      <div className="flex-1 overflow-y-auto p-6 bg-slate-50/30 flex flex-col h-full">
+      <div className="flex-1 min-h-0 w-full overflow-hidden">
         {!selectedOrder ? (
-          <div className="m-auto text-center max-w-sm">
-            <div className="bg-white border border-slate-200 p-5 rounded-3xl shadow-sm flex flex-col items-center">
-              <div className="bg-indigo-50 p-4 rounded-full text-indigo-500 mb-3 animate-pulse">
-                <FileText size={32} />
-              </div>
-              <h5 className="font-extrabold text-slate-700 text-sm">Pilih Pesanan untuk Diverifikasi</h5>
-              <p className="text-xs text-slate-400 font-semibold mt-1">Pilih salah satu nomor pesanan dari daftar antrean sebelah kiri untuk memulai proses review detail nota & SPK produksi.</p>
-            </div>
-          </div>
+          <WaOrderList
+            orders={orders}
+            loading={loading}
+            selectedOrder={selectedOrder}
+            onSelectOrder={handleSelectOrder}
+            onRefresh={() => fetchQueueRef.current()}
+            judul={judulAntrean}
+            subjudul={sumber.includes(',') ? 'Order dari WhatsApp & dibantu staff, diperbarui otomatis' : sumber === 'staff' ? 'Order dari staff, menunggu diverifikasi kasir' : 'Semua pesanan WA, diperbarui otomatis'}
+            judulKosong={sumber.includes(',') ? 'Belum Ada Pesanan' : sumber === 'staff' ? 'Belum Ada Order dari Staff' : 'Belum Ada Pesanan WhatsApp'}
+            pesanKosong={sumber.includes(',') ? 'Pesanan dari WhatsApp maupun yang dibantu staff akan muncul di sini.' : sumber === 'staff' ? 'Order yang dibuatkan staff untuk membantu pelanggan akan muncul di sini.' : 'Pesanan yang dibuat otomatis dari WhatsApp akan muncul di sini.'}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onDateFromChange={setDateFrom}
+            onDateToChange={setDateTo}
+            cariSemua={cariSemua}
+            onToggleCariSemua={setCariSemua}
+            page={page}
+            pageSize={pageSize}
+            totalCount={totalCount}
+            onPageChange={setPage}
+            onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+          />
         ) : (
-          <div className="space-y-6">
-            
+          <div className="h-full overflow-y-auto p-6 bg-slate-50/30 flex flex-col">
+            <div className="space-y-6">
+
+            {/* Tombol kembali ke daftar antrean — layar penuh, pola sama
+                dengan WorkspaceSPK di Papan Kerja Staff (tombol "Kembali"
+                jelas di atas, bukan panel yang selalu tampil berdampingan). */}
+            <button
+              type="button"
+              onClick={() => setSelectedOrder(null)}
+              className="self-start flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 shadow-sm transition-all cursor-pointer"
+            >
+              <ChevronLeft size={14} /> Kembali ke Daftar Antrean
+            </button>
+
             {/* Header Detail */}
             <div className="bg-white p-4 border border-slate-200 rounded-2xl shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
@@ -1044,10 +1045,10 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
                 <span>{sendingInvoice ? 'Mengirim Invoice...' : 'Kirim Invoice WA'}</span>
               </button>
             </div>
+            </div>
           </div>
         )}
       </div>
     </div>
-  </div>
-);
+  );
 }
