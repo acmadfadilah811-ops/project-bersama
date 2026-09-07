@@ -177,6 +177,69 @@ export default function PosTerminal({ onToggleSidebar }) {
     fetchContacts();
   }, []);
 
+  // Daftar pelanggan untuk dipilih Kasir -- paginasi server sungguhan dari
+  // Customer (master data, bisa ratusan/ribuan baris) digabung dengan Contact
+  // WA-only yang belum tertaut Customer manapun (dari `contacts` di atas,
+  // jumlahnya kecil & aman ditampilkan penuh). Sebelumnya kasir cuma bisa
+  // pilih dari Contact (produksi cuma 6 baris) -- 356+ pelanggan master data
+  // (Agen/MOU) tak pernah muncul (bug ditemukan user 2026-09-07). Memilih
+  // kartu Customer akan resolve/buat Contact lewat endpoint terpisah
+  // (nomor_wa wajib untuk transaksi POS) -- lihat resolveContactFor().
+  const [customerResults, setCustomerResults] = useState([]);
+  const [customerPage, setCustomerPage] = useState(1);
+  const [customerPageSize] = useState(40);
+  const [customerTotalCount, setCustomerTotalCount] = useState(0);
+  const [customerSearch, setCustomerSearch] = useState('');
+  const customerFetchIdRef = useRef(0);
+  const pinnedContacts = contacts.filter((c) => !c.customer);
+
+  const fetchCustomerPage = async (page, search) => {
+    const fetchId = ++customerFetchIdRef.current;
+    try {
+      const res = await apiClient.get('/customers/', {
+        params: { page, page_size: customerPageSize, ...(search ? { search } : {}) },
+      });
+      if (fetchId !== customerFetchIdRef.current) return;
+      const data = res.data;
+      const rows = Array.isArray(data) ? data : (data.results || []);
+      setCustomerResults(rows);
+      setCustomerTotalCount(Array.isArray(data) ? rows.length : (data.count || 0));
+    } catch {
+      if (fetchId === customerFetchIdRef.current) {
+        setCustomerResults([]);
+        setCustomerTotalCount(0);
+      }
+    }
+  };
+
+  useEffect(() => {
+    setCustomerPage(1);
+  }, [customerSearch]);
+
+  useEffect(() => {
+    const t = setTimeout(() => fetchCustomerPage(customerPage, customerSearch.trim()), 250);
+    return () => clearTimeout(t);
+  }, [customerPage, customerSearch]);
+
+  // Resolusi wajib sebelum kartu Customer (kind='customer') dipakai untuk
+  // transaksi/dilihat/diubah -- transaksi POS terikat nomor_wa (Contact),
+  // Customer master data belum tentu punya Contact tertaut. Kartu Contact
+  // WA-only (kind='contact') sudah punya nomor_wa, langsung dipakai apa
+  // adanya tanpa panggilan tambahan.
+  const resolveContactFor = async (item, kind) => {
+    if (kind !== 'customer') return item;
+    try {
+      const res = await apiClient.post(`/customers/${item.id}/resolve-contact/`);
+      return res.data;
+    } catch (err) {
+      notifyError(
+        'Pelanggan belum siap dipakai',
+        err.response?.data?.error || 'Gagal menyiapkan data pelanggan ini untuk transaksi.'
+      );
+      return null;
+    }
+  };
+
   // Fetch Categories
   useEffect(() => {
     (async () => {
@@ -402,8 +465,10 @@ export default function PosTerminal({ onToggleSidebar }) {
   };
 
   // Customer Actions from List Panel
-  const handleCandidateCustomerSelect = (customer) => {
-    setTargetCustomer(customer);
+  const handleCandidateCustomerSelect = async (customer, kind) => {
+    const resolved = await resolveContactFor(customer, kind);
+    if (!resolved) return;
+    setTargetCustomer(resolved);
     setShowConfirmAddModal(true);
   };
 
@@ -416,19 +481,26 @@ export default function PosTerminal({ onToggleSidebar }) {
     setRightPanelMode('catalog');
   };
 
-  const handleViewCustomerProfile = (customer) => {
-    setTargetCustomer(customer || selectedContact);
+  const handleViewCustomerProfile = async (customer, kind) => {
+    const resolved = customer ? await resolveContactFor(customer, kind) : selectedContact;
+    if (customer && !resolved) return;
+    setTargetCustomer(resolved || selectedContact);
     setShowProfileModal(true);
   };
 
-  const handleEditCustomerProfile = (customer) => {
-    setTargetCustomer(customer || selectedContact);
+  const handleEditCustomerProfile = async (customer, kind) => {
+    // Customer tanpa No. HP gagal resolve (belum bisa dipakai transaksi),
+    // tapi tetap boleh dibuka untuk DIISI nomornya di sini -- pakai objek
+    // Customer mentah, handleSaveEditCustomer mendeteksi ini lewat absennya
+    // `nomor_wa` dan PATCH /customers/ langsung + coba resolve ulang.
+    const resolved = customer ? await resolveContactFor(customer, kind) : selectedContact;
+    setTargetCustomer(resolved || customer || selectedContact);
     setShowEditModal(true);
   };
 
   const handleDeleteCustomerProfile = (customer) => {
     if (window.confirm(`Hapus/lepas pelanggan ${customer?.nama || ''}?`)) {
-      if (selectedContact?.id === customer?.id || selectedContact?.nomor_wa === customer?.nomor_wa) {
+      if (selectedContact?.nomor_wa && selectedContact.nomor_wa === customer?.nomor_wa) {
         setSelectedContact(null);
       }
     }
@@ -476,8 +548,46 @@ export default function PosTerminal({ onToggleSidebar }) {
         });
         setSelectedContact(contactRes.data);
         fetchContacts();
+        fetchCustomerPage(customerPage, customerSearch.trim());
         setShowEditModal(false);
         notifySuccess('Pelanggan baru tersimpan', `${updatedData.nama} siap dipakai untuk transaksi, termasuk DP.`);
+        return;
+      }
+
+      // Mengedit Customer (master data) yang belum tertaut Contact manapun
+      // (kartu "Tanpa No. HP" di daftar Kasir) -- PATCH /customers/ langsung
+      // pakai id, bukan nomor_wa yang belum ada. Kalau nomor HP baru diisi
+      // di sini, langsung coba resolve/buat Contact-nya juga.
+      if (!targetCustomer.nomor_wa && targetCustomer.id) {
+        await apiClient.patch(`/customers/${targetCustomer.id}/`, {
+          nama: updatedData.nama,
+          customer_group: updatedData.tipe_pelanggan || null,
+          email: updatedData.email,
+          handphone: updatedData.telepon,
+          tanggal_lahir: updatedData.tanggal_lahir || null,
+          jenis_kelamin: updatedData.gender === 'Female' ? 'P' : (updatedData.gender === 'Male' ? 'L' : ''),
+          alamat: updatedData.alamat,
+          negara: updatedData.negara,
+          provinsi: updatedData.provinsi,
+          kota: updatedData.kota,
+          kecamatan: updatedData.kecamatan,
+          kode_pos: updatedData.kode_pos,
+          kode_pelanggan: updatedData.no_keanggotaan,
+          catatan: updatedData.catatan,
+        });
+        if (updatedData.telepon) {
+          try {
+            const res = await apiClient.post(`/customers/${targetCustomer.id}/resolve-contact/`);
+            setSelectedContact(res.data);
+            fetchContacts();
+          } catch {
+            // Nomor belum valid/tetap kosong -- data lain tetap tersimpan,
+            // resolve bisa dicoba lagi lain waktu saat kartu ini dipilih.
+          }
+        }
+        fetchCustomerPage(customerPage, customerSearch.trim());
+        setShowEditModal(false);
+        notifySuccess('Data pelanggan tersimpan', `${updatedData.nama} berhasil diperbarui.`);
         return;
       }
 
@@ -514,6 +624,7 @@ export default function PosTerminal({ onToggleSidebar }) {
       }
 
       fetchContacts();
+      fetchCustomerPage(customerPage, customerSearch.trim());
       setShowEditModal(false);
       alert(
         customerId
@@ -834,7 +945,14 @@ export default function PosTerminal({ onToggleSidebar }) {
           />
         ) : rightPanelMode === 'customerList' ? (
           <PosCustomerListPanel
-            contacts={contacts}
+            customers={customerResults}
+            pinnedContacts={pinnedContacts}
+            searchQuery={customerSearch}
+            onSearchChange={setCustomerSearch}
+            page={customerPage}
+            pageSize={customerPageSize}
+            totalCount={customerTotalCount}
+            onPageChange={setCustomerPage}
             onSelectCustomer={handleCandidateCustomerSelect}
             onViewCustomerProfile={handleViewCustomerProfile}
             onEditCustomerProfile={handleEditCustomerProfile}

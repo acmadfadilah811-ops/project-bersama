@@ -1,7 +1,9 @@
 import csv
 import io
+import re
 
 from django.contrib.auth.hashers import make_password
+from django.db.models import Q
 from django.utils.dateparse import parse_date
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -89,6 +91,46 @@ class CustomerViewSet(ToggleStatusMixin, viewsets.ModelViewSet):
             # Kosong/tidak dikirim → jangan timpa password yang sudah tersimpan.
             serializer.validated_data.pop('password', None)
             serializer.save()
+
+    @action(detail=True, methods=['post'], url_path='resolve-contact')
+    def resolve_contact(self, request, pk=None):
+        """Cari/buat Contact yang tertaut ke Customer ini.
+
+        Terminal Kasir memilih pelanggan dari daftar Customer (master data,
+        362 baris) supaya kasir bisa cari SIAPA SAJA yang terdaftar -- bukan
+        cuma yang kebetulan sudah pernah order lewat WA (Contact, sebelumnya
+        cuma 6 baris, bug ditemukan user 2026-09-07). Tapi transaksi POS/
+        Order tetap terikat ke nomor_wa (primary key Contact), jadi resolusi
+        ini WAJIB dipanggil sebelum Customer bisa dipakai checkout.
+        """
+        from .models import Contact
+        from .serializers import ContactSerializer
+
+        cust = self.get_object()
+        existing = Contact.objects.select_related('customer__customer_group').filter(
+            Q(customer=cust) | (Q(nomor_wa=cust.handphone) if cust.handphone else Q(pk__isnull=True))
+        ).first()
+        if existing:
+            if existing.customer_id != cust.id:
+                existing.customer = cust
+                existing.save(update_fields=['customer'])
+            return Response(ContactSerializer(existing).data)
+
+        nomor_wa = re.sub(r'[\s\-()]+', '', cust.handphone or '')
+        if not nomor_wa:
+            return Response(
+                {'error': 'Pelanggan ini belum punya nomor HP tercatat. Lengkapi dulu di data Pelanggan sebelum dipakai transaksi kasir.'},
+                status=400,
+            )
+
+        contact, created = Contact.objects.get_or_create(
+            nomor_wa=nomor_wa,
+            defaults={'nama': cust.nama, 'customer': cust},
+        )
+        if not created and contact.customer_id != cust.id:
+            contact.customer = cust
+            contact.save(update_fields=['customer'])
+        return Response(ContactSerializer(contact).data, status=201 if created else 200)
 
     @action(detail=True, methods=['get'], url_path='transactions')
     def transactions(self, request, pk=None):
