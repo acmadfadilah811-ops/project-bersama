@@ -336,7 +336,10 @@ export default function ProductionApp() {
       fetchCustomers();
     } else if (activeTab === 'pricelist') {
       fetchPricelists();
-    } else if (activeTab === 'divisions') {
+    } else if (activeTab === 'divisions' || activeTab === 'mesin') {
+      // 'mesin' juga butuh `divisions` untuk dropdown Divisi di form Tambah/Edit
+      // Mesin -- sebelumnya cuma tab 'divisions' yang memicu fetch, jadi dropdown
+      // itu selalu kosong dan tidak bisa diisi (bug dilaporkan user 2026-09-09).
       fetchDivisions();
     }
   }, [activeTab, modeInitialized, fetchCustomers, fetchPricelists, fetchDivisions]);
@@ -408,7 +411,7 @@ export default function ProductionApp() {
             />
           );
         case 'mesin':
-          return <MesinPanel divisions={divisions} />;
+          return <MesinPanel divisions={divisions} staffList={staffList} />;
         case 'logs':
           return <ActivityLogsPanel logs={logs} />;
         default:

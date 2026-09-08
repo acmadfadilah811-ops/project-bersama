@@ -2,10 +2,12 @@
 lihat api/machine_models.py dan api/views/machine.py untuk konteks lengkap
 fitur ini (disetujui user 2026-09-07)."""
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from api.models import Mesin, PenggunaanMesin, MaintenanceMesin
+from api.models import Divisi, JobBoard, Mesin, Order, OrderItem, PenggunaanMesin, MaintenanceMesin, TahapProses
+from hr.models import Absensi
 
 User = get_user_model()
 
@@ -31,6 +33,24 @@ class MesinViewSetTest(APITestCase):
         res = self.client.post('/api/mesin/', {'nama': 'Printer 1', 'tipe': 'printer'})
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
         self.assertEqual(Mesin.objects.count(), 2)
+
+    def test_owner_bisa_daftarkan_tipe_mesin_baru_bebas(self):
+        """`tipe` bebas teks (bukan choices tetap) -- owner bisa daftarkan
+        tipe mesin yang belum pernah ada di kode sama sekali (bug dilaporkan
+        user 2026-09-09: dulu cuma bisa pilih 3 tipe hardcode)."""
+        self.client.force_authenticate(user=self.owner)
+        res = self.client.post('/api/mesin/', {
+            'nama': 'Laminating 1', 'tipe': 'Mesin Laminating', 'basis_pencatatan': 'lainnya',
+        })
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res.data['tipe'], 'Mesin Laminating')
+        self.assertEqual(res.data['tipe_display'], 'Mesin Laminating')  # tidak ada preset -> apa adanya
+        self.assertEqual(res.data['basis_pencatatan'], 'lainnya')
+
+    def test_tipe_display_preset_tetap_pakai_label_rapi(self):
+        self.client.force_authenticate(user=self.owner)
+        res = self.client.get(f'/api/mesin/{self.mesin.id}/')
+        self.assertEqual(res.data['tipe_display'], 'Fuji Xerox DocuColor')
 
     def test_total_klik_dan_perlu_servis(self):
         PenggunaanMesin.objects.create(mesin=self.mesin, lembar_color=100, lembar_mono=200)
@@ -101,6 +121,76 @@ class PenggunaanMesinViewSetTest(APITestCase):
         self.client.force_authenticate(user=self.owner)
         res = self.client.get(f'/api/penggunaan-mesin/?mesin={self.mesin.id}')
         self.assertEqual(res.data['count'] if isinstance(res.data, dict) and 'count' in res.data else len(res.data), 1)
+
+    def test_filter_by_operator(self):
+        PenggunaanMesin.objects.create(mesin=self.mesin, operator=self.staff, lembar_color=1)
+        PenggunaanMesin.objects.create(mesin=self.mesin, operator=self.staff2, lembar_color=2)
+
+        self.client.force_authenticate(user=self.owner)
+        res = self.client.get(f'/api/penggunaan-mesin/?operator={self.staff.id}')
+        rows = res.data['results'] if isinstance(res.data, dict) and 'results' in res.data else res.data
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['operator'], self.staff.id)
+
+    def test_ringkasan_staff_akurat_per_operator(self):
+        mesin_banner = Mesin.objects.create(nama='Banner 3', tipe='cetak_banner', basis_pencatatan='meter')
+        PenggunaanMesin.objects.create(mesin=self.mesin, operator=self.staff, lembar_color=10, lembar_mono=5)
+        PenggunaanMesin.objects.create(mesin=self.mesin, operator=self.staff, lembar_color=20, lembar_mono=0)
+        PenggunaanMesin.objects.create(mesin=mesin_banner, operator=self.staff2, panjang_bahan_meter=3.5)
+
+        self.client.force_authenticate(user=self.owner)
+        res = self.client.get('/api/penggunaan-mesin/ringkasan-staff/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        by_operator = {row['operator_id']: row for row in res.data}
+
+        self.assertEqual(by_operator[self.staff.id]['total_klik'], 35)
+        self.assertEqual(by_operator[self.staff.id]['jumlah_entri'], 2)
+        self.assertEqual(by_operator[self.staff2.id]['total_meter'], 3.5)
+
+    def test_ringkasan_staff_ditolak_untuk_staff(self):
+        self.client.force_authenticate(user=self.staff)
+        res = self.client.get('/api/penggunaan-mesin/ringkasan-staff/')
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class JobBoardPenggunaanMesinRingkasTest(APITestCase):
+    """penggunaan_mesin_ringkas di JobBoardSerializer -- riwayat pekerjaan
+    staff (Kanban Personal, job 'selesai') harus ikut menampilkan mesin apa
+    yang dipakai untuk job itu (fitur 2026-09-09)."""
+
+    def setUp(self):
+        self.divisi = Divisi.objects.create(nama='Divisi Mesin Ringkas')
+        self.tahap = TahapProses.objects.create(nama='Tahap Mesin Ringkas', divisi=self.divisi, urutan=1)
+        self.staff = User.objects.create_user(
+            username='staff_ringkas_mesin', password='pw12345', role='staff', divisi=self.divisi,
+        )
+        Absensi.objects.create(staff=self.staff, tanggal=timezone.localdate(), jam_masuk=timezone.now())
+        order = Order.objects.create(id='ORD-MESIN-RINGKAS-1', nomor_wa='08122222222', nama='Pelanggan Mesin Ringkas')
+        item = OrderItem.objects.create(order=order, jenis_produk='Item Mesin Ringkas', qty=1, harga_jual=10000)
+        self.job = JobBoard.objects.create(
+            order_item=item, tahap=self.tahap, pic_staff=self.staff, status_pekerjaan='selesai',
+        )
+        self.mesin = Mesin.objects.create(nama='DocuColor Ringkas', tipe='docucolor')
+        PenggunaanMesin.objects.create(
+            mesin=self.mesin, job=self.job, operator=self.staff, lembar_color=15, lembar_mono=3,
+        )
+
+    def test_job_menampilkan_ringkasan_penggunaan_mesin(self):
+        self.client.force_authenticate(user=self.staff)
+        res = self.client.get(f'/api/jobs/{self.job.id}/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        ringkas = res.data['penggunaan_mesin_ringkas']
+        self.assertEqual(len(ringkas), 1)
+        self.assertEqual(ringkas[0]['mesin_nama'], 'DocuColor Ringkas')
+        self.assertEqual(ringkas[0]['detail'], '15 color / 3 mono')
+
+    def test_job_tanpa_penggunaan_mesin_kembalikan_list_kosong(self):
+        job_kosong = JobBoard.objects.create(
+            order_item=self.job.order_item, tahap=self.tahap, pic_staff=self.staff, status_pekerjaan='antrean',
+        )
+        self.client.force_authenticate(user=self.staff)
+        res = self.client.get(f'/api/jobs/{job_kosong.id}/')
+        self.assertEqual(res.data['penggunaan_mesin_ringkas'], [])
 
 
 class MaintenanceMesinViewSetTest(APITestCase):

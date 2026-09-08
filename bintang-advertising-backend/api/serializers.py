@@ -195,10 +195,42 @@ class JobBoardSerializer(serializers.ModelSerializer):
     pelanggan_wa      = serializers.SerializerMethodField()
     order_id          = serializers.SerializerMethodField()
     ukuran            = serializers.SerializerMethodField()
+    # Ringkasan mesin yang dipakai untuk job ini -- ditampilkan di riwayat
+    # pekerjaan staff (KanbanPersonal, job 'selesai') supaya staff & owner
+    # sama-sama bisa lihat pertanggungjawaban penggunaan mesin per job tanpa
+    # buka layar terpisah (fitur 2026-09-09). Baca dari prefetch
+    # 'penggunaan_mesin' di JobBoardViewSet.get_queryset() -- JANGAN query
+    # ulang di sini (N+1).
+    penggunaan_mesin_ringkas = serializers.SerializerMethodField()
 
     class Meta:
         model = JobBoard
         fields = '__all__'
+
+    def get_penggunaan_mesin_ringkas(self, obj):
+        entries = obj.penggunaan_mesin.all() if hasattr(obj, 'penggunaan_mesin') else []
+        result = []
+        for entry in entries:
+            basis = entry.mesin.basis_pencatatan if entry.mesin else 'lembar'
+            if basis == 'meter':
+                detail = f"{entry.panjang_bahan_meter or 0} m"
+                if entry.jenis_bahan:
+                    detail += f" — {entry.jenis_bahan}"
+            elif basis == 'lainnya':
+                detail = entry.catatan_konfirmasi or '-'
+            else:
+                parts = []
+                if entry.lembar_color:
+                    parts.append(f"{entry.lembar_color} color")
+                if entry.lembar_mono:
+                    parts.append(f"{entry.lembar_mono} mono")
+                detail = ' / '.join(parts) if parts else '0'
+            result.append({
+                'mesin_nama': entry.mesin.nama if entry.mesin else '-',
+                'detail': detail,
+                'kondisi_hasil': entry.kondisi_hasil,
+            })
+        return result
 
     def get_fields(self):
         fields = super().get_fields()

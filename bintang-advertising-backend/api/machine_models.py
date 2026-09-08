@@ -9,14 +9,32 @@ from django.utils import timezone
 
 
 class Mesin(models.Model):
-    TIPE_CHOICES = [
+    # Daftar SARAN default di form Tambah Mesin -- BUKAN batasan/enum tetap.
+    # `tipe` sengaja CharField bebas (lihat di bawah), supaya owner bisa
+    # mendaftarkan tipe mesin baru sendiri (mis. beli mesin laminating) tanpa
+    # perlu kode/deploy baru (bug dilaporkan user 2026-09-09: form Tambah
+    # Mesin sebelumnya cuma bisa pilih 3 tipe ini via <select> choices tetap).
+    TIPE_PRESETS = [
         ('docucolor', 'Fuji Xerox DocuColor'),
         ('cetak_banner', 'Cetak Banner'),
         ('printer', 'Printer'),
     ]
+    _TIPE_PRESET_LABELS = dict(TIPE_PRESETS)
+
+    class BasisPencatatan(models.TextChoices):
+        """Menentukan field mana yang diisi staff di form Catat Penggunaan
+        Mesin (ForwardJobModal) -- dulu ditentukan dari string `tipe` literal
+        (`tipe == 'docucolor'` dst), yang gagal total untuk tipe mesin baru
+        yang belum dikenal kode. Basis ini yang jadi sumber kebenaran sekarang."""
+        LEMBAR = 'lembar', 'Lembar/Klik (Color & Mono) -- DocuColor, Printer'
+        METER = 'meter', 'Meter/Panjang Bahan -- Cetak Banner'
+        LAINNYA = 'lainnya', 'Lainnya (catatan manual, tanpa satuan baku)'
 
     nama = models.CharField(max_length=100)
-    tipe = models.CharField(max_length=20, choices=TIPE_CHOICES)
+    tipe = models.CharField(max_length=50)
+    basis_pencatatan = models.CharField(
+        max_length=10, choices=BasisPencatatan.choices, default=BasisPencatatan.LEMBAR,
+    )
     divisi = models.ForeignKey(
         'Divisi', on_delete=models.SET_NULL, null=True, blank=True, related_name='mesin_list',
     )
@@ -32,7 +50,13 @@ class Mesin(models.Model):
         ordering = ['nama']
 
     def __str__(self):
-        return f"{self.nama} ({self.get_tipe_display()})"
+        return f"{self.nama} ({self.tipe_display})"
+
+    @property
+    def tipe_display(self):
+        """Label rapi untuk tipe preset yang dikenal; tipe kustom milik owner
+        ditampilkan apa adanya (tidak ada di _TIPE_PRESET_LABELS)."""
+        return self._TIPE_PRESET_LABELS.get(self.tipe, self.tipe)
 
     @property
     def total_klik(self):
@@ -64,6 +88,14 @@ class Mesin(models.Model):
                 output_field=models.IntegerField(),
             )
         )
+        return agg['total'] or 0
+
+    @property
+    def total_meter(self):
+        """Akumulasi meter bahan (mesin basis METER, mis. Cetak Banner) sejak
+        dicatat -- pasangan total_klik untuk mesin yang ditagih per meter,
+        bukan per lembar."""
+        agg = self.log_penggunaan.aggregate(total=models.Sum('panjang_bahan_meter'))
         return agg['total'] or 0
 
     @property

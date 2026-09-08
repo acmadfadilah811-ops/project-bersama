@@ -84,7 +84,11 @@ export default function ForwardJobModal({
   const orderInfo = orderMap[job.order_item];
   const tahapTujuan = availableTahap.filter((tahap) => String(tahap.id) !== String(job.tahap));
   const mesinTerpilih = mesinList.find((m) => String(m.id) === String(mesinId));
-  const tipeMesin = mesinTerpilih?.tipe;
+  // basis_pencatatan (bukan tipe literal 'docucolor'/'printer'/'cetak_banner')
+  // -- tipe mesin sekarang bisa teks bebas (owner bisa daftarkan tipe baru),
+  // jadi field yang ditampilkan harus ikut basis pencatatannya, bukan
+  // ditebak dari nama tipe yang mungkin sudah tidak dikenal kode ini.
+  const basisMesin = mesinTerpilih?.basis_pencatatan;
 
   const resetFormMesin = () => {
     setMesinId('');
@@ -146,8 +150,8 @@ export default function ForwardJobModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
-        <div className="bg-indigo-700 text-white px-5 py-4 flex justify-between items-center">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="bg-indigo-700 text-white px-5 py-4 flex justify-between items-center shrink-0">
           <div className="flex items-center gap-3">
             <Unlock size={22} className="text-emerald-300" />
             <div>
@@ -163,7 +167,14 @@ export default function ForwardJobModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+        {/* min-h-0 penting supaya flex child ini benar-benar bisa menyusut dan
+            memicu overflow-y-auto -- tanpa ini form dengan "Catat Penggunaan
+            Mesin" terbuka (banyak field tambahan) bisa lebih tinggi dari layar,
+            dan tombol Konfirmasi di bawah jadi kepotong tak terjangkau sama
+            sekali karena parent-nya overflow-hidden tanpa scroll (bug
+            dilaporkan user 2026-09-09 -- staff tidak bisa lanjut kerja). */}
+        <form onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col">
+        <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4">
           {/* Pilih Aksi */}
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-2">
@@ -332,11 +343,14 @@ export default function ForwardJobModal({
                     </select>
                   </div>
 
-                  {(tipeMesin === 'docucolor' || tipeMesin === 'printer') && (
+                  {basisMesin === 'lembar' && (
                     <div className="grid grid-cols-2 gap-2">
+                      <p className="col-span-2 text-[10px] text-slate-400 -mb-1">
+                        1 lembar = 1 klik (basis tagihan mesin per klik, color dan mono dihitung terpisah).
+                      </p>
                       <div>
                         <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                          Lembar Color
+                          Lembar/Klik Color
                         </label>
                         <input
                           type="number"
@@ -348,7 +362,7 @@ export default function ForwardJobModal({
                       </div>
                       <div>
                         <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                          Lembar Mono
+                          Lembar/Klik Mono
                         </label>
                         <input
                           type="number"
@@ -397,7 +411,7 @@ export default function ForwardJobModal({
                     </div>
                   )}
 
-                  {tipeMesin === 'cetak_banner' && (
+                  {basisMesin === 'meter' && (
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="block text-[11px] font-bold text-slate-600 mb-1">
@@ -425,6 +439,12 @@ export default function ForwardJobModal({
                         />
                       </div>
                     </div>
+                  )}
+
+                  {basisMesin === 'lainnya' && (
+                    <p className="text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-2.5">
+                      Mesin ini pakai basis pencatatan manual — isi rincian pemakaian di kolom Catatan Konfirmasi di bawah.
+                    </p>
                   )}
 
                   {mesinId && (
@@ -489,8 +509,9 @@ export default function ForwardJobModal({
               )}
             </div>
           )}
+        </div>
 
-          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+          <div className="flex justify-end gap-2 p-4 border-t border-slate-100 shrink-0 bg-white">
             <button
               type="button"
               onClick={onClose}

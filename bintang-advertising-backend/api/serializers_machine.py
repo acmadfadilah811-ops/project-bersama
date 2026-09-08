@@ -6,8 +6,14 @@ from .models import Mesin, PenggunaanMesin, MaintenanceMesin
 
 class MesinSerializer(serializers.ModelSerializer):
     divisi_nama = serializers.ReadOnlyField(source='divisi.nama')
-    tipe_display = serializers.ReadOnlyField(source='get_tipe_display')
+    # `tipe` sekarang teks bebas (bukan Django choices tetap, lihat
+    # machine_models.py) -- tipe_display baca property model (lookup preset
+    # dengan fallback ke nilai apa adanya), BUKAN get_tipe_display() bawaan
+    # Django yang cuma ada untuk field ber-choices.
+    tipe_display = serializers.ReadOnlyField()
+    basis_pencatatan_display = serializers.ReadOnlyField(source='get_basis_pencatatan_display')
     total_klik = serializers.ReadOnlyField()
+    total_meter = serializers.ReadOnlyField()
     klik_sejak_servis_terakhir = serializers.ReadOnlyField()
     perlu_servis = serializers.ReadOnlyField()
 

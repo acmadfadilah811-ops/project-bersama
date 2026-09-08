@@ -8,11 +8,12 @@ from rest_framework.exceptions import ValidationError
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from django.shortcuts import get_object_or_404
 
 from ..models import (
-    JobBoard, CustomUser, TahapProses, OrderActivityLog, InventoryItem, RestockHistory, ProductPrice, BillOfMaterials, BoMItem
+    JobBoard, CustomUser, TahapProses, OrderActivityLog, InventoryItem, RestockHistory, ProductPrice, BillOfMaterials, BoMItem,
+    PenggunaanMesin,
 )
 from ..serializers import JobBoardSerializer, TahapProsesSerializer
 from ..permissions import IsClockedIn, IsOwnerManagerAdminOrReadOnly
@@ -409,6 +410,15 @@ class JobBoardViewSet(viewsets.ModelViewSet):
             'pic_staff__divisi',
             'order_item',
             'order_item__order'
+        ).prefetch_related(
+            # Riwayat pekerjaan staff (KanbanPersonal, job 'selesai') perlu
+            # menampilkan mesin apa yang dipakai per job -- tanpa prefetch ini
+            # tiap job memicu query sendiri (N+1) untuk penggunaan_mesin_ringkas
+            # di JobBoardSerializer (fitur 2026-09-09).
+            Prefetch(
+                'penggunaan_mesin',
+                queryset=PenggunaanMesin.objects.select_related('mesin').order_by('-waktu'),
+            ),
         ).order_by('-id')
 
         # Owner, Manager & Admin bisa lihat semua job

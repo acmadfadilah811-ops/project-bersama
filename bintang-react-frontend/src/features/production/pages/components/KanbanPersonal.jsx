@@ -212,6 +212,23 @@ export default function KanbanPersonal({
                           </span>
                         </div>
 
+                        {/* Ringkasan Penggunaan Mesin -- pertanggungjawaban staff per job (fitur 2026-09-09) */}
+                        {job.penggunaan_mesin_ringkas?.length > 0 && (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {job.penggunaan_mesin_ringkas.map((m, idx) => (
+                              <span
+                                key={idx}
+                                className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                                  m.kondisi_hasil === 'kendala' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600'
+                                }`}
+                                title={`${m.mesin_nama}: ${m.detail}`}
+                              >
+                                {m.mesin_nama}: {m.detail}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
                         {/* Quick Action Shortcuts inside Kanban Card */}
                         <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between">
                           <button

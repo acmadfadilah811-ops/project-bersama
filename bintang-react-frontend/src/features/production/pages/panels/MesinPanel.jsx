@@ -4,16 +4,30 @@ import {
 } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
 
-const TIPE_OPTIONS = [
-  { value: 'docucolor', label: 'Fuji Xerox DocuColor' },
-  { value: 'cetak_banner', label: 'Cetak Banner' },
-  { value: 'printer', label: 'Printer' },
+// Saran default di form -- BUKAN batasan. Backend `tipe` sekarang teks bebas
+// (lihat api/machine_models.py) supaya owner bisa daftarkan tipe mesin baru
+// sendiri kapan pun perusahaan beli mesin lain, tanpa perlu ubah kode/deploy
+// (bug dilaporkan user 2026-09-09: dulu cuma bisa pilih 3 tipe ini).
+const TIPE_PRESETS = [
+  { value: 'docucolor', label: 'Fuji Xerox DocuColor', basis: 'lembar' },
+  { value: 'cetak_banner', label: 'Cetak Banner', basis: 'meter' },
+  { value: 'printer', label: 'Printer', basis: 'lembar' },
+];
+const TIPE_CUSTOM = '__custom__';
+
+const BASIS_OPTIONS = [
+  { value: 'lembar', label: 'Lembar/Klik (Color & Mono)' },
+  { value: 'meter', label: 'Meter/Panjang Bahan' },
+  { value: 'lainnya', label: 'Lainnya (catatan manual)' },
 ];
 
 function MesinFormModal({ mesin, divisions, onClose, onSaved }) {
+  const existingPreset = TIPE_PRESETS.find((t) => t.value === mesin?.tipe);
+  const [tipeMode, setTipeMode] = useState(mesin && !existingPreset ? TIPE_CUSTOM : (mesin?.tipe || 'docucolor'));
+  const [tipeCustom, setTipeCustom] = useState(mesin && !existingPreset ? mesin.tipe : '');
   const [form, setForm] = useState({
     nama: mesin?.nama || '',
-    tipe: mesin?.tipe || 'docucolor',
+    basis_pencatatan: mesin?.basis_pencatatan || 'lembar',
     divisi: mesin?.divisi || '',
     lokasi: mesin?.lokasi || '',
     ambang_servis_klik: mesin?.ambang_servis_klik || '',
@@ -23,13 +37,27 @@ function MesinFormModal({ mesin, divisions, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
+  const handleSelectTipeMode = (value) => {
+    setTipeMode(value);
+    // Ganti basis_pencatatan otomatis ke default preset -- tapi tetap bisa
+    // ditimpa manual (mis. tipe kustom yang datanya justru berbasis lembar).
+    const preset = TIPE_PRESETS.find((t) => t.value === value);
+    if (preset) setForm((f) => ({ ...f, basis_pencatatan: preset.basis }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const tipe = tipeMode === TIPE_CUSTOM ? tipeCustom.trim() : tipeMode;
+    if (!tipe) {
+      setErr('Tipe mesin wajib diisi (pilih preset atau tulis tipe baru).');
+      return;
+    }
     setSaving(true);
     setErr('');
     try {
       const payload = {
         ...form,
+        tipe,
         divisi: form.divisi || null,
         ambang_servis_klik: form.ambang_servis_klik ? Number(form.ambang_servis_klik) : null,
       };
@@ -71,14 +99,40 @@ function MesinFormModal({ mesin, divisions, onClose, onSaved }) {
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">Tipe Mesin *</label>
             <select
-              value={form.tipe}
-              onChange={(e) => setForm({ ...form, tipe: e.target.value })}
+              value={tipeMode}
+              onChange={(e) => handleSelectTipeMode(e.target.value)}
               className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
-              {TIPE_OPTIONS.map((t) => (
+              {TIPE_PRESETS.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
+              <option value={TIPE_CUSTOM}>+ Tipe Baru (tulis manual)...</option>
             </select>
+            {tipeMode === TIPE_CUSTOM && (
+              <input
+                type="text"
+                required
+                value={tipeCustom}
+                onChange={(e) => setTipeCustom(e.target.value)}
+                placeholder="Mis: Mesin Laminating"
+                className="mt-2 w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            )}
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Basis Pencatatan Penggunaan *</label>
+            <select
+              value={form.basis_pencatatan}
+              onChange={(e) => setForm({ ...form, basis_pencatatan: e.target.value })}
+              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              {BASIS_OPTIONS.map((b) => (
+                <option key={b.value} value={b.value}>{b.label}</option>
+              ))}
+            </select>
+            <p className="mt-1 text-[10px] text-slate-400">
+              Menentukan field yang muncul untuk staff saat mencatat penggunaan mesin ini.
+            </p>
           </div>
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">Divisi</label>
@@ -302,7 +356,219 @@ function MaintenanceModal({ mesin, onClose, onSaved }) {
   );
 }
 
-export default function MesinPanel({ divisions }) {
+function formatDetailPenggunaan(entry) {
+  const basis = entry.mesin_basis_pencatatan;
+  if (basis === 'meter') {
+    const meter = entry.panjang_bahan_meter != null ? Number(entry.panjang_bahan_meter).toLocaleString('id-ID', { maximumFractionDigits: 2 }) : '0';
+    return `${meter} m${entry.jenis_bahan ? ` — ${entry.jenis_bahan}` : ''}`;
+  }
+  if (basis === 'lainnya') {
+    return entry.catatan_konfirmasi || '-';
+  }
+  const parts = [];
+  if (entry.lembar_color) parts.push(`${entry.lembar_color} color`);
+  if (entry.lembar_mono) parts.push(`${entry.lembar_mono} mono`);
+  return parts.length > 0 ? parts.join(' / ') : '0';
+}
+
+function LogPenggunaanSection({ mesinList, staffList }) {
+  const [rows, setRows] = useState([]);
+  const [ringkasan, setRingkasan] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filterMesin, setFilterMesin] = useState('');
+  const [filterStaff, setFilterStaff] = useState('');
+  const [filterMulai, setFilterMulai] = useState('');
+  const [filterAkhir, setFilterAkhir] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+
+  const mesinById = Object.fromEntries((mesinList || []).map((m) => [String(m.id), m]));
+
+  const buildParams = (extra = {}) => {
+    const params = { ...extra };
+    if (filterMesin) params.mesin = filterMesin;
+    if (filterStaff) params.operator = filterStaff;
+    if (filterMulai) params.tanggal_mulai = filterMulai;
+    if (filterAkhir) params.tanggal_akhir = filterAkhir;
+    return params;
+  };
+
+  const fetchLog = async () => {
+    setLoading(true);
+    try {
+      const [logRes, ringkasanRes] = await Promise.all([
+        apiClient.get('/penggunaan-mesin/', { params: buildParams({ page, page_size: 20 }) }),
+        apiClient.get('/penggunaan-mesin/ringkasan-staff/', { params: buildParams() }),
+      ]);
+      const logData = logRes.data;
+      const list = Array.isArray(logData) ? logData : (logData?.results || []);
+      // Lampirkan basis_pencatatan mesin ke tiap baris (dibutuhkan
+      // formatDetailPenggunaan) -- serializer log tidak menyertakan field
+      // mesin lain selain nama, jadi di-join di sini dari mesinList yang
+      // sudah dimuat panel utama.
+      const enriched = list.map((row) => ({
+        ...row,
+        mesin_basis_pencatatan: mesinById[String(row.mesin)]?.basis_pencatatan,
+      }));
+      setRows(enriched);
+      if (!Array.isArray(logData)) {
+        setTotalItems(logData.count ?? list.length);
+        setTotalPages(Math.max(1, Math.ceil((logData.count ?? list.length) / 20)));
+      } else {
+        setTotalItems(list.length);
+        setTotalPages(1);
+      }
+      setRingkasan(Array.isArray(ringkasanRes.data) ? ringkasanRes.data : []);
+    } catch (error) {
+      console.error('Gagal memuat log penggunaan mesin:', error);
+      setRows([]);
+      setRingkasan([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLog();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterMesin, filterStaff, filterMulai, filterAkhir, page, mesinList.length]);
+
+  useEffect(() => { setPage(1); }, [filterMesin, filterStaff, filterMulai, filterAkhir]);
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-white p-4 border border-slate-200 rounded-xl shadow-sm">
+        <h3 className="text-sm font-extrabold text-slate-800">Log Penggunaan</h3>
+        <p className="text-[11px] text-slate-400 mt-0.5">
+          Riwayat pencatatan pemakaian mesin dari semua staff -- filter per mesin/staff untuk pertanggungjawaban.
+        </p>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3">
+          <select
+            value={filterMesin}
+            onChange={(e) => setFilterMesin(e.target.value)}
+            className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="">Semua Mesin</option>
+            {(mesinList || []).map((m) => (
+              <option key={m.id} value={m.id}>{m.nama}</option>
+            ))}
+          </select>
+          <select
+            value={filterStaff}
+            onChange={(e) => setFilterStaff(e.target.value)}
+            className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="">Semua Staff</option>
+            {(staffList || []).map((s) => (
+              <option key={s.id} value={s.id}>{s.username}</option>
+            ))}
+          </select>
+          <input
+            type="date"
+            value={filterMulai}
+            onChange={(e) => setFilterMulai(e.target.value)}
+            className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+          <input
+            type="date"
+            value={filterAkhir}
+            onChange={(e) => setFilterAkhir(e.target.value)}
+            className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+        </div>
+      </div>
+
+      {ringkasan.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {ringkasan.map((r) => (
+            <div key={r.operator_id} className="bg-white border border-slate-200 rounded-lg p-3">
+              <p className="text-xs font-extrabold text-slate-800 truncate">{r.operator_nama}</p>
+              <p className="text-[10px] text-slate-400 mt-0.5">{r.jumlah_entri} entri</p>
+              <div className="flex gap-3 mt-1.5 text-[10px] font-bold text-slate-600">
+                {r.total_klik > 0 && <span>{r.total_klik.toLocaleString()} klik</span>}
+                {r.total_meter > 0 && <span>{r.total_meter.toLocaleString('id-ID')} m</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+        {loading ? (
+          <div className="text-center text-slate-400 text-xs py-10">Memuat log...</div>
+        ) : rows.length === 0 ? (
+          <div className="text-center text-slate-400 text-xs italic py-10">Belum ada catatan penggunaan untuk filter ini.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500">
+                <tr>
+                  <th className="px-3 py-2.5">Tanggal</th>
+                  <th className="px-3 py-2.5">Mesin</th>
+                  <th className="px-3 py-2.5">Staff</th>
+                  <th className="px-3 py-2.5">Job</th>
+                  <th className="px-3 py-2.5">Detail Pemakaian</th>
+                  <th className="px-3 py-2.5">Kondisi</th>
+                  <th className="px-3 py-2.5">Catatan</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {rows.map((row) => (
+                  <tr key={row.id} className="hover:bg-slate-50/60">
+                    <td className="px-3 py-2.5 whitespace-nowrap text-slate-600">
+                      {new Date(row.waktu).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </td>
+                    <td className="px-3 py-2.5 font-semibold text-slate-800">{row.mesin_nama}</td>
+                    <td className="px-3 py-2.5 text-slate-700">{row.operator_nama || '-'}</td>
+                    <td className="px-3 py-2.5 text-slate-500">{row.job_nomor_sumber || '-'}</td>
+                    <td className="px-3 py-2.5 font-semibold text-slate-800">{formatDetailPenggunaan(row)}</td>
+                    <td className="px-3 py-2.5">
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${row.kondisi_hasil === 'kendala' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                        {row.kondisi_hasil === 'kendala' ? 'Ada Kendala' : 'OK'}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-slate-500 max-w-[200px] truncate" title={row.catatan_konfirmasi}>
+                      {row.catatan_konfirmasi || '-'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-3 py-2.5 border-t border-slate-100 text-[11px] font-bold text-slate-500">
+            <span>Total {totalItems} entri</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="px-2 py-1 border border-slate-200 rounded disabled:opacity-30 cursor-pointer"
+              >
+                &lt;
+              </button>
+              <span>{page}/{totalPages}</span>
+              <button
+                type="button"
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                className="px-2 py-1 border border-slate-200 rounded disabled:opacity-30 cursor-pointer"
+              >
+                &gt;
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function MesinPanel({ divisions, staffList }) {
   const [mesinList, setMesinList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingMesin, setEditingMesin] = useState(null);
@@ -387,18 +653,35 @@ export default function MesinPanel({ divisions }) {
               </div>
 
               <div className="grid grid-cols-2 gap-2 bg-slate-50/60 border border-slate-150 rounded-lg p-2.5 text-center">
-                <div>
-                  <div className="text-xs font-black text-slate-800">{(m.total_klik || 0).toLocaleString()}</div>
-                  <div className="text-[8.5px] font-extrabold text-slate-400 uppercase tracking-wider mt-0.5">
-                    Total Klik
+                {m.basis_pencatatan === 'meter' ? (
+                  <div className="col-span-2">
+                    <div className="text-xs font-black text-slate-800">
+                      {Number(m.total_meter || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 })} m
+                    </div>
+                    <div className="text-[8.5px] font-extrabold text-slate-400 uppercase tracking-wider mt-0.5">
+                      Total Pemakaian (Meter)
+                    </div>
                   </div>
-                </div>
-                <div className="border-l border-slate-200">
-                  <div className="text-xs font-black text-slate-800">{(m.klik_sejak_servis_terakhir || 0).toLocaleString()}</div>
-                  <div className="text-[8.5px] font-extrabold text-slate-400 uppercase tracking-wider mt-0.5">
-                    Sejak Servis
+                ) : m.basis_pencatatan === 'lainnya' ? (
+                  <div className="col-span-2 text-[10px] text-slate-400 italic py-1">
+                    Basis pencatatan manual — lihat Log Penggunaan untuk detail.
                   </div>
-                </div>
+                ) : (
+                  <>
+                    <div>
+                      <div className="text-xs font-black text-slate-800">{(m.total_klik || 0).toLocaleString()}</div>
+                      <div className="text-[8.5px] font-extrabold text-slate-400 uppercase tracking-wider mt-0.5">
+                        Total Klik
+                      </div>
+                    </div>
+                    <div className="border-l border-slate-200">
+                      <div className="text-xs font-black text-slate-800">{(m.klik_sejak_servis_terakhir || 0).toLocaleString()}</div>
+                      <div className="text-[8.5px] font-extrabold text-slate-400 uppercase tracking-wider mt-0.5">
+                        Sejak Servis
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
 
               {m.perlu_servis && (
@@ -433,6 +716,8 @@ export default function MesinPanel({ divisions }) {
           ))}
         </div>
       )}
+
+      <LogPenggunaanSection mesinList={mesinList} staffList={staffList} />
 
       {showAddModal && (
         <MesinFormModal

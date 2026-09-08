@@ -1,13 +1,16 @@
 """Penggunaan Mesin -- Master Mesin, Log Penggunaan, Riwayat Maintenance
 (lihat api/machine_models.py untuk konteks lengkap fitur ini)."""
+from django.db.models import Count, Sum
 from rest_framework import viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, BasePermission, SAFE_METHODS
+from rest_framework.response import Response
 
 from ..models import Mesin, PenggunaanMesin, MaintenanceMesin
 from ..serializers import (
     MesinSerializer, PenggunaanMesinSerializer, MaintenanceMesinSerializer,
 )
-from ..permissions import IsOwnerManagerAdminOrReadOnly
+from ..permissions import IsOwnerManagerAdminOrReadOnly, IsOwnerOrManager
 
 
 class IsOwnerManagerAdminOrOwnEntryReadCreate(BasePermission):
@@ -56,6 +59,12 @@ class PenggunaanMesinViewSet(viewsets.ModelViewSet):
         job_id = self.request.query_params.get('job')
         if job_id:
             queryset = queryset.filter(job_id=job_id)
+        # ?operator= -- filter per staff, dasar tab "Log Penggunaan Mesin"
+        # Owner/Manager (bisa lihat & pertanggungjawabkan per orang) dan juga
+        # dipakai laporan riwayat pekerjaan staff sendiri (fitur 2026-09-09).
+        operator_id = self.request.query_params.get('operator')
+        if operator_id:
+            queryset = queryset.filter(operator_id=operator_id)
         tanggal_mulai = self.request.query_params.get('tanggal_mulai')
         tanggal_akhir = self.request.query_params.get('tanggal_akhir')
         if tanggal_mulai:
@@ -63,6 +72,44 @@ class PenggunaanMesinViewSet(viewsets.ModelViewSet):
         if tanggal_akhir:
             queryset = queryset.filter(waktu__date__lte=tanggal_akhir)
         return queryset
+
+    @action(detail=False, methods=['get'], url_path='ringkasan-staff', permission_classes=[IsOwnerOrManager])
+    def ringkasan_staff(self, request):
+        """GET /penggunaan-mesin/ringkasan-staff/?mesin=&tanggal_mulai=&tanggal_akhir=
+
+        Total pemakaian per staff (operator) dalam rentang tanggal -- dasar
+        panel "Ringkasan per Staff" di Penggunaan Mesin (Owner/Manager),
+        supaya totalnya akurat dari SELURUH data yang match filter, bukan
+        cuma dijumlah dari 1 halaman tabel yang mungkin terpotong paginasi.
+        """
+        queryset = self.get_queryset().exclude(operator__isnull=True)
+        rows = (
+            queryset
+            .values('operator_id', 'operator__username', 'operator__first_name', 'operator__last_name')
+            .annotate(
+                total_lembar_color=Sum('lembar_color'),
+                total_lembar_mono=Sum('lembar_mono'),
+                total_meter=Sum('panjang_bahan_meter'),
+                jumlah_entri=Count('id'),
+            )
+            .order_by('operator__username')
+        )
+        result = [
+            {
+                'operator_id': row['operator_id'],
+                'operator_nama': (
+                    f"{row['operator__first_name']} {row['operator__last_name']}".strip()
+                    or row['operator__username']
+                ),
+                'total_klik': (row['total_lembar_color'] or 0) + (row['total_lembar_mono'] or 0),
+                'total_lembar_color': row['total_lembar_color'] or 0,
+                'total_lembar_mono': row['total_lembar_mono'] or 0,
+                'total_meter': float(row['total_meter'] or 0),
+                'jumlah_entri': row['jumlah_entri'],
+            }
+            for row in rows
+        ]
+        return Response(result)
 
 
 class MaintenanceMesinViewSet(viewsets.ModelViewSet):
