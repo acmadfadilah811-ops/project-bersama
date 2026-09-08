@@ -34,6 +34,7 @@ def hitung_total_diskon_resi(sale):
         sale.diskon_promo or 0,
         sale.diskon_penjualan or 0,
         sale.diskon_loyalti or 0,
+        sale.diskon_tipe_pelanggan or 0,
     ))
 
 

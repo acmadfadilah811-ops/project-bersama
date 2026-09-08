@@ -426,7 +426,7 @@ function CustomerSupplierInner() {
   }, [filteredNotes, notePage, notePageSize]);
 
   // ── Tipe Pelanggan (CustomerGroup) ───────────────────────────────
-  const [groupForm, setGroupForm] = useState({ nama: '', diskon_persen: '' });
+  const [groupForm, setGroupForm] = useState({ nama: '', tipe_diskon: 'persen', diskon_persen: '', diskon_nominal: '' });
   const [savingGroup, setSavingGroup] = useState(false);
   const [showGroupModal, setShowGroupModal] = useState(false);
   const [editingGroup, setEditingGroup] = useState(null);
@@ -445,18 +445,18 @@ function CustomerSupplierInner() {
     setSavingGroup(true);
     setError(null);
     try {
+      const payload = {
+        nama: groupForm.nama.trim(),
+        tipe_diskon: groupForm.tipe_diskon,
+        diskon_persen: groupForm.tipe_diskon === 'persen' ? (parseFloat(groupForm.diskon_persen) || 0) : 0,
+        diskon_nominal: groupForm.tipe_diskon === 'nominal' ? (parseInt(groupForm.diskon_nominal, 10) || 0) : 0,
+      };
       if (editingGroup) {
-        await apiClient.put(`/customer-groups/${editingGroup.id}/`, {
-          nama: groupForm.nama.trim(),
-          diskon_persen: parseFloat(groupForm.diskon_persen) || 0,
-        });
+        await apiClient.put(`/customer-groups/${editingGroup.id}/`, payload);
       } else {
-        await apiClient.post('/customer-groups/', {
-          nama: groupForm.nama.trim(),
-          diskon_persen: parseFloat(groupForm.diskon_persen) || 0,
-        });
+        await apiClient.post('/customer-groups/', payload);
       }
-      setGroupForm({ nama: '', diskon_persen: '' });
+      setGroupForm({ nama: '', tipe_diskon: 'persen', diskon_persen: '', diskon_nominal: '' });
       setEditingGroup(null);
       setShowGroupModal(false);
       fetchGroups();
@@ -1191,7 +1191,7 @@ function CustomerSupplierInner() {
                   type="button"
                   onClick={() => {
                     setEditingGroup(null);
-                    setGroupForm({ nama: '', diskon_persen: '' });
+                    setGroupForm({ nama: '', tipe_diskon: 'persen', diskon_persen: '', diskon_nominal: '' });
                     setShowGroupModal(true);
                   }}
                   style={{
@@ -1244,6 +1244,13 @@ function CustomerSupplierInner() {
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                          {(grp.tipe_diskon === 'nominal' ? Number(grp.diskon_nominal) : Number(grp.diskon_persen)) > 0 && (
+                            <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#15803d', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '999px', padding: '3px 10px' }}>
+                              {grp.tipe_diskon === 'nominal'
+                                ? `Diskon Rp${Number(grp.diskon_nominal).toLocaleString('id-ID')}`
+                                : `Diskon ${grp.diskon_persen}%`}
+                            </span>
+                          )}
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '13px' }}>
                             <User size={15} style={{ color: '#94a3b8' }} />
                             <span style={{ fontWeight: '500' }}>{count}</span>
@@ -1272,7 +1279,12 @@ function CustomerSupplierInner() {
                                     type="button"
                                     onClick={() => {
                                       setEditingGroup(grp);
-                                      setGroupForm({ nama: grp.nama, diskon_persen: String(grp.diskon_persen) });
+                                      setGroupForm({
+                                        nama: grp.nama,
+                                        tipe_diskon: grp.tipe_diskon || 'persen',
+                                        diskon_persen: String(grp.diskon_persen ?? ''),
+                                        diskon_nominal: String(grp.diskon_nominal ?? ''),
+                                      });
                                       setShowGroupModal(true);
                                       setActiveGroupDropdownId(null);
                                     }}
@@ -1426,14 +1438,37 @@ function CustomerSupplierInner() {
                         />
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#475569' }}>Diskon Khusus (%)</label>
-                        <input
-                          type="number"
-                          value={groupForm.diskon_persen}
-                          onChange={e => setGroupForm(p => ({ ...p, diskon_persen: e.target.value }))}
-                          placeholder="0"
-                          style={{ border: '1px solid #cbd5e1', borderRadius: '6px', height: '38px', padding: '0 12px', fontSize: '13px' }}
-                        />
+                        <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#475569' }}>Diskon Khusus</label>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <select
+                            value={groupForm.tipe_diskon}
+                            onChange={e => setGroupForm(p => ({ ...p, tipe_diskon: e.target.value }))}
+                            style={{ border: '1px solid #cbd5e1', borderRadius: '6px', height: '38px', padding: '0 8px', fontSize: '13px', background: '#fff', cursor: 'pointer' }}
+                          >
+                            <option value="persen">Persentase (%)</option>
+                            <option value="nominal">Nominal (Rp)</option>
+                          </select>
+                          {groupForm.tipe_diskon === 'nominal' ? (
+                            <input
+                              type="number"
+                              value={groupForm.diskon_nominal}
+                              onChange={e => setGroupForm(p => ({ ...p, diskon_nominal: e.target.value }))}
+                              placeholder="0"
+                              style={{ flex: 1, border: '1px solid #cbd5e1', borderRadius: '6px', height: '38px', padding: '0 12px', fontSize: '13px' }}
+                            />
+                          ) : (
+                            <input
+                              type="number"
+                              value={groupForm.diskon_persen}
+                              onChange={e => setGroupForm(p => ({ ...p, diskon_persen: e.target.value }))}
+                              placeholder="0"
+                              style={{ flex: 1, border: '1px solid #cbd5e1', borderRadius: '6px', height: '38px', padding: '0 12px', fontSize: '13px' }}
+                            />
+                          )}
+                        </div>
+                        <p style={{ fontSize: '11px', color: '#94a3b8', margin: 0 }}>
+                          Otomatis diterapkan ke transaksi pelanggan tipe ini, baik di Kasir POS maupun Order (Antrean Online &amp; Offline).
+                        </p>
                       </div>
 
                       <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px' }}>

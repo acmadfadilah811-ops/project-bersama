@@ -127,8 +127,11 @@ def create_sale(*, user, data):
         # tanpa tipe, lihat CustomerEditModal.jsx). Tanpa tipe pelanggan
         # tertaut = None, jatuh ke tier Umum seperti sebelumnya.
         customer_group_nama = None
+        customer_group = None
         if customer and customer.customer_id and customer.customer.customer_group_id:
             customer_group_nama = customer.customer.customer_group.nama
+            group_candidate = customer.customer.customer_group
+            customer_group = group_candidate if group_candidate.is_active else None
 
         prepared = []
         subtotal = Decimal('0')
@@ -431,9 +434,16 @@ def create_sale(*, user, data):
             loyalty_discount = loyalty_svc.compute_redemption_discount(loyalty_obj, subtotal)
 
         discount = money(subtotal * discount_pct / Decimal('100'))
-        taxable = max(Decimal('0'), subtotal - discount - coupon_discount - sales_discount_amount - loyalty_discount - promo_discount)
+        # Diskon Khusus Tipe Pelanggan -- otomatis, SELALU dievaluasi &
+        # menumpuk dengan diskon lain (sama seperti Promosi POS di atas),
+        # karena ini hak pelanggan berdasarkan tipenya, bukan pilihan
+        # promosi kasir (bug ditemukan audit 2026-09-08: field ini
+        # sebelumnya tidak pernah dipakai sama sekali di checkout).
+        customer_group_discount = Decimal(str(customer_group.hitung_diskon(subtotal))) if customer_group else Decimal('0')
+        total_diskon = discount + coupon_discount + sales_discount_amount + loyalty_discount + promo_discount + customer_group_discount
+        taxable = max(Decimal('0'), subtotal - total_diskon)
         tax = money(taxable * tax_pct / Decimal('100'))
-        total = money(max(Decimal('0'), subtotal - discount - coupon_discount - sales_discount_amount - loyalty_discount - promo_discount + tax))
+        total = money(max(Decimal('0'), subtotal - total_diskon + tax))
         if status_val == 'paid' and paid < total:
             raise ValidationError({'error': 'Jumlah pembayaran belum mencukupi total server.'})
         client_total = data.get('total')
@@ -446,6 +456,7 @@ def create_sale(*, user, data):
             sales_discount=sales_discount_rule, diskon_penjualan=sales_discount_amount,
             diskon_promo=promo_discount,
             loyalty_redemption=loyalty_obj, diskon_loyalti=loyalty_discount,
+            diskon_tipe_pelanggan=customer_group_discount,
             pajak=tax, total=total,
             metode_bayar=str(data.get('metode_bayar') or 'Cash')[:50], dibayar=paid,
             kembalian=money(max(Decimal('0'), paid-total)),

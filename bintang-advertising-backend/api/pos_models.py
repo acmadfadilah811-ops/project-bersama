@@ -73,6 +73,10 @@ class POSSale(models.Model):
         related_name='pos_sales', help_text='Opsi penukaran poin yang dipakai di transaksi ini',
     )
     diskon_loyalti = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    # Diskon Khusus Tipe Pelanggan (CustomerGroup.hitung_diskon) -- otomatis,
+    # SELALU dievaluasi & menumpuk dengan diskon lain (sama seperti
+    # diskon_promo), lihat api/services/customer_group_discount.py.
+    diskon_tipe_pelanggan = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     poin_ditebus = models.IntegerField(default=0, help_text='Poin yang ditukar pada transaksi ini')
     poin_didapat = models.IntegerField(default=0, help_text='Poin yang diperoleh dari transaksi ini')
 

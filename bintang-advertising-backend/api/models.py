@@ -191,6 +191,10 @@ class Order(models.Model):
     kupon = models.ForeignKey('DiscountCoupon', on_delete=models.SET_NULL, null=True, blank=True, related_name='orders')
     diskon_kupon = models.IntegerField(default=0, help_text="Potongan nominal dari kupon")
     diskon_otomatis = models.IntegerField(default=0, help_text="Potongan nominal dari Diskon Penjualan (Toko Online)")
+    diskon_tipe_pelanggan = models.IntegerField(
+        default=0,
+        help_text="Potongan nominal otomatis dari Diskon Khusus Tipe Pelanggan (CustomerGroup), dihitung ulang tiap save().",
+    )
     # Pilihan eksplisit kasir saat membuat order — menggantikan perbandingan
     # otomatis kupon-vs-diskon-penjualan yang lama (silent best-of), supaya
     # kasir tahu persis mekanisme mana yang dipakai (meminimalisir kesalahan).
@@ -227,6 +231,21 @@ class Order(models.Model):
     catatan_footer = models.TextField(null=True, blank=True, default="Terima kasih atas pesanan Anda", help_text="Catatan di bagian bawah cetakan invoice")
     referensi_pembayaran = models.CharField(max_length=255, blank=True, default="", help_text="Referensi pembayaran dari Paypal/Bank (opsional, diisi manual saat mencatat pembayaran)")
 
+    def _hitung_diskon_tipe_pelanggan(self, subtotal):
+        """Diskon Khusus Tipe Pelanggan (CustomerGroup.hitung_diskon), dari
+        grup pelanggan yang tertaut lewat nomor_wa. Dievaluasi ulang tiap
+        save() (bukan cuma sekali di create) supaya order yang baru
+        ditautkan ke pelanggan ber-grup setelah dibuat pun ikut kena diskon."""
+        try:
+            from .services.customer_group_discount import resolve_customer_group_by_nomor_wa
+            group = resolve_customer_group_by_nomor_wa(self.nomor_wa)
+            if not group:
+                return 0
+            return group.hitung_diskon(subtotal)
+        except Exception as e:
+            logger.warning(f"Failed to resolve customer group discount for order {self.pk}: {e}")
+            return 0
+
     def update_totals(self):
         """Method bantuan untuk menghitung ulang total dan sisa tagihan dari item-itemnya."""
         subtotal = sum(item.harga_jual for item in self.items.all())
@@ -240,12 +259,14 @@ class Order(models.Model):
         except Exception:
             pass
         self.total_harga -= int(self.diskon_otomatis or 0)
+        self.diskon_tipe_pelanggan = self._hitung_diskon_tipe_pelanggan(subtotal)
+        self.total_harga -= self.diskon_tipe_pelanggan
         self.sisa_tagihan = max(0, self.total_harga - self.dp_dibayar)
         # Jangan pakai self.save() di sini jika dipanggil dari signal/save, agar tidak infinite loop
 
     def save(self, *args, **kwargs):
         from django.db import transaction
-        
+
         with transaction.atomic():
             # Hitung ulang total_harga dari item-itemnya secara dinamis jika order sudah ada
             if self.pk:
@@ -261,6 +282,8 @@ class Order(models.Model):
                     except Exception:
                         pass
                     self.total_harga -= int(self.diskon_otomatis or 0)
+                    self.diskon_tipe_pelanggan = self._hitung_diskon_tipe_pelanggan(subtotal)
+                    self.total_harga -= self.diskon_tipe_pelanggan
                 except Exception as e:
                     logger.warning(f"Failed to calculate subtotal/potongan on order save for {self.pk}: {e}")
 
@@ -691,11 +714,15 @@ class OrderItem(models.Model):
                         total_harga -= int(coupon_usage.nilai_diskon)
                 except Exception:
                     pass
+                total_harga -= int(order.diskon_otomatis or 0)
+                diskon_tipe_pelanggan = order._hitung_diskon_tipe_pelanggan(subtotal)
+                total_harga -= diskon_tipe_pelanggan
                 sisa_tagihan = max(0, total_harga - order.dp_dibayar)
                 # Pakai queryset update agar tidak trigger Order.save() sama sekali
                 Order.objects.filter(pk=order.pk).update(
                     total_harga=total_harga,
                     sisa_tagihan=sisa_tagihan,
+                    diskon_tipe_pelanggan=diskon_tipe_pelanggan,
                 )
                 sync_contact_for_whatsapp(order.nomor_wa)
             except Exception as e:
@@ -725,10 +752,27 @@ class OrderItem(models.Model):
                 subtotal = order.items.aggregate(total=Sum('harga_jual'))['total'] or 0
                 potongan = int(subtotal * (order.diskon_persen / 100))
                 total_harga = subtotal - potongan
+                # Sebelumnya blok ini TIDAK subtract diskon_otomatis maupun
+                # kupon sama sekali (beda dari OrderItem.save()/Order.save())
+                # -- hapus 1 item dari order yang sudah punya Diskon
+                # Penjualan/kupon aktif diam-diam menghilangkan diskon itu
+                # dari total (bug ditemukan audit 2026-09-08, sekaligus
+                # dengan penambahan Diskon Tipe Pelanggan di bawah).
+                try:
+                    from api.marketing_models import CouponUsage
+                    coupon_usage = CouponUsage.objects.filter(order=order).first()
+                    if coupon_usage:
+                        total_harga -= int(coupon_usage.nilai_diskon)
+                except Exception:
+                    pass
+                total_harga -= int(order.diskon_otomatis or 0)
+                diskon_tipe_pelanggan = order._hitung_diskon_tipe_pelanggan(subtotal)
+                total_harga -= diskon_tipe_pelanggan
                 sisa_tagihan = max(0, total_harga - order.dp_dibayar)
                 Order.objects.filter(pk=order.pk).update(
                     total_harga=total_harga,
                     sisa_tagihan=sisa_tagihan,
+                    diskon_tipe_pelanggan=diskon_tipe_pelanggan,
                 )
                 sync_contact_for_whatsapp(order.nomor_wa)
             except Exception as e:

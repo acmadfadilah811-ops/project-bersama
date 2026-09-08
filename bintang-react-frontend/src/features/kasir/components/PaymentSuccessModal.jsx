@@ -23,6 +23,7 @@ const toReceipt = (transactionData) => {
     transactionData.diskon_penjualan,
     transactionData.diskon_otomatis,
     transactionData.diskon_loyalti,
+    transactionData.diskon_tipe_pelanggan,
   ].reduce((sum, value) => sum + Number(value || 0), 0);
   return {
     ...transactionData,

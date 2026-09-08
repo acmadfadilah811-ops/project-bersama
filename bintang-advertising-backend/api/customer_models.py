@@ -4,9 +4,22 @@ from django.db import models
 
 class CustomerGroup(models.Model):
     """Tipe Pelanggan (Pelanggan & Supplier > Tipe Pelanggan) — pengelompokan pelanggan
-    (mis. Reseller, VIP) beserta diskon khusus per grup."""
+    (mis. Reseller, VIP) beserta diskon khusus per grup.
+
+    Diskon Khusus otomatis diterapkan saat checkout Order & POS berdasarkan
+    tipe pelanggan yang tertaut (lihat `hitung_diskon()`, dipakai
+    api/pos_services.py dan Order.save()/update_totals() di api/models.py) --
+    sebelumnya field ini tersimpan & tampil di form tapi TIDAK PERNAH benar-
+    benar dipakai di mana pun (bug ditemukan audit 2026-09-08)."""
+    TIPE_DISKON_CHOICES = [
+        ('persen', 'Persentase (%)'),
+        ('nominal', 'Nominal (Rp)'),
+    ]
+
     nama = models.CharField(max_length=100, unique=True)
-    diskon_persen = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    tipe_diskon = models.CharField(max_length=10, choices=TIPE_DISKON_CHOICES, default='persen')
+    diskon_persen = models.DecimalField(max_digits=5, decimal_places=2, default=0, help_text="Dipakai kalau tipe_diskon='persen'.")
+    diskon_nominal = models.IntegerField(default=0, help_text="Dipakai kalau tipe_diskon='nominal'.")
     is_active = models.BooleanField(default=True)
     dibuat_oleh = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='customer_groups')
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
@@ -16,6 +29,17 @@ class CustomerGroup(models.Model):
 
     def __str__(self):
         return self.nama
+
+    def hitung_diskon(self, subtotal):
+        """Nominal diskon (Rp) untuk `subtotal` ini, sesuai tipe_diskon. Tidak
+        pernah melebihi subtotal (mencegah total transaksi jadi negatif)."""
+        if not self.is_active or not subtotal or subtotal <= 0:
+            return 0
+        if self.tipe_diskon == 'nominal':
+            nilai = int(self.diskon_nominal or 0)
+        else:
+            nilai = int(round(float(subtotal) * float(self.diskon_persen or 0) / 100.0))
+        return max(0, min(nilai, int(subtotal)))
 
 
 class Customer(models.Model):
