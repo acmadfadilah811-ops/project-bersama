@@ -28,12 +28,19 @@ export default function RincianMutasiAkun({
   // Period / Date States inside detail view
   // Bila dibuka dari laporan, pertahankan tepat rentang laporan tersebut agar
   // saldo awal + mutasi menjelaskan nominal yang diklik. Tanpa rentang awal,
-  // perilaku lama tetap menggunakan mode Bulan.
+  // perilaku lama tetap menggunakan mode Bulan -- default ke BULAN BERJALAN
+  // (bukan tanggal tetap), supaya klik akun dari Daftar Akun kapan pun tetap
+  // menampilkan mutasi bulan sekarang.
+  const today = new Date();
+  const defaultMonthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+  const defaultDateFrom = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
+  const defaultDateTo = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(defaultMonthEnd).padStart(2, '0')}`;
+
   const [dateMode, setDateMode] = useState(initialDateFrom || initialDateTo ? 'Sesuaikan' : 'Bulan');
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 6, 1)); // Default July 2026
-  const [currentYear, setCurrentYear] = useState(2026);
-  const [customDateFrom] = useState(initialDateFrom || '2026-07-01');
-  const [customDateTo] = useState(initialDateTo || '2026-07-31');
+  const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
+  const [currentYear, setCurrentYear] = useState(today.getFullYear());
+  const [customDateFrom] = useState(initialDateFrom || defaultDateFrom);
+  const [customDateTo] = useState(initialDateTo || defaultDateTo);
   const [showMonthPicker, setShowMonthPicker] = useState(false);
 
   // Filter and search states (Screenshot 2)

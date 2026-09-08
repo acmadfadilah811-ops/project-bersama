@@ -21,8 +21,22 @@ export default function RincianMutasiKasBank({
   const [saldoAwal, setSaldoAwal] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  // Period States
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 6, 1)); // Default July 2026
+  // Period States -- ambil bulan dari initialDateFrom (dikirim caller, mis.
+  // bulan yang sedang dilihat di List Kas & Bank saat akun diklik) kalau ada,
+  // kalau tidak default ke bulan berjalan. Sebelumnya diam-diam mengabaikan
+  // initialDateFrom/initialDateTo dan selalu pakai tanggal tetap Juli 2026.
+  const [currentDate, setCurrentDate] = useState(() => {
+    if (initialDateFrom) {
+      const parts = initialDateFrom.split('-');
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      if (parts.length === 3 && !Number.isNaN(year) && !Number.isNaN(month)) {
+        return new Date(year, month, 1);
+      }
+    }
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), 1);
+  });
   const [showMonthPicker, setShowMonthPicker] = useState(false);
 
   // Filter & Search States

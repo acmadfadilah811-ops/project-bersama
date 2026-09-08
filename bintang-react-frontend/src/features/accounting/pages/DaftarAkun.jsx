@@ -14,27 +14,15 @@ export default function DaftarAkun() {
   const [loading, setLoading] = useState(true);
   const [viewingAccountId, setViewingAccountId] = useState(null);
   
-  // Date/Period Navigation
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 6, 1)); // Default July 2026
+  // Date/Period Navigation -- default ke BULAN BERJALAN. Sebelumnya di-override
+  // pakai AccountingSettings.accounting_start_date (tanggal MULAI akuntansi
+  // dipakai, bukan "bulan yang mau dilihat") -- salah konsep, karena itu
+  // selalu menampilkan bulan lama (mis. Juli, bulan sistem ini mulai dipakai)
+  // alih-alih bulan sekarang setiap kali halaman dibuka.
+  const today = new Date();
+  const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [showMonthPicker, setShowMonthPicker] = useState(false);
 
-  // Ambil start date dari settings akuntansi untuk menyesuaikan bulan default secara dinamis
-  useEffect(() => {
-    apiClient
-      .get('/accounting/settings/')
-      .then((res) => {
-        if (res.data?.accounting_start_date) {
-          const parts = res.data.accounting_start_date.split('-');
-          if (parts.length === 3) {
-            const year = parseInt(parts[0], 10);
-            const month = parseInt(parts[1], 10) - 1; // 0-indexed
-            setCurrentDate(new Date(year, month, 1));
-          }
-        }
-      })
-      .catch(() => {});
-  }, []);
-  
   // Alert banner states
   const [showAlert, setShowAlert] = useState(() => {
     return localStorage.getItem('hide_purchase_alert') !== 'true';

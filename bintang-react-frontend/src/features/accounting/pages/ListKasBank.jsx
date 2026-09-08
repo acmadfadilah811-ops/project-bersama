@@ -20,9 +20,12 @@ export default function ListKasBank({ onToggleSidebar, initialViewState = 'list'
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // List View States
+  // List View States -- default ke bulan berjalan (bukan tanggal tetap).
   const [accounts, setAccounts] = useState([]);
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 6, 1)); // Default July 2026
+  const [currentDate, setCurrentDate] = useState(() => {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), 1);
+  });
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   
   // Search & Filter Modal States
