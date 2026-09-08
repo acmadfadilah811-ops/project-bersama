@@ -35,6 +35,10 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
   const [incentive, setIncentive] = useState(job?.insentif || 0);
   const [materialUsage, setMaterialUsage] = useState([]);
   const [inventoryItems, setInventoryItems] = useState([]);
+  // Bahan/resep (BOM) produk job ini -- dropdown "Pilih Bahan" jadi otomatis
+  // deteksi bahan yang memang terdaftar di resep produk, bukan cuma daftar
+  // generik Master Inventory (instruksi user 2026-09-09).
+  const [bomItems, setBomItems] = useState([]);
   const [historyNotes, setHistoryNotes] = useState([]);
   const [updating, setUpdating] = useState(false);
   const [staffNote, setStaffNote] = useState('');
@@ -160,6 +164,29 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
       .then((res) => setInventoryItems(res.data))
       .catch((err) => console.error('Failed to load inventory items:', err));
 
+    // Resep (BOM) produk job ini -- product_id/variant_id dari order_item
+    // (job dari POS tidak punya field ini, dilewati dengan wajar; sama
+    // seperti deduct_job_materials_if_needed() di backend yang juga
+    // melewati job POS). variant_id dikirim eksplisit (termasuk string
+    // kosong untuk "tanpa varian") supaya cocok PERSIS dengan resep yang
+    // dipakai backend saat job ini nanti benar-benar diproses.
+    const productId = job?.order_item_detail?.product;
+    if (productId) {
+      const variantId = job.order_item_detail.variant || '';
+      apiClient
+        .get('/bom/', { params: { product_id: productId, variant_id: variantId } })
+        .then((res) => {
+          const list = res.data.results || res.data || [];
+          setBomItems(list[0]?.items || []);
+        })
+        .catch((err) => {
+          console.error('Gagal memuat resep (BOM) produk:', err);
+          setBomItems([]);
+        });
+    } else {
+      setBomItems([]);
+    }
+
     // Parse existing material usage from job.catatan_staff
     if (Array.isArray(job?.catatan_staff)) {
       // Find the last index of separator (keterangan starting with "--- Dari Divisi:")
@@ -258,6 +285,38 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
         )
       );
     }
+  };
+
+  // Muat semua bahan dari resep (BOM) produk job ini sekaligus -- qty
+  // dihitung persis dengan rumus yang dipakai backend saat job diproses
+  // (deduct_job_materials_if_needed di api/views/jobs.py: luas x qty jika
+  // produk berbasis luas, kalau tidak cuma qty order) supaya angka yang
+  // staff lihat di sini sama dengan yang nanti benar-benar dipotong.
+  const handleMuatDariResep = () => {
+    const item = job?.order_item_detail || {};
+    const orderItemLuas = Number(item.luas) || 0;
+    const orderItemQty = Number(item.qty) || 1;
+    const existingIds = new Set(materialUsage.map((row) => String(row.item_id)).filter(Boolean));
+
+    const rowsBaru = bomItems
+      .filter((bi) => !existingIds.has(String(bi.inventory_item)))
+      .map((bi) => {
+        const qtyPerUnit = Number(bi.qty_required_per_unit) || 0;
+        const qty = orderItemLuas > 0
+          ? Math.round(orderItemLuas * orderItemQty * qtyPerUnit * 10000) / 10000
+          : Math.round(orderItemQty * qtyPerUnit * 10000) / 10000;
+        return {
+          item_id: bi.inventory_item,
+          item_nama: bi.inventory_item_nama,
+          satuan: bi.inventory_item_satuan || '',
+          qty: String(qty),
+          catatan: '',
+          status: 'sesuai',
+        };
+      });
+
+    if (rowsBaru.length === 0) return;
+    setMaterialUsage((prev) => [...prev, ...rowsBaru]);
   };
 
   const handleSaveDraft = async () => {
@@ -750,14 +809,32 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
                 <p className="text-[10px] font-extrabold uppercase tracking-wide">Konfirmasi Pemakaian Bahan Baku</p>
                 <p className="text-[9px] opacity-80 mt-0.5">Cek bahan yang dipakai di tahap ini. Kalau ada kendala (reject/kurang), tandai & kasih keterangan.</p>
               </div>
-              <button
-                type="button"
-                onClick={addMaterialRow}
-                className="flex items-center gap-1 bg-white hover:bg-slate-100 text-[#107c41] text-[9px] font-black px-2.5 py-1 rounded shadow-sm cursor-pointer transition-all uppercase border-none shrink-0"
-              >
-                <Plus size={11} /> Tambah Bahan
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {bomItems.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleMuatDariResep}
+                    title="Isi otomatis dari resep produk ini"
+                    className="flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[9px] font-black px-2.5 py-1 rounded shadow-sm cursor-pointer transition-all uppercase border-none"
+                  >
+                    <Check size={11} /> Muat dari Resep
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={addMaterialRow}
+                  className="flex items-center gap-1 bg-white hover:bg-slate-100 text-[#107c41] text-[9px] font-black px-2.5 py-1 rounded shadow-sm cursor-pointer transition-all uppercase border-none"
+                >
+                  <Plus size={11} /> Tambah Bahan
+                </button>
+              </div>
             </div>
+
+            {bomItems.length > 0 && (
+              <p className="text-[9.5px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2.5 py-1.5">
+                Produk ini punya resep terdaftar ({bomItems.length} bahan) — klik "Muat dari Resep" untuk isi otomatis, atau pilih manual di dropdown (bahan resep ditandai grup "Bahan Resep").
+              </p>
+            )}
 
             {materialUsage.length === 0 ? (
               <div className="text-center text-slate-400 italic border border-dashed border-[#ccc] rounded py-6 text-[10.5px] bg-[#fafafa]">
@@ -776,11 +853,27 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
                           className="flex-1 min-w-[160px] bg-white border border-[#ccc] rounded px-2 py-1 outline-none text-slate-700 font-bold text-[10.5px]"
                         >
                           <option value="">-- Pilih Bahan --</option>
-                          {inventoryItems.map((inv) => (
-                            <option key={inv.id} value={inv.id}>
-                              {inv.nama} (Stok: {inv.stok} {inv.satuan})
-                            </option>
-                          ))}
+                          {bomItems.length > 0 && (
+                            <optgroup label="Bahan Resep">
+                              {bomItems.map((bi) => {
+                                const inv = inventoryItems.find((it) => String(it.id) === String(bi.inventory_item));
+                                return (
+                                  <option key={`bom-${bi.inventory_item}`} value={bi.inventory_item}>
+                                    {bi.inventory_item_nama} (Stok: {inv?.stok ?? '-'} {bi.inventory_item_satuan})
+                                  </option>
+                                );
+                              })}
+                            </optgroup>
+                          )}
+                          <optgroup label={bomItems.length > 0 ? 'Bahan Lainnya' : 'Semua Bahan'}>
+                            {inventoryItems
+                              .filter((inv) => !bomItems.some((bi) => String(bi.inventory_item) === String(inv.id)))
+                              .map((inv) => (
+                                <option key={inv.id} value={inv.id}>
+                                  {inv.nama} (Stok: {inv.stok} {inv.satuan})
+                                </option>
+                              ))}
+                          </optgroup>
                         </select>
                         <input
                           type="number"

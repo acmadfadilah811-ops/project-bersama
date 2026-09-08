@@ -188,6 +188,59 @@ class BomLegacyProductPriceTest(APITestCase):
         self.assertEqual(bom.product_price.nama_produk, 'Banner Custom Lama')
 
 
+class BomStaffReadAccessTest(APITestCase):
+    """Staff butuh baca (GET) /bom/ untuk deteksi resep otomatis di dropdown
+    "Pilih Bahan" WorkspaceSPK (instruksi user 2026-09-09) -- sebelumnya
+    IsOwnerOrManager memblokir staff sama sekali (403), termasuk untuk GET.
+    Ubah/hapus resep tetap harus Owner/Manager/Admin."""
+
+    def setUp(self):
+        self.owner = User.objects.create_user(username='owner_bom_staff', password='pass12345', role='owner')
+        self.staff = User.objects.create_user(username='staff_bom_read', password='pass12345', role='staff')
+        self.product = Product.objects.create(nama='Kartu Nama Staff Test', price_type='flat', harga_jual_toko=10000)
+        self.bahan = _buat_inventory_item()
+
+        self.client.force_authenticate(user=self.owner)
+        bom_res = self.client.post('/api/bom/get-or-create-for-product/', {
+            'product_id': self.product.id,
+        }, format='json')
+        self.bom_id = bom_res.data['id']
+        item_res = self.client.post('/api/bom-items/', {
+            'bom': self.bom_id, 'inventory_item': self.bahan.id, 'qty_required_per_unit': 2,
+        }, format='json')
+        self.bom_item_id = item_res.data['id']
+
+    def test_staff_bisa_baca_daftar_bom(self):
+        self.client.force_authenticate(user=self.staff)
+        res = self.client.get(f'/api/bom/?product_id={self.product.id}')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        results = res.data['results'] if isinstance(res.data, dict) else res.data
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]['items'][0]['inventory_item_nama'], self.bahan.nama)
+
+    def test_staff_bisa_baca_bom_items(self):
+        self.client.force_authenticate(user=self.staff)
+        res = self.client.get('/api/bom-items/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+    def test_staff_dilarang_ubah_bom_item(self):
+        self.client.force_authenticate(user=self.staff)
+        res = self.client.patch(f'/api/bom-items/{self.bom_item_id}/', {'qty_required_per_unit': 99}, format='json')
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_staff_dilarang_hapus_bom_item(self):
+        self.client.force_authenticate(user=self.staff)
+        res = self.client.delete(f'/api/bom-items/{self.bom_item_id}/')
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_staff_dilarang_buat_bom_baru(self):
+        self.client.force_authenticate(user=self.staff)
+        res = self.client.post('/api/bom/get-or-create-for-product/', {
+            'product_id': self.product.id,
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+
 class DeductJobMaterialsBomLinkTest(APITestCase):
     """deduct_job_materials_if_needed() — utamakan tautan Product/Variant
     asli di OrderItem, fallback ke ProductPrice legacy kalau tidak ada."""
@@ -246,3 +299,31 @@ class DeductJobMaterialsBomLinkTest(APITestCase):
         deduct_job_materials_if_needed(job, self.staff)
         self.bahan.refresh_from_db()
         self.assertEqual(self.bahan.stok, 100.0)
+
+    def test_bom_tidak_terpotong_ulang_lintas_tahap_untuk_order_item_sama(self):
+        """Regresi: 1 order_item yang melewati beberapa job/tahap produksi
+        (Desain -> Cetak -> Finishing, tiap forward bikin JobBoard baru)
+        sebelumnya bikin BoM yang sama terpotong SEKALI PER TAHAP, bukan
+        sekali per item -- marker lama per-job tidak mendeteksi order_item
+        yang sama sudah dipotong duluan oleh job lain (bug ditemukan audit
+        2026-09-09, dorman karena BoM belum pernah dipakai di produksi)."""
+        product = Product.objects.create(nama='Banner Multi Tahap', price_type='flat', harga_jual_toko=50000)
+        bom = BillOfMaterials.objects.create(product=product, nama='BoM Banner Multi Tahap')
+        BoMItem.objects.create(bom=bom, inventory_item=self.bahan, qty_required_per_unit=3.0)
+
+        order_item = OrderItem.objects.create(
+            order=self.order, jenis_produk='Banner Multi Tahap', product=product, qty=2,
+        )
+        job_desain = self._buat_job(order_item)
+        job_cetak = self._buat_job(order_item)  # job KEDUA, order_item SAMA -- simulasi tahap berikutnya
+
+        deduct_job_materials_if_needed(job_desain, self.staff)
+        deduct_job_materials_if_needed(job_cetak, self.staff)
+
+        self.bahan.refresh_from_db()
+        # Cuma terpotong SEKALI (3.0 * 2 = 6), BUKAN dua kali (12).
+        self.assertEqual(self.bahan.stok, 100.0 - (3.0 * 2))
+        self.assertEqual(
+            RestockHistory.objects.filter(item=self.bahan, keterangan__icontains='Pemakaian BoM otomatis').count(),
+            1,
+        )

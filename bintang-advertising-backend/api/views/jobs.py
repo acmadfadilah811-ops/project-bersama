@@ -79,41 +79,54 @@ def deduct_job_materials_if_needed(job, user):
             bom = BillOfMaterials.objects.filter(product_price=product).first()
         
     if bom:
-        # Gunakan pemotongan otomatis berbasis BoM
+        # BoM dikaitkan ke order_item (product_id/variant_id), BUKAN ke
+        # job/tahap tertentu -- kalau 1 order_item melewati beberapa job
+        # (Desain -> Cetak -> Finishing, tiap forward bikin JobBoard row
+        # baru), pencarian BoM di atas akan menemukan resep yang SAMA di
+        # setiap tahap. Marker lama (f"Job #{job.id}") cuma mencegah JOB
+        # yang sama diproses 2x, TIDAK mencegah bahan yang sama terpotong
+        # ulang di tahap berikutnya untuk order_item yang sama -- bug
+        # ditemukan audit 2026-09-09 (dorman, BoM belum pernah dipakai di
+        # produksi saat ditemukan). Marker baru ini per-order_item supaya
+        # BoM cuma terpotong SEKALI untuk 1 item, siapa pun job/tahap yang
+        # memicunya pertama kali.
+        order_item_marker = f"OrderItem #{order_item.id} BoM"
+        if RestockHistory.objects.filter(keterangan__icontains=order_item_marker).exists():
+            return
         with transaction.atomic():
             for bom_item in bom.items.all():
                 item = bom_item.inventory_item
                 # Lock item for update
                 item = InventoryItem.objects.select_for_update().get(pk=item.pk)
-                
+
                 luas = order_item.luas
                 if luas > 0:
                     qty_needed = round(luas * order_item.qty * bom_item.qty_required_per_unit, 4)
                 else:
                     qty_needed = round(order_item.qty * bom_item.qty_required_per_unit, 4)
-                    
+
                 if qty_needed <= 0:
                     continue
                 if qty_needed > item.stok:
                     raise ValidationError(
                         {'error': f"Stok bahan '{item.nama}' tidak mencukupi untuk Job #{job.id}."}
                     )
-                    
+
                 stok_awal = item.stok
                 stok_akhir = max(0.0, round(item.stok - qty_needed, 4))
-                
+
                 RestockHistory.objects.create(
                     item=item,
                     user=user,
                     delta=-qty_needed,
                     stok_awal=stok_awal,
                     stok_akhir=stok_akhir,
-                    keterangan=f"Pemakaian BoM otomatis | Job #{job.id} | {bom.nama}",
+                    keterangan=f"Pemakaian BoM otomatis | {order_item_marker} | Job #{job.id} | {bom.nama}",
                 )
-                
+
                 item.stok = stok_akhir
                 item.save()
-                
+
                 # Catat ke Buku Besar
                 record_material_consumption_to_general_ledger(
                     item, qty_needed, ref_no=marker,

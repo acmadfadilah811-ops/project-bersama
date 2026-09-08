@@ -15,7 +15,7 @@ from ..models import InventoryItem, RestockHistory, ProductPrice, BillOfMaterial
 from ..serializers import (
     InventoryItemSerializer, ProductPriceSerializer, BillOfMaterialsSerializer, BoMItemSerializer
 )
-from ..permissions import IsOwnerManagerAdminOrReadOnly, IsOwnerManagerOrAdmin, IsOwnerOrManager
+from ..permissions import IsOwnerManagerAdminOrReadOnly, IsOwnerManagerOrAdmin
 
 logger = logging.getLogger(__name__)
 
@@ -241,7 +241,10 @@ class BillOfMaterialsViewSet(viewsets.ModelViewSet):
         'product', 'variant', 'product_price',
     ).prefetch_related('items__inventory_item').all()
     serializer_class = BillOfMaterialsSerializer
-    permission_classes = [IsOwnerOrManager]
+    # Baca (GET) dibuka untuk staff -- WorkspaceSPK.jsx perlu ini untuk
+    # deteksi resep otomatis di dropdown "Pilih Bahan" (instruksi user
+    # 2026-09-09); ubah/hapus resep tetap Owner/Manager/Admin saja.
+    permission_classes = [IsOwnerManagerAdminOrReadOnly]
 
     def get_queryset(self):
         queryset = self.queryset
@@ -365,7 +368,9 @@ def _get_or_create_inventory_item_for_product(product):
 class BoMItemViewSet(viewsets.ModelViewSet):
     queryset = BoMItem.objects.select_related('bom', 'inventory_item').all()
     serializer_class = BoMItemSerializer
-    permission_classes = [IsOwnerOrManager]
+    # Baca dibuka untuk staff (sama alasan dengan BillOfMaterialsViewSet di
+    # atas); ubah/hapus tetap Owner/Manager/Admin saja.
+    permission_classes = [IsOwnerManagerAdminOrReadOnly]
 
     @action(detail=False, methods=['post'], url_path='create-from-product')
     def create_from_product(self, request):
