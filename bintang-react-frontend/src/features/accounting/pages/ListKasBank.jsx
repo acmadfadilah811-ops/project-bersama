@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, ChevronDown, Calendar, Plus, Loader2, Filter } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import { notifyApiError, notify } from '../../../utils/notify';
+import { getApiErrorMessage } from '../../../utils/apiError';
 import { downloadFile } from '../../../utils/downloadFile';
 import { useAuth } from '../../../context/AuthContext';
 
@@ -291,8 +292,13 @@ export default function ListKasBank({ onToggleSidebar, initialViewState = 'list'
 
     setSaving(true);
     let successCount = 0;
+    // Draf yang GAGAL disimpan -- disisakan di layar (bukan ikut terhapus
+    // bareng yang berhasil) supaya tidak perlu diketik ulang dari nol.
+    const failedItems = [];
+    const failedMessages = [];
 
-    for (const tx of transfersToSave) {
+    for (let i = 0; i < transfersToSave.length; i++) {
+      const tx = transfersToSave[i];
       const payload = {
         date: tx.date,
         description: tx.notes,
@@ -316,6 +322,8 @@ export default function ListKasBank({ onToggleSidebar, initialViewState = 'list'
         successCount++;
       } catch (err) {
         console.error('Gagal menyimpan transfer kas:', err);
+        failedItems.push(tx);
+        failedMessages.push(`Draf #${i + 1}: ${getApiErrorMessage(err, 'Kesalahan tidak diketahui')}`);
       }
     }
 
@@ -330,18 +338,21 @@ export default function ListKasBank({ onToggleSidebar, initialViewState = 'list'
       setDrafts([]);
       setViewState('list');
     } else if (successCount > 0) {
+      // drafts.length>0 = jalur multi-draf; jalur form tunggal (drafts
+      // kosong) tetap seperti semula -- tidak ada draf tersimpan utk disisakan.
+      if (drafts.length > 0) {
+        setDrafts(failedItems);
+      }
       notify({
         type: 'warning',
         title: 'Tersimpan Sebagian',
-        message: `${successCount} dari ${transfersToSave.length} transaksi berhasil disimpan.`
+        message: `${successCount} dari ${transfersToSave.length} transaksi berhasil disimpan. ${failedMessages.join('; ')}`
       });
-      setDrafts([]);
-      setViewState('list');
     } else {
       notify({
         type: 'error',
         title: 'Gagal Menyimpan',
-        message: 'Gagal menyimpan transaksi transfer kas ke server.'
+        message: failedMessages.length ? failedMessages.join('; ') : 'Gagal menyimpan transaksi transfer kas ke server.'
       });
     }
   };

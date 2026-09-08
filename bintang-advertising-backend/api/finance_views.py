@@ -1,6 +1,7 @@
 import csv
 import io
 
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -157,11 +158,26 @@ class CashTransactionViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         tipe = serializer.validated_data.get('tipe_transaksi')
-        nomor = _next_number(f"KAS{timezone.now().date().strftime('%y%m%d')}")
         staff = serializer.validated_data.get('staff') or self.request.user
         from .models import SaldoKasHarian
         shift = SaldoKasHarian.objects.filter(kasir=self.request.user, kas_akhir__isnull=True, waktu_tutup__isnull=True).order_by('-id').first()
-        obj = serializer.save(nomor=nomor, arah=tipe.tipe, staff=staff, shift=shift, dibuat_oleh=self.request.user)
+
+        # nomor di-generate dari MAX+1 tanpa lock baris -- 2 kasir input Kas
+        # Masuk/Keluar bersamaan (hari yang sama) bisa dapat nomor yang sama
+        # & bentrok unique constraint. Retry pakai savepoint, sama pola
+        # dengan accounting/services/journal.py::create_journal_entry.
+        obj = None
+        for attempt in range(5):
+            nomor = _next_number(f"KAS{timezone.now().date().strftime('%y%m%d')}")
+            try:
+                with transaction.atomic():
+                    obj = serializer.save(nomor=nomor, arah=tipe.tipe, staff=staff, shift=shift, dibuat_oleh=self.request.user)
+                break
+            except IntegrityError:
+                if attempt == 4:
+                    raise
+                continue
+
         for f in self.request.FILES.getlist('lampiran'):
             CashTransactionAttachment.objects.create(transaction=obj, file=f)
 

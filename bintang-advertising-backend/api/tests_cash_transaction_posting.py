@@ -4,6 +4,7 @@ Akun debit/kredit dipilih manual per transaksi lewat field akun_debit/akun_kredi
 """
 from datetime import datetime
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -175,3 +176,60 @@ class CashTransactionKasirAccessTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         response = self.client.get('/api/cash-transaction-types/')
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class CashTransactionNumberRetryTests(APITestCase):
+    """`_next_number()` di finance_views.py generate nomor dari MAX+1 tanpa
+    lock baris -- 2 request Kas Masuk/Keluar BERSAMAAN (hari yang sama) bisa
+    dapat nomor yang sama & bentrok unique constraint. perform_create()
+    sekarang retry pakai savepoint kalau itu terjadi (sama pola dengan
+    accounting/services/journal.py::create_journal_entry).
+
+    Race sungguhan disimulasikan lewat mock, bukan threading nyata --
+    SQLite (dev/test) memakai whole-database lock (beda dari row-level lock
+    Postgres produksi), dan retry di level test CLIENT pada POST yang TIDAK
+    idempoten rawan salah (bisa bikin submit dobel beneran kalau request
+    sebelumnya sebenarnya sudah sukses tapi responsnya kena "database is
+    locked" belakangan). Mock memastikan retry di perform_create sendiri
+    yang teruji, bukan perilaku SQLite yang kebetulan."""
+
+    def setUp(self):
+        self.owner = User.objects.create_user(username='owner_kas_retry', password='secret', role='owner')
+        self.client.force_authenticate(self.owner)
+        self.tipe = CashTransactionType.objects.create(nama='Tips Retry', tipe='pendapatan', dibuat_oleh=self.owner)
+
+    def test_create_retries_when_nomor_collides_then_succeeds(self):
+        existing = CashTransaction.objects.create(
+            nomor='KAS999999-COLLIDE', arah='pendapatan', jumlah=Decimal('10000'),
+            tipe_transaksi=self.tipe, waktu=timezone.now(), dibuat_oleh=self.owner,
+        )
+        fresh_nomor = 'KAS999999-FRESH'
+
+        with patch('api.finance_views._next_number', side_effect=[existing.nomor, fresh_nomor]):
+            response = self.client.post('/api/cash-transactions/', {
+                'tipe_transaksi': self.tipe.id,
+                'jumlah': '15000',
+                'waktu': timezone.now().isoformat(),
+                'catatan': 'kas masuk setelah bentrok nomor',
+            }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data['nomor'], fresh_nomor)
+        self.assertEqual(CashTransaction.objects.filter(nomor=fresh_nomor).count(), 1)
+        self.assertEqual(CashTransaction.objects.count(), 2, "Retry yang bentrok tidak boleh meninggalkan baris setengah jadi.")
+
+    def test_create_gives_up_after_max_retries_if_always_colliding(self):
+        from django.db import IntegrityError
+        existing = CashTransaction.objects.create(
+            nomor='KAS999998-COLLIDE', arah='pendapatan', jumlah=Decimal('10000'),
+            tipe_transaksi=self.tipe, waktu=timezone.now(), dibuat_oleh=self.owner,
+        )
+        with patch('api.finance_views._next_number', return_value=existing.nomor):
+            with self.assertRaises(IntegrityError):
+                self.client.post('/api/cash-transactions/', {
+                    'tipe_transaksi': self.tipe.id,
+                    'jumlah': '15000',
+                    'waktu': timezone.now().isoformat(),
+                    'catatan': 'selalu bentrok',
+                }, format='json')
+        self.assertEqual(CashTransaction.objects.count(), 1, "Retry yang selalu gagal tidak boleh meninggalkan baris setengah jadi.")
