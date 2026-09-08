@@ -43,6 +43,16 @@ class PostStockJournalAccountingInactiveTests(APITestCase):
             document=self.document, product=self.produk,
             harga_beli=Decimal('10000'), qty=Decimal('5'),
         )
+        # post_stock_journal() menghitung amount dari `movements`
+        # (ProductStockMovement), bukan `items` -- lihat komentar di
+        # purchase_accounting.py (audit 2026-09-08). Di alur produksi nyata
+        # (post_stock_in_document/_apply_purchase_stock) movement ini selalu
+        # sudah dibuat SEBELUM post_stock_journal() dipanggil; test ini
+        # memanggil post_stock_journal() langsung jadi harus disiapkan manual.
+        ProductStockMovement.objects.create(
+            product=self.produk, tipe='masuk', qty=Decimal('5'), harga_beli=Decimal('10000'),
+            stok_awal=0, stok_akhir=5, tanggal=date.today(), stock_in_document=self.document,
+        )
 
     def _configure_purchase_account_mappings(self):
         """Isi mapping akun Pembelian - dibutuhkan supaya test is_active di
@@ -170,6 +180,12 @@ class PostStockJournalSupplierAkunHutangTests(APITestCase):
         StockInDocumentItem.objects.create(
             document=self.document, product=self.produk,
             harga_beli=Decimal('10000'), qty=Decimal('5'),
+        )
+        # Lihat catatan di test class di atas: post_stock_journal() baca
+        # `movements`, bukan `items`.
+        ProductStockMovement.objects.create(
+            product=self.produk, tipe='masuk', qty=Decimal('5'), harga_beli=Decimal('10000'),
+            stok_awal=0, stok_akhir=5, tanggal=date.today(), stock_in_document=self.document,
         )
 
     def test_stock_in_journal_pakai_akun_hutang_supplier_bukan_default(self):

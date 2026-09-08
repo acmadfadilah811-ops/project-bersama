@@ -25,12 +25,13 @@ class PengembalianOrderSerializer(serializers.ModelSerializer):
         model = PengembalianOrder
         fields = [
             'id', 'order', 'order_nama', 'tanggal_pengembalian', 'status',
-            'catatan', 'nominal_refund', 'dibuat_oleh', 'dibuat_oleh_nama',
+            'catatan', 'nominal_refund', 'items_json', 'tambahan_json',
+            'dibuat_oleh', 'dibuat_oleh_nama',
             'dibuat_pada', 'diperbarui_pada', 'stok_dikembalikan_pada',
             'stok_dikembalikan_oleh',
         ]
         read_only_fields = [
-            'id', 'dibuat_pada', 'diperbarui_pada',
+            'id', 'nominal_refund', 'dibuat_pada', 'diperbarui_pada',
             'stok_dikembalikan_pada', 'stok_dikembalikan_oleh',
         ]
 
@@ -38,6 +39,15 @@ class PengembalianOrderSerializer(serializers.ModelSerializer):
         if not obj.dibuat_oleh:
             return None
         return obj.dibuat_oleh.first_name or obj.dibuat_oleh.username
+
+    def update(self, instance, validated_data):
+        instance = super().update(instance, validated_data)
+        if 'items_json' in validated_data or 'tambahan_json' in validated_data:
+            computed = instance.compute_nominal_refund_from_items()
+            if computed is not None:
+                instance.nominal_refund = computed
+                instance.save(update_fields=['nominal_refund'])
+        return instance
 
 
 class OrderPaymentSerializer(serializers.ModelSerializer):
@@ -511,25 +521,6 @@ class OrderVoidRequestSerializer(serializers.ModelSerializer):
         if obj.diminta_oleh_id == getattr(user, 'id', None):
             return obj.otp_code
         return ''
-
-# --- 4.5 Pengembalian Order Serializer (T-208 Revisi 2) ---
-class PengembalianOrderSerializer(serializers.ModelSerializer):
-    dibuat_oleh_nama = serializers.SerializerMethodField()
-    order_nama = serializers.ReadOnlyField(source='order.nama')
-
-    class Meta:
-        model = PengembalianOrder
-        fields = [
-            'id', 'order', 'order_nama', 'tanggal_pengembalian', 'status',
-            'catatan', 'nominal_refund', 'dibuat_oleh', 'dibuat_oleh_nama',
-            'dibuat_pada', 'diperbarui_pada'
-        ]
-        read_only_fields = ['id', 'dibuat_pada', 'diperbarui_pada']
-
-    def get_dibuat_oleh_nama(self, obj):
-        if not obj.dibuat_oleh:
-            return None
-        return obj.dibuat_oleh.first_name or obj.dibuat_oleh.username
 
 # --- 5. Order Serializer (Induk Nota) ---
 class OrderSerializer(serializers.ModelSerializer):

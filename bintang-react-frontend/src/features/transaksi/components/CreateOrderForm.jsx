@@ -103,13 +103,19 @@ export default function CreateOrderForm({ onCancel, onSave }) {
     if (!selectedCustomer) return alert('Pilih pelanggan terlebih dahulu.');
     if (!pelayanId) return alert('Pilih karyawan yang melayani (Dilayani Oleh) terlebih dahulu.');
 
-    const rawWa = (selectedCustomer.handphone || selectedCustomer.no_hp || selectedCustomer.telepon || '081234567890').replace(/[^0-9]/g, '');
-    const validWa = rawWa.length >= 8 ? rawWa : '081234567890';
+    // Sebelumnya kalau pelanggan tidak punya no. HP di data master, order
+    // tetap dibuat dengan nomor palsu "081234567890" tanpa peringatan --
+    // order jadi tidak bisa dilacak ke WA pelanggan yang benar (bug ditemukan
+    // audit 2026-09-08). Sekarang wajib nomor asli pelanggan.
+    const rawWa = (selectedCustomer.handphone || selectedCustomer.no_hp || selectedCustomer.telepon || '').replace(/[^0-9]/g, '');
+    if (rawWa.length < 8) {
+      return alert('Pelanggan ini belum punya No. HP/WA yang valid di data master. Lengkapi dulu no. HP pelanggan sebelum membuat pesanan.');
+    }
 
     setSaving(true);
     try {
       const res = await apiClient.post('/orders/', {
-        nomor_wa: validWa,
+        nomor_wa: rawWa,
         nama: selectedCustomer.nama,
         dilayani_oleh: pelayanId,
         waktu: new Date(tanggal).toISOString(),

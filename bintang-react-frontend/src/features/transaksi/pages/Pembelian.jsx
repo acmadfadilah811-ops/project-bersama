@@ -67,9 +67,9 @@ export default function Pembelian({ initialTab = 'butuh-diproses' }) {
     }
   };
 
-  const handleReturSave = async ({ purchaseId, tanggal, catatan }) => {
+  const handleReturSave = async ({ purchaseId, tanggal, catatan, konfirmasi_kerusakan }) => {
     try {
-      const res = await apiClient.post(`/purchases/${purchaseId}/create-retur/`, { tanggal, catatan });
+      const res = await apiClient.post(`/purchases/${purchaseId}/create-retur/`, { tanggal, catatan, konfirmasi_kerusakan });
       setShowRetur(false);
       handleSelectDoc(res.data.id);
       fetchPurchases();

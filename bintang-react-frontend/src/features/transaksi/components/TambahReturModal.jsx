@@ -5,15 +5,20 @@ import apiClient from '../../../api/apiClient';
 const inputClass =
   'w-full text-sm border border-slate-200 rounded-lg px-3 py-2.5 text-slate-700 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300';
 
+const PAYMENT_LABEL = { lunas: 'Lunas', sebagian: 'Sebagian', belum: 'Belum Bayar' };
+
 /**
  * Modal "Tambah Retur" (retur pembelian).
- * Retur hanya untuk PO yang sudah Diterima dan Lunas — daftar PO eligible diambil
- * dari server lalu dipilih. Simpan memanggil create-retur pada PO terpilih.
+ * Retur untuk PO yang sudah Diterima. Kalau PO belum Lunas, retur tetap
+ * boleh diajukan KHUSUS barang cacat -- wajib isi Konfirmasi Kerusakan
+ * Barang (keputusan user 2026-09-08, penanggung jawab konfirmasi = user
+ * yang login/mengajukan retur ini).
  */
 export default function TambahReturModal({ onClose, onSave }) {
   const today = new Date().toISOString().slice(0, 10);
   const [tanggal, setTanggal] = useState(today);
   const [catatan, setCatatan] = useState('');
+  const [konfirmasiKerusakan, setKonfirmasiKerusakan] = useState('');
   const [query, setQuery] = useState('');
   const [eligible, setEligible] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -24,7 +29,7 @@ export default function TambahReturModal({ onClose, onSave }) {
       try {
         const res = await apiClient.get('/purchases/');
         const rows = res.data.results || res.data || [];
-        setEligible(rows.filter((r) => !r.is_retur && r.receive_status === 'diterima' && r.payment_status === 'lunas'));
+        setEligible(rows.filter((r) => !r.is_retur && r.receive_status === 'diterima'));
       } catch (err) {
         console.error(err);
       } finally {
@@ -39,7 +44,8 @@ export default function TambahReturModal({ onClose, onSave }) {
     return `${r.nomor} ${r.supplier || ''}`.toLowerCase().includes(q);
   });
 
-  const canSave = !!selected;
+  const belumLunas = selected && selected.payment_status !== 'lunas';
+  const canSave = !!selected && (!belumLunas || konfirmasiKerusakan.trim().length > 0);
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-start justify-center p-4 pt-12 bg-slate-900/50 backdrop-blur-sm animate-fade-in overflow-y-auto">
@@ -57,7 +63,7 @@ export default function TambahReturModal({ onClose, onSave }) {
             <button
               type="button"
               disabled={!canSave}
-              onClick={() => onSave?.({ purchaseId: selected.id, tanggal, catatan })}
+              onClick={() => onSave?.({ purchaseId: selected.id, tanggal, catatan, konfirmasi_kerusakan: konfirmasiKerusakan })}
               className={`text-sm font-semibold rounded-lg px-5 py-2 transition-colors ${
                 canSave
                   ? 'bg-blue-600 text-white hover:bg-blue-700 cursor-pointer shadow-sm'
@@ -84,7 +90,7 @@ export default function TambahReturModal({ onClose, onSave }) {
           </div>
 
           <div>
-            <label className="block text-sm text-slate-600 mb-1.5">Pilih Nota Pembelian (Diterima &amp; Lunas)</label>
+            <label className="block text-sm text-slate-600 mb-1.5">Pilih Nota Pembelian (Diterima)</label>
             <div className="relative mb-2">
               <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
@@ -113,12 +119,38 @@ export default function TambahReturModal({ onClose, onSave }) {
                       <span className="font-mono font-bold text-slate-800 block">{r.nomor}</span>
                       <span className="text-slate-400">{r.supplier || 'Tanpa supplier'}</span>
                     </span>
-                    <span className="font-mono font-bold text-slate-700">Rp {Number(r.total || 0).toLocaleString('id-ID')}</span>
+                    <span className="flex items-center gap-2">
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                        r.payment_status === 'lunas' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
+                      }`}>
+                        {PAYMENT_LABEL[r.payment_status] || r.payment_status}
+                      </span>
+                      <span className="font-mono font-bold text-slate-700">Rp {Number(r.total || 0).toLocaleString('id-ID')}</span>
+                    </span>
                   </button>
                 ))
               )}
             </div>
           </div>
+
+          {belumLunas && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
+              <p className="text-xs font-bold text-amber-700">
+                Pembelian ini belum Lunas ({PAYMENT_LABEL[selected.payment_status]}). Retur hanya bisa diajukan untuk barang cacat.
+              </p>
+              <label className="block text-xs font-semibold text-amber-700">
+                Konfirmasi Kerusakan Barang <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                value={konfirmasiKerusakan}
+                onChange={(e) => setKonfirmasiKerusakan(e.target.value)}
+                rows={2}
+                placeholder="Jelaskan kerusakan/cacat barang yang jadi alasan retur..."
+                className={`${inputClass} resize-none bg-white`}
+              />
+              <p className="text-[10px] text-amber-600">Kamu tercatat sebagai penanggung jawab konfirmasi ini.</p>
+            </div>
+          )}
 
           <div>
             <textarea

@@ -227,6 +227,18 @@ export default function OrderHeader({
                 )}
               </div>
 
+              {/* Selesai tapi belum lunas -- tetap boleh (keputusan bisnis
+                  2026-09-08: produksi/pengiriman sering kelar duluan), tapi
+                  harus kelihatan jelas biar sisa tagihan tidak lupa ditagih. */}
+              {order.status_global === 'selesai' && !isPaid && (
+                <span
+                  title={`Sisa tagihan Rp ${Number(order.sisa_tagihan || 0).toLocaleString('id-ID')} belum dibayar`}
+                  className="flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2"
+                >
+                  Belum Lunas: Rp {Number(order.sisa_tagihan || 0).toLocaleString('id-ID')}
+                </span>
+              )}
+
               {/* Date Input */}
               <div className="flex items-center gap-2">
                 <input

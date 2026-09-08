@@ -566,6 +566,15 @@ class Purchase(models.Model):
     is_retur = models.BooleanField(default=False)
     retur_ref = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='returns')
     exchange_new = models.BooleanField(default=False, help_text="Retur ditukar barang baru (stok ditambah kembali)")
+    konfirmasi_kerusakan = models.TextField(
+        blank=True, default='',
+        help_text=(
+            "Wajib diisi kalau retur diajukan sebelum PO asal Lunas -- retur "
+            "barang cacat tidak perlu menunggu lunas dulu (keputusan user "
+            "2026-09-08), tapi harus tercatat jelas apa kerusakannya. "
+            "Penanggung jawab konfirmasi = dibuat_oleh."
+        ),
+    )
 
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
     dibuat_oleh = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='purchases')

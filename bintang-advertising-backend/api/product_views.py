@@ -2251,12 +2251,27 @@ class PurchaseViewSet(viewsets.ModelViewSet):
     # ---- retur ----
     @action(detail=True, methods=['post'], url_path='create-retur')
     def create_retur(self, request, pk=None):
-        """Buat draft retur dari PO ini (pk = PO asal). Syarat: Diterima + Lunas."""
+        """Buat draft retur dari PO ini (pk = PO asal). Syarat dasar: Diterima.
+
+        Kalau PO belum Lunas, retur tetap boleh diajukan KHUSUS untuk barang
+        cacat -- tapi wajib mengisi `konfirmasi_kerusakan` (keputusan user
+        2026-09-08: jangan tunggu lunas untuk retur barang cacat, tapi harus
+        tercatat jelas + ada penanggung jawab konfirmasi = dibuat_oleh/user
+        yang memproses retur ini)."""
         source = self.get_object()
         if source.is_retur:
             return Response({'error': 'Tidak bisa meretur dokumen retur.'}, status=status.HTTP_400_BAD_REQUEST)
-        if source.receive_status != 'diterima' or source.payment_status != 'lunas':
-            return Response({'error': 'Retur hanya untuk pembelian yang sudah Diterima dan Lunas.'}, status=status.HTTP_400_BAD_REQUEST)
+        if source.receive_status != 'diterima':
+            return Response({'error': 'Retur hanya untuk pembelian yang sudah Diterima.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        konfirmasi_kerusakan = (request.data.get('konfirmasi_kerusakan') or '').strip()
+        if source.payment_status != 'lunas' and not konfirmasi_kerusakan:
+            return Response({
+                'error': (
+                    'Pembelian ini belum Lunas. Retur hanya bisa diajukan untuk barang '
+                    'cacat sebelum lunas -- isi "Konfirmasi Kerusakan Barang" untuk melanjutkan.'
+                ),
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         today = timezone.now().date()
         with transaction.atomic():
@@ -2267,6 +2282,7 @@ class PurchaseViewSet(viewsets.ModelViewSet):
                 supplier_ref=source.supplier_ref,
                 mata_uang=source.mata_uang,
                 catatan=(request.data.get('catatan') or '').strip(),
+                konfirmasi_kerusakan=konfirmasi_kerusakan,
                 is_retur=True,
                 retur_ref=source,
                 status='draft',

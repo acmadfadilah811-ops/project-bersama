@@ -54,6 +54,20 @@ export default function ReturPembelianHeaderCards({
         </span>
       </div>
 
+      {/* Retur barang cacat sebelum PO asal Lunas -- wajib ada konfirmasi
+          kerusakan + penanggung jawab yang jelas (keputusan user 2026-09-08). */}
+      {doc.konfirmasi_kerusakan && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 space-y-1">
+          <div className="flex items-center gap-2 text-amber-700 text-xs font-bold">
+            <span>⚠️</span> Konfirmasi Kerusakan Barang (retur sebelum PO Lunas)
+          </div>
+          <p className="text-xs text-amber-800">{doc.konfirmasi_kerusakan}</p>
+          <p className="text-[10px] text-amber-600 font-semibold">
+            Penanggung jawab konfirmasi: {doc.dibuat_oleh_nama || '-'}
+          </p>
+        </div>
+      )}
+
       {/* Card Title Box & Action Buttons */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between shadow-2xs">
         <div className="flex items-center gap-3">

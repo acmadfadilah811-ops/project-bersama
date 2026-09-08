@@ -997,10 +997,15 @@ class OrderViewSet(viewsets.ModelViewSet):
             is_dp=False,
         )
 
-        # Update statistik Contact
+        # Update statistik Contact. Order draft (belum jadi pesanan riil) dan
+        # batal (dibatalkan) dikecualikan -- sebelumnya ikut dihitung,
+        # membuat "total belanja" pelanggan menggelembung dari pesanan yang
+        # tidak pernah benar-benar terjadi (bug ditemukan audit 2026-09-08).
         try:
             contact = Contact.objects.get(nomor_wa=order.nomor_wa)
-            my_orders = Order.objects.filter(nomor_wa=contact.nomor_wa).prefetch_related('items')
+            my_orders = Order.objects.filter(
+                nomor_wa=contact.nomor_wa,
+            ).exclude(status_global__in=['draft', 'batal']).prefetch_related('items')
             contact.total_spent = sum(
                 item.harga_jual
                 for o in my_orders
@@ -1138,15 +1143,8 @@ class OrderViewSet(viewsets.ModelViewSet):
         else:
             tgl_pengembalian = timezone.now().date()
 
-        nominal_param = request.data.get('nominal_refund')
-        if nominal_param is not None:
-            try:
-                nominal_refund = int(nominal_param)
-            except (ValueError, TypeError):
-                nominal_refund = order.total_harga or 0
-        else:
-            nominal_refund = order.total_harga or 0
-
+        items_json = str(request.data.get('items_json') or '')
+        tambahan_json = str(request.data.get('tambahan_json') or '')
         status_retur = request.data.get('status', 'Tunda')
 
         retur_obj = PengembalianOrder.objects.create(
@@ -1154,9 +1152,28 @@ class OrderViewSet(viewsets.ModelViewSet):
             tanggal_pengembalian=tgl_pengembalian,
             status=status_retur,
             catatan=catatan,
-            nominal_refund=nominal_refund,
+            items_json=items_json,
+            tambahan_json=tambahan_json,
             dibuat_oleh=request.user
         )
+
+        # Refund dihitung dari items_json (proporsional per item) kalau
+        # tersedia; nominal_refund manual (`?nominal_refund=`) jadi override
+        # eksplisit; kalau keduanya tidak ada, baru jatuh ke total_harga penuh
+        # order -- lihat compute_nominal_refund_from_items() (bug ditemukan
+        # audit 2026-09-08: field ini dulu SELALU total_harga penuh).
+        computed = retur_obj.compute_nominal_refund_from_items()
+        nominal_param = request.data.get('nominal_refund')
+        if nominal_param is not None:
+            try:
+                retur_obj.nominal_refund = int(nominal_param)
+            except (ValueError, TypeError):
+                retur_obj.nominal_refund = computed if computed is not None else (order.total_harga or 0)
+        elif computed is not None:
+            retur_obj.nominal_refund = computed
+        else:
+            retur_obj.nominal_refund = order.total_harga or 0
+        retur_obj.save(update_fields=['nominal_refund'])
 
         if retur_obj.status == 'Dikonfirmasi':
             from ..services.order_return_inventory import restore_stock_for_confirmed_return

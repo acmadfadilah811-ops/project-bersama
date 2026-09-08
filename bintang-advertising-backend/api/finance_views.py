@@ -171,6 +171,20 @@ class CashTransactionViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Transaksi yang sudah diposting/dibatalkan tidak bisa diubah.'}, status=status.HTTP_400_BAD_REQUEST)
         return super().update(request, *args, **kwargs)
 
+    def destroy(self, request, *args, **kwargs):
+        # Transaksi yang sudah Terposting (status='selesai') punya jurnal
+        # akuntansi terkait -- hapus langsung akan meninggalkan jurnal
+        # nyangkut/orphan tanpa sumber datanya lagi (bug ditemukan audit
+        # 2026-09-08). Yang sudah terposting harus lewat cancel_journal()
+        # dulu (bikin jurnal pembalik), baru boleh dihapus.
+        instance = self.get_object()
+        if instance.status != 'draft':
+            return Response(
+                {'error': 'Transaksi yang sudah Terposting/Dibatalkan tidak bisa langsung dihapus. Batalkan postingnya dulu.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return super().destroy(request, *args, **kwargs)
+
     def perform_update(self, serializer):
         tipe = serializer.validated_data.get('tipe_transaksi')
         obj = serializer.save()

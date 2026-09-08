@@ -11,12 +11,38 @@ from accounting.services.purchase_accounts import get_purchase_account_mappings
 
 
 def post_stock_journal(document, actor, *, direction="in"):
-    """Post stok Pembelian dan aplikasi DP secara idempoten per dokumen stok."""
-    amount = sum(
-        (Decimal(str(item.qty or 0)) * Decimal(str(item.harga_beli or 0))
-         for item in document.items.all()),
-        Decimal("0"),
-    ).quantize(Decimal("1"))
+    """Post stok Pembelian dan aplikasi DP secara idempoten per dokumen stok.
+
+    PENTING: hitung `amount` dari `document.movements` (ProductStockMovement,
+    related_name='movements'), BUKAN `document.items` -- StockInDocument/
+    StockOutDocument punya DUA relasi item yang berbeda: `items`
+    (StockInDocumentItem/StockOutDocumentItem, diisi alur "Stok Masuk/Keluar"
+    manual lewat add-item) dan `movements` (ProductStockMovement, diisi SEMUA
+    jalur termasuk alur Pembelian -> Terima Barang/Retur di
+    PurchaseViewSet._apply_purchase_stock). Dokumen yang dibuat dari
+    Pembelian TIDAK PERNAH mengisi `items`, cuma `movements` -- pakai `items`
+    di sini bikin `amount` selalu 0 dan jurnal SILAM tidak pernah terposting
+    untuk setiap Pembelian yang diterima/diretur (bug ditemukan audit
+    2026-09-08, terverifikasi lewat tes langsung di production: stok
+    bertambah benar tapi nol jurnal pernah tercipta). `movements` diisi oleh
+    KEDUA alur (manual maupun Pembelian) jadi aman dipakai di sini.
+    """
+    # `harga_beli` di ProductStockMovement cuma diisi untuk mutasi MASUK
+    # ('harga beli per unit saat stok masuk', lihat ProductStockMovement).
+    # Mutasi KELUAR (retur) nilainya ada di `hpp_total`, hasil konsumsi
+    # lapisan FIFO (api/stock_fifo.py::consume_layers) -- pakai qty*harga_beli
+    # untuk retur akan selalu 0 karena harga_beli-nya null.
+    if direction == "in":
+        amount = sum(
+            (Decimal(str(mv.qty or 0)) * Decimal(str(mv.harga_beli or 0))
+             for mv in document.movements.all()),
+            Decimal("0"),
+        ).quantize(Decimal("1"))
+    else:
+        amount = sum(
+            (Decimal(str(mv.hpp_total or 0)) for mv in document.movements.all()),
+            Decimal("0"),
+        ).quantize(Decimal("1"))
     if amount <= 0:
         return None
 

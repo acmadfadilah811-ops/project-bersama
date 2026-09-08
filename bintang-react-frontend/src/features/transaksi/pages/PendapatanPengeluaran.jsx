@@ -22,6 +22,17 @@ const fmtRp = (n) => `Rp ${Number(n || 0).toLocaleString('id-ID')}`;
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '-');
 const fmtTime = (d) => (d ? new Date(d).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-');
 
+// Sinkron dengan CashTransactionPosScreen.jsx (Akuntansi Internal) -- tempat
+// transaksi ini benar-benar diposting ke jurnal. Sebelumnya halaman ini tidak
+// menampilkan status sama sekali, jadi user tidak tahu mana yang sudah/belum
+// terposting (bug ditemukan audit 2026-09-08).
+const STATUS_LABEL = { draft: 'Belum Terposting', selesai: 'Terposting', batal: 'Batal' };
+const statusBadgeClass = (value) => {
+  if (value === 'selesai') return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
+  if (value === 'batal') return 'bg-slate-100 text-slate-500 border border-slate-200';
+  return 'bg-amber-50 text-amber-700 border border-amber-200';
+};
+
 const tipeBadge = (tipe) => (
   <span className={`px-2.5 py-1 text-xs font-bold rounded-lg border ${
     tipe === 'pendapatan'
@@ -272,11 +283,22 @@ export default function PendapatanPengeluaran({ initialDirection = null }) {
     { key: 'catatan', label: 'Catatan', render: (r) => <span className="text-slate-500">{r.catatan || '-'}</span> },
     { key: 'tipe', label: 'Tipe Transaksi', render: (r) => <span className="inline-flex items-center gap-2">{r.tipe_transaksi_nama} {tipeBadge(r.arah)}</span> },
     {
+      key: 'status', label: 'Status', render: (r) => (
+        <span className={`px-2 py-0.5 text-[10px] font-bold rounded ${statusBadgeClass(r.status)}`}>
+          {STATUS_LABEL[r.status] || r.status}
+        </span>
+      ),
+    },
+    {
       key: 'aksi', label: 'Aksi', sortable: false,
       render: (r) => (
-        <button onClick={() => handleDeleteTransaksi(r.id)} className="p-1 text-rose-500 hover:bg-rose-50 rounded-full cursor-pointer">
-          <Trash2 size={14} />
-        </button>
+        r.status === 'draft' ? (
+          <button onClick={() => handleDeleteTransaksi(r.id)} className="p-1 text-rose-500 hover:bg-rose-50 rounded-full cursor-pointer" title="Hapus (masih Belum Terposting)">
+            <Trash2 size={14} />
+          </button>
+        ) : (
+          <span className="text-[10px] text-slate-300" title="Sudah Terposting/Dibatalkan -- kelola di Akuntansi Internal">-</span>
+        )
       ),
     },
   ], []); // eslint-disable-line react-hooks/exhaustive-deps

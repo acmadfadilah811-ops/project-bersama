@@ -127,11 +127,19 @@ def selesaikan_order(order, actor):
     order._current_user = actor
     order.save()
 
+    # Order boleh diselesaikan walau belum lunas (keputusan user 2026-09-08:
+    # produksi/pengiriman sering kelar duluan, tagihan menyusul) -- tapi
+    # sisa tagihan WAJIB tercatat jelas di log supaya tetap tertagih, bukan
+    # hilang begitu saja begitu status berubah jadi "Selesai".
+    keterangan = f'Status pesanan diubah dari [{old_status}] menjadi [selesai]'
+    if order.sisa_tagihan and order.sisa_tagihan > 0:
+        keterangan += f'. PERHATIAN: masih ada sisa tagihan Rp{order.sisa_tagihan:,} yang belum dibayar.'
+
     complete_log = OrderActivityLog.objects.create(
         order=order,
         user=actor,
         tindakan='COMPLETE',
-        keterangan=f'Status pesanan diubah dari [{old_status}] menjadi [selesai]',
+        keterangan=keterangan,
     )
 
     # T-204: HPP bahan baku (JobBoard) diposting saat order selesai. Gating

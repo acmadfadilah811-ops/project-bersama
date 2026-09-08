@@ -367,7 +367,25 @@ class PengembalianOrder(models.Model):
     tanggal_pengembalian = models.DateField(default=timezone.now, help_text="Tanggal pengembalian pesanan")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Tunda', db_index=True)
     catatan = models.TextField(null=True, blank=True, help_text="Alasan atau catatan pengembalian")
-    nominal_refund = models.IntegerField(default=0, help_text="Nominal pengembalian uang / refund (jika ada)")
+    nominal_refund = models.IntegerField(
+        default=0,
+        help_text=(
+            "Nominal refund. Dihitung ulang otomatis dari items_json+tambahan_json "
+            "tiap kali keduanya diisi (proporsional qty diretur vs qty asli item); "
+            "hanya jatuh ke total_harga penuh order kalau items_json masih kosong "
+            "(retur belum merinci item -- bug ditemukan audit 2026-09-08: field ini "
+            "dulu SELALU total_harga penuh karena frontend tidak pernah mengirim "
+            "nominal_refund maupun items_json tersimpan di backend)."
+        ),
+    )
+    items_json = models.TextField(
+        blank=True, default='',
+        help_text="Snapshot item yang diretur (JSON list: order_item_id, qty, max_qty, harga, alasan).",
+    )
+    tambahan_json = models.TextField(
+        blank=True, default='',
+        help_text="Snapshot biaya tambahan retur (JSON: deskripsi, jumlah).",
+    )
     dibuat_oleh = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -396,6 +414,42 @@ class PengembalianOrder(models.Model):
 
     def __str__(self):
         return f"Pengembalian #{self.id} ORD-{self.order_id} ({self.status})"
+
+    def compute_nominal_refund_from_items(self):
+        """Hitung refund dari items_json (proporsional qty diretur / qty asli
+        * harga baris) + tambahan_json.jumlah. Return None kalau items_json
+        kosong/tak-parsable -- caller lalu jatuh ke total_harga order penuh."""
+        import json as _json
+        if not self.items_json:
+            return None
+        try:
+            items = _json.loads(self.items_json)
+        except (ValueError, TypeError):
+            return None
+        if not isinstance(items, list) or not items:
+            return None
+
+        total = 0
+        for it in items:
+            try:
+                harga = float(it.get('harga') or 0)
+                qty = float(it.get('qty') or 0)
+                max_qty = float(it.get('max_qty') or 0)
+            except (TypeError, ValueError):
+                continue
+            if max_qty > 0:
+                total += harga * (qty / max_qty)
+            elif qty > 0:
+                total += harga
+
+        if self.tambahan_json:
+            try:
+                tambahan = _json.loads(self.tambahan_json)
+                total += float(tambahan.get('jumlah') or 0)
+            except (ValueError, TypeError, AttributeError):
+                pass
+
+        return round(total)
 
 # ---------------------------------------------------------
 # 5.5 LOG AKTIVITAS PESANAN (AUDIT TRAIL)
