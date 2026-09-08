@@ -56,18 +56,29 @@ def _pos_sales(params, status='paid'):
 
 
 def _orders(params, statuses=None):
-    """Order penjualan. Default: SEMUA status kecuali batal — konsisten dengan
-    ``_orders_in_range`` di report_views.py (laporan "Rincian Penjualan" utama).
-    Sebelumnya default di sini adalah hanya status='selesai', membuat laporan
-    turunan modul ini (Penjualan berdasarkan Tanggal/Pelanggan/Jam/Penjual, dll)
-    selalu menampilkan total lebih kecil dari laporan "Rincian Penjualan" untuk
-    periode yang sama — order 'proses'/'desain'/'ready' terlewat begitu saja."""
-    queryset = Order.objects.select_related('dilayani_oleh', 'kupon').prefetch_related('items__product__koleksi')
+    """Order penjualan. Default: delegasi penuh ke ``_orders_in_range`` di
+    report_views.py (satu-satunya sumber kebenaran untuk "order mana yang
+    sah dihitung sebagai penjualan").
+
+    Sebelumnya fungsi ini punya query DUPLIKAT sendiri (cuma
+    ``exclude(status_global='batal')``, TANPA filter pembayaran/SPK) --
+    docstring lama bahkan salah mengklaim "konsisten dengan
+    _orders_in_range" padahal tidak. Dibuktikan lewat audit produksi
+    2026-09-08: laporan "Penjualan berdasarkan Tanggal" (pakai fungsi ini)
+    menunjukkan Rp653.600 untuk periode yang di Laba/Rugi (pakai
+    _orders_in_range yang sudah benar) cuma Rp408.000 -- order draft/
+    quotation/review tanpa pembayaran & tanpa SPK bocor lewat jalur ini.
+    Import lokal (bukan di top-level) untuk menghindari circular import,
+    karena report_views.py mengimpor EXTENDED_REPORT_REGISTRY dari modul ini.
+    """
+    from ..report_views import _orders_in_range as _canonical_orders_in_range
+
     if statuses:
-        queryset = queryset.filter(status_global__in=statuses)
-    else:
-        queryset = queryset.exclude(status_global='batal')
-    return _date_range(queryset, params, 'waktu')
+        queryset = Order.objects.select_related('dilayani_oleh', 'kupon').prefetch_related(
+            'items__product__koleksi',
+        ).filter(status_global__in=statuses)
+        return _date_range(queryset, params, 'waktu')
+    return _canonical_orders_in_range(params).select_related('kupon')
 
 
 def _cancelled_orders(params):

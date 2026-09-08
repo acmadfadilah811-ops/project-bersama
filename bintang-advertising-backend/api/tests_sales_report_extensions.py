@@ -38,7 +38,7 @@ class SalesReportExtensionTests(APITestCase):
         )
         self.order = Order.objects.create(
             nomor_wa='08123456789', nama='Pelanggan Laporan', status_global='selesai',
-            total_harga=20000, sisa_tagihan=10000, metode_pembayaran='kredit',
+            total_harga=20000, sisa_tagihan=10000, dp_dibayar=10000, metode_pembayaran='kredit',
             jatuh_tempo=date(2026, 8, 15), dilayani_oleh=self.user,
         )
         OrderItem.objects.create(order=self.order, jenis_produk='Produk Laporan', product=self.product, qty=1, harga_jual=20000)
@@ -210,6 +210,11 @@ class SalesReportExtensionTests(APITestCase):
             metode_pembayaran='kredit', dilayani_oleh=self.user,
         )
         OrderItem.objects.create(order=order, jenis_produk='Produk Kredit', product=self.product, qty=1, harga_jual=100000)
+        # Order kredit murni belum ada pembayaran (itu intinya "kredit") --
+        # butuh SPK terbit supaya lolos gerbang konfirmasi _orders_in_range().
+        OrderActivityLog.objects.create(
+            order=order, user=self.user, tindakan='TERBITKAN_SPK', keterangan='Uji SPK terbit',
+        )
 
         row = next(r for r in self.client.get('/api/reports/penjualan-kredit/').data['rows'] if r['no_pesanan'] == order.id)
         self.assertEqual(row['diskon'], 10000.0)
@@ -218,15 +223,28 @@ class SalesReportExtensionTests(APITestCase):
     def test_penjualan_berdasarkan_tanggal_mencakup_order_belum_selesai(self):
         """_orders() harus konsisten dengan _orders_in_range() di
         report_views.py (laporan 'Rincian Penjualan' utama): SEMUA status
-        kecuali batal, bukan cuma 'selesai' — supaya total di laporan turunan
-        (Penjualan berdasarkan Tanggal/Penjual/dst) sinkron dengan laporan utama
-        untuk periode yang sama."""
+        kecuali batal YANG SUDAH DIKONFIRMASI (dp_dibayar > 0 atau SPK
+        terbit) — bukan cuma 'selesai', supaya total di laporan turunan
+        (Penjualan berdasarkan Tanggal/Penjual/dst) sinkron dengan laporan
+        utama untuk periode yang sama. Order 'proses' TANPA konfirmasi apa
+        pun harus TETAP dikecualikan (audit 2026-09-08) -- order 'proses'
+        yang SUDAH ada DP harus tetap masuk."""
         before = self.client.get('/api/reports/penjualan-tanggal/').data
         total_sebelum = sum(row['jumlah'] for row in before['rows'])
 
-        order_proses = Order.objects.create(
-            nomor_wa='0866666666', nama='Pelanggan Masih Proses', status_global='proses',
+        order_belum_konfirmasi = Order.objects.create(
+            nomor_wa='0866666666', nama='Pelanggan Belum Konfirmasi', status_global='proses',
             total_harga=45000, dilayani_oleh=self.user,
+        )
+        OrderItem.objects.create(order=order_belum_konfirmasi, jenis_produk='Produk Proses', product=self.product, qty=1, harga_jual=45000)
+
+        after_belum_konfirmasi = self.client.get('/api/reports/penjualan-tanggal/').data
+        total_belum_konfirmasi = sum(row['jumlah'] for row in after_belum_konfirmasi['rows'])
+        self.assertAlmostEqual(total_belum_konfirmasi - total_sebelum, 0.0, msg='Order proses tanpa DP/SPK tidak boleh terhitung.')
+
+        order_proses = Order.objects.create(
+            nomor_wa='0877766655', nama='Pelanggan Proses Sudah DP', status_global='proses',
+            total_harga=45000, dp_dibayar=45000, dilayani_oleh=self.user,
         )
         OrderItem.objects.create(order=order_proses, jenis_produk='Produk Proses', product=self.product, qty=1, harga_jual=45000)
 

@@ -733,28 +733,35 @@ def rpt_value_pergerakan(params):
 # ---------------------------------------------------------------------------
 # Penjualan — helper penggabung Order (pesanan advertising) + POSSale (retail)
 # ---------------------------------------------------------------------------
+def order_confirmed_q():
+    """Q object: order dianggap "dikonfirmasi" (layak dihitung sebagai
+    penjualan/piutang di laporan mana pun) kalau sudah ada pembayaran
+    (dp_dibayar > 0) ATAU SPK sudah diterbitkan (OrderActivityLog tindakan
+    TERBITKAN_SPK/TUGASKAN_STAFF, ditulis spk.terbitkan() lewat
+    AssignOrderView) -- bukan sekadar status_global.
+
+    Satu-satunya sumber kebenaran kriteria ini, dipakai bareng oleh
+    `_orders_in_range` (laporan Laba/Rugi, Rincian Penjualan, dst.),
+    `sales_report_extensions._orders()`, dan
+    `payment_report_extensions._outstanding_orders()`. Sebelumnya 3 tempat
+    itu masing-masing punya query sendiri yang tidak konsisten -- 2 di
+    antaranya (sales_report_extensions & payment_report_extensions) belum
+    ikut menerapkan kriteria ini walau docstring lamanya sudah salah
+    mengklaim "konsisten". Dibuktikan lewat audit produksi 2026-09-08:
+    "Penjualan berdasarkan Tanggal" (query lama) Rp653.600 vs Laba/Rugi
+    (sudah benar) Rp408.000 untuk periode sama; "Piutang per Tipe
+    Pelanggan" (query lama) Rp385.000 vs "Pembayaran Belum Lunas" (sudah
+    benar) Rp135.000.
+    """
+    return Q(dp_dibayar__gt=0) | Q(activity_logs__tindakan__in=['TERBITKAN_SPK', 'TUGASKAN_STAFF'])
+
+
 def _orders_in_range(params):
     """Order yang layak dihitung sebagai "penjualan" di laporan (Laba/Rugi,
-    Rincian Penjualan, dan 20+ laporan lain yang memakai fungsi ini).
-
-    Sebelumnya cuma mengecualikan status_global='batal' -- order 'draft'
-    (draft penawaran), 'quotation' (penawaran terkirim), dan 'review'
-    (LITERAL "Menunggu Review Manager", belum disetujui sama sekali) tetap
-    terhitung sebagai pendapatan. Dibuktikan lewat audit produksi
-    2026-09-08: Laporan > Laba/Rugi menunjukkan Rp658.000 pendapatan untuk
-    periode yang sama di mana Akuntansi Internal (dari jurnal terposting
-    sungguhan) cuma menunjukkan Rp50.000 -- selisih 13x, Rp304.000 di
-    antaranya dari order yang masih 'review' tanpa pembayaran maupun SPK.
-
-    Keputusan user 2026-09-08: order dihitung HANYA kalau sudah ada
-    pembayaran (dp_dibayar > 0) ATAU SPK sudah diterbitkan (OrderActivityLog
-    tindakan TERBITKAN_SPK/TUGASKAN_STAFF, ditulis spk.terbitkan() lewat
-    AssignOrderView) -- bukan sekadar status_global, karena order 'review'
-    yang sudah DP pun harus tetap terhitung, dan order 'desain' tanpa
-    pembayaran tapi SPK sudah jalan juga harus terhitung.
-    """
+    Rincian Penjualan, dan 20+ laporan lain yang memakai fungsi ini). Lihat
+    `order_confirmed_q()` untuk kriteria & riwayat bug lengkap."""
     qs = Order.objects.exclude(status_global='batal').filter(
-        Q(dp_dibayar__gt=0) | Q(activity_logs__tindakan__in=['TERBITKAN_SPK', 'TUGASKAN_STAFF'])
+        order_confirmed_q()
     ).distinct().select_related('dilayani_oleh').prefetch_related(
         'items__product__brand', 'items__product__kategori',
         'items__product__koleksi', 'items__variant', 'items__paket')
@@ -766,8 +773,17 @@ def _orders_in_range(params):
 
 
 def _pos_sales_in_range(params):
+    from django.db.models import Prefetch
+    from .product_models import ProductStockMovement
+
     qs = POSSale.objects.filter(status='paid').select_related('kasir', 'pelanggan', 'dilayani_oleh').prefetch_related(
-        'items__product__brand', 'items__product__kategori', 'items__product__koleksi', 'items__variant', 'items__paket')
+        'items__product__brand', 'items__product__kategori', 'items__product__koleksi', 'items__variant', 'items__paket',
+        Prefetch(
+            'stock_movements',
+            queryset=ProductStockMovement.objects.filter(tipe='penjualan'),
+            to_attr='_hpp_movements',
+        ),
+    )
     if params['start']:
         qs = qs.filter(created_at__date__gte=params['start'])
     if params['end']:
@@ -810,10 +826,32 @@ def _sale_lines(params):
     for s in _pos_sales_in_range(params):
         tgl = s.created_at.date() if s.created_at else None
         s_sub = _num(s.subtotal)
+        # Modal (HPP) historis per produk, dari lapisan FIFO yang benar-benar
+        # dikonsumsi saat sale ini terjadi (ProductStockMovement.hpp_total,
+        # pola sama dengan accounting/services/pos_posting.py::_sale_hpp_total
+        # -- satu-satunya sumber HPP yang dipakai jurnal akuntansi riil).
+        # SEBELUMNYA modal dihitung dari `product.harga_beli` SAAT INI, bukan
+        # historis -- kalau harga beli supplier berubah, "Laba" transaksi
+        # LAMA ikut bergeser retroaktif walau seharusnya tetap (bug ditemukan
+        # audit 2026-09-08). Key (product_id, variant_id) karena movement
+        # tidak dipecah per baris POSSaleItem -- kalau produk sama muncul di
+        # >1 baris dalam satu sale, HPP totalnya (bukan per-baris) dipakai
+        # pada baris pertama yang cocok; baris berikutnya jatuh ke fallback.
+        hpp_by_product = {}
+        for mv in getattr(s, '_hpp_movements', []):
+            key = (mv.product_id, mv.variant_id)
+            hpp_by_product[key] = hpp_by_product.get(key, 0.0) + _num(mv.hpp_total)
         for it in s.items.all():
             qty = _num(it.qty)
             line_total = _num(it.subtotal)
-            modal = _num(it.product.harga_beli) * qty if it.product else 0.0
+            hpp_key = (it.product_id, it.variant_id)
+            if it.product and hpp_key in hpp_by_product:
+                modal = hpp_by_product.pop(hpp_key)
+            else:
+                # Fallback: item tidak berlacak inventori / tidak ada movement
+                # (mis. transaksi lama sebelum FIFO aktif) -- pakai harga beli
+                # saat ini sebagai perkiraan, lebih baik daripada modal Rp0.
+                modal = _num(it.product.harga_beli) * qty if it.product else 0.0
             # Diskon & pajak POS tersimpan di tingkat nota; sebar proporsional ke baris.
             share = (line_total / s_sub) if s_sub else 0.0
             diskon_baris = _num(s.diskon) * share

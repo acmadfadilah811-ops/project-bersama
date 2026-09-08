@@ -73,3 +73,51 @@ class OrdersInRangeAccrualGateTests(APITestCase):
     def test_selesai_dengan_pembayaran_tetap_dihitung(self):
         self._order('6', 'selesai', dp_dibayar=100000)
         self.assertEqual(self._laba_rugi_pendapatan(), 100000)
+
+
+class DuplicateOrdersHelperConsistencyTests(APITestCase):
+    """Bug lanjutan ditemukan audit 2026-09-08: `_orders()` di
+    sales_report_extensions.py dan `_outstanding_orders()` di
+    payment_report_extensions.py ternyata punya query DUPLIKAT sendiri yang
+    tidak ikut kena fix order_confirmed_q() -- keduanya sekarang delegasi ke
+    fungsi/Q object yang sama. Order 'review' tanpa DP/SPK harus konsisten
+    TIDAK MUNCUL di laporan mana pun yang menghitung "penjualan"/"piutang"."""
+
+    def setUp(self):
+        self.owner = User.objects.create_user(username='owner_dup_gate', password='x', role='owner')
+        self.client.force_authenticate(self.owner)
+        self.order = Order.objects.create(
+            id='ORD-TEST-DUPGATE-1', nomor_wa='6281200055544', nama='Pelanggan Belum Konfirmasi',
+            status_global='review', dilayani_oleh=self.owner, dp_dibayar=0,
+            total_harga=200000, sisa_tagihan=200000,
+        )
+        OrderItem.objects.create(order=self.order, jenis_produk='Banner', qty=1, harga_jual=200000)
+
+    def test_penjualan_berdasarkan_tanggal_kecualikan_order_belum_konfirmasi(self):
+        resp = self.client.get('/api/reports/penjualan-tanggal/')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(sum(r['jumlah'] for r in resp.data['rows']), 0)
+
+    def test_piutang_tipe_pelanggan_kecualikan_order_belum_konfirmasi(self):
+        resp = self.client.get('/api/reports/piutang-tipe-pelanggan/')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(sum(r['total_piutang'] for r in resp.data['rows']), 0)
+
+    def test_penjualan_hutang_jatuh_tempo_kecualikan_order_belum_konfirmasi(self):
+        self.order.jatuh_tempo = timezone.localdate()
+        self.order.save(update_fields=['jatuh_tempo'])
+        resp = self.client.get('/api/reports/penjualan-hutang-jatuh-tempo/')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertFalse(any(r['no_pesanan'] == self.order.id for r in resp.data['rows']))
+
+    def test_order_yang_sama_muncul_setelah_dp_masuk(self):
+        """Begitu order dapat DP, harus konsisten muncul di KETIGA laporan."""
+        self.order.dp_dibayar = 50000
+        self.order.sisa_tagihan = 150000
+        self.order.save(update_fields=['dp_dibayar', 'sisa_tagihan'])
+
+        penjualan = self.client.get('/api/reports/penjualan-tanggal/').data
+        self.assertEqual(sum(r['jumlah'] for r in penjualan['rows']), 200000)
+
+        piutang = self.client.get('/api/reports/piutang-tipe-pelanggan/').data
+        self.assertEqual(sum(r['total_piutang'] for r in piutang['rows']), 150000)

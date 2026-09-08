@@ -98,6 +98,7 @@ export const PEMBAYARAN_REPORTS = [
     id: 'piutang-tipe-pelanggan',
     dataSource: 'piutang-tipe-pelanggan',
     label: 'Piutang berdasarkan tipe pelanggan',
+    notice: { text: 'Data yang ditampilkan hanya order yang sudah dikonfirmasi (sudah ada pembayaran atau SPK terbit) — pesanan yang masih menunggu review manager tanpa pembayaran/SPK tidak dihitung sebagai piutang.' },
     toolbar: { paket: false, cari: false, sync: 'Resi Gabungan' },
     summary: {
       title: 'Ringkasan',
@@ -117,6 +118,7 @@ export const PEMBAYARAN_REPORTS = [
     id: 'penjualan-hutang-jatuh-tempo',
     dataSource: 'penjualan-hutang-jatuh-tempo',
     label: 'Penjualan hutang yang jatuh tempo',
+    notice: { text: 'Data yang ditampilkan hanya order yang sudah dikonfirmasi (sudah ada pembayaran atau SPK terbit) — pesanan yang masih menunggu review manager tanpa pembayaran/SPK tidak dihitung sebagai hutang jatuh tempo.' },
     toolbar: TB,
     summary: {
       title: 'Ringkasan',

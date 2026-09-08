@@ -26,7 +26,19 @@ def _num(value):
 
 
 def _outstanding_orders(params, field='waktu'):
-    queryset = Order.objects.exclude(status_global='batal').filter(sisa_tagihan__gt=0)
+    """Piutang: order dengan sisa tagihan yang sudah dikonfirmasi (sudah ada
+    pembayaran ATAU SPK terbit) -- lihat `report_views.order_confirmed_q()`
+    untuk kriteria & riwayat bug lengkap (sebelumnya fungsi ini cuma
+    exclude status='batal', order draft/quotation/review yang bahkan belum
+    pernah disentuh pun ikut masuk daftar piutang, terbukti lewat audit
+    produksi 2026-09-08: Rp385.000 vs Rp135.000 di laporan sejenis).
+    Import lokal untuk menghindari circular import (report_views.py
+    mengimpor PAYMENT_REPORT_REGISTRY dari modul ini)."""
+    from ..report_views import order_confirmed_q
+
+    queryset = Order.objects.exclude(status_global='batal').filter(
+        order_confirmed_q()
+    ).distinct().filter(sisa_tagihan__gt=0)
     if params['start']:
         queryset = queryset.filter(**{f'{field}__gte': params['start']})
     if params['end']:
