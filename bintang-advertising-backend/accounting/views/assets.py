@@ -39,7 +39,7 @@ class AssetPagination(PageNumberPagination):
 def _asset_export_response(assets, export_format):
     if export_format == "pdf":
         response = HttpResponse(build_asset_pdf(assets), content_type="application/pdf")
-        response["Content-Disposition"] = f'attachment; filename="daftar-aset-{date.today():%Y%m%d}.pdf"'
+        response["Content-Disposition"] = f'attachment; filename="daftar-aset-{timezone.localdate():%Y%m%d}.pdf"'
         return response
     if export_format != "xlsx":
         return Response({"detail": "Format export harus xlsx atau pdf."}, status=status.HTTP_400_BAD_REQUEST)
@@ -47,7 +47,7 @@ def _asset_export_response(assets, export_format):
         build_asset_xlsx(assets).getvalue(),
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
-    response["Content-Disposition"] = f'attachment; filename="daftar-aset-{date.today():%Y%m%d}.xlsx"'
+    response["Content-Disposition"] = f'attachment; filename="daftar-aset-{timezone.localdate():%Y%m%d}.xlsx"'
     return response
 
 

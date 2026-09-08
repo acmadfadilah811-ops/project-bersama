@@ -9,7 +9,7 @@ def resolve_date_range(request):
     hari ini untuk yang tidak diisi — sama seperti default filter di Olsera.
     Return (date, date).
 
-    timezone.localdate() (BUKAN date.today()) -- date.today() pakai jam OS
+    timezone.localdate() (BUKAN date.today biasa) -- date.today (jam plain) pakai jam OS
     server (UTC di VPS), sedangkan TIME_ZONE proyek ini 'Asia/Jakarta' (WIB,
     UTC+7). Dini hari WIB (00:00-06:59) jam UTC masih di TANGGAL KEMARIN --
     tanpa fix ini, "Hari ini" (default 7 halaman Akuntansi: Invoice, Jurnal

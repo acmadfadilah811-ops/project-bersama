@@ -8,10 +8,14 @@ ENV UV_HTTP_TIMEOUT=300
 ENV UV_HTTP_RETRIES=5
 
 # Install build dependencies for PostgreSQL and Python packages
+# tzdata -- python:3.12-slim tidak menyertakan zoneinfo secara default, jadi
+# env var TZ (diset di deploy/docker-compose.yml) tidak berpengaruh tanpa ini
+# (jaring pengaman kedua utk bug date.today() jam UTC, audit Invoice 2026-09-08).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
     curl \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy uv binary from official image for extremely fast dependency sync

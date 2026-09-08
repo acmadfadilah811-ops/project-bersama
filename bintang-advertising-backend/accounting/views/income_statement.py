@@ -1,6 +1,7 @@
 from datetime import date
 
 from django.http import HttpResponse
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -44,7 +45,7 @@ class IncomeStatementExportView(APIView):
         date_from, date_to = resolve_date_range(request)
         data = get_income_statement(date_from, date_to)
         buffer = build_income_statement_xlsx(data)
-        filename = f"laba-rugi-{date.today():%Y%m%d}.xlsx"
+        filename = f"laba-rugi-{timezone.localdate():%Y%m%d}.xlsx"
         response = HttpResponse(buffer.getvalue(), content_type=_XLSX_CONTENT_TYPE)
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
@@ -76,7 +77,7 @@ class BalanceSheetExportView(APIView):
         date_from, date_to = resolve_date_range(request)
         data = get_balance_sheet(date_from, date_to)
         buffer = build_balance_sheet_xlsx(data)
-        filename = f"neraca-{date.today():%Y%m%d}.xlsx"
+        filename = f"neraca-{timezone.localdate():%Y%m%d}.xlsx"
         response = HttpResponse(buffer.getvalue(), content_type=_XLSX_CONTENT_TYPE)
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response

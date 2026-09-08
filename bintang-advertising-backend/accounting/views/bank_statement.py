@@ -18,7 +18,7 @@ from ..services.bank_statement import build_preview, commit_lines, parse_csv_fil
 def _resolve_month_range(request):
     """Default Bank Statement beda dari Jurnal Umum/Buku Besar: bulan berjalan penuh, bukan cuma hari ini.
 
-    timezone.localdate() -- date.today() pakai jam OS server (UTC), bisa
+    timezone.localdate() -- date.today (jam plain, tanpa timezone) pakai jam OS server (UTC), bisa
     salah "bulan berjalan" persis di dini hari WIB tanggal 1 (lihat
     accounting/views/common.py::resolve_date_range untuk penjelasan lengkap).
     """

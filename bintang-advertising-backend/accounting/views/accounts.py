@@ -18,7 +18,7 @@ from ..services.ledger import get_account_balances
 def _period_end_date(period_str):
     """'2026-07' -> tanggal terakhir bulan itu. Default: bulan berjalan.
 
-    timezone.localdate() -- date.today() pakai jam OS server (UTC), bisa
+    timezone.localdate() -- date.today (jam plain, tanpa timezone) pakai jam OS server (UTC), bisa
     salah "bulan berjalan" persis di dini hari WIB tanggal 1 (lihat
     accounting/views/common.py::resolve_date_range untuk penjelasan lengkap).
     """

@@ -930,7 +930,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         <div class="footer">
             <div class="footer-line">
                 <span><strong>Diketahui oleh:</strong> {creator_name}</span>
-                <span><strong>Tanggal Cetak:</strong> {datetime.datetime.now().strftime('%d-%b-%Y')}</span>
+                <span><strong>Tanggal Cetak:</strong> {timezone.localtime().strftime('%d-%b-%Y')}</span>
             </div>
         </div>
     </div>

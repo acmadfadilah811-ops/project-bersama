@@ -3,6 +3,14 @@ name: bintang
 x-backend-env: &backend-env
   env_file:
     - .env
+  # Jaring pengaman kedua terhadap bug date.today()/datetime.now() "polos"
+  # (jam OS server, bukan TIME_ZONE Django) balik lagi di kode baru -- kalau
+  # ada yang lolos dari guard test accounting/tests_no_naive_today.py, jam
+  # OS kontainer sudah WIB duluan jadi tetap benar. Django sendiri tetap
+  # pakai TIME_ZONE='Asia/Jakarta' di settings (sumber kebenaran utama),
+  # ini cuma lapisan tambahan (bug ditemukan audit Invoice, 2026-09-08).
+  environment:
+    TZ: Asia/Jakarta
 
 services:
   bintang-db:

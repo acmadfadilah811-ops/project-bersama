@@ -1538,12 +1538,12 @@ class ProductStockMovementViewSet(viewsets.ReadOnlyModelViewSet):
         if start_date_str:
             start_date = parse_date(start_date_str)
         else:
-            start_date = datetime.date.today()
+            start_date = timezone.localdate()
             
         if end_date_str:
             end_date = parse_date(end_date_str)
         else:
-            end_date = datetime.date.today()
+            end_date = timezone.localdate()
             
         if not start_date or not end_date:
             return Response({'error': 'Format tanggal tidak valid'}, status=400)

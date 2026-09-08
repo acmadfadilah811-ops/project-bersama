@@ -198,7 +198,7 @@ class JournalExportView(APIView):
         entries = _filter_journal_queryset(base_qs, request)
 
         buffer = build_journal_export(entries)
-        filename = f"jurnal-umum-{date.today():%Y%m%d}.xlsx"
+        filename = f"jurnal-umum-{timezone.localdate():%Y%m%d}.xlsx"
         response = HttpResponse(
             buffer.getvalue(),
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

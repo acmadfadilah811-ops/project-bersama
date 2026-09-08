@@ -478,12 +478,12 @@ class ExportStockMovementView(APIView):
         if start_date_str:
             start_date = parse_date(start_date_str)
         else:
-            start_date = datetime.date.today()
+            start_date = timezone.localdate()
 
         if end_date_str:
             end_date = parse_date(end_date_str)
         else:
-            end_date = datetime.date.today()
+            end_date = timezone.localdate()
 
         filename = f"summary-{start_date.strftime('%Y-%m-%d')}__{end_date.strftime('%Y-%m-%d')}.xlsx"
 
@@ -854,7 +854,7 @@ class ExportCustomerNotesView(APIView):
 
     def generate_pdf_html(self, notes_qs):
         import datetime
-        now_str = datetime.datetime.now().strftime('%d %B %Y, %H:%M')
+        now_str = timezone.localtime().strftime('%d %B %Y, %H:%M')
         
         # Build rows
         rows_html = ""
@@ -1123,14 +1123,14 @@ class ExportSalesItemsByBrandView(APIView):
         end_date_str = request.query_params.get('end_date') or request.query_params.get('end')
 
         if start_date_str:
-            start_date = parse_date(start_date_str) or datetime.date.today()
+            start_date = parse_date(start_date_str) or timezone.localdate()
         else:
-            start_date = datetime.date.today()
+            start_date = timezone.localdate()
 
         if end_date_str:
-            end_date = parse_date(end_date_str) or datetime.date.today()
+            end_date = parse_date(end_date_str) or timezone.localdate()
         else:
-            end_date = datetime.date.today()
+            end_date = timezone.localdate()
 
         filename = f"Item Penjualan Berdasarkan Brand-{start_date.strftime('%Y-%m-%d')}__{end_date.strftime('%Y-%m-%d')}.xlsx"
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
@@ -1230,14 +1230,14 @@ class ExportSalesDetailsView(APIView):
         end_date_str = request.query_params.get('end_date') or request.query_params.get('end')
 
         if start_date_str:
-            start_date = parse_date(start_date_str) or datetime.date.today()
+            start_date = parse_date(start_date_str) or timezone.localdate()
         else:
-            start_date = datetime.date.today()
+            start_date = timezone.localdate()
 
         if end_date_str:
-            end_date = parse_date(end_date_str) or datetime.date.today()
+            end_date = parse_date(end_date_str) or timezone.localdate()
         else:
-            end_date = datetime.date.today()
+            end_date = timezone.localdate()
 
         filename = f"Rincian Penjualan-{start_date.strftime('%Y-%m-%d')}__{end_date.strftime('%Y-%m-%d')}.xlsx"
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
