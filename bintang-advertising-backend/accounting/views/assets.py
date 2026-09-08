@@ -1,9 +1,11 @@
+import calendar
 import csv
 import io
 from datetime import date
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import HttpResponse
+from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.parsers import MultiPartParser
@@ -22,6 +24,7 @@ from ..serializers.assets import (
 from ..services.asset_export import build_asset_pdf, build_asset_xlsx
 from ..services.asset_import import build_preview, parse_csv_file
 from ..services.assets import create_fixed_assets_from_import
+from ..services.depreciation import post_monthly_depreciation
 from .common import resolve_date_range
 
 
@@ -145,4 +148,39 @@ class FixedAssetImportCommitView(APIView):
         except (DjangoValidationError, ValueError) as exc:
             return Response({"detail": getattr(exc, "messages", [str(exc)])}, status=status.HTTP_400_BAD_REQUEST)
         return Response({"created_count": len(assets), "assets": FixedAssetReadSerializer(assets, many=True).data}, status=201)
+
+
+class FixedAssetDepreciationPostView(APIView):
+    """POST /api/accounting/assets/depreciation/post/ {"period": "2026-09"}
+
+    Posting manual jurnal penyusutan bulanan (juga dijadwalkan otomatis
+    lewat management command post_monthly_depreciation, lihat cron/systemd
+    timer VPS) -- disediakan supaya Owner/Manager bisa memicu langsung
+    (mis. baru isi umur manfaat aset lama, tidak mau nunggu jadwal
+    berikutnya) atau susulan bulan yang terlewat.
+    """
+
+    permission_classes = [IsOwnerOrManager]
+
+    def post(self, request):
+        period_raw = str(request.data.get("period") or "").strip()
+        today = timezone.localdate()
+        if period_raw:
+            try:
+                year, month = (int(part) for part in period_raw.split("-"))
+                period_end_date = date(year, month, calendar.monthrange(year, month)[1])
+            except (ValueError, TypeError):
+                return Response({"detail": "Format period harus YYYY-MM."}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            period_end_date = date(today.year, today.month, calendar.monthrange(today.year, today.month)[1])
+
+        entries = post_monthly_depreciation(period_end_date=period_end_date, actor=request.user)
+        return Response({
+            "period": f"{period_end_date:%Y-%m}",
+            "posted_count": len(entries),
+            "entries": [
+                {"id": e.id, "entry_number": e.entry_number, "description": e.description}
+                for e in entries
+            ],
+        })
 

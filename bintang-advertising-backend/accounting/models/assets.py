@@ -41,6 +41,12 @@ class FixedAsset(models.Model):
         JournalEntry, on_delete=models.PROTECT, null=True, blank=True, related_name="fixed_asset_acquisition",
     )
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.ACTIVE)
+    useful_life_months = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Umur manfaat (bulan) untuk penyusutan garis lurus. Kosongkan untuk "
+        "aset yang tidak disusutkan (mis. tanah) -- accounting/services/depreciation.py "
+        "melewati aset yang field ini kosong atau 0.",
+    )
     last_depreciation_date = models.DateField(null=True, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="fixed_assets_created",

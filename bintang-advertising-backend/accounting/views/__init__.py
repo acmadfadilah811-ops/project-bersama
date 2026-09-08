@@ -67,6 +67,7 @@ from .lookups import DepartmentListView, JournalTemplateListView
 from .sales import AccountingSalesView
 from .sales_actions import POSSaleCancelPostView, POSSaleJournalLogView, POSSaleManualPostView
 from .assets import (
+    FixedAssetDepreciationPostView,
     FixedAssetDetailView,
     FixedAssetImportCommitView,
     FixedAssetImportPreviewView,

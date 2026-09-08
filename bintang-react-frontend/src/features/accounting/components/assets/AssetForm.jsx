@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { notify, notifyApiError } from '../../../../utils/notify';
 import AssetAccountSelect from './AssetAccountSelect';
 
-const initialForm = { asset_code: '', name: '', acquisition_date: new Date().toISOString().slice(0, 10), acquisition_cost: '', residual_value: '0', asset_account: null, depreciation_expense_account: null, accumulated_depreciation_account: null, counter_account: null, is_opening_balance: false, external_document_no: '', description: '' };
+const initialForm = { asset_code: '', name: '', acquisition_date: new Date().toISOString().slice(0, 10), acquisition_cost: '', residual_value: '0', useful_life_months: '', asset_account: null, depreciation_expense_account: null, accumulated_depreciation_account: null, counter_account: null, is_opening_balance: false, external_document_no: '', description: '' };
 
 export default function AssetForm({ accounts, onSave, onClose }) {
   const [form, setForm] = useState(initialForm);
@@ -12,7 +12,12 @@ export default function AssetForm({ accounts, onSave, onClose }) {
     event.preventDefault();
     setSaving(true);
     try {
-      await onSave({ ...form, acquisition_cost: String(form.acquisition_cost), residual_value: String(form.residual_value) });
+      await onSave({
+        ...form,
+        acquisition_cost: String(form.acquisition_cost),
+        residual_value: String(form.residual_value),
+        useful_life_months: form.useful_life_months === '' ? null : Number(form.useful_life_months),
+      });
       notify({ type: 'success', title: 'Aset tersimpan', message: 'Register aset dan jurnal perolehan berhasil dibuat.' });
       onClose();
     } catch (error) {
@@ -28,6 +33,10 @@ export default function AssetForm({ accounts, onSave, onClose }) {
         <label className="block text-xs font-bold">Tanggal Perolehan *<input required type="date" value={form.acquisition_date} onChange={(e) => set('acquisition_date', e.target.value)} className="mt-1 w-full rounded-lg border p-2 font-normal" /></label>
         <label className="block text-xs font-bold">Nilai Perolehan *<input required min="1" type="number" value={form.acquisition_cost} onChange={(e) => set('acquisition_cost', e.target.value)} className="mt-1 w-full rounded-lg border p-2 font-normal" /></label>
         <label className="block text-xs font-bold">Nilai Residu<input min="0" type="number" value={form.residual_value} onChange={(e) => set('residual_value', e.target.value)} className="mt-1 w-full rounded-lg border p-2 font-normal" /></label>
+        <label className="block text-xs font-bold">
+          Umur Manfaat (bulan)
+          <input min="1" type="number" placeholder="Kosongkan bila tidak disusutkan (mis. tanah)" value={form.useful_life_months} onChange={(e) => set('useful_life_months', e.target.value)} className="mt-1 w-full rounded-lg border p-2 font-normal" />
+        </label>
         <label className="block text-xs font-bold">No. Dokumen<input value={form.external_document_no} onChange={(e) => set('external_document_no', e.target.value)} className="mt-1 w-full rounded-lg border p-2 font-normal" /></label>
       </div>
       <AssetAccountSelect label="Akun Aset" value={form.asset_account} onChange={(value) => set('asset_account', value)} accounts={accounts} filter={(a) => a.account_type === 'asset' && !a.is_contra} />
