@@ -1,10 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { MoreHorizontal, Eye, CheckCircle2, ArrowLeftRight, Trash2 } from 'lucide-react';
-import { notify } from '../../../../utils/notify';
+import { MoreHorizontal, Eye, CheckCircle2, ArrowLeftRight } from 'lucide-react';
 
-export default function PiutangActionDropdown({ txNo, orderId, onDetailClick, onJournalClick, isLunas }) {
+export default function PiutangActionDropdown({ orderId, onDetailClick, onJournalClick, isLunas }) {
   const [isOpen, setIsOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState(null);
   const dropdownRef = useRef(null);
@@ -36,15 +35,6 @@ export default function PiutangActionDropdown({ txNo, orderId, onDetailClick, on
       });
     }
     setIsOpen(!isOpen);
-  };
-
-  const handleAction = (actionName, type = 'info') => {
-    setIsOpen(false);
-    notify({
-      type,
-      title: `${actionName} Terpilih`,
-      message: `Aksi ${actionName} untuk transaksi ${txNo} berhasil diproses.`
-    });
   };
 
   const handleDetail = () => {
@@ -114,17 +104,6 @@ export default function PiutangActionDropdown({ txNo, orderId, onDetailClick, on
           >
             <ArrowLeftRight size={13} className="text-slate-400 shrink-0" />
             <span>Pasangan Jurnal</span>
-          </button>
-
-          {/* Hapus */}
-          <div className="border-t border-slate-100 my-1" />
-          <button
-            type="button"
-            onClick={() => handleAction('Hapus', 'error')}
-            className="w-full text-left px-3.5 py-2 text-[11px] hover:bg-slate-50 transition-colors cursor-pointer flex items-center gap-2 text-rose-600 hover:text-rose-700 font-bold"
-          >
-            <Trash2 size={13} className="text-rose-500 shrink-0" />
-            <span>Hapus</span>
           </button>
         </div>
       , document.body)}

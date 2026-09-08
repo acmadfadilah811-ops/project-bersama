@@ -8,12 +8,14 @@ memulihkan stok penuh lewat lapisan FIFO yang sama.
 """
 
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
+from accounting.models import AccountingSettings
 from . import stock_fifo
 from .models import Divisi, Order, TahapProses
 from .product_models import Product, ProductStockMovement
@@ -82,3 +84,49 @@ class CheckoutPosStockTest(APITestCase):
 
         pengembalian = ProductStockMovement.objects.get(order_id=order_id, tipe='pengembalian')
         self.assertEqual(pengembalian.qty, Decimal('4'))
+
+
+class CheckoutPosDueDateFallbackTest(APITestCase):
+    """AccountingSettings.default_payment_due_days sebelumnya ada di
+    Pengaturan Akuntansi tapi tidak pernah dibaca -- checkout-pos WAJIB
+    tanggal jatuh tempo manual walau default sudah dikonfigurasi (ditemukan
+    audit 2026-09-08)."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.owner = User.objects.create_user(username='owner_due_fallback', password='x', role='owner')
+        self.staff = User.objects.create_user(username='staff_due_fallback', password='x', role='staff')
+        self.divisi = Divisi.objects.create(nama='Produksi Due Fallback')
+        TahapProses.objects.create(nama='Cetak', divisi=self.divisi, urutan=1)
+        self.produk = Product.objects.create(
+            nama='Banner Due Fallback', harga_beli=10000, harga_jual_toko=50000,
+            qty_stok=10, lacak_inventori=True,
+        )
+        stock_fifo.create_layer(self.produk, None, 10, 10000, timezone.localdate())
+        self.client.force_authenticate(self.owner)
+
+    def _checkout_tanpa_jatuh_tempo(self):
+        return self.client.post('/api/orders/checkout-pos/', {
+            'idempotency_key': str(uuid.uuid4()),
+            'nama': 'Pelanggan Due Fallback',
+            'nomor_wa': '081234567890',
+            'items': [{'product_id': self.produk.id, 'qty': 1, 'harga_satuan': 50000}],
+            'jumlah_bayar': 50000,
+            'metode_pembayaran': 'tunai',
+            'dilayani_oleh_id': self.staff.id,
+            'spk': {'divisi_id': self.divisi.id, 'deadline': str(timezone.localdate())},
+        }, format='json')
+
+    def test_tanpa_jatuh_tempo_fallback_ke_default_payment_due_days(self):
+        AccountingSettings.objects.create(accounting_start_date=timezone.localdate(), default_payment_due_days=7)
+        res = self._checkout_tanpa_jatuh_tempo()
+        self.assertEqual(res.status_code, 201, res.content)
+        order = Order.objects.get(pk=res.json()['id'])
+        self.assertEqual(order.jatuh_tempo, timezone.localdate() + timedelta(days=7))
+
+    def test_tanpa_jatuh_tempo_dan_tanpa_settings_fallback_ke_hari_ini(self):
+        # Tidak ada AccountingSettings sama sekali -- default_days = 0.
+        res = self._checkout_tanpa_jatuh_tempo()
+        self.assertEqual(res.status_code, 201, res.content)
+        order = Order.objects.get(pk=res.json()['id'])
+        self.assertEqual(order.jatuh_tempo, timezone.localdate())

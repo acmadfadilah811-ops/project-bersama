@@ -227,7 +227,7 @@ export default function AccountingInternalApp() {
             ) : activeSubMenu === 'pos-biaya-mdr' ? (
               <BiayaMdr />
             ) : activeSubMenu === 'piutang-semua' ? (
-              <DaftarPiutang initialFilter="Semua Piutang" />
+              <DaftarPiutang />
             ) : activeSubMenu === 'piutang-jatuh-tempo' ? (
               <PelangganJatuhTempo />
             ) : activeSubMenu === 'piutang-uang-muka' ? (

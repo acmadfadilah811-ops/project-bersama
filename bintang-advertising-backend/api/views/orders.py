@@ -377,8 +377,15 @@ class OrderViewSet(viewsets.ModelViewSet):
         due_date_raw = str(request.data.get('jatuh_tempo') or '').strip()
         due_date = parse_date(due_date_raw) if due_date_raw else None
         if not due_date:
-            return Response({'error': 'Jatuh tempo wajib diisi untuk transaksi DP.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+            # Fallback ke AccountingSettings.default_payment_due_days kalau
+            # klien tidak mengirim tanggal jatuh tempo -- sebelumnya field
+            # ini ada di Pengaturan Akuntansi tapi tidak pernah dibaca sama
+            # sekali (ditemukan audit 2026-09-08), klien WAJIB selalu
+            # mengirim tanggal manual walau sudah ada default yang dikonfigurasi.
+            from accounting.models import AccountingSettings
+            settings_row = AccountingSettings.objects.first()
+            default_days = settings_row.default_payment_due_days if settings_row else 0
+            due_date = timezone.localdate() + datetime.timedelta(days=default_days)
         if due_date < timezone.localdate():
             return Response({'error': 'Jatuh tempo tidak boleh sebelum hari ini.'},
                             status=status.HTTP_400_BAD_REQUEST)

@@ -11,7 +11,7 @@ import { notify } from '../../../utils/notify';
 import apiClient from '../../../api/apiClient';
 import { fetchAllPages } from '../../../utils/paginatedApi';
 
-export default function DaftarPiutang({ initialFilter }) {
+export default function DaftarPiutang() {
   const getTodayStr = () => new Date().toISOString().split('T')[0];
   const getDaysAgoStr = (days) => {
     const d = new Date();
@@ -19,7 +19,6 @@ export default function DaftarPiutang({ initialFilter }) {
     return d.toISOString().split('T')[0];
   };
 
-  const [filterType, setFilterType] = useState(initialFilter || 'Semua Piutang');
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [isDateModalOpen, setIsDateModalOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
@@ -45,12 +44,6 @@ export default function DaftarPiutang({ initialFilter }) {
   const [piutangData, setPiutangData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
-
-  useEffect(() => {
-    if (initialFilter) {
-      setFilterType(initialFilter);
-    }
-  }, [initialFilter]);
 
   useEffect(() => {
     function handleClickOutside(event) {
