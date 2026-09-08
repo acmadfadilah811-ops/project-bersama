@@ -1949,6 +1949,20 @@ class PurchaseViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(tanggal__lte=date_to)
         if search:
             queryset = queryset.filter(Q(nomor__icontains=search) | Q(supplier__icontains=search))
+
+        # ?payment_status=&is_retur= -- Semua Hutang & Uang Muka Pembelian
+        # (Akuntansi Internal) sebelumnya menarik SELURUH riwayat pembelian
+        # lewat fetchAllPages lalu memfilter status/retur di browser --
+        # dataset yang cuma bertambah seiring waktu (audit skalabilitas
+        # 2026-09-08). Filter di sini supaya bisa dipersempit di query.
+        payment_status = self.request.query_params.get('payment_status')
+        if payment_status in {'belum', 'sebagian', 'lunas'}:
+            queryset = queryset.filter(payment_status=payment_status)
+        is_retur = self.request.query_params.get('is_retur')
+        if is_retur in ('true', '1', 'True'):
+            queryset = queryset.filter(is_retur=True)
+        elif is_retur in ('false', '0', 'False'):
+            queryset = queryset.filter(is_retur=False)
         return queryset
 
     def perform_create(self, serializer):

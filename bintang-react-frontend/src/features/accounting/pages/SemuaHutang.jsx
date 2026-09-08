@@ -41,12 +41,23 @@ export default function SemuaHutang() {
   const [selectedDetailId, setSelectedDetailId] = useState(null);
   const [selectedJournalRow, setSelectedJournalRow] = useState(null);
 
+  const statusToPaymentStatus = { 'Belum Bayar': 'belum', 'Sebagian': 'sebagian', 'Lunas': 'lunas' };
+
   const loadHutang = async () => {
     setLoading(true);
     try {
-      const purchases = await fetchAllPages('/purchases/');
+      // Server-side filter status pembayaran + tanggal + exclude retur --
+      // sebelumnya narik SEMUA riwayat pembelian lalu filter di browser
+      // (bug skalabilitas ditemukan audit 2026-09-08).
+      const params = { is_retur: 'false' };
+      const mappedStatus = statusToPaymentStatus[statusFilter];
+      if (mappedStatus) params.payment_status = mappedStatus;
+      if (dateLabel !== 'Semua' && dateLabel !== 'Semua Data') {
+        if (dateFrom) params.date_from = dateFrom;
+        if (dateTo) params.date_to = dateTo;
+      }
+      const purchases = await fetchAllPages('/purchases/', { params });
       const rows = purchases
-        .filter((purchase) => !purchase.is_retur)
         .map((purchase) => {
           const total = Number(purchase.total || 0);
           const paidAmount = Number(purchase.total_dibayar || 0);
@@ -87,7 +98,7 @@ export default function SemuaHutang() {
 
   useEffect(() => {
     loadHutang();
-  }, []);
+  }, [statusFilter, dateFrom, dateTo, dateLabel]);
 
   const handleDelete = async (row) => {
     if (!window.confirm(`Hapus pembelian ${row.txNo}? Hanya pembelian draft yang dapat dihapus.`)) return;

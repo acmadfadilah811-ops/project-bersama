@@ -63,7 +63,15 @@ export default function DaftarPiutang() {
       // pembayaran atau SPK terbit), bukan SEMUA order termasuk draft/review
       // yang belum disentuh sama sekali (bug ditemukan audit 2026-09-08,
       // pola sama dengan fix "Piutang per Tipe Pelanggan" di Laporan).
-      const data = await fetchAllPages('/orders/', { params: { confirmed: 'true' } });
+      // date_from/date_to -- halaman ini sudah punya UI filter tanggal
+      // (default "7 Hari yang lalu"), tapi sebelumnya cuma dipakai untuk
+      // filter di browser SETELAH seluruh riwayat order confirmed sepanjang
+      // masa sudah ditarik -- filter tanggalnya jadi dekoratif, bukan
+      // membatasi fetch (bug skalabilitas ditemukan audit 2026-09-08).
+      const params = { confirmed: 'true' };
+      if (dateFrom) params.date_from = dateFrom;
+      if (dateTo) params.date_to = dateTo;
+      const data = await fetchAllPages('/orders/', { params });
       const formatted = data.map((item) => {
         const total = Number(item.total_harga || 0);
         const dp = Number(item.dp_dibayar || 0);
@@ -103,7 +111,7 @@ export default function DaftarPiutang() {
 
   useEffect(() => {
     fetchPiutang();
-  }, []);
+  }, [dateFrom, dateTo]);
 
   // Client-side filtering
   const filteredData = piutangData.filter((row) => {

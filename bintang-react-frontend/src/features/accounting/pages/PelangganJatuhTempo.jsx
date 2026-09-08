@@ -32,7 +32,13 @@ export default function PelangganJatuhTempo() {
   const loadDueCustomers = async () => {
     setLoading(true);
     try {
-      const orders = await fetchAllPages('/orders/');
+      // ?tab=piutang&confirmed=true -- sebelumnya narik SEMUA order
+      // sepanjang masa (termasuk draft/review tanpa pembayaran/SPK) lalu
+      // filter sisa_tagihan>0 di browser. Backend sudah punya filter yang
+      // sama persis (order_confirmed_q() + sisa_tagihan>0, exclude batal),
+      // dipakai juga oleh DaftarPiutang.jsx (bug skalabilitas + piutang
+      // "palsu" dari order belum dikonfirmasi, ditemukan audit 2026-09-08).
+      const orders = await fetchAllPages('/orders/', { params: { tab: 'piutang', confirmed: 'true' } });
       const rows = orders
         .filter((order) => Number(order.sisa_tagihan || 0) > 0)
         .map((order) => ({

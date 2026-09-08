@@ -66,12 +66,22 @@ export default function UangMukaPembelian() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const dpStatusToPaymentStatus = { 'Digunakan': 'lunas', 'Digunakan Sebagian': 'sebagian', 'Tidak Digunakan': 'belum' };
+
   useEffect(() => {
     let active = true;
     const loadAdvancePayments = async () => {
       setLoading(true);
       try {
-        const purchases = await fetchAllPages('/purchases/');
+        // Server-side filter payment_status -- sebelumnya narik SELURUH
+        // riwayat pembelian (termasuk semua pembayaran DP-nya) lalu filter
+        // status di browser (bug skalabilitas ditemukan audit 2026-09-08).
+        // Rentang tanggal tetap difilter di browser karena dateFrom/dateTo
+        // di sini menyaring tanggal PEMBAYARAN, bukan tanggal pembelian.
+        const params = {};
+        const mappedStatus = dpStatusToPaymentStatus[dpStatus];
+        if (mappedStatus) params.payment_status = mappedStatus;
+        const purchases = await fetchAllPages('/purchases/', { params });
         const rows = purchases.flatMap((purchase) => (purchase.payments || []).map((payment) => ({
           id: `${purchase.id}-${payment.id}`,
           date: payment.tanggal,
@@ -98,7 +108,7 @@ export default function UangMukaPembelian() {
     };
     loadAdvancePayments();
     return () => { active = false; };
-  }, []);
+  }, [dpStatus]);
 
   const filteredPayments = advancePayments.filter((payment) => {
     if (dpStatus && payment.status !== dpStatus) return false;
