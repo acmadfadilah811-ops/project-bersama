@@ -137,11 +137,43 @@ def _dalam_jendela_jam(rule, saat):
     return True, ''
 
 
+def _tipe_pelanggan_cocok(tipe_pelanggan_raw, pelanggan):
+    """True kalau `pelanggan` (Contact, boleh None) masuk salah satu tipe
+    pelanggan (nama CustomerGroup) di `tipe_pelanggan_raw` (string dipisah
+    koma). Kosong/'semua' berarti cocok untuk semua tipe. Sama persis
+    konvensi `api/loyalty.py::_tipe_cocok()` — dipertahankan konsisten
+    supaya "tipe pelanggan" berarti sama di seluruh modul Marketing.
+
+    Dipakai bareng oleh Kupon Diskon, Promosi POS (lewat `_pelanggan_cocok`)
+    dan Diskon Penjualan (`evaluate_sales_discount`) — sebelumnya field
+    `tipe_pelanggan` di ketiga model itu tersimpan & tampil di form tapi
+    TIDAK PERNAH benar-benar dibaca di sini sama sekali (bug ditemukan audit
+    2026-09-08, pola identik dengan bug CustomerGroup.diskon_persen yang
+    lebih dulu ditemukan & diperbaiki)."""
+    val = (tipe_pelanggan_raw or '').strip()
+    if not val or val.lower() == 'semua':
+        return True
+    if pelanggan is None:
+        return False
+    grup_nama = None
+    if getattr(pelanggan, 'customer_id', None) and pelanggan.customer.customer_group_id:
+        grup_nama = pelanggan.customer.customer_group.nama
+    if not grup_nama:
+        return False
+    allowed = {s.strip().lower() for s in val.split(',') if s.strip()}
+    return grup_nama.strip().lower() in allowed
+
+
 def _pelanggan_cocok(rule, pelanggan):
     if getattr(rule, 'all_customers', True):
         return True, ''
     if pelanggan is None:
-        return False, 'Kupon ini khusus pelanggan terdaftar — pilih pelanggan dulu.'
+        return False, 'Kupon ini khusus pelanggan/tipe pelanggan tertentu — pilih pelanggan dulu.'
+    # Cocok kalau tipe pelanggan (grup) cocok, ATAU pelanggan ada di daftar
+    # spesifik yang dipilih manual (form menampilkan keduanya sekaligus
+    # sebagai dua cara independen membatasi sasaran, lihat KuponRulesForm.jsx).
+    if _tipe_pelanggan_cocok(getattr(rule, 'tipe_pelanggan', ''), pelanggan):
+        return True, ''
     if rule.pelanggan.filter(pk=pelanggan.pk).exists():
         return True, ''
     return False, 'Pelanggan ini tidak termasuk sasaran kupon.'
@@ -484,6 +516,13 @@ def evaluate_sales_discount(konteks, diskon=None):
     for aturan in diskon:
         ok, _ = _dalam_jendela_tanggal(aturan, konteks.saat)
         if not ok:
+            continue
+        # SalesDiscount tidak punya `all_customers`/M2M pelanggan seperti
+        # Kupon & Promosi POS -- cuma `tipe_pelanggan` berdiri sendiri.
+        # Sebelumnya field ini TIDAK PERNAH dicek sama sekali, jadi Diskon
+        # Penjualan selalu berlaku ke SEMUA pelanggan walau field UI-nya
+        # menyiratkan bisa dibatasi (bug ditemukan audit 2026-09-08).
+        if not _tipe_pelanggan_cocok(aturan.tipe_pelanggan, konteks.pelanggan):
             continue
         if money(konteks.subtotal) < money(aturan.minimal_total_pesanan):
             continue

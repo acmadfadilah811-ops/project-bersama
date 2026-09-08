@@ -98,7 +98,7 @@ class DiscountMarketingPosTests(APITestCase):
         )
         order = Order.objects.create(
             nama='Order Diskon Otomatis', nomor_wa='081234567891', sumber='pos',
-            metode_diskon='otomatis', diskon_otomatis=0,
+            metode_diskon='otomatis', diskon_otomatis=0, dp_dibayar=1000,
         )
         OrderItem.objects.create(order=order, jenis_produk='Banner', qty=1, harga_jual=10000)
         order.diskon_otomatis = 1000

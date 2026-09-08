@@ -195,6 +195,14 @@ class Order(models.Model):
         default=0,
         help_text="Potongan nominal otomatis dari Diskon Khusus Tipe Pelanggan (CustomerGroup), dihitung ulang tiap save().",
     )
+    diskon_promo = models.IntegerField(
+        default=0,
+        help_text=(
+            "Potongan nominal otomatis dari Promosi POS tipe DQ/DA (Discount Qty/Amount), "
+            "dihitung ulang tiap save(). Tipe BX/FI (item gratis) TIDAK diterapkan otomatis di "
+            "Order -- lihat _hitung_diskon_promo_pos()."
+        ),
+    )
     # Pilihan eksplisit kasir saat membuat order — menggantikan perbandingan
     # otomatis kupon-vs-diskon-penjualan yang lama (silent best-of), supaya
     # kasir tahu persis mekanisme mana yang dipakai (meminimalisir kesalahan).
@@ -231,6 +239,39 @@ class Order(models.Model):
     catatan_footer = models.TextField(null=True, blank=True, default="Terima kasih atas pesanan Anda", help_text="Catatan di bagian bawah cetakan invoice")
     referensi_pembayaran = models.CharField(max_length=255, blank=True, default="", help_text="Referensi pembayaran dari Paypal/Bank (opsional, diisi manual saat mencatat pembayaran)")
 
+    def _hitung_diskon_promo_pos(self, subtotal):
+        """Diskon dari Promosi POS tipe DQ/DA (Discount Qty/Discount Amount)
+        -- HANYA komponen nominal, tidak termasuk BX/FI (item gratis).
+        Sebelumnya Promosi POS cuma dievaluasi di checkout Kasir POS Terminal
+        murni (`pos_services.create_sale`), sama sekali tidak nyala untuk
+        order WA yang diproses lewat Antrean Online & Offline (bug/gap
+        ditemukan audit 2026-09-08, keputusan user: samakan). Item gratis
+        (BX/FI) SENGAJA tidak diterapkan otomatis di sini -- Order tidak
+        punya alur transaksional aman utk menambah baris hadiah + potong
+        stok tanpa staf memilih produk gratis mana & memvalidasi stok
+        secara eksplisit (beda dari POS Terminal yang punya keranjang
+        interaktif). Staf tetap bisa menambah item gratis manual sebagai
+        OrderItem harga 0 kalau promosi itu jenis BX/FI."""
+        try:
+            from decimal import Decimal
+            from .promo_engine import evaluate_promotions, KonteksPromo, BarisKeranjang
+            from .marketing_models import KANAL_POS
+            contact = Contact.objects.filter(nomor_wa=self.nomor_wa).first()
+            baris = [
+                BarisKeranjang(
+                    product=it.product, variant=it.variant,
+                    qty=Decimal(str(it.qty or 0)), harga=Decimal(str(it.harga_jual or 0)),
+                    subtotal=Decimal(str(it.harga_jual or 0)),
+                )
+                for it in self.items.all()
+            ]
+            konteks = KonteksPromo(baris=baris, subtotal=Decimal(str(subtotal or 0)), pelanggan=contact, kanal=KANAL_POS)
+            hasil = evaluate_promotions(konteks)
+            return int(hasil.diskon)
+        except Exception as e:
+            logger.warning(f"Failed to resolve POS promotion discount for order {self.pk}: {e}")
+            return 0
+
     def _hitung_diskon_tipe_pelanggan(self, subtotal):
         """Diskon Khusus Tipe Pelanggan (CustomerGroup.hitung_diskon), dari
         grup pelanggan yang tertaut lewat nomor_wa. Dievaluasi ulang tiap
@@ -261,6 +302,8 @@ class Order(models.Model):
         self.total_harga -= int(self.diskon_otomatis or 0)
         self.diskon_tipe_pelanggan = self._hitung_diskon_tipe_pelanggan(subtotal)
         self.total_harga -= self.diskon_tipe_pelanggan
+        self.diskon_promo = self._hitung_diskon_promo_pos(subtotal)
+        self.total_harga -= self.diskon_promo
         self.sisa_tagihan = max(0, self.total_harga - self.dp_dibayar)
         # Jangan pakai self.save() di sini jika dipanggil dari signal/save, agar tidak infinite loop
 
@@ -284,6 +327,8 @@ class Order(models.Model):
                     self.total_harga -= int(self.diskon_otomatis or 0)
                     self.diskon_tipe_pelanggan = self._hitung_diskon_tipe_pelanggan(subtotal)
                     self.total_harga -= self.diskon_tipe_pelanggan
+                    self.diskon_promo = self._hitung_diskon_promo_pos(subtotal)
+                    self.total_harga -= self.diskon_promo
                 except Exception as e:
                     logger.warning(f"Failed to calculate subtotal/potongan on order save for {self.pk}: {e}")
 
@@ -717,12 +762,15 @@ class OrderItem(models.Model):
                 total_harga -= int(order.diskon_otomatis or 0)
                 diskon_tipe_pelanggan = order._hitung_diskon_tipe_pelanggan(subtotal)
                 total_harga -= diskon_tipe_pelanggan
+                diskon_promo = order._hitung_diskon_promo_pos(subtotal)
+                total_harga -= diskon_promo
                 sisa_tagihan = max(0, total_harga - order.dp_dibayar)
                 # Pakai queryset update agar tidak trigger Order.save() sama sekali
                 Order.objects.filter(pk=order.pk).update(
                     total_harga=total_harga,
                     sisa_tagihan=sisa_tagihan,
                     diskon_tipe_pelanggan=diskon_tipe_pelanggan,
+                    diskon_promo=diskon_promo,
                 )
                 sync_contact_for_whatsapp(order.nomor_wa)
             except Exception as e:
@@ -768,11 +816,14 @@ class OrderItem(models.Model):
                 total_harga -= int(order.diskon_otomatis or 0)
                 diskon_tipe_pelanggan = order._hitung_diskon_tipe_pelanggan(subtotal)
                 total_harga -= diskon_tipe_pelanggan
+                diskon_promo = order._hitung_diskon_promo_pos(subtotal)
+                total_harga -= diskon_promo
                 sisa_tagihan = max(0, total_harga - order.dp_dibayar)
                 Order.objects.filter(pk=order.pk).update(
                     total_harga=total_harga,
                     sisa_tagihan=sisa_tagihan,
                     diskon_tipe_pelanggan=diskon_tipe_pelanggan,
+                    diskon_promo=diskon_promo,
                 )
                 sync_contact_for_whatsapp(order.nomor_wa)
             except Exception as e:
