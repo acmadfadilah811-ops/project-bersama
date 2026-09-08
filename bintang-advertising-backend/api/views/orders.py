@@ -1652,9 +1652,13 @@ class ForwardJobView(APIView):
     """
     POST /api/jobs/{job_id}/forward/
     Body:
-      aksi        : 'forward' | 'selesai'
+      aksi        : 'forward' | 'selesai' | 'gagal'
       tahap_id    : (wajib jika aksi='forward') ID TahapProses tujuan
       pic_staff_id: (opsional) ID staff untuk tahap baru
+      alasan_gagal: (wajib jika aksi='gagal') penjelasan kegagalan -- dipakai
+                    a.l. saat staff mencatat kondisi_hasil='kendala' di
+                    Penggunaan Mesin (mesin/hasil cetak bermasalah, job tidak
+                    boleh lolos ke "Selesai") (instruksi user 2026-09-09).
     """
     permission_classes = [IsAuthenticated, IsClockedIn]
 
@@ -1669,13 +1673,20 @@ class ForwardJobView(APIView):
         if request.user.role == 'staff' and job.pic_staff != request.user:
             return Response({'error': 'Anda tidak memiliki akses ke job ini.'}, status=status.HTTP_403_FORBIDDEN)
 
-        aksi         = request.data.get('aksi')          # 'forward' atau 'selesai'
+        aksi         = request.data.get('aksi')          # 'forward', 'selesai', atau 'gagal'
         tahap_id     = request.data.get('tahap_id')
         pic_staff_id = request.data.get('pic_staff_id')
+        alasan_gagal = (request.data.get('alasan_gagal') or '').strip()
 
-        if aksi not in ('forward', 'selesai'):
+        if aksi not in ('forward', 'selesai', 'gagal'):
             return Response(
-                {'error': 'Aksi tidak valid. Gunakan "forward" atau "selesai".'},
+                {'error': 'Aksi tidak valid. Gunakan "forward", "selesai", atau "gagal".'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if aksi == 'gagal' and not alasan_gagal:
+            return Response(
+                {'error': 'alasan_gagal wajib diisi untuk menandai job gagal.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -1684,6 +1695,24 @@ class ForwardJobView(APIView):
             return Response(
                 {'error': f'Job sudah berstatus "{job.status_pekerjaan}", tidak bisa diforward ulang.'},
                 status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if aksi == 'gagal':
+            with transaction.atomic():
+                job.status_pekerjaan = 'gagal'
+                job.alasan_gagal     = alasan_gagal
+                job.waktu_selesai    = timezone.now()
+                job.otp_code         = ''
+                job.otp_requested    = False
+                job.otp_sent         = False
+                job.save()
+                # Bahan tetap dipotong -- sudah dipakai secara fisik walau
+                # hasilnya gagal (konsisten dengan status_pekerjaan lain,
+                # BUKAN memicu order.status_global='ready' seperti 'selesai').
+                deduct_job_materials_if_needed(job, request.user)
+            return Response(
+                {'message': f'Job ditandai GAGAL. Alasan: {alasan_gagal}'},
+                status=status.HTTP_200_OK,
             )
 
         # Validasi tahap_id dan ambil tahap_baru SEBELUM transaction.atomic()

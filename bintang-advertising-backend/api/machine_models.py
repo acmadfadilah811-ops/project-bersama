@@ -3,6 +3,9 @@ Banner, Printer, dst.) per job/SPK, untuk 2 kebutuhan sekaligus (instruksi
 user 2026-09-07): (1) lacak biaya produksi riil per order berdasarkan
 konsumsi mesin sungguhan, (2) jadwal maintenance berbasis akumulasi counter
 pemakaian, bukan tebak-tebakan waktu."""
+from datetime import timedelta
+
+from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
@@ -30,6 +33,16 @@ class Mesin(models.Model):
         METER = 'meter', 'Meter/Panjang Bahan -- Cetak Banner'
         LAINNYA = 'lainnya', 'Lainnya (catatan manual, tanpa satuan baku)'
 
+    class JadwalServisInterval(models.TextChoices):
+        """Servis berbasis WAKTU (baru) -- pelengkap ambang_servis_klik yang
+        berbasis akumulasi klik/lembar. Owner minta ini karena mesin idle
+        (jarang dipakai) tetap butuh servis berkala biar tidak ketahuan cuma
+        dari klik yang jarang bertambah (instruksi user 2026-09-09)."""
+        MINGGUAN = 'mingguan', 'Mingguan'
+        BULANAN = 'bulanan', 'Bulanan'
+        TAHUNAN = 'tahunan', 'Tahunan'
+        CUSTOM_BULAN = 'custom_bulan', 'Setiap N Bulan'
+
     nama = models.CharField(max_length=100)
     tipe = models.CharField(max_length=50)
     basis_pencatatan = models.CharField(
@@ -38,10 +51,21 @@ class Mesin(models.Model):
     divisi = models.ForeignKey(
         'Divisi', on_delete=models.SET_NULL, null=True, blank=True, related_name='mesin_list',
     )
-    lokasi = models.CharField(max_length=100, blank=True, default='')
+    # Sebelumnya "lokasi" -- diganti jadi nama vendor/supplier mesin (instruksi
+    # user 2026-09-09), lebih berguna untuk kontak servis/beli sparepart
+    # daripada lokasi fisik yang jarang berubah & jarang dicari.
+    vendor = models.CharField(max_length=100, blank=True, default='')
     # Servis berkala dipicu tiap N lembar/klik akumulasi -- kosong berarti
-    # tidak ada pengingat otomatis untuk mesin ini.
+    # tidak ada pengingat otomatis dari sisi klik untuk mesin ini.
     ambang_servis_klik = models.PositiveIntegerField(null=True, blank=True)
+    # Servis berkala berbasis WAKTU -- independen dari ambang_servis_klik,
+    # keduanya bisa aktif bersamaan (perlu_servis = OR keduanya).
+    jadwal_servis_interval = models.CharField(
+        max_length=15, choices=JadwalServisInterval.choices, null=True, blank=True,
+    )
+    jadwal_servis_custom_bulan = models.PositiveIntegerField(
+        null=True, blank=True, help_text="Dipakai hanya kalau jadwal_servis_interval='custom_bulan'.",
+    )
     is_active = models.BooleanField(default=True)
     catatan = models.TextField(blank=True, default='')
     dibuat_pada = models.DateTimeField(auto_now_add=True)
@@ -99,10 +123,36 @@ class Mesin(models.Model):
         return agg['total'] or 0
 
     @property
+    def jadwal_servis_berikutnya(self):
+        """Tanggal servis terjadwal berikutnya berdasarkan jadwal_servis_interval,
+        dihitung dari maintenance TERAKHIR (atau tanggal mesin didaftarkan
+        kalau belum pernah diservis sama sekali). None kalau tidak diset."""
+        if not self.jadwal_servis_interval:
+            return None
+        last = self.riwayat_maintenance.order_by('-tanggal', '-id').first()
+        basis_tanggal = last.tanggal if last else self.dibuat_pada.date()
+        if self.jadwal_servis_interval == self.JadwalServisInterval.MINGGUAN:
+            return basis_tanggal + timedelta(weeks=1)
+        if self.jadwal_servis_interval == self.JadwalServisInterval.BULANAN:
+            return basis_tanggal + relativedelta(months=1)
+        if self.jadwal_servis_interval == self.JadwalServisInterval.TAHUNAN:
+            return basis_tanggal + relativedelta(years=1)
+        if self.jadwal_servis_interval == self.JadwalServisInterval.CUSTOM_BULAN:
+            return basis_tanggal + relativedelta(months=self.jadwal_servis_custom_bulan or 1)
+        return None
+
+    @property
+    def perlu_servis_jadwal(self):
+        due = self.jadwal_servis_berikutnya
+        return bool(due) and timezone.localdate() >= due
+
+    @property
     def perlu_servis(self):
-        if not self.ambang_servis_klik:
-            return False
-        return self.klik_sejak_servis_terakhir >= self.ambang_servis_klik
+        """Gabungan 2 pemicu independen: ambang klik/lembar (lama) ATAU
+        jadwal waktu (baru) -- mesin idle yang klik-nya jarang bertambah
+        tetap kena pengingat servis dari sisi waktu."""
+        perlu_klik = bool(self.ambang_servis_klik) and self.klik_sejak_servis_terakhir >= self.ambang_servis_klik
+        return perlu_klik or self.perlu_servis_jadwal
 
 
 class PenggunaanMesin(models.Model):

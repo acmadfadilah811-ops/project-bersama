@@ -16,6 +16,7 @@ import {
   ArrowLeft,
   Kanban,
   Wrench,
+  History,
 } from 'lucide-react';
 
 // Staff Modals & Views
@@ -34,6 +35,7 @@ import ActivityLogsPanel from './panels/ActivityLogsPanel';
 import KanbanGlobalPanel from './panels/KanbanGlobalPanel';
 import PapanKerjaSpkPanel from './panels/PapanKerjaSpkPanel';
 import MesinPanel from './panels/MesinPanel';
+import LogPenggunaanMesinPanel from './panels/LogPenggunaanMesinPanel';
 import DeadlineBadge, { getDeadlineTier } from '../components/DeadlineBadge';
 
 // --- DYNAMIC MINI CALENDAR COMPONENT ---
@@ -411,7 +413,9 @@ export default function ProductionApp() {
             />
           );
         case 'mesin':
-          return <MesinPanel divisions={divisions} staffList={staffList} />;
+          return <MesinPanel divisions={divisions} />;
+        case 'log-penggunaan-mesin':
+          return <LogPenggunaanMesinPanel mode="owner" staffList={staffList} />;
         case 'logs':
           return <ActivityLogsPanel logs={logs} />;
         default:
@@ -458,6 +462,8 @@ export default function ProductionApp() {
               onComplete={handleComplete}
             />
           );
+        case 'log_mesin_saya':
+          return <LogPenggunaanMesinPanel mode="staff" currentUser={user} />;
         case 'logs':
           return <ActivityLogsPanel logs={logs} />;
         default:
@@ -491,6 +497,7 @@ export default function ProductionApp() {
       { id: 'pricelist', label: 'Daftar Harga', icon: Tag },
       { id: 'divisions', label: 'Monitoring Divisi', icon: FolderTree },
       { id: 'mesin', label: 'Penggunaan Mesin', icon: Wrench },
+      { id: 'log-penggunaan-mesin', label: 'Log Penggunaan Mesin', icon: History },
       { id: 'logs', label: 'Log Aktivitas', icon: Bell },
     ];
   } else if (roleLower === 'admin') {
@@ -501,12 +508,14 @@ export default function ProductionApp() {
       { id: 'pricelist', label: 'Daftar Harga', icon: Tag },
       { id: 'divisions', label: 'Monitoring Divisi', icon: FolderTree },
       { id: 'mesin', label: 'Penggunaan Mesin', icon: Wrench },
+      { id: 'log-penggunaan-mesin', label: 'Log Penggunaan Mesin', icon: History },
       { id: 'logs', label: 'Log Aktivitas', icon: Bell },
     ];
   } else {
     menuItems = [
       { id: 'claim_pool', label: 'Antrean Global', icon: Inbox },
       { id: 'kanban_personal', label: 'Pekerjaan Saya', icon: ClipboardList },
+      { id: 'log_mesin_saya', label: 'Riwayat Mesin Saya', icon: History },
       { id: 'logs', label: 'Log Aktivitas', icon: Bell },
     ];
   }

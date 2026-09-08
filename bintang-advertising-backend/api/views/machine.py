@@ -1,6 +1,9 @@
 """Penggunaan Mesin -- Master Mesin, Log Penggunaan, Riwayat Maintenance
 (lihat api/machine_models.py untuk konteks lengkap fitur ini)."""
+import openpyxl
 from django.db.models import Count, Sum
+from django.http import HttpResponse
+from django.utils import timezone
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated, BasePermission, SAFE_METHODS
@@ -110,6 +113,46 @@ class PenggunaanMesinViewSet(viewsets.ModelViewSet):
             for row in rows
         ]
         return Response(result)
+
+    @action(detail=False, methods=['get'], url_path='export', permission_classes=[IsOwnerOrManager])
+    def export(self, request):
+        """GET /penggunaan-mesin/export/?mesin=&operator=&tanggal_mulai=&tanggal_akhir=
+
+        Excel Log Penggunaan -- pakai filter yang sama persis dengan tabel
+        Log Penggunaan di layar (get_queryset()), supaya hasil export selalu
+        cocok dengan yang sedang ditampilkan (fitur 2026-09-09).
+        """
+        queryset = self.get_queryset().order_by('-waktu')
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Log Penggunaan Mesin'
+        ws.append([
+            'Tanggal', 'Mesin', 'Staff', 'Job', 'Lembar Color', 'Lembar Mono',
+            'Panjang Bahan (m)', 'Jenis Bahan', 'Kondisi Hasil', 'Catatan Konfirmasi',
+        ])
+        for entry in queryset:
+            operator_nama = ''
+            if entry.operator:
+                operator_nama = entry.operator.get_full_name() or entry.operator.username
+            ws.append([
+                timezone.localtime(entry.waktu).strftime('%Y-%m-%d %H:%M'),
+                entry.mesin.nama if entry.mesin else '-',
+                operator_nama,
+                entry.job.nomor_sumber if entry.job else '-',
+                entry.lembar_color,
+                entry.lembar_mono,
+                float(entry.panjang_bahan_meter) if entry.panjang_bahan_meter is not None else '',
+                entry.jenis_bahan,
+                'Ada Kendala' if entry.kondisi_hasil == 'kendala' else 'OK',
+                entry.catatan_konfirmasi,
+            ])
+
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        filename = f"log-penggunaan-mesin-{timezone.localdate():%Y%m%d}.xlsx"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        wb.save(response)
+        return response
 
 
 class MaintenanceMesinViewSet(viewsets.ModelViewSet):

@@ -12,10 +12,13 @@ class MesinSerializer(serializers.ModelSerializer):
     # Django yang cuma ada untuk field ber-choices.
     tipe_display = serializers.ReadOnlyField()
     basis_pencatatan_display = serializers.ReadOnlyField(source='get_basis_pencatatan_display')
+    jadwal_servis_interval_display = serializers.ReadOnlyField(source='get_jadwal_servis_interval_display')
+    jadwal_servis_berikutnya = serializers.ReadOnlyField()
     total_klik = serializers.ReadOnlyField()
     total_meter = serializers.ReadOnlyField()
     klik_sejak_servis_terakhir = serializers.ReadOnlyField()
     perlu_servis = serializers.ReadOnlyField()
+    perlu_servis_jadwal = serializers.ReadOnlyField()
 
     class Meta:
         model = Mesin

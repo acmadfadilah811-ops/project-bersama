@@ -21,6 +21,17 @@ const BASIS_OPTIONS = [
   { value: 'lainnya', label: 'Lainnya (catatan manual)' },
 ];
 
+// Jadwal servis berbasis WAKTU (baru) -- pelengkap ambang_servis_klik yang
+// berbasis akumulasi klik/lembar, buat mesin yang jarang dipakai tapi tetap
+// butuh servis berkala (instruksi user 2026-09-09).
+const JADWAL_OPTIONS = [
+  { value: '', label: '-- Tidak ada jadwal waktu --' },
+  { value: 'mingguan', label: 'Mingguan' },
+  { value: 'bulanan', label: 'Bulanan' },
+  { value: 'tahunan', label: 'Tahunan' },
+  { value: 'custom_bulan', label: 'Setiap N Bulan' },
+];
+
 function MesinFormModal({ mesin, divisions, onClose, onSaved }) {
   const existingPreset = TIPE_PRESETS.find((t) => t.value === mesin?.tipe);
   const [tipeMode, setTipeMode] = useState(mesin && !existingPreset ? TIPE_CUSTOM : (mesin?.tipe || 'docucolor'));
@@ -29,8 +40,10 @@ function MesinFormModal({ mesin, divisions, onClose, onSaved }) {
     nama: mesin?.nama || '',
     basis_pencatatan: mesin?.basis_pencatatan || 'lembar',
     divisi: mesin?.divisi || '',
-    lokasi: mesin?.lokasi || '',
+    vendor: mesin?.vendor || '',
     ambang_servis_klik: mesin?.ambang_servis_klik || '',
+    jadwal_servis_interval: mesin?.jadwal_servis_interval || '',
+    jadwal_servis_custom_bulan: mesin?.jadwal_servis_custom_bulan || '',
     is_active: mesin ? mesin.is_active : true,
     catatan: mesin?.catatan || '',
   });
@@ -60,6 +73,10 @@ function MesinFormModal({ mesin, divisions, onClose, onSaved }) {
         tipe,
         divisi: form.divisi || null,
         ambang_servis_klik: form.ambang_servis_klik ? Number(form.ambang_servis_klik) : null,
+        jadwal_servis_interval: form.jadwal_servis_interval || null,
+        jadwal_servis_custom_bulan: form.jadwal_servis_interval === 'custom_bulan' && form.jadwal_servis_custom_bulan
+          ? Number(form.jadwal_servis_custom_bulan)
+          : null,
       };
       if (mesin) {
         await apiClient.patch(`/mesin/${mesin.id}/`, payload);
@@ -77,124 +94,165 @@ function MesinFormModal({ mesin, divisions, onClose, onSaved }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
-        <div className="bg-indigo-700 text-white px-5 py-3 flex justify-between items-center">
+      {/* max-w-2xl (lebih lebar dari sebelumnya max-w-md) + max-h/flex-col +
+          body scrollable -- makin banyak field (jadwal servis dkk) tidak lagi
+          bikin form menjorok ke bawah sampai tombol Simpan kepotong tak
+          terjangkau (bug dilaporkan user 2026-09-09, pola sama dengan fix
+          ForwardJobModal). */}
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="bg-indigo-700 text-white px-5 py-3 flex justify-between items-center shrink-0">
           <h2 className="font-bold text-sm">{mesin ? 'Edit Mesin' : 'Tambah Mesin'}</h2>
           <button onClick={onClose} className="text-indigo-200 hover:text-white cursor-pointer">
             <X size={16} />
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="p-5 space-y-3">
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">Nama Mesin *</label>
-            <input
-              type="text"
-              required
-              value={form.nama}
-              onChange={(e) => setForm({ ...form, nama: e.target.value })}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              placeholder="Mis: DocuColor 1"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">Tipe Mesin *</label>
-            <select
-              value={tipeMode}
-              onChange={(e) => handleSelectTipeMode(e.target.value)}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              {TIPE_PRESETS.map((t) => (
-                <option key={t.value} value={t.value}>{t.label}</option>
-              ))}
-              <option value={TIPE_CUSTOM}>+ Tipe Baru (tulis manual)...</option>
-            </select>
-            {tipeMode === TIPE_CUSTOM && (
-              <input
-                type="text"
-                required
-                value={tipeCustom}
-                onChange={(e) => setTipeCustom(e.target.value)}
-                placeholder="Mis: Mesin Laminating"
-                className="mt-2 w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        <form onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col">
+          <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Nama Mesin *</label>
+                <input
+                  type="text"
+                  required
+                  value={form.nama}
+                  onChange={(e) => setForm({ ...form, nama: e.target.value })}
+                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="Mis: DocuColor 1"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Nama Vendor</label>
+                <input
+                  type="text"
+                  value={form.vendor}
+                  onChange={(e) => setForm({ ...form, vendor: e.target.value })}
+                  placeholder="Mis: PT Sumber Tinta Jaya"
+                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Tipe Mesin *</label>
+                <select
+                  value={tipeMode}
+                  onChange={(e) => handleSelectTipeMode(e.target.value)}
+                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  {TIPE_PRESETS.map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                  <option value={TIPE_CUSTOM}>+ Tipe Baru (tulis manual)...</option>
+                </select>
+                {tipeMode === TIPE_CUSTOM && (
+                  <input
+                    type="text"
+                    required
+                    value={tipeCustom}
+                    onChange={(e) => setTipeCustom(e.target.value)}
+                    placeholder="Mis: Mesin Laminating"
+                    className="mt-2 w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                )}
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Basis Pencatatan Penggunaan *</label>
+                <select
+                  value={form.basis_pencatatan}
+                  onChange={(e) => setForm({ ...form, basis_pencatatan: e.target.value })}
+                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  {BASIS_OPTIONS.map((b) => (
+                    <option key={b.value} value={b.value}>{b.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Divisi</label>
+                <select
+                  value={form.divisi}
+                  onChange={(e) => setForm({ ...form, divisi: e.target.value })}
+                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">-- Tidak diset --</option>
+                  {(divisions || []).map((d) => (
+                    <option key={d.id} value={d.id}>{d.nama}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2 sm:pt-6">
+                <input
+                  type="checkbox"
+                  id="mesin-aktif"
+                  checked={form.is_active}
+                  onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
+                  className="cursor-pointer"
+                />
+                <label htmlFor="mesin-aktif" className="text-xs font-bold text-slate-700 cursor-pointer">
+                  Mesin aktif dipakai
+                </label>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-100">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-wide mb-2">Jadwal &amp; Pengingat Servis</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Ambang Servis (klik/lembar)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={form.ambang_servis_klik}
+                    onChange={(e) => setForm({ ...form, ambang_servis_klik: e.target.value })}
+                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    placeholder="Mis: 50000"
+                  />
+                  <p className="mt-1 text-[10px] text-slate-400">Kosongkan jika tidak perlu pengingat dari sisi klik.</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Jadwal Servis Berkala</label>
+                  <select
+                    value={form.jadwal_servis_interval}
+                    onChange={(e) => setForm({ ...form, jadwal_servis_interval: e.target.value })}
+                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    {JADWAL_OPTIONS.map((j) => (
+                      <option key={j.value} value={j.value}>{j.label}</option>
+                    ))}
+                  </select>
+                  {form.jadwal_servis_interval === 'custom_bulan' && (
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      value={form.jadwal_servis_custom_bulan}
+                      onChange={(e) => setForm({ ...form, jadwal_servis_custom_bulan: e.target.value })}
+                      placeholder="Servis tiap berapa bulan?"
+                      className="mt-2 w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  )}
+                  <p className="mt-1 text-[10px] text-slate-400">
+                    Independen dari ambang klik -- keduanya bisa aktif sekaligus, pengingat muncul kalau salah satu terlampaui.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Catatan</label>
+              <textarea
+                rows={2}
+                value={form.catatan}
+                onChange={(e) => setForm({ ...form, catatan: e.target.value })}
+                className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
               />
-            )}
+            </div>
+            {err && <p className="text-[11px] font-semibold text-rose-600">{err}</p>}
           </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">Basis Pencatatan Penggunaan *</label>
-            <select
-              value={form.basis_pencatatan}
-              onChange={(e) => setForm({ ...form, basis_pencatatan: e.target.value })}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              {BASIS_OPTIONS.map((b) => (
-                <option key={b.value} value={b.value}>{b.label}</option>
-              ))}
-            </select>
-            <p className="mt-1 text-[10px] text-slate-400">
-              Menentukan field yang muncul untuk staff saat mencatat penggunaan mesin ini.
-            </p>
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">Divisi</label>
-            <select
-              value={form.divisi}
-              onChange={(e) => setForm({ ...form, divisi: e.target.value })}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="">-- Tidak diset --</option>
-              {(divisions || []).map((d) => (
-                <option key={d.id} value={d.id}>{d.nama}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">Lokasi</label>
-            <input
-              type="text"
-              value={form.lokasi}
-              onChange={(e) => setForm({ ...form, lokasi: e.target.value })}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
-              Ambang Servis (klik/lembar)
-            </label>
-            <input
-              type="number"
-              min="0"
-              value={form.ambang_servis_klik}
-              onChange={(e) => setForm({ ...form, ambang_servis_klik: e.target.value })}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              placeholder="Mis: 50000"
-            />
-            <p className="mt-1 text-[10px] text-slate-400">
-              Kosongkan jika tidak perlu pengingat servis otomatis.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="mesin-aktif"
-              checked={form.is_active}
-              onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
-              className="cursor-pointer"
-            />
-            <label htmlFor="mesin-aktif" className="text-xs font-bold text-slate-700 cursor-pointer">
-              Mesin aktif dipakai
-            </label>
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">Catatan</label>
-            <textarea
-              rows={2}
-              value={form.catatan}
-              onChange={(e) => setForm({ ...form, catatan: e.target.value })}
-              className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
-            />
-          </div>
-          {err && <p className="text-[11px] font-semibold text-rose-600">{err}</p>}
-          <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+
+          <div className="flex justify-end gap-2 p-4 border-t border-slate-100 shrink-0 bg-white">
             <button
               type="button"
               onClick={onClose}
@@ -356,219 +414,7 @@ function MaintenanceModal({ mesin, onClose, onSaved }) {
   );
 }
 
-function formatDetailPenggunaan(entry) {
-  const basis = entry.mesin_basis_pencatatan;
-  if (basis === 'meter') {
-    const meter = entry.panjang_bahan_meter != null ? Number(entry.panjang_bahan_meter).toLocaleString('id-ID', { maximumFractionDigits: 2 }) : '0';
-    return `${meter} m${entry.jenis_bahan ? ` — ${entry.jenis_bahan}` : ''}`;
-  }
-  if (basis === 'lainnya') {
-    return entry.catatan_konfirmasi || '-';
-  }
-  const parts = [];
-  if (entry.lembar_color) parts.push(`${entry.lembar_color} color`);
-  if (entry.lembar_mono) parts.push(`${entry.lembar_mono} mono`);
-  return parts.length > 0 ? parts.join(' / ') : '0';
-}
-
-function LogPenggunaanSection({ mesinList, staffList }) {
-  const [rows, setRows] = useState([]);
-  const [ringkasan, setRingkasan] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [filterMesin, setFilterMesin] = useState('');
-  const [filterStaff, setFilterStaff] = useState('');
-  const [filterMulai, setFilterMulai] = useState('');
-  const [filterAkhir, setFilterAkhir] = useState('');
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalItems, setTotalItems] = useState(0);
-
-  const mesinById = Object.fromEntries((mesinList || []).map((m) => [String(m.id), m]));
-
-  const buildParams = (extra = {}) => {
-    const params = { ...extra };
-    if (filterMesin) params.mesin = filterMesin;
-    if (filterStaff) params.operator = filterStaff;
-    if (filterMulai) params.tanggal_mulai = filterMulai;
-    if (filterAkhir) params.tanggal_akhir = filterAkhir;
-    return params;
-  };
-
-  const fetchLog = async () => {
-    setLoading(true);
-    try {
-      const [logRes, ringkasanRes] = await Promise.all([
-        apiClient.get('/penggunaan-mesin/', { params: buildParams({ page, page_size: 20 }) }),
-        apiClient.get('/penggunaan-mesin/ringkasan-staff/', { params: buildParams() }),
-      ]);
-      const logData = logRes.data;
-      const list = Array.isArray(logData) ? logData : (logData?.results || []);
-      // Lampirkan basis_pencatatan mesin ke tiap baris (dibutuhkan
-      // formatDetailPenggunaan) -- serializer log tidak menyertakan field
-      // mesin lain selain nama, jadi di-join di sini dari mesinList yang
-      // sudah dimuat panel utama.
-      const enriched = list.map((row) => ({
-        ...row,
-        mesin_basis_pencatatan: mesinById[String(row.mesin)]?.basis_pencatatan,
-      }));
-      setRows(enriched);
-      if (!Array.isArray(logData)) {
-        setTotalItems(logData.count ?? list.length);
-        setTotalPages(Math.max(1, Math.ceil((logData.count ?? list.length) / 20)));
-      } else {
-        setTotalItems(list.length);
-        setTotalPages(1);
-      }
-      setRingkasan(Array.isArray(ringkasanRes.data) ? ringkasanRes.data : []);
-    } catch (error) {
-      console.error('Gagal memuat log penggunaan mesin:', error);
-      setRows([]);
-      setRingkasan([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchLog();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterMesin, filterStaff, filterMulai, filterAkhir, page, mesinList.length]);
-
-  useEffect(() => { setPage(1); }, [filterMesin, filterStaff, filterMulai, filterAkhir]);
-
-  return (
-    <div className="space-y-3">
-      <div className="bg-white p-4 border border-slate-200 rounded-xl shadow-sm">
-        <h3 className="text-sm font-extrabold text-slate-800">Log Penggunaan</h3>
-        <p className="text-[11px] text-slate-400 mt-0.5">
-          Riwayat pencatatan pemakaian mesin dari semua staff -- filter per mesin/staff untuk pertanggungjawaban.
-        </p>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3">
-          <select
-            value={filterMesin}
-            onChange={(e) => setFilterMesin(e.target.value)}
-            className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="">Semua Mesin</option>
-            {(mesinList || []).map((m) => (
-              <option key={m.id} value={m.id}>{m.nama}</option>
-            ))}
-          </select>
-          <select
-            value={filterStaff}
-            onChange={(e) => setFilterStaff(e.target.value)}
-            className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="">Semua Staff</option>
-            {(staffList || []).map((s) => (
-              <option key={s.id} value={s.id}>{s.username}</option>
-            ))}
-          </select>
-          <input
-            type="date"
-            value={filterMulai}
-            onChange={(e) => setFilterMulai(e.target.value)}
-            className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-          <input
-            type="date"
-            value={filterAkhir}
-            onChange={(e) => setFilterAkhir(e.target.value)}
-            className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-        </div>
-      </div>
-
-      {ringkasan.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          {ringkasan.map((r) => (
-            <div key={r.operator_id} className="bg-white border border-slate-200 rounded-lg p-3">
-              <p className="text-xs font-extrabold text-slate-800 truncate">{r.operator_nama}</p>
-              <p className="text-[10px] text-slate-400 mt-0.5">{r.jumlah_entri} entri</p>
-              <div className="flex gap-3 mt-1.5 text-[10px] font-bold text-slate-600">
-                {r.total_klik > 0 && <span>{r.total_klik.toLocaleString()} klik</span>}
-                {r.total_meter > 0 && <span>{r.total_meter.toLocaleString('id-ID')} m</span>}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="text-center text-slate-400 text-xs py-10">Memuat log...</div>
-        ) : rows.length === 0 ? (
-          <div className="text-center text-slate-400 text-xs italic py-10">Belum ada catatan penggunaan untuk filter ini.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200 font-bold text-slate-500">
-                <tr>
-                  <th className="px-3 py-2.5">Tanggal</th>
-                  <th className="px-3 py-2.5">Mesin</th>
-                  <th className="px-3 py-2.5">Staff</th>
-                  <th className="px-3 py-2.5">Job</th>
-                  <th className="px-3 py-2.5">Detail Pemakaian</th>
-                  <th className="px-3 py-2.5">Kondisi</th>
-                  <th className="px-3 py-2.5">Catatan</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {rows.map((row) => (
-                  <tr key={row.id} className="hover:bg-slate-50/60">
-                    <td className="px-3 py-2.5 whitespace-nowrap text-slate-600">
-                      {new Date(row.waktu).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    </td>
-                    <td className="px-3 py-2.5 font-semibold text-slate-800">{row.mesin_nama}</td>
-                    <td className="px-3 py-2.5 text-slate-700">{row.operator_nama || '-'}</td>
-                    <td className="px-3 py-2.5 text-slate-500">{row.job_nomor_sumber || '-'}</td>
-                    <td className="px-3 py-2.5 font-semibold text-slate-800">{formatDetailPenggunaan(row)}</td>
-                    <td className="px-3 py-2.5">
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${row.kondisi_hasil === 'kendala' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
-                        {row.kondisi_hasil === 'kendala' ? 'Ada Kendala' : 'OK'}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5 text-slate-500 max-w-[200px] truncate" title={row.catatan_konfirmasi}>
-                      {row.catatan_konfirmasi || '-'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-3 py-2.5 border-t border-slate-100 text-[11px] font-bold text-slate-500">
-            <span>Total {totalItems} entri</span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="px-2 py-1 border border-slate-200 rounded disabled:opacity-30 cursor-pointer"
-              >
-                &lt;
-              </button>
-              <span>{page}/{totalPages}</span>
-              <button
-                type="button"
-                disabled={page >= totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                className="px-2 py-1 border border-slate-200 rounded disabled:opacity-30 cursor-pointer"
-              >
-                &gt;
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-export default function MesinPanel({ divisions, staffList }) {
+export default function MesinPanel({ divisions }) {
   const [mesinList, setMesinList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingMesin, setEditingMesin] = useState(null);
@@ -642,7 +488,7 @@ export default function MesinPanel({ divisions, staffList }) {
                 <div>
                   <h3 className="text-sm font-extrabold text-slate-800">{m.nama}</h3>
                   <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wide">{m.tipe_display}</p>
-                  {m.lokasi && <p className="text-[10px] text-slate-400">{m.lokasi}</p>}
+                  {m.vendor && <p className="text-[10px] text-slate-400">Vendor: {m.vendor}</p>}
                   {m.divisi_nama && <p className="text-[10px] text-slate-400">Divisi: {m.divisi_nama}</p>}
                 </div>
                 {!m.is_active && (
@@ -687,7 +533,15 @@ export default function MesinPanel({ divisions, staffList }) {
               {m.perlu_servis && (
                 <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold px-2 py-1.5 rounded-lg">
                   <AlertTriangle size={12} />
-                  Perlu servis (ambang {Number(m.ambang_servis_klik).toLocaleString()} klik terlampaui)
+                  <span>
+                    Perlu servis
+                    {m.ambang_servis_klik && m.klik_sejak_servis_terakhir >= m.ambang_servis_klik && (
+                      <> — ambang {Number(m.ambang_servis_klik).toLocaleString()} klik terlampaui</>
+                    )}
+                    {m.perlu_servis_jadwal && (
+                      <> — jadwal {m.jadwal_servis_interval_display?.toLowerCase()} sudah jatuh tempo ({m.jadwal_servis_berikutnya})</>
+                    )}
+                  </span>
                 </div>
               )}
 
@@ -716,8 +570,6 @@ export default function MesinPanel({ divisions, staffList }) {
           ))}
         </div>
       )}
-
-      <LogPenggunaanSection mesinList={mesinList} staffList={staffList} />
 
       {showAddModal && (
         <MesinFormModal

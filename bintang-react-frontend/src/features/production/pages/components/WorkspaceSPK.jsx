@@ -1,8 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Play, CheckCircle, Save, Trash, ChevronLeft, Download, RefreshCw, Plus, Search, AlertTriangle, Check, AlertCircle, X } from 'lucide-react';
+import { Play, CheckCircle, Save, Trash, ChevronLeft, Download, RefreshCw, Plus, Search, AlertTriangle, Check, AlertCircle, X, Settings2, Loader2 } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
 import KomplainModal from '../../../orders/components/KomplainModal';
 import DeadlineBadge from '../../components/DeadlineBadge';
+
+const MESIN_FORM_KOSONG = {
+  mesinId: '', lembarColor: '', lembarMono: '', ukuranKertas: '', jenisKertas: '', gramasiKertas: '',
+  panjangBahan: '', jenisBahan: '', kondisiHasil: 'ok', catatanKonfirmasi: '',
+};
 
 const getKonsepDesain = (detail) => {
   if (!detail) return null;
@@ -46,6 +51,91 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
   const [searchQuery, setSearchQuery] = useState('');
   const [isKomplainOpen, setIsKomplainOpen] = useState(false);
   const [complaints, setComplaints] = useState([]);
+
+  // Catat Penggunaan Mesin -- dipindah ke sini (sheet Bahan Baku) dari dialog
+  // Teruskan/Selesaikan di ujung alur (instruksi user 2026-09-09): staff
+  // sering salah input kalau field ini muncul di akhir tanpa konteks job lagi
+  // terlihat. Disimpan LANGSUNG per entri (POST saat "Simpan"), bukan
+  // ditunda sampai job difinalisasi -- supaya kondisi "Kendala" langsung
+  // terdeteksi ForwardJobModal begitu staff klik Finalisasi & Teruskan.
+  const [mesinList, setMesinList] = useState([]);
+  const [mesinLogs, setMesinLogs] = useState([]);
+  const [loadingMesinLogs, setLoadingMesinLogs] = useState(true);
+  const [showMesinForm, setShowMesinForm] = useState(false);
+  const [mesinForm, setMesinForm] = useState(MESIN_FORM_KOSONG);
+  const [mesinSaving, setMesinSaving] = useState(false);
+  const [mesinErr, setMesinErr] = useState('');
+
+  const fetchMesinLogs = useCallback(async () => {
+    if (!job?.id) return;
+    setLoadingMesinLogs(true);
+    try {
+      const res = await apiClient.get('/penggunaan-mesin/', { params: { job: job.id } });
+      const data = res.data;
+      setMesinLogs(Array.isArray(data) ? data : (data?.results || []));
+    } catch (err) {
+      console.error('Gagal memuat log penggunaan mesin job ini:', err);
+    } finally {
+      setLoadingMesinLogs(false);
+    }
+  }, [job?.id]);
+
+  useEffect(() => {
+    apiClient.get('/mesin/', { params: { is_active: true } })
+      .then((res) => {
+        const data = res.data;
+        setMesinList(Array.isArray(data) ? data : (data?.results || []));
+      })
+      .catch((err) => console.error('Gagal memuat daftar mesin:', err));
+  }, []);
+
+  useEffect(() => { fetchMesinLogs(); }, [fetchMesinLogs]);
+
+  const mesinTerpilih = mesinList.find((m) => String(m.id) === String(mesinForm.mesinId));
+  const basisMesin = mesinTerpilih?.basis_pencatatan;
+
+  const handleSimpanMesin = async () => {
+    if (!mesinForm.mesinId) {
+      setMesinErr('Pilih mesin yang dipakai.');
+      return;
+    }
+    setMesinSaving(true);
+    setMesinErr('');
+    try {
+      await apiClient.post('/penggunaan-mesin/', {
+        mesin: mesinForm.mesinId,
+        job: job.id,
+        lembar_color: mesinForm.lembarColor ? Number(mesinForm.lembarColor) : 0,
+        lembar_mono: mesinForm.lembarMono ? Number(mesinForm.lembarMono) : 0,
+        ukuran_kertas: mesinForm.ukuranKertas,
+        jenis_kertas: mesinForm.jenisKertas,
+        gramasi_kertas: mesinForm.gramasiKertas,
+        panjang_bahan_meter: mesinForm.panjangBahan ? Number(mesinForm.panjangBahan) : null,
+        jenis_bahan: mesinForm.jenisBahan,
+        kondisi_hasil: mesinForm.kondisiHasil,
+        catatan_konfirmasi: mesinForm.catatanKonfirmasi,
+      });
+      setMesinForm(MESIN_FORM_KOSONG);
+      setShowMesinForm(false);
+      await fetchMesinLogs();
+    } catch (err) {
+      console.error('Gagal mencatat penggunaan mesin:', err);
+      setMesinErr(err.response?.data?.detail || 'Gagal menyimpan catatan penggunaan mesin. Coba lagi.');
+    } finally {
+      setMesinSaving(false);
+    }
+  };
+
+  const handleHapusMesinLog = async (entryId) => {
+    if (!window.confirm('Hapus catatan penggunaan mesin ini?')) return;
+    try {
+      await apiClient.delete(`/penggunaan-mesin/${entryId}/`);
+      await fetchMesinLogs();
+    } catch (err) {
+      console.error('Gagal menghapus catatan penggunaan mesin:', err);
+      alert(err.response?.data?.detail || 'Gagal menghapus catatan.');
+    }
+  };
 
   const setFreeCell = useCallback((r, c, val) => {
     setFreeGrid(g => g.map((row, ri) => ri === r ? row.map((cell, ci) => ci === c ? val : cell) : row));
@@ -756,6 +846,187 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
               >
                 <Check size={13} /> Konfirmasi & Simpan Pemakaian Bahan
               </button>
+            )}
+
+            {/* PENGGUNAAN MESIN -- dipindah ke sini dari dialog Teruskan/Selesaikan
+                (instruksi user 2026-09-09), supaya staff mengisi selagi masih
+                lihat konteks job, bukan di ujung alur tanpa data pembanding. */}
+            {mesinList.length > 0 && (
+              <div className="border border-[#ccc] rounded-md overflow-hidden mt-3">
+                <div className="flex items-center justify-between bg-[#107c41] text-white px-3 py-2">
+                  <div className="flex items-center gap-1.5">
+                    <Settings2 size={12} />
+                    <p className="text-[10px] font-extrabold uppercase tracking-wide">Penggunaan Mesin</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setShowMesinForm((v) => !v); setMesinErr(''); }}
+                    className="flex items-center gap-1 bg-white hover:bg-slate-100 text-[#107c41] text-[9px] font-black px-2.5 py-1 rounded shadow-sm cursor-pointer transition-all uppercase border-none shrink-0"
+                  >
+                    <Plus size={11} /> Catat Penggunaan
+                  </button>
+                </div>
+
+                <div className="p-2.5 space-y-2 bg-[#fafafa]">
+                  {loadingMesinLogs ? (
+                    <div className="text-center text-slate-400 text-[10.5px] py-3">Memuat riwayat...</div>
+                  ) : mesinLogs.length === 0 ? (
+                    <div className="text-center text-slate-400 italic border border-dashed border-[#ccc] rounded py-4 text-[10.5px] bg-white">
+                      Belum ada catatan penggunaan mesin untuk job ini.
+                    </div>
+                  ) : (
+                    mesinLogs.map((log) => (
+                      <div
+                        key={log.id}
+                        className={`flex items-start justify-between gap-2 border rounded-md p-2 text-[10.5px] ${
+                          log.kondisi_hasil === 'kendala' ? 'border-amber-300 bg-amber-50/50' : 'border-[#ccc] bg-white'
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <p className="font-bold text-slate-800">
+                            {log.mesin_nama}
+                            {log.kondisi_hasil === 'kendala' && (
+                              <span className="ml-1.5 text-[9px] font-black uppercase bg-amber-500 text-white px-1.5 py-0.5 rounded">Kendala</span>
+                            )}
+                          </p>
+                          <p className="text-slate-500">
+                            {(log.lembar_color || log.lembar_mono) ? `${log.lembar_color || 0} color / ${log.lembar_mono || 0} mono` : ''}
+                            {log.panjang_bahan_meter ? `${log.panjang_bahan_meter} m${log.jenis_bahan ? ` — ${log.jenis_bahan}` : ''}` : ''}
+                          </p>
+                          {log.catatan_konfirmasi && <p className="text-slate-600 italic mt-0.5">{log.catatan_konfirmasi}</p>}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleHapusMesinLog(log.id)}
+                          className="p-1 text-red-500 hover:text-red-700 transition-colors shrink-0 cursor-pointer border-none bg-transparent"
+                          title="Hapus catatan"
+                        >
+                          <Trash size={12} />
+                        </button>
+                      </div>
+                    ))
+                  )}
+
+                  {showMesinForm && (
+                    <div className="border border-[#ccc] rounded-md p-2.5 space-y-2 bg-white">
+                      <select
+                        value={mesinForm.mesinId}
+                        onChange={(e) => setMesinForm((f) => ({ ...f, mesinId: e.target.value }))}
+                        className="w-full bg-white border border-[#ccc] rounded px-2 py-1 outline-none text-slate-700 font-bold text-[10.5px]"
+                      >
+                        <option value="">-- Pilih Mesin --</option>
+                        {mesinList.map((m) => (
+                          <option key={m.id} value={m.id}>{m.nama} ({m.tipe_display})</option>
+                        ))}
+                      </select>
+
+                      {basisMesin === 'lembar' && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            type="number" min="0" placeholder="Lembar/Klik Color"
+                            value={mesinForm.lembarColor}
+                            onChange={(e) => setMesinForm((f) => ({ ...f, lembarColor: e.target.value }))}
+                            className="bg-white border border-[#ccc] rounded px-2 py-1 outline-none text-slate-700 font-semibold text-[10.5px]"
+                          />
+                          <input
+                            type="number" min="0" placeholder="Lembar/Klik Mono"
+                            value={mesinForm.lembarMono}
+                            onChange={(e) => setMesinForm((f) => ({ ...f, lembarMono: e.target.value }))}
+                            className="bg-white border border-[#ccc] rounded px-2 py-1 outline-none text-slate-700 font-semibold text-[10.5px]"
+                          />
+                          <input
+                            type="text" placeholder="Ukuran Kertas (A4, A3...)"
+                            value={mesinForm.ukuranKertas}
+                            onChange={(e) => setMesinForm((f) => ({ ...f, ukuranKertas: e.target.value }))}
+                            className="bg-white border border-[#ccc] rounded px-2 py-1 outline-none text-slate-700 font-semibold text-[10.5px]"
+                          />
+                          <input
+                            type="text" placeholder="Gramasi (80gsm...)"
+                            value={mesinForm.gramasiKertas}
+                            onChange={(e) => setMesinForm((f) => ({ ...f, gramasiKertas: e.target.value }))}
+                            className="bg-white border border-[#ccc] rounded px-2 py-1 outline-none text-slate-700 font-semibold text-[10.5px]"
+                          />
+                          <input
+                            type="text" placeholder="Jenis Kertas (Art Paper, HVS...)"
+                            value={mesinForm.jenisKertas}
+                            onChange={(e) => setMesinForm((f) => ({ ...f, jenisKertas: e.target.value }))}
+                            className="col-span-2 bg-white border border-[#ccc] rounded px-2 py-1 outline-none text-slate-700 font-semibold text-[10.5px]"
+                          />
+                        </div>
+                      )}
+
+                      {basisMesin === 'meter' && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            type="number" min="0" step="0.01" placeholder="Panjang Bahan (meter)"
+                            value={mesinForm.panjangBahan}
+                            onChange={(e) => setMesinForm((f) => ({ ...f, panjangBahan: e.target.value }))}
+                            className="bg-white border border-[#ccc] rounded px-2 py-1 outline-none text-slate-700 font-semibold text-[10.5px]"
+                          />
+                          <input
+                            type="text" placeholder="Jenis Bahan (Flexi, Vinyl...)"
+                            value={mesinForm.jenisBahan}
+                            onChange={(e) => setMesinForm((f) => ({ ...f, jenisBahan: e.target.value }))}
+                            className="bg-white border border-[#ccc] rounded px-2 py-1 outline-none text-slate-700 font-semibold text-[10.5px]"
+                          />
+                        </div>
+                      )}
+
+                      {basisMesin === 'lainnya' && (
+                        <p className="text-[10px] text-slate-500 bg-slate-50 border border-[#ccc] rounded p-2">
+                          Mesin ini basis pencatatan manual — isi rincian di Catatan Konfirmasi di bawah.
+                        </p>
+                      )}
+
+                      {mesinForm.mesinId && (
+                        <>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => setMesinForm((f) => ({ ...f, kondisiHasil: 'ok' }))}
+                              className={`flex items-center gap-1 px-2 py-1 rounded text-[9px] font-black uppercase cursor-pointer border transition-all ${
+                                mesinForm.kondisiHasil !== 'kendala' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-400 border-[#ccc] hover:bg-slate-50'
+                              }`}
+                            >
+                              <Check size={10} /> OK
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setMesinForm((f) => ({ ...f, kondisiHasil: 'kendala' }))}
+                              className={`flex items-center gap-1 px-2 py-1 rounded text-[9px] font-black uppercase cursor-pointer border transition-all ${
+                                mesinForm.kondisiHasil === 'kendala' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-slate-400 border-[#ccc] hover:bg-slate-50'
+                              }`}
+                            >
+                              <AlertCircle size={10} /> Ada Kendala
+                            </button>
+                          </div>
+                          <input
+                            type="text"
+                            placeholder={mesinForm.kondisiHasil === 'kendala' ? 'Jelaskan kendala (wajib, job akan otomatis ditandai Gagal)...' : 'Catatan konfirmasi (opsional)...'}
+                            value={mesinForm.catatanKonfirmasi}
+                            onChange={(e) => setMesinForm((f) => ({ ...f, catatanKonfirmasi: e.target.value }))}
+                            className={`w-full border rounded px-2 py-1 outline-none font-semibold text-[10px] ${
+                              mesinForm.kondisiHasil === 'kendala' ? 'bg-white border-amber-300 text-amber-800' : 'bg-white border-[#ccc] text-slate-700'
+                            }`}
+                          />
+                        </>
+                      )}
+
+                      {mesinErr && <p className="text-[10px] font-semibold text-rose-600">{mesinErr}</p>}
+
+                      <button
+                        type="button"
+                        onClick={handleSimpanMesin}
+                        disabled={mesinSaving}
+                        className="w-full flex items-center justify-center gap-1.5 bg-[#107c41] hover:bg-[#0d6233] text-white font-extrabold text-[10px] uppercase py-1.5 rounded shadow-sm cursor-pointer transition-all disabled:opacity-50"
+                      >
+                        {mesinSaving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                        Simpan Penggunaan Mesin
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
           </div>
         )}

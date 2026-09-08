@@ -52,6 +52,50 @@ class MesinViewSetTest(APITestCase):
         res = self.client.get(f'/api/mesin/{self.mesin.id}/')
         self.assertEqual(res.data['tipe_display'], 'Fuji Xerox DocuColor')
 
+    def test_field_vendor_menggantikan_lokasi(self):
+        """`lokasi` diganti jadi `vendor` (instruksi user 2026-09-09)."""
+        self.client.force_authenticate(user=self.owner)
+        res = self.client.post('/api/mesin/', {
+            'nama': 'Printer Vendor Test', 'tipe': 'printer', 'vendor': 'PT Sumber Tinta Jaya',
+        })
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res.data['vendor'], 'PT Sumber Tinta Jaya')
+        self.assertNotIn('lokasi', res.data)
+
+    def test_jadwal_servis_bulanan_perlu_servis_setelah_sebulan(self):
+        mesin = Mesin.objects.create(
+            nama='DocuColor Jadwal', tipe='docucolor', jadwal_servis_interval='bulanan',
+        )
+        MaintenanceMesin.objects.create(
+            mesin=mesin, jenis='Servis Rutin', tanggal=timezone.localdate() - timezone.timedelta(days=40),
+        )
+        self.assertTrue(mesin.perlu_servis_jadwal)
+        self.assertTrue(mesin.perlu_servis)
+
+    def test_jadwal_servis_belum_jatuh_tempo(self):
+        mesin = Mesin.objects.create(
+            nama='DocuColor Jadwal 2', tipe='docucolor', jadwal_servis_interval='bulanan',
+        )
+        MaintenanceMesin.objects.create(
+            mesin=mesin, jenis='Servis Rutin', tanggal=timezone.localdate() - timezone.timedelta(days=5),
+        )
+        self.assertFalse(mesin.perlu_servis_jadwal)
+        self.assertFalse(mesin.perlu_servis)
+
+    def test_jadwal_servis_custom_bulan(self):
+        mesin = Mesin.objects.create(
+            nama='Banner Jadwal Custom', tipe='cetak_banner',
+            jadwal_servis_interval='custom_bulan', jadwal_servis_custom_bulan=3,
+        )
+        MaintenanceMesin.objects.create(
+            mesin=mesin, jenis='Servis Rutin', tanggal=timezone.localdate() - timezone.timedelta(days=100),
+        )
+        self.assertTrue(mesin.perlu_servis_jadwal)
+
+    def test_tanpa_jadwal_servis_tidak_perlu_servis_dari_waktu(self):
+        self.assertIsNone(self.mesin.jadwal_servis_berikutnya)
+        self.assertFalse(self.mesin.perlu_servis_jadwal)
+
     def test_total_klik_dan_perlu_servis(self):
         PenggunaanMesin.objects.create(mesin=self.mesin, lembar_color=100, lembar_mono=200)
         PenggunaanMesin.objects.create(mesin=self.mesin, lembar_color=49800, lembar_mono=0)
@@ -150,6 +194,21 @@ class PenggunaanMesinViewSetTest(APITestCase):
     def test_ringkasan_staff_ditolak_untuk_staff(self):
         self.client.force_authenticate(user=self.staff)
         res = self.client.get('/api/penggunaan-mesin/ringkasan-staff/')
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_export_excel_owner_berhasil(self):
+        PenggunaanMesin.objects.create(mesin=self.mesin, operator=self.staff, lembar_color=5, lembar_mono=2)
+        self.client.force_authenticate(user=self.owner)
+        res = self.client.get('/api/penggunaan-mesin/export/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            res['Content-Type'],
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+
+    def test_export_excel_ditolak_untuk_staff(self):
+        self.client.force_authenticate(user=self.staff)
+        res = self.client.get('/api/penggunaan-mesin/export/')
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
 
 
