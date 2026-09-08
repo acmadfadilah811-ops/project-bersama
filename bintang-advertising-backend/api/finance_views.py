@@ -2,6 +2,7 @@ import csv
 import io
 
 from django.db import IntegrityError, transaction
+from django.db.models import ProtectedError
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -82,6 +83,21 @@ class CashTransactionTypeViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(dibuat_oleh=self.request.user)
+
+    def destroy(self, request, *args, **kwargs):
+        """CashTransaction.tipe_transaksi pakai on_delete=PROTECT (benar --
+        cegah kategori yang masih dirujuk transaksi lama terhapus) tapi DRF
+        tidak menangani ProtectedError secara default -- tanpa override ini,
+        hapus kategori yang masih dipakai transaksi menghasilkan 500 mentah
+        alih-alih pesan jelas (ditemukan audit 2026-09-08)."""
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except ProtectedError:
+            return Response(
+                {'error': 'Tipe transaksi ini masih dipakai oleh transaksi Kas Masuk/Keluar yang sudah '
+                          'tercatat, tidak bisa dihapus.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
     @action(detail=False, methods=['post'], url_path='import-csv')
     def import_csv(self, request):

@@ -233,3 +233,32 @@ class CashTransactionNumberRetryTests(APITestCase):
                     'catatan': 'selalu bentrok',
                 }, format='json')
         self.assertEqual(CashTransaction.objects.count(), 1, "Retry yang selalu gagal tidak boleh meninggalkan baris setengah jadi.")
+
+
+class CashTransactionTypeProtectedDeleteTests(APITestCase):
+    """CashTransaction.tipe_transaksi pakai on_delete=PROTECT -- tanpa
+    override destroy() di CashTransactionTypeViewSet, hapus tipe yang masih
+    dipakai transaksi lama menghasilkan 500 mentah (ProtectedError tidak
+    tertangani), bukan pesan jelas (ditemukan audit Biaya 2026-09-08)."""
+
+    def setUp(self):
+        self.owner = User.objects.create_user(username='owner_tipe_protect', password='secret', role='owner')
+        self.client.force_authenticate(self.owner)
+        self.tipe_terpakai = CashTransactionType.objects.create(nama='Listrik', tipe='pengeluaran', dibuat_oleh=self.owner)
+        CashTransaction.objects.create(
+            nomor='KAS-PROTECT-001', arah='pengeluaran', jumlah=Decimal('50000'),
+            tipe_transaksi=self.tipe_terpakai, waktu=timezone.make_aware(datetime(2026, 7, 30, 10, 0)),
+            dibuat_oleh=self.owner,
+        )
+        self.tipe_belum_terpakai = CashTransactionType.objects.create(nama='Air', tipe='pengeluaran', dibuat_oleh=self.owner)
+
+    def test_hapus_tipe_yang_masih_dipakai_mengembalikan_400_bukan_500(self):
+        response = self.client.delete(f'/api/cash-transaction-types/{self.tipe_terpakai.id}/')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.content)
+        self.assertIn('masih dipakai', response.data['error'])
+        self.assertTrue(CashTransactionType.objects.filter(pk=self.tipe_terpakai.id).exists())
+
+    def test_hapus_tipe_yang_belum_dipakai_berhasil(self):
+        response = self.client.delete(f'/api/cash-transaction-types/{self.tipe_belum_terpakai.id}/')
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(CashTransactionType.objects.filter(pk=self.tipe_belum_terpakai.id).exists())

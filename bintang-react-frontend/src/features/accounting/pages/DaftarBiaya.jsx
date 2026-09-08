@@ -198,7 +198,7 @@ export default function DaftarBiaya() {
     <div className="space-y-4 animate-fade-in text-xs font-semibold text-slate-700">
 
       {/* Header Toolbar Card */}
-      <div className="bg-white rounded-2xl shadow-xs p-5 flex flex-wrap items-center justify-between gap-4 select-none">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-2xs p-5 flex flex-wrap items-center justify-between gap-4 select-none">
 
         {/* Left: Filter Button */}
         <button
@@ -216,11 +216,11 @@ export default function DaftarBiaya() {
       </div>
 
       {/* Expense Accounts Table Grid (Screenshot 1) */}
-      <div className="bg-white rounded-2xl shadow-xs p-6">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-2xs p-6">
         <div className="rounded-xl overflow-hidden bg-white shadow-3xs">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-150 text-[10px] font-bold text-slate-450 uppercase tracking-wider select-none">
+              <tr className="bg-slate-50 border-b border-slate-150 text-[10px] font-bold text-slate-500 uppercase tracking-wider select-none">
                 <th className="px-6 py-4 w-[20%]">Nomor Akun</th>
                 <th className="px-6 py-4 w-[40%]">Nama Akun</th>
                 <th className="px-6 py-4 w-[25%]">Klasifikasi</th>
