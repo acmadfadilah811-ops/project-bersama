@@ -45,8 +45,13 @@ class PackageSalesTests(APITestCase):
         post_journal.assert_called_once()
 
     def test_order_wa_mengunci_harga_master_paket_dan_masuk_laporan(self):
+        # dp_dibayar>0 wajib supaya order dianggap "dikonfirmasi" dan masuk
+        # laporan (order_confirmed_q() di report_views.py, lihat commit
+        # e73952c) -- order WA yang belum dibayar/SPK belum terbit sengaja
+        # dikecualikan dari semua laporan penjualan.
         order = Order.objects.create(
             id='ORD-WA-PAKET', nama='Pelanggan WA', nomor_wa='081234567890', sumber='wa',
+            dp_dibayar=140000,
         )
         response = self.client.post('/api/order-items/', {
             'order': order.id, 'paket': self.package.id, 'qty': 2,

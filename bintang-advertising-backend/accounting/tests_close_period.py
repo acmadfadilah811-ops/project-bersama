@@ -16,6 +16,7 @@ from accounting.models import (
     AccountType,
     AccountingLifecycleLog,
     AccountingPeriod,
+    AccountingSettings,
     JournalEntry,
 )
 from accounting.services.journal import create_journal_entry
@@ -48,6 +49,14 @@ class ClosePeriodTestCase(APITestCase):
 
         self.kas_acc = Account.objects.create(code="11001", name="Kas", classification=self.asset_cls)
         self.rev_acc = Account.objects.create(code="41001", name="Pendapatan", classification=self.rev_cls)
+
+        self.equity_cls = AccountClassification.objects.create(
+            name="Ekuitas Close", account_type=AccountType.EQUITY, code_range_start=30000, code_range_end=39999
+        )
+        self.closing_acc = Account.objects.create(code="31001", name="Laba Ditahan", classification=self.equity_cls)
+        # Wajib sejak Tutup Buku memposting Jurnal Penutup tradisional
+        # (accounting/services/period.py::post_closing_entries).
+        AccountingSettings.objects.create(accounting_start_date=date(2020, 1, 1), closing_account=self.closing_acc)
 
     def test_permission_matrix(self):
         """Owner dan Manager diizinkan (200), Admin dan Kasir ditolak (403)."""
@@ -156,6 +165,13 @@ class ClosePeriodConcurrencyTestCase(TransactionTestCase):
         self.owner = User.objects.create_user(
             username="owner_concurrency", password="password123", role="owner"
         )
+        self.equity_cls = AccountClassification.objects.create(
+            name="Ekuitas Concurrency", account_type=AccountType.EQUITY, code_range_start=30000, code_range_end=39999
+        )
+        self.closing_acc = Account.objects.create(code="31001", name="Laba Ditahan", classification=self.equity_cls)
+        # Wajib sejak Tutup Buku memposting Jurnal Penutup tradisional
+        # (accounting/services/period.py::post_closing_entries).
+        AccountingSettings.objects.create(accounting_start_date=date(2020, 1, 1), closing_account=self.closing_acc)
 
     def test_concurrent_close_requests_do_not_race(self):
         period = AccountingPeriod.objects.create(

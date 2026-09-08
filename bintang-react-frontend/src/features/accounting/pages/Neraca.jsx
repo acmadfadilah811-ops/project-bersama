@@ -76,7 +76,7 @@ export default function Neraca() {
     return currentDate.format('YYYY');
   };
 
-  // Rentang periode untuk "Pendapatan periode ini" — Neraca sendiri selalu
+  // Rentang periode untuk "Laba/Rugi Belum Ditutup" — Neraca sendiri selalu
   // saldo kumulatif per date_to (akhir periode terpilih).
   const getPeriodRange = useCallback(() => {
     if (dateMode === 'Harian') {

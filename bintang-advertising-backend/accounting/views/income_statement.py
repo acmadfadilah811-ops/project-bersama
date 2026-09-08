@@ -55,8 +55,9 @@ class BalanceSheetView(APIView):
     GET /api/accounting/reports/balance-sheet/?date_from=&date_to=
 
     Neraca — saldo Aset/Kewajiban/Modal kumulatif per `date_to`. `date_from`
-    dipakai hanya untuk baris "Pendapatan periode ini" (laba berjalan periode
-    yang sedang dilihat, lihat `get_balance_sheet`).
+    tidak memengaruhi baris "Laba/Rugi Belum Ditutup" (kumulatif sampai
+    `date_to`, lihat `get_balance_sheet`/`_unclosed_pl_net`) — hanya
+    dipertahankan di response untuk kompatibilitas UI.
     """
 
     permission_classes = [IsOwnerOrManager]

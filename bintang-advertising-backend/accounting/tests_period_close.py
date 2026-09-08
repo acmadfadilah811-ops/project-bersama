@@ -8,7 +8,14 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework import status
 
-from accounting.models import Account, AccountClassification, AccountingPeriod, AccountingLifecycleLog, JournalEntry
+from accounting.models import (
+    Account,
+    AccountClassification,
+    AccountingLifecycleLog,
+    AccountingPeriod,
+    AccountingSettings,
+    JournalEntry,
+)
 from accounting.services.period import close_accounting_period, close_all_open_periods, reopen_accounting_period
 from accounting.services.journal import create_journal_entry
 
@@ -40,6 +47,14 @@ class AccountingPeriodCloseTestCase(TestCase):
         self.client = APIClient()
         self.start_date = date(2026, 7, 1)
         self.end_date = date(2026, 7, 31)
+
+        equity_cls = AccountClassification.objects.create(
+            name="Ekuitas PeriodClose", account_type="equity", code_range_start=30000, code_range_end=39999,
+        )
+        closing_acc = Account.objects.create(code="31001", name="Laba Ditahan", classification=equity_cls)
+        # Wajib sejak Tutup Buku memposting Jurnal Penutup tradisional
+        # (accounting/services/period.py::post_closing_entries).
+        AccountingSettings.objects.create(accounting_start_date=date(2020, 1, 1), closing_account=closing_acc)
 
     def test_close_and_reopen_period_service(self):
         """Service: Kunci dan buka kembali periode akuntansi."""
@@ -177,7 +192,9 @@ class AccountingPeriodCloseTestCase(TestCase):
         res = self.client.get(f"/api/accounting/periods/{period.id}/detail/", {"page": 1, "page_size": 20})
 
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        self.assertEqual(res.data["count"], 2)
+        # 2 baris entry asli + 2 baris jurnal penutup (zero-kan Pendapatan Test
+        # 25000 ke akun Closing) yang otomatis diposting oleh close_accounting_period.
+        self.assertEqual(res.data["count"], 4)
         self.assertEqual(res.data["results"][0]["entry_number"], entry.entry_number)
         self.assertEqual(res.data["results"][0]["account_code"], "11101")
 
@@ -243,6 +260,12 @@ class CloseAllOpenPeriodsTestCase(TestCase):
             name="Pengeluaran All", account_type="expense", code_range_start=62000, code_range_end=62999,
         )
         self.kas = Account.objects.create(code="13101", name="Kas All", account_type="asset", classification=self.kas_cls)
+
+        equity_cls = AccountClassification.objects.create(
+            name="Ekuitas All", account_type="equity", code_range_start=33000, code_range_end=33999,
+        )
+        closing_acc = Account.objects.create(code="33001", name="Laba Ditahan All", classification=equity_cls)
+        AccountingSettings.objects.create(accounting_start_date=date(2020, 1, 1), closing_account=closing_acc)
 
     def test_close_all_skips_current_ongoing_period(self):
         """Periode yang belum berakhir (end_date di masa depan) tidak ikut ditutup."""

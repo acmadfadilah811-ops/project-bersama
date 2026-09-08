@@ -28,6 +28,10 @@ export default function SemuaHutang() {
   const [dateTo, setDateTo] = useState(getTodayStr());
   const [dateLabel, setDateLabel] = useState('Semua');
 
+  // Filter lanjutan (dari HutangFilterModal) -- sebelumnya cuma console.log,
+  // tidak pernah benar-benar diterapkan (bug ditemukan audit 2026-09-08).
+  const [advancedFilter, setAdvancedFilter] = useState(null);
+
   // Limit page size states
   const [pageSize, setPageSize] = useState(15);
   const [isPageSizeOpen, setIsPageSizeOpen] = useState(false);
@@ -96,7 +100,7 @@ export default function SemuaHutang() {
     }
   };
 
-  const filteredData = hutangData.filter((row) => {
+  let filteredData = hutangData.filter((row) => {
     const query = searchQuery.trim().toLowerCase();
     if (query && ![row.txNo, row.supplier].some((value) => value.toLowerCase().includes(query))) return false;
     if (statusFilter && row.status !== statusFilter) return false;
@@ -104,15 +108,29 @@ export default function SemuaHutang() {
       if (dateFrom && row.date < dateFrom) return false;
       if (dateTo && row.date > dateTo) return false;
     }
+    if (advancedFilter) {
+      const { dateType, filterDate, amount, dueFilter, dueDate } = advancedFilter;
+      if (dateType === 'Satu hari' && filterDate && row.date !== filterDate) return false;
+      const minAmount = Number(String(amount || '0').replace(/\./g, '').replace(',', '.')) || 0;
+      if (minAmount > 0 && row.remaining < minAmount) return false;
+      if (dueFilter === 'Jatuh Tempo' && dueDate && (row.dueDate === '-' || row.dueDate > dueDate)) return false;
+      // sortColumn/sortDirection diterapkan di bawah, setelah filter selesai.
+    }
     return true;
   });
+  if (advancedFilter?.sortColumn) {
+    const fieldMap = { 'Tgl Transaksi': 'date', 'No. Transaksi': 'txNo', 'Jumlah': 'remaining', 'Jatuh Tempo': 'dueDate' };
+    const field = fieldMap[advancedFilter.sortColumn] || 'date';
+    const dir = advancedFilter.sortDirection === 'Descending' ? -1 : 1;
+    filteredData = [...filteredData].sort((a, b) => (a[field] > b[field] ? 1 : a[field] < b[field] ? -1 : 0) * dir);
+  }
   const visibleData = filteredData.slice(0, pageSize);
   const totalRemaining = filteredData.reduce((total, row) => total + row.remaining, 0);
   const totalPaid = filteredData.reduce((total, row) => total + row.paidAmount, 0);
   const formatIDR = (value) => (Number(value) || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const handleApplyFilter = (filters) => {
-    console.log('Applied filters:', filters);
+    setAdvancedFilter(filters);
     notify({
       type: 'success',
       title: 'Filter Diterapkan',

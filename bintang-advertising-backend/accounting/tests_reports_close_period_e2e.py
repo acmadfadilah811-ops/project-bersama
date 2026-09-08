@@ -75,6 +75,10 @@ class ReportsAndClosePeriodEndToEndTestCase(TestCase):
             pos_cogs_expense_account=self.hpp,
             pos_inventory_account=self.persediaan,
             order_sales_revenue_account=self.pendapatan,
+            # Wajib sejak Tutup Buku memposting Jurnal Penutup tradisional
+            # (accounting/services/period.py::post_closing_entries) — reuse
+            # akun Modal sebagai akun Closing/Laba Ditahan.
+            closing_account=self.modal,
         )
 
         self.pm_cash = PaymentMethod.objects.create(

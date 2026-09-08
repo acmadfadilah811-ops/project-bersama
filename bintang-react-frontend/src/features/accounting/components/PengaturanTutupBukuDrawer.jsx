@@ -4,10 +4,12 @@ import apiClient from '../../../api/apiClient';
 import { notify, notifyApiError } from '../../../utils/notify';
 
 // Simpan Akun Closing (Laba Ditahan) ke AccountingSettings (singleton, sama
-// pola dengan komisi_penjualan_debit_account dkk). Akun ini dipakai laporan
-// Neraca untuk memberi label akun nyata pada baris "Pendapatan periode ini" —
-// TIDAK membuat jurnal penutup baru, supaya laporan periode lama tidak
-// berubah setelah tutup buku (lihat get_balance_sheet di backend).
+// pola dengan komisi_penjualan_debit_account dkk). Wajib diisi sebelum Tutup
+// Buku bisa dijalankan: saat periode ditutup, semua akun Pendapatan & Beban
+// yang masih bersaldo di-nol-kan lewat Jurnal Penutup tradisional, dan
+// laba/rugi bersihnya dipindahkan ke akun ini (lihat post_closing_entries
+// di backend). Laporan periode yang SUDAH ditutup tetap akurat karena jurnal
+// penutup dikecualikan dari Laba Rugi bertanggal.
 export default function PengaturanTutupBukuDrawer({ isOpen, onClose }) {
   const [accounts, setAccounts] = useState([]);
   const [closingAccount, setClosingAccount] = useState('');
@@ -69,8 +71,9 @@ export default function PengaturanTutupBukuDrawer({ isOpen, onClose }) {
                 {accounts.map((acc) => <option key={acc.id} value={acc.id}>{acc.code} {acc.name}</option>)}
               </select>
               <p className="text-[11px] font-normal text-slate-400 leading-4">
-                Akun ekuitas tujuan laba/rugi periode berjalan. Dipakai sebagai label akun nyata
-                pada baris "Pendapatan periode ini" di laporan Neraca — tidak membuat jurnal baru.
+                Akun ekuitas tujuan laba/rugi bersih. Wajib diisi — Tutup Buku akan memposting
+                Jurnal Penutup yang menol-kan akun Pendapatan & Beban dan memindahkan selisihnya
+                (laba/rugi bersih) ke akun ini.
               </p>
             </div>
 

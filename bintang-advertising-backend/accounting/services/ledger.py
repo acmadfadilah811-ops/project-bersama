@@ -6,23 +6,35 @@ from django.db.models import Sum
 from ..models import Account, AccountingSettings, JournalEntry, JournalEntryLine
 
 
-def _sum_debit_kredit(accounts, date_from=None, date_to=None):
-    """Agregat debit & kredit mentah per akun (belum diarahkan ke normal_balance), rentang tanggal opsional."""
+def _sum_debit_kredit(accounts, date_from=None, date_to=None, exclude_source_types=None):
+    """Agregat debit & kredit mentah per akun (belum diarahkan ke normal_balance), rentang tanggal opsional.
+
+    `exclude_source_types`: dipakai laporan Laba Rugi bertanggal (Satu/Multi
+    Periode) supaya jurnal penutup (JournalEntry.SourceType.PERIOD_CLOSE) --
+    yang tanggalnya jatuh di akhir periode yang baru saja ditutup -- tidak
+    ikut mengurangi Pendapatan/Beban periode itu SENDIRI di laporan historis
+    (jurnal penutup adalah mekanisme pembukuan, bukan aktivitas bisnis
+    periode itu). Neraca & Buku Besar (saldo kumulatif akun) SENGAJA TIDAK
+    mengecualikannya -- di situ jurnal penutup memang harus ikut terhitung
+    supaya akun P&L benar-benar nol setelah ditutup dan Laba Ditahan
+    bertambah, lihat get_balance_sheet()."""
     qs = JournalEntryLine.objects.filter(account__in=accounts, journal_entry__status=JournalEntry.Status.POSTED)
     if date_from:
         qs = qs.filter(journal_entry__date__gte=date_from)
     if date_to:
         qs = qs.filter(journal_entry__date__lte=date_to)
+    if exclude_source_types:
+        qs = qs.exclude(journal_entry__source_type__in=exclude_source_types)
     totals = qs.values("account_id").annotate(total_debit=Sum("debit"), total_kredit=Sum("kredit"))
     return {row["account_id"]: row for row in totals}
 
 
-def get_account_balances(accounts, as_of_date):
+def get_account_balances(accounts, as_of_date, exclude_source_types=None):
     """
     Saldo kumulatif tiap akun sampai as_of_date (inklusif), dari JournalEntryLine
     yang statusnya sudah Posted. Return dict {account_id: Decimal}.
     """
-    totals_map = _sum_debit_kredit(accounts, date_to=as_of_date)
+    totals_map = _sum_debit_kredit(accounts, date_to=as_of_date, exclude_source_types=exclude_source_types)
     balances = {}
     for account in accounts:
         row = totals_map.get(account.id)
@@ -213,11 +225,21 @@ def _income_statement_section(classification_name, date_from, date_to):
     akun kontra (mis. "Return Penjualan", "Potongan Pembelian") otomatis
     keluar NEGATIF dan subtotal per section bisa dijumlah rata (flat sum)
     tanpa perlakuan khusus, sesuai desain UI Laba Rugi Satu/Multi Periode.
+
+    Jurnal penutup (PERIOD_CLOSE, lihat accounting/services/period.py)
+    SENGAJA dikecualikan -- itu mekanisme pembukuan yang menutup akun P&L
+    ke Laba Ditahan, bukan aktivitas bisnis periode tersebut. Tanpa
+    pengecualian ini, Laba Rugi bulan yang baru ditutup akan salah
+    menampilkan Pendapatan/Beban mendekati nol (sudah "dihapus" oleh jurnal
+    penutupnya sendiri) alih-alih angka riil transaksi bulan itu.
     """
     accounts = list(
         Account.objects.filter(classification__name=classification_name, is_active=True).order_by("code")
     )
-    totals = _sum_debit_kredit(accounts, date_from=date_from, date_to=date_to)
+    totals = _sum_debit_kredit(
+        accounts, date_from=date_from, date_to=date_to,
+        exclude_source_types=[JournalEntry.SourceType.PERIOD_CLOSE],
+    )
     rows = []
     for account in accounts:
         row = totals.get(account.id)
@@ -515,29 +537,64 @@ def _balance_sheet_section(classification_names, account_type, as_of_date):
     return rows
 
 
+def _unclosed_pl_net(date_to):
+    """Saldo bersih SEMUA akun Pendapatan & Beban kumulatif sampai `date_to`
+    (bukan dibatasi date_from) -- laba/rugi yang BELUM dipindahkan ke Laba
+    Ditahan lewat jurnal penutup (accounting/services/period.py::
+    post_closing_entries). Untuk revenue MAUPUN expense, kontribusinya ke
+    net income sama-sama `kredit - debit` (akun expense debit-heavy normal
+    menghasilkan angka negatif di sini, otomatis mengurangi net -- tidak
+    perlu percabangan account_type terpisah).
+
+    Begitu suatu bulan ditutup, jurnal penutupnya menge-nol-kan akun P&L
+    bulan itu (dari titik ini ke depan saldo kumulatifnya nol untuk
+    aktivitas yang sudah ditutup), jadi fungsi ini otomatis HANYA
+    menyisakan laba/rugi periode berjalan yang belum ditutup -- brapa pun
+    `date_from` yang dipilih user di layar Neraca. Ini yang memperbaiki bug
+    Neraca bisa tidak balance tergantung date_from (ditemukan audit
+    2026-09-08): sebelumnya baris ini dihitung dari `get_income_statement
+    (date_from, date_to)`, ikut berubah kalau user menyisihkan sebagian
+    periode padahal sisi Aset/Kewajiban tetap kumulatif sejak awal.
+    """
+    accounts = list(
+        Account.objects.filter(
+            account_type__in=[Account.AccountType.REVENUE, Account.AccountType.EXPENSE],
+            is_active=True,
+        )
+    )
+    totals = _sum_debit_kredit(accounts, date_to=date_to)
+    net = Decimal(0)
+    for account in accounts:
+        row = totals.get(account.id)
+        debit = row["total_debit"] if row else Decimal(0)
+        kredit = row["total_kredit"] if row else Decimal(0)
+        net += (kredit or 0) - (debit or 0)
+    return net
+
+
 def get_balance_sheet(date_from, date_to):
     """
     Neraca per `date_to` (saldo kumulatif sejak awal, bukan pergerakan
     periode) — Aset (Lancar/Tidak Lancar), Kewajiban, Modal. Baris "Pendapatan
-    periode ini" ditambahkan ke Modal dari laba bersih `date_from`..`date_to`
-    (`get_income_statement`) karena aplikasi ini belum menjalankan jurnal
-    tutup buku otomatis yang memindahkan laba ke Laba Ditahan.
+    periode ini" adalah laba/rugi yang belum ditutup lewat jurnal penutup
+    (`_unclosed_pl_net`, kumulatif sampai `date_to` -- BUKAN dibatasi
+    `date_from`, lihat docstring fungsi itu).
     """
     aset_lancar = _balance_sheet_section(CURRENT_ASSET_CLASSIFICATIONS, "asset", date_to)
     aset_tidak_lancar = _balance_sheet_section(NONCURRENT_ASSET_CLASSIFICATIONS, "asset", date_to)
     kewajiban = _balance_sheet_section(LIABILITY_CLASSIFICATIONS, "liability", date_to)
     modal = _balance_sheet_section(EQUITY_CLASSIFICATIONS, "equity", date_to)
 
-    laba_periode_ini = get_income_statement(date_from, date_to)["laba_bersih"]
+    laba_periode_ini = _unclosed_pl_net(date_to)
     settings = AccountingSettings.objects.select_related("closing_account").first()
     closing_account = settings.closing_account if settings else None
     laba_periode_ini_name = (
-        f"Pendapatan periode ini ({closing_account.name})" if closing_account else "Pendapatan periode ini"
+        f"Laba/Rugi Belum Ditutup ({closing_account.name})" if closing_account else "Laba/Rugi Belum Ditutup"
     )
     laba_periode_ini_code = closing_account.code if closing_account else ""
     # id sengaja None (bukan id closing_account): baris ini nilai terhitung
-    # (belum ada jurnal penutup nyata), jadi tidak boleh bisa di-drilldown ke
-    # mutasi akun closing seolah-olah itu saldo tercatat sungguhan.
+    # (saldo P&L yang belum ditutup), jadi tidak boleh bisa di-drilldown ke
+    # mutasi akun closing seolah-olah itu satu baris jurnal sungguhan.
     modal = modal + [{"id": None, "code": laba_periode_ini_code, "name": laba_periode_ini_name, "amount": laba_periode_ini}]
 
     subtotal_aset_lancar = sum((r["amount"] for r in aset_lancar), Decimal(0))

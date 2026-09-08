@@ -85,7 +85,7 @@ class BalanceSheetServiceTest(TestCase):
 
         result = get_balance_sheet(date.today(), date.today())
         self.assertEqual(result['total_aset'], result['total_kewajiban_modal'])
-        modal_periode_ini = next(r for r in result['modal'] if r['name'] == 'Pendapatan periode ini')
+        modal_periode_ini = next(r for r in result['modal'] if r['name'] == 'Laba/Rugi Belum Ditutup')
         self.assertEqual(modal_periode_ini['amount'], Decimal('200000'))
 
     def test_current_period_income_labeled_with_configured_closing_account(self):
@@ -98,8 +98,8 @@ class BalanceSheetServiceTest(TestCase):
         self._post(self.kas, self.penjualan, '200000')
 
         result = get_balance_sheet(date.today(), date.today())
-        modal_periode_ini = next(r for r in result['modal'] if 'Pendapatan periode ini' in r['name'])
-        self.assertEqual(modal_periode_ini['name'], 'Pendapatan periode ini (Laba Ditahan)')
+        modal_periode_ini = next(r for r in result['modal'] if 'Laba/Rugi Belum Ditutup' in r['name'])
+        self.assertEqual(modal_periode_ini['name'], 'Laba/Rugi Belum Ditutup (Laba Ditahan)')
         self.assertEqual(modal_periode_ini['code'], '31995')
         self.assertEqual(modal_periode_ini['amount'], Decimal('200000'))
         # Baris ini nilai terhitung, bukan mutasi jurnal nyata pada akun closing —

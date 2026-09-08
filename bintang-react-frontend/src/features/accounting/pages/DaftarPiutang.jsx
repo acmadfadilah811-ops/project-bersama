@@ -66,7 +66,11 @@ export default function DaftarPiutang({ initialFilter }) {
     setLoading(true);
     setLoadError('');
     try {
-      const data = await fetchAllPages('/orders/');
+      // ?confirmed=true -- hanya order yang sudah dikonfirmasi (sudah ada
+      // pembayaran atau SPK terbit), bukan SEMUA order termasuk draft/review
+      // yang belum disentuh sama sekali (bug ditemukan audit 2026-09-08,
+      // pola sama dengan fix "Piutang per Tipe Pelanggan" di Laporan).
+      const data = await fetchAllPages('/orders/', { params: { confirmed: 'true' } });
       const formatted = data.map((item) => {
         const total = Number(item.total_harga || 0);
         const dp = Number(item.dp_dibayar || 0);

@@ -117,6 +117,16 @@ class OrderViewSet(viewsets.ModelViewSet):
             elif sumber_list:
                 base_qs = base_qs.filter(sumber=sumber_list[0])
 
+        # ?confirmed=true -- order yang sudah dikonfirmasi (dp_dibayar>0 ATAU
+        # SPK terbit), kriteria SAMA dengan report_views.order_confirmed_q()
+        # yang dipakai laporan Penjualan/Piutang. Dipakai Daftar Piutang di
+        # Akuntansi Internal, yang sebelumnya narik SEMUA order (termasuk
+        # draft/review tanpa pembayaran/SPK) sebagai "piutang" -- bug ke-4
+        # dengan pola yang sama, ditemukan audit 2026-09-08.
+        if self.request.query_params.get('confirmed') in ('true', '1', 'True'):
+            from ..report_views import order_confirmed_q
+            base_qs = base_qs.filter(order_confirmed_q()).distinct()
+
         # ?date_from=&date_to= -- nama param sama dengan POSSaleViewSet
         # (api/pos_views.py) supaya konsisten. Dipakai filter per-tanggal di
         # Antrean Online & Offline dan Riwayat Transaksi (volume order bisa

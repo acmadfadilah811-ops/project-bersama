@@ -53,10 +53,11 @@ class AccountingSettings(models.Model):
         blank=True,
         related_name="+",
         help_text="Akun Closing (Laba Ditahan) — akun ekuitas tujuan laba/rugi periode berjalan. "
-        "Dipakai untuk memberi label akun nyata pada baris 'Pendapatan periode ini' di laporan "
-        "Neraca. Tidak membuat jurnal penutup baru — laporan tetap dihitung langsung dari jurnal "
-        "posted per rentang tanggal (lihat get_balance_sheet), supaya laporan periode lama tidak "
-        "berubah setelah tutup buku.",
+        "WAJIB diisi sebelum Tutup Buku bisa diproses: setiap kali periode ditutup, sistem "
+        "memposting Jurnal Penutup tradisional yang menge-nol-kan seluruh akun Pendapatan & Beban "
+        "dan memindahkan selisihnya (laba/rugi bersih) ke akun ini (lihat "
+        "accounting/services/period.py::post_closing_entries). Laporan Laba Rugi per periode "
+        "lama tetap akurat karena jurnal penutup dikecualikan dari perhitungannya.",
     )
     pos_sales_revenue_account = models.ForeignKey(
         Account,

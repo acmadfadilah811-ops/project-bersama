@@ -1,10 +1,12 @@
 from calendar import monthrange
 from datetime import date
+from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
-from ..models import Account, AccountingPeriod, AccountingLifecycleLog, JournalEntry, JournalEntryLine
+from ..models import Account, AccountingPeriod, AccountingLifecycleLog, AccountingSettings, JournalEntry, JournalEntryLine
+from .journal import create_journal_entry
 from .ledger import get_account_balances
 
 
@@ -38,6 +40,156 @@ def get_period_journal_lines(period):
         .select_related("journal_entry", "account")
         .order_by("journal_entry__date", "journal_entry__entry_number", "id")
     )
+
+
+def _zero_out_line(account, balance):
+    """(debit, kredit) untuk mengembalikan `balance` (sudah bertanda sesuai
+    account.normal_balance, dari get_account_balances) ke nol, dan delta ke
+    net laba/rugi (positif = menambah laba, negatif = mengurangi) -- benar
+    juga untuk akun kontra karena normal_balance sudah memperhitungkan
+    is_contra (lihat Account.normal_balance)."""
+    if account.normal_balance == "debit":
+        if balance > 0:
+            return Decimal(0), balance, -balance
+        return -balance, Decimal(0), -balance
+    if balance > 0:
+        return balance, Decimal(0), balance
+    return Decimal(0), -balance, balance
+
+
+def post_closing_entries(*, period, actor=None):
+    """
+    Jurnal Penutup tradisional: nol-kan SEMUA akun Pendapatan & Beban yang
+    masih bersaldo (kumulatif sampai period.end_date -- otomatis cuma
+    aktivitas SEJAK penutupan terakhir, karena penutupan sebelumnya sudah
+    menge-nol-kannya), pindahkan selisihnya (laba/rugi bersih) ke akun
+    Closing (Laba Ditahan, AccountingSettings.closing_account).
+
+    Idempoten per periode: kalau sudah ada JournalEntry PERIOD_CLOSE utk
+    periode ini yang masih POSTED, dikembalikan langsung tanpa membuat lagi.
+    Dipanggil close_accounting_period() SEBELUM periode ditandai CLOSED
+    (create_journal_entry menolak posting ke periode yang sudah closed).
+    """
+    # "Aktif" = POSTED, bukan hasil pembalikan (reversed_entry kosong), DAN
+    # belum punya pembalikan POSTED sendiri (reopen_accounting_period bisa
+    # membalikkannya lewat _reverse_closing_entry -- tanpa pengecualian ini,
+    # tutup buku ulang setelah reopen akan menganggap jurnal LAMA yang sudah
+    # dibalik sebagai "masih berlaku" dan tidak membuat jurnal penutup baru).
+    existing = JournalEntry.objects.filter(
+        source_type=JournalEntry.SourceType.PERIOD_CLOSE,
+        source_id=period.id,
+        status=JournalEntry.Status.POSTED,
+        reversed_entry__isnull=True,
+    ).exclude(reversal_of__status=JournalEntry.Status.POSTED).first()
+    if existing:
+        return existing
+
+    settings_row = AccountingSettings.objects.select_related("closing_account").first()
+    closing_account = settings_row.closing_account if settings_row else None
+    if not closing_account:
+        raise ValidationError(
+            "Akun Closing (Laba Ditahan) belum diatur di Pengaturan Akuntansi -- "
+            "wajib diisi sebelum tutup buku bisa memposting jurnal penutup."
+        )
+
+    pl_accounts = list(
+        Account.objects.filter(
+            account_type__in=[Account.AccountType.REVENUE, Account.AccountType.EXPENSE],
+            is_active=True,
+        ).order_by("code")
+    )
+    balances = get_account_balances(pl_accounts, period.end_date)
+
+    lines = []
+    net_ke_closing = Decimal(0)
+    for account in pl_accounts:
+        balance = balances.get(account.id) or Decimal(0)
+        if balance == 0:
+            continue
+        debit, kredit, delta = _zero_out_line(account, balance)
+        lines.append({
+            "account": account, "debit": debit, "kredit": kredit,
+            "description": f"Tutup akun {account.name} periode {period.start_date:%b %Y}",
+        })
+        net_ke_closing += delta
+
+    if not lines:
+        # Tidak ada aktivitas P&L sama sekali sejak penutupan terakhir --
+        # tidak perlu jurnal penutup (create_journal_entry menolak jurnal
+        # kosong/tidak balance kalau dipaksa dibuat dengan 0 baris berarti).
+        return None
+
+    if net_ke_closing > 0:
+        lines.append({
+            "account": closing_account, "debit": Decimal(0), "kredit": net_ke_closing,
+            "description": f"Laba bersih periode {period.start_date:%b %Y} ke Laba Ditahan",
+        })
+    elif net_ke_closing < 0:
+        lines.append({
+            "account": closing_account, "debit": -net_ke_closing, "kredit": Decimal(0),
+            "description": f"Rugi bersih periode {period.start_date:%b %Y} dari Laba Ditahan",
+        })
+
+    return create_journal_entry(
+        date=period.end_date,
+        lines=lines,
+        description=f"Jurnal Penutup — Tutup Buku {period.start_date:%B %Y}",
+        source_type=JournalEntry.SourceType.PERIOD_CLOSE,
+        source_id=period.id,
+        created_by=actor,
+    )
+
+
+def _reverse_closing_entry(*, period, actor=None):
+    """Balikkan jurnal penutup periode ini (dipanggil reopen_accounting_period).
+    Idempoten: no-op kalau tidak ada jurnal penutup POSTED utk periode ini,
+    atau reversalnya sudah ada."""
+    original = JournalEntry.objects.filter(
+        source_type=JournalEntry.SourceType.PERIOD_CLOSE,
+        source_id=period.id,
+        status=JournalEntry.Status.POSTED,
+    ).first()
+    if not original:
+        return None
+    if JournalEntry.objects.filter(reversed_entry=original, status=JournalEntry.Status.POSTED).exists():
+        return None
+
+    lines = [
+        {
+            "account": line.account,
+            "debit": line.kredit,
+            "kredit": line.debit,
+            "description": f"Pembalikan jurnal penutup — {line.description}",
+        }
+        for line in original.lines.all()
+    ]
+    reversal = create_journal_entry(
+        date=period.end_date,
+        lines=lines,
+        description=f"Pembalikan Jurnal Penutup {period.start_date:%B %Y} (Tutup Buku dibuka kembali)",
+        source_type=JournalEntry.SourceType.PERIOD_CLOSE,
+        # source_id=None (bukan period.id) -- constraint uniq_je_source_date
+        # (source_type, source_id, date) akan bentrok dengan entry asli kalau
+        # sama-sama period.id di tanggal period.end_date yang sama. Pola ini
+        # sama dengan post_order_reversal_journal(). Entry asli tetap
+        # terhubung lewat FK reversed_entry, bukan source_id.
+        source_id=None,
+        created_by=actor,
+    )
+    reversal.reversed_entry = original
+    reversal.save(update_fields=["reversed_entry"])
+
+    # Lepaskan source_id dari entry asli setelah dibalik: kalau tidak,
+    # (source_type, source_id, date) = (PERIOD_CLOSE, period.id, period.end_date)
+    # masih "dipakai" entry lama ini selamanya, sehingga tutup-buku-ulang
+    # periode ini (post_closing_entries) tidak akan pernah bisa memposting
+    # jurnal penutup baru dgn key yang sama -- bentrok uniq_je_source_date.
+    # Entry lama TETAP POSTED & tetap muncul di ledger/detail periode (yang
+    # menyaring lewat tanggal, bukan source_id) -- audit trail utuh, cuma
+    # tidak lagi "diklaim" sebagai jurnal penutup aktif periode ini.
+    original.source_id = None
+    original.save(update_fields=["source_id"])
+    return reversal
 
 
 @transaction.atomic
@@ -104,7 +256,12 @@ def close_accounting_period(*, period_id=None, start_date=None, end_date=None, a
             f"{preview}. Perbaiki jurnal atau saldo akun terlebih dahulu."
         )
 
-    # 4. Update Period Status & Audit Trail
+    # 4. Jurnal Penutup tradisional -- WAJIB sebelum status jadi CLOSED,
+    # karena create_journal_entry() menolak posting ke periode yang statusnya
+    # sudah CLOSED (lihat _get_or_create_period di journal.py).
+    post_closing_entries(period=period, actor=actor)
+
+    # 5. Update Period Status & Audit Trail
     period.status = AccountingPeriod.Status.CLOSED
     period.closed_at = timezone.now()
     period.closed_by = actor
@@ -169,6 +326,13 @@ def reopen_accounting_period(*, start_date=None, end_date=None, period_id=None, 
     period.closed_at = None
     period.closed_by = None
     period.save(update_fields=["status", "closed_at", "closed_by"])
+
+    # Balikkan jurnal penutup (kalau ada) SETELAH status jadi OPEN --
+    # create_journal_entry() menolak posting selama masih CLOSED. Tanpa ini,
+    # akun P&L yang sudah di-nol-kan jurnal penutup tetap nol di layar
+    # walau periode dibuka lagi untuk koreksi, membuat transaksi baru yang
+    # diposting sesudahnya seolah satu-satunya aktivitas bulan itu.
+    _reverse_closing_entry(period=period, actor=actor)
 
     actor_user = actor if hasattr(actor, "is_authenticated") and actor.is_authenticated else None
     AccountingLifecycleLog.objects.create(
