@@ -734,7 +734,28 @@ def rpt_value_pergerakan(params):
 # Penjualan — helper penggabung Order (pesanan advertising) + POSSale (retail)
 # ---------------------------------------------------------------------------
 def _orders_in_range(params):
-    qs = Order.objects.exclude(status_global='batal').select_related('dilayani_oleh').prefetch_related(
+    """Order yang layak dihitung sebagai "penjualan" di laporan (Laba/Rugi,
+    Rincian Penjualan, dan 20+ laporan lain yang memakai fungsi ini).
+
+    Sebelumnya cuma mengecualikan status_global='batal' -- order 'draft'
+    (draft penawaran), 'quotation' (penawaran terkirim), dan 'review'
+    (LITERAL "Menunggu Review Manager", belum disetujui sama sekali) tetap
+    terhitung sebagai pendapatan. Dibuktikan lewat audit produksi
+    2026-09-08: Laporan > Laba/Rugi menunjukkan Rp658.000 pendapatan untuk
+    periode yang sama di mana Akuntansi Internal (dari jurnal terposting
+    sungguhan) cuma menunjukkan Rp50.000 -- selisih 13x, Rp304.000 di
+    antaranya dari order yang masih 'review' tanpa pembayaran maupun SPK.
+
+    Keputusan user 2026-09-08: order dihitung HANYA kalau sudah ada
+    pembayaran (dp_dibayar > 0) ATAU SPK sudah diterbitkan (OrderActivityLog
+    tindakan TERBITKAN_SPK/TUGASKAN_STAFF, ditulis spk.terbitkan() lewat
+    AssignOrderView) -- bukan sekadar status_global, karena order 'review'
+    yang sudah DP pun harus tetap terhitung, dan order 'desain' tanpa
+    pembayaran tapi SPK sudah jalan juga harus terhitung.
+    """
+    qs = Order.objects.exclude(status_global='batal').filter(
+        Q(dp_dibayar__gt=0) | Q(activity_logs__tindakan__in=['TERBITKAN_SPK', 'TUGASKAN_STAFF'])
+    ).distinct().select_related('dilayani_oleh').prefetch_related(
         'items__product__brand', 'items__product__kategori',
         'items__product__koleksi', 'items__variant', 'items__paket')
     if params['start']:
