@@ -2,7 +2,7 @@ from calendar import monthrange
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from ..models import (
@@ -106,20 +106,34 @@ def create_journal_entry(
     if period.status == AccountingPeriod.Status.CLOSED:
         raise ValidationError(f"Periode {period} sudah ditutup (Tutup Buku), tidak bisa posting.")
 
-    entry = JournalEntry.objects.create(
-        entry_number=_generate_entry_number(date),
-        date=date,
-        period=period,
-        source_type=source_type,
-        source_id=source_id,
-        description=description,
-        journal_template=journal_template,
-        department=department,
-        status=status,
-        created_by=created_by,
-        posted_by=created_by if status == JournalEntry.Status.POSTED else None,
-        posted_at=timezone.now() if status == JournalEntry.Status.POSTED else None,
-    )
+    # entry_number di-generate dari MAX+1 tanpa lock baris -- 2 request
+    # bersamaan (2 user isi Jurnal Umum di bulan sama, atau double-click)
+    # bisa dapat nomor yang sama & bentrok unique constraint. Retry pakai
+    # savepoint (bukan seluruh @transaction.atomic ini) supaya validasi yang
+    # sudah dijalankan di atas (balance, periode) tidak perlu diulang.
+    entry = None
+    for attempt in range(5):
+        try:
+            with transaction.atomic():
+                entry = JournalEntry.objects.create(
+                    entry_number=_generate_entry_number(date),
+                    date=date,
+                    period=period,
+                    source_type=source_type,
+                    source_id=source_id,
+                    description=description,
+                    journal_template=journal_template,
+                    department=department,
+                    status=status,
+                    created_by=created_by,
+                    posted_by=created_by if status == JournalEntry.Status.POSTED else None,
+                    posted_at=timezone.now() if status == JournalEntry.Status.POSTED else None,
+                )
+            break
+        except IntegrityError:
+            if attempt == 4:
+                raise
+            continue
     JournalEntryLine.objects.bulk_create([
         JournalEntryLine(
             journal_entry=entry,

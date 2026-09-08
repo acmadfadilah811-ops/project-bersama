@@ -9,7 +9,7 @@ import BukuBesarDetailPrint from '../components/BukuBesarDetailPrint';
 
 export default function BukuBesar({ onToggleSidebar }) {
   const { user, businessSettings } = useAuth();
-  const activeUserLabel = user?.username || 'owner_brendy';
+  const activeUserLabel = user?.username || '';
 
   const [viewingAccountId, setViewingAccountId] = useState(null);
   const [accounts, setAccounts] = useState([]);

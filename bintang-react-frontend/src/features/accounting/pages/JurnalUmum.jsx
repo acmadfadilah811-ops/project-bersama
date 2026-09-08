@@ -272,30 +272,48 @@ export default function JurnalUmum({ onToggleSidebar }) {
           }
         ];
 
-        for (const item of itemsToSave) {
-          if (!item.catatan.trim() || item.jumlah <= 0) continue;
-          const body = {
-            date: item.tanggal,
-            description: item.catatan.trim(),
-            external_document_no: item.noDokumen.trim() || undefined,
-            lines: [],
-          };
-
-          if (item.mode === 'advance') {
-            if (!item.akunDebit || !item.akunKredit) continue;
-            body.lines.push(
-              { account: parseInt(item.akunDebit, 10), debit: item.jumlah, kredit: 0 },
-              { account: parseInt(item.akunKredit, 10), debit: 0, kredit: item.jumlah }
-            );
-          } else {
-            const template = namaJurnalList.find((j) => j.name === item.namaJurnal);
-            if (!template || !template.default_debit_account || !template.default_kredit_account) {
-              throw new Error(`Template jurnal "${item.namaJurnal || 'Basic'}" belum memiliki akun default.`);
+        // Draft yang BELUM berhasil disimpan (dipakai kalau ada error di
+        // tengah loop, supaya klik "Simpan" ulang tidak memposting ulang
+        // item yang sudah tersimpan jadi jurnal duplikat).
+        let remainingItems = [...itemsToSave];
+        try {
+          for (const item of itemsToSave) {
+            if (!item.catatan.trim() || item.jumlah <= 0) {
+              remainingItems = remainingItems.slice(1);
+              continue;
             }
-            body.amount = item.jumlah;
-            body.journal_template = template.id;
+            const body = {
+              date: item.tanggal,
+              description: item.catatan.trim(),
+              external_document_no: item.noDokumen.trim() || undefined,
+              lines: [],
+            };
+
+            if (item.mode === 'advance') {
+              if (!item.akunDebit || !item.akunKredit) {
+                remainingItems = remainingItems.slice(1);
+                continue;
+              }
+              body.lines.push(
+                { account: parseInt(item.akunDebit, 10), debit: item.jumlah, kredit: 0 },
+                { account: parseInt(item.akunKredit, 10), debit: 0, kredit: item.jumlah }
+              );
+            } else {
+              const template = namaJurnalList.find((j) => j.name === item.namaJurnal);
+              if (!template || !template.default_debit_account || !template.default_kredit_account) {
+                throw new Error(`Template jurnal "${item.namaJurnal || 'Basic'}" belum memiliki akun default.`);
+              }
+              body.amount = item.jumlah;
+              body.journal_template = template.id;
+            }
+            await apiClient.post('/accounting/journal-entries/', body);
+            remainingItems = remainingItems.slice(1);
           }
-          await apiClient.post('/accounting/journal-entries/', body);
+        } catch (err) {
+          if (draftItems.length > 0) {
+            setDraftItems(remainingItems);
+          }
+          throw err;
         }
 
         notifySuccess('Berhasil', 'Seluruh entri jurnal berhasil disimpan.');
@@ -1121,6 +1139,7 @@ export default function JurnalUmum({ onToggleSidebar }) {
                 <button
                   type="button"
                   disabled={draftItems.length === 0}
+                  onClick={() => window.print()}
                   className={`px-4 py-1.5 border font-bold text-xs rounded-lg flex items-center gap-1.5 ${
                     draftItems.length === 0
                       ? 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed'
@@ -1382,6 +1401,7 @@ export default function JurnalUmum({ onToggleSidebar }) {
             <button
               type="button"
               disabled={multiLines.length === 0}
+              onClick={() => window.print()}
               className={`px-4 py-1.5 border font-bold text-xs rounded-lg flex items-center gap-1.5 ${
                 multiLines.length === 0
                   ? 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed'

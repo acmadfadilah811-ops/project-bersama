@@ -72,87 +72,125 @@ def get_account_movements(accounts, date_from, date_to):
     return movements
 
 
-def _resolve_pelanggan_supplier(journal_entry, line):
+def _resolve_pelanggan_supplier_dilayani_batch(lines):
+    """Resolve nama pelanggan/supplier + karyawan yang melayani untuk semua
+    baris jurnal `lines` sekaligus (dipakai get_account_line_history).
+
+    Prioritas per baris: FK JournalEntryLine.customer/.supplier eksplisit
+    dulu (mis. dipilih manual di Form Jurnal Piutang/Hutang) — hanya jalur
+    ini yang kompatibel dengan model Customer/Supplier sehingga email
+    tersedia. Kalau tidak ada, JANGAN menebak lewat pencocokan nomor HP dsb
+    (risiko salah pasang) — ambil nama APA ADANYA langsung dari transaksi
+    asal via source_type/source_id. PENTING: source_id BUKAN selalu id
+    dokumen utama (mis. `ORDER_PAYMENT` source_id = `OrderActivityLog.id`,
+    bukan `Order.id` yang PK-nya string; `PURCHASE_PAYMENT` source_id =
+    `PurchasePayment.id`, bukan `Purchase.id`) — lihat services/order_posting.py
+    & purchase_posting.py untuk apa yang sebenarnya dikirim sebagai source_id
+    tiap source_type. Email untuk jalur ini hanya terisi kalau kontaknya
+    kebetulan tertaut ke akun member Customer (Contact.customer).
+
+    "dilayani_oleh" = nama karyawan yang melayani pelanggan (bukan
+    kasir/pemroses jurnal -- lihat `processed_by_name` di caller, itu siapa
+    yang POSTING jurnal, beda konsep). Field ini opsional di kedua model
+    sumber (POSSale.dilayani_oleh, Order.dilayani_oleh) -- kosong kalau
+    kasir tidak mengisinya saat transaksi.
+
+    Semua source_id per source_type dikumpulkan dulu lalu di-fetch sekaligus
+    lewat filter `id__in=...` (bukan 1 query per baris seperti versi lama
+    fungsi ini -- N+1 pada akun yang ramai transaksi, mis. Kas), hasilnya
+    dipetakan balik ke tiap baris tanpa query tambahan.
+
+    Return dict {line.id: {"pelanggan_supplier", "email", "dilayani_oleh"}}.
     """
-    Nama (+ email bila ada) pelanggan/supplier untuk 1 baris jurnal.
+    result = {line.id: {"pelanggan_supplier": "", "email": "", "dilayani_oleh": ""} for line in lines}
 
-    Prioritas: FK JournalEntryLine.customer/.supplier eksplisit dulu (mis.
-    dipilih manual di Form Jurnal Piutang/Hutang) — hanya jalur ini yang
-    kompatibel dengan model Customer/Supplier sehingga email tersedia.
-    Kalau tidak ada, JANGAN menebak lewat pencocokan nomor HP dsb (risiko
-    salah pasang) — ambil nama APA ADANYA langsung dari transaksi asal via
-    source_type/source_id. PENTING: source_id BUKAN selalu id dokumen utama
-    (mis. `ORDER_PAYMENT` source_id = `OrderActivityLog.id`, bukan `Order.id`
-    yang PK-nya string; `PURCHASE_PAYMENT` source_id = `PurchasePayment.id`,
-    bukan `Purchase.id`) — lihat services/order_posting.py & purchase_posting.py
-    untuk apa yang sebenarnya dikirim sebagai source_id tiap source_type.
-    Email untuk jalur ini hanya terisi kalau kontaknya kebetulan tertaut ke
-    akun member Customer (Contact.customer, lihat api.models.Contact).
-    """
-    if line.customer_id:
-        return f"Pembeli: {line.customer.nama}", line.customer.email or ""
-    if line.supplier_id:
-        return f"Supplier: {line.supplier.nama}", line.supplier.email or ""
+    # Jalur langsung (line.customer/line.supplier) -- tidak perlu query lagi,
+    # sudah select_related di queryset caller.
+    remaining = []
+    for line in lines:
+        if line.customer_id:
+            result[line.id]["pelanggan_supplier"] = f"Pembeli: {line.customer.nama}"
+            result[line.id]["email"] = line.customer.email or ""
+        elif line.supplier_id:
+            result[line.id]["pelanggan_supplier"] = f"Supplier: {line.supplier.nama}"
+            result[line.id]["email"] = line.supplier.email or ""
+        else:
+            remaining.append(line)
 
-    source_type, source_id = journal_entry.source_type, journal_entry.source_id
-    if not source_id:
-        return "", ""
+    pos_sale_ids, order_log_ids, purchase_payment_ids = set(), set(), set()
+    for line in remaining:
+        je = line.journal_entry
+        if not je.source_id:
+            continue
+        if je.source_type == JournalEntry.SourceType.POS_SALE:
+            pos_sale_ids.add(je.source_id)
+        elif je.source_type == JournalEntry.SourceType.ORDER_PAYMENT:
+            order_log_ids.add(je.source_id)
+        elif je.source_type == JournalEntry.SourceType.PURCHASE_PAYMENT:
+            purchase_payment_ids.add(je.source_id)
 
-    if source_type == JournalEntry.SourceType.POS_SALE:
+    pos_sales = {}
+    if pos_sale_ids:
         from api.pos_models import POSSale
-        sale = POSSale.objects.filter(id=source_id).select_related("pelanggan__customer").first()
-        if sale and sale.pelanggan:
-            email = sale.pelanggan.customer.email if sale.pelanggan.customer else ""
-            return f"Pembeli: {sale.pelanggan.nama}", email or ""
-    elif source_type == JournalEntry.SourceType.ORDER_PAYMENT:
-        from api.models import OrderActivityLog
-        log = OrderActivityLog.objects.filter(id=source_id).select_related("order").first()
-        if log:
-            order = log.order
-            from api.models import Contact
-            contact = Contact.objects.filter(nomor_wa=order.nomor_wa).select_related("customer").first()
-            email = contact.customer.email if contact and contact.customer else ""
-            return f"Pembeli: {order.nama}", email or ""
-    elif source_type == JournalEntry.SourceType.PURCHASE_PAYMENT:
+        pos_sales = {
+            s.id: s for s in POSSale.objects.filter(id__in=pos_sale_ids)
+            .select_related("pelanggan__customer", "dilayani_oleh")
+        }
+
+    order_logs = {}
+    contacts_by_nomor = {}
+    if order_log_ids:
+        from api.models import Contact, OrderActivityLog
+        order_logs = {
+            log.id: log for log in OrderActivityLog.objects.filter(id__in=order_log_ids)
+            .select_related("order__dilayani_oleh")
+        }
+        nomor_list = {log.order.nomor_wa for log in order_logs.values() if log.order and log.order.nomor_wa}
+        if nomor_list:
+            contacts_by_nomor = {
+                c.nomor_wa: c for c in Contact.objects.filter(nomor_wa__in=nomor_list).select_related("customer")
+            }
+
+    purchase_payments = {}
+    if purchase_payment_ids:
         from api.product_models import PurchasePayment
-        payment = PurchasePayment.objects.filter(id=source_id).select_related("purchase__supplier_ref").first()
-        if payment:
-            purchase = payment.purchase
-            if purchase.supplier_ref:
-                return f"Supplier: {purchase.supplier_ref.nama}", purchase.supplier_ref.email or ""
-            if purchase.supplier:
-                return f"Supplier: {purchase.supplier}", ""
+        purchase_payments = {
+            p.id: p for p in PurchasePayment.objects.filter(id__in=purchase_payment_ids)
+            .select_related("purchase__supplier_ref")
+        }
 
-    return "", ""
+    for line in remaining:
+        je = line.journal_entry
+        if je.source_type == JournalEntry.SourceType.POS_SALE:
+            sale = pos_sales.get(je.source_id)
+            if sale and sale.pelanggan:
+                email = sale.pelanggan.customer.email if sale.pelanggan.customer else ""
+                result[line.id]["pelanggan_supplier"] = f"Pembeli: {sale.pelanggan.nama}"
+                result[line.id]["email"] = email or ""
+            if sale and sale.dilayani_oleh:
+                result[line.id]["dilayani_oleh"] = sale.dilayani_oleh.get_full_name() or sale.dilayani_oleh.username
+        elif je.source_type == JournalEntry.SourceType.ORDER_PAYMENT:
+            log = order_logs.get(je.source_id)
+            if log:
+                order = log.order
+                contact = contacts_by_nomor.get(order.nomor_wa)
+                email = contact.customer.email if contact and contact.customer else ""
+                result[line.id]["pelanggan_supplier"] = f"Pembeli: {order.nama}"
+                result[line.id]["email"] = email or ""
+                if order.dilayani_oleh:
+                    staff = order.dilayani_oleh
+                    result[line.id]["dilayani_oleh"] = staff.get_full_name() or staff.username
+        elif je.source_type == JournalEntry.SourceType.PURCHASE_PAYMENT:
+            payment = purchase_payments.get(je.source_id)
+            if payment:
+                purchase = payment.purchase
+                if purchase.supplier_ref:
+                    result[line.id]["pelanggan_supplier"] = f"Supplier: {purchase.supplier_ref.nama}"
+                    result[line.id]["email"] = purchase.supplier_ref.email or ""
+                elif purchase.supplier:
+                    result[line.id]["pelanggan_supplier"] = f"Supplier: {purchase.supplier}"
 
-
-def _resolve_dilayani_oleh(journal_entry, line):
-    """
-    Nama karyawan yang melayani pelanggan (bukan kasir/pemroses jurnal —
-    lihat `processed_by_name`, itu siapa yang POSTING jurnal, beda konsep).
-
-    Sama seperti `_resolve_pelanggan_supplier`: ambil dari transaksi asal via
-    source_type/source_id, bukan tebakan. Field ini opsional di kedua model
-    sumber (POSSale.dilayani_oleh, Order.dilayani_oleh) — kosong kalau kasir
-    tidak mengisinya saat transaksi.
-    """
-    source_type, source_id = journal_entry.source_type, journal_entry.source_id
-    if not source_id:
-        return ""
-
-    if source_type == JournalEntry.SourceType.POS_SALE:
-        from api.pos_models import POSSale
-        sale = POSSale.objects.filter(id=source_id).select_related("dilayani_oleh").first()
-        if sale and sale.dilayani_oleh:
-            return sale.dilayani_oleh.get_full_name() or sale.dilayani_oleh.username
-    elif source_type == JournalEntry.SourceType.ORDER_PAYMENT:
-        from api.models import OrderActivityLog
-        log = OrderActivityLog.objects.filter(id=source_id).select_related("order__dilayani_oleh").first()
-        if log and log.order.dilayani_oleh:
-            staff = log.order.dilayani_oleh
-            return staff.get_full_name() or staff.username
-
-    return ""
+    return result
 
 
 def get_account_line_history(account, date_from, date_to, search=None):
@@ -162,7 +200,7 @@ def get_account_line_history(account, date_from, date_to, search=None):
     """
     saldo_awal = get_account_balances([account], date_from - timedelta(days=1)).get(account.id, 0)
 
-    lines = (
+    lines_qs = (
         JournalEntryLine.objects
         .filter(
             account=account,
@@ -174,7 +212,9 @@ def get_account_line_history(account, date_from, date_to, search=None):
         .order_by("journal_entry__date", "journal_entry__created_at", "id")
     )
     if search:
-        lines = lines.filter(journal_entry__entry_number__icontains=search)
+        lines_qs = lines_qs.filter(journal_entry__entry_number__icontains=search)
+    lines = list(lines_qs)
+    resolved = _resolve_pelanggan_supplier_dilayani_batch(lines)
 
     running = saldo_awal
     rows = []
@@ -186,14 +226,13 @@ def get_account_line_history(account, date_from, date_to, search=None):
         )
         running += delta
         actor = line.journal_entry.posted_by or line.journal_entry.created_by
-        pelanggan_supplier, email = _resolve_pelanggan_supplier(line.journal_entry, line)
-        dilayani_oleh = _resolve_dilayani_oleh(line.journal_entry, line)
+        info = resolved[line.id]
         rows.append({
             "date": line.journal_entry.date,
             "entry_number": line.journal_entry.entry_number,
-            "pelanggan_supplier": pelanggan_supplier,
-            "email": email,
-            "dilayani_oleh": dilayani_oleh,
+            "pelanggan_supplier": info["pelanggan_supplier"],
+            "email": info["email"],
+            "dilayani_oleh": info["dilayani_oleh"],
             "description": line.description or line.journal_entry.description,
             "external_document_no": line.external_document_no,
             "processed_by_name": (actor.get_full_name() or actor.username) if actor else "Sistem",

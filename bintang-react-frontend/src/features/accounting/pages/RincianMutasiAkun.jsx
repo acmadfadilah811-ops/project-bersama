@@ -18,7 +18,7 @@ export default function RincianMutasiAkun({
   initialDateTo
 }) {
   const { user } = useAuth();
-  const activeUserLabel = user?.username || 'owner_brendy';
+  const activeUserLabel = user?.username || '';
 
   const [account, setAccount] = useState(null);
   const [rows, setRows] = useState([]);
