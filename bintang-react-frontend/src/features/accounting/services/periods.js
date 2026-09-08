@@ -1,4 +1,5 @@
 import apiClient from '../../../api/apiClient';
+import { fetchAllPages } from '../../../utils/paginatedApi';
 
 export async function fetchAccountingPeriods(fiscalYear) {
   const { data } = await apiClient.get('/accounting/periods/', {
@@ -8,10 +9,13 @@ export async function fetchAccountingPeriods(fiscalYear) {
 }
 
 export async function fetchAccountingPeriodDetail(periodId) {
-  const { data } = await apiClient.get(`/accounting/periods/${periodId}/detail/`, {
-    params: { page: 1, page_size: 1000 },
-  });
-  return Array.isArray(data) ? data : (data.results || []);
+  // fetchAllPages, bukan 1 halaman page_size=1000 tetap -- sebelumnya kalau
+  // 1 bulan punya >1000 baris jurnal (mungkin di bulan sibuk), sisanya diam-diam
+  // hilang tanpa peringatan apa pun ke user yang lagi review sebelum tutup buku
+  // (bug ditemukan audit Tutup Buku, 2026-09-08). Periode dibatasi 1 bulan
+  // kalender jadi wajar ditarik semua (bukan kasus "riwayat tak terbatas"
+  // seperti halaman Piutang/Hutang).
+  return fetchAllPages(`/accounting/periods/${periodId}/detail/`);
 }
 
 export async function closeAccountingPeriod(startDate, endDate) {
