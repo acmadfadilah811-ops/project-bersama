@@ -5,6 +5,7 @@ from datetime import date
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.pagination import PageNumberPagination
@@ -18,6 +19,7 @@ from ..models import FixedAsset
 from ..serializers.assets import (
     FixedAssetAccountConfigSerializer,
     FixedAssetCreateSerializer,
+    FixedAssetDisposeSerializer,
     FixedAssetReadSerializer,
     FixedAssetUpdateSerializer,
 )
@@ -183,4 +185,24 @@ class FixedAssetDepreciationPostView(APIView):
                 for e in entries
             ],
         })
+
+
+class FixedAssetDisposeView(APIView):
+    """POST /api/accounting/assets/{id}/dispose/
+
+    Lepas/jual aset: hapus dari buku, akui untung/rugi pelepasan. Satu-satunya
+    jalur resmi ke status DISPOSED -- lihat FixedAssetUpdateSerializer.
+    """
+
+    permission_classes = [IsOwnerOrManager]
+
+    def post(self, request, pk):
+        asset = get_object_or_404(FixedAsset, pk=pk)
+        serializer = FixedAssetDisposeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            asset = serializer.save(asset=asset, actor=request.user)
+        except DjangoValidationError as exc:
+            return Response({"detail": getattr(exc, "messages", [str(exc)])}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(FixedAssetReadSerializer(asset).data)
 

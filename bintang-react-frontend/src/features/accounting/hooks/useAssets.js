@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { notifyApiError } from '../../../utils/notify';
-import { createAsset, fetchAssetAccounts, fetchAssets, postMonthlyDepreciation, updateAsset } from '../services/assets';
+import { createAsset, disposeAsset, fetchAssetAccounts, fetchAssets, postMonthlyDepreciation, updateAsset } from '../services/assets';
 
 export default function useAssets() {
   const [assets, setAssets] = useState([]);
@@ -40,5 +40,10 @@ export default function useAssets() {
     await reload();
     return result;
   };
-  return { assets, accounts, loading, reload, save, update, postDepreciation };
+  const dispose = async (id, payload) => {
+    const asset = await disposeAsset(id, payload);
+    await reload();
+    return asset;
+  };
+  return { assets, accounts, loading, reload, save, update, postDepreciation, dispose };
 }

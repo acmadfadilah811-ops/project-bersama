@@ -36,6 +36,7 @@ class JournalEntry(models.Model):
         SETTLEMENT = "settlement", "Konfirmasi Settlement"
         ASSET_ACQUISITION = "asset_acquisition", "Perolehan Aset"
         ASSET_DEPRECIATION = "asset_depreciation", "Penyusutan Aset"
+        ASSET_DISPOSAL = "asset_disposal", "Pelepasan Aset"
         ORDER_MATERIAL_HPP = "order_material_hpp", "HPP Bahan Baku Order (T-204)"
         PERIOD_CLOSE = "period_close", "Tutup Buku (Jurnal Penutup)"
 

@@ -69,6 +69,7 @@ from .sales_actions import POSSaleCancelPostView, POSSaleJournalLogView, POSSale
 from .assets import (
     FixedAssetDepreciationPostView,
     FixedAssetDetailView,
+    FixedAssetDisposeView,
     FixedAssetImportCommitView,
     FixedAssetImportPreviewView,
     FixedAssetListCreateView,

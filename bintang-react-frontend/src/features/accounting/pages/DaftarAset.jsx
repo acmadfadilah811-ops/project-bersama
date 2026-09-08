@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react';
-import { FileSpreadsheet, Plus, Search } from 'lucide-react';
+import { FileSpreadsheet, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import AssetForm from '../components/assets/AssetForm';
 import AssetImportExportModal from '../components/assets/AssetImportExportModal';
+import AssetDisposeModal from '../components/assets/AssetDisposeModal';
+import AssetEditModal from '../components/assets/AssetEditModal';
 import useAssets from '../hooks/useAssets';
 import { notify, notifyApiError } from '../../../utils/notify';
 
@@ -11,6 +13,10 @@ function UsefulLifeCell({ asset, onSave }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(asset.useful_life_months ?? '');
   const [saving, setSaving] = useState(false);
+
+  if (asset.status === 'disposed') {
+    return <span className="text-slate-400">{asset.useful_life_months ? `${asset.useful_life_months} bln` : '-'}</span>;
+  }
 
   if (!editing) {
     return (
@@ -55,12 +61,21 @@ function UsefulLifeCell({ asset, onSave }) {
   );
 }
 
+function StatusBadge({ status }) {
+  if (status === 'disposed') {
+    return <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">Dilepas</span>;
+  }
+  return <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-600">Aktif</span>;
+}
+
 export default function DaftarAset() {
-  const { assets, accounts, loading, reload, save, update, postDepreciation } = useAssets();
+  const { assets, accounts, loading, reload, save, update, postDepreciation, dispose } = useAssets();
   const [showForm, setShowForm] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
   const [posting, setPosting] = useState(false);
   const [query, setQuery] = useState('');
+  const [editingAsset, setEditingAsset] = useState(null);
+  const [disposingAsset, setDisposingAsset] = useState(null);
   const filtered = useMemo(
     () => assets.filter((asset) => (asset.asset_code + ' ' + asset.name).toLowerCase().includes(query.toLowerCase())),
     [assets, query],
@@ -96,23 +111,34 @@ export default function DaftarAset() {
       </div>
       {showForm && <AssetForm accounts={accounts} onSave={save} onClose={() => setShowForm(false)} />}
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-        <table className="w-full min-w-[1100px] text-left"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Kode</th><th className="p-3">Aset</th><th className="p-3">Tanggal</th><th className="p-3 text-right">Nilai Awal</th><th className="p-3 text-right">Residu</th><th className="p-3">Umur Manfaat</th><th className="p-3 text-right">Akumulasi Penyusutan</th><th className="p-3 text-right">Nilai Buku</th><th className="p-3">Jurnal</th></tr></thead><tbody>
-          {loading ? <tr><td colSpan="9" className="p-10 text-center">Memuat aset...</td></tr> : filtered.length ? filtered.map((asset) => (
+        <table className="w-full min-w-[1250px] text-left"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="p-3">Kode</th><th className="p-3">Aset</th><th className="p-3">Status</th><th className="p-3">Tanggal</th><th className="p-3 text-right">Nilai Awal</th><th className="p-3 text-right">Residu</th><th className="p-3">Umur Manfaat</th><th className="p-3 text-right">Akumulasi Penyusutan</th><th className="p-3 text-right">Nilai Buku</th><th className="p-3">Jurnal</th><th className="p-3">Aksi</th></tr></thead><tbody>
+          {loading ? <tr><td colSpan="11" className="p-10 text-center">Memuat aset...</td></tr> : filtered.length ? filtered.map((asset) => (
             <tr key={asset.id} className="border-t border-slate-100">
               <td className="p-3 font-bold text-sky-600">{asset.asset_code}</td>
               <td className="p-3"><b>{asset.name}</b><div className="text-xs text-slate-500">{asset.asset_account_code} - {asset.asset_account_name}</div></td>
+              <td className="p-3"><StatusBadge status={asset.status} /></td>
               <td className="p-3">{asset.acquisition_date}</td>
               <td className="p-3 text-right">{money.format(asset.acquisition_cost)}</td>
               <td className="p-3 text-right">{money.format(asset.residual_value)}</td>
               <td className="p-3"><UsefulLifeCell asset={asset} onSave={update} /></td>
               <td className="p-3 text-right">{money.format(asset.accumulated_depreciation || 0)}</td>
               <td className="p-3 text-right font-bold">{money.format(asset.book_value ?? asset.acquisition_cost)}</td>
-              <td className="p-3">{asset.acquisition_journal_number || '-'}</td>
+              <td className="p-3">{asset.acquisition_journal_number || '-'}{asset.disposal_journal_number ? <div className="text-xs text-slate-400">Pelepasan: {asset.disposal_journal_number}</div> : null}</td>
+              <td className="p-3">
+                <div className="flex items-center gap-2">
+                  <button type="button" title="Ubah" onClick={() => setEditingAsset(asset)} className="rounded p-1 text-slate-500 hover:bg-slate-100 cursor-pointer"><Pencil size={14} /></button>
+                  {asset.status !== 'disposed' && (
+                    <button type="button" title="Lepas aset" onClick={() => setDisposingAsset(asset)} className="rounded p-1 text-rose-500 hover:bg-rose-50 cursor-pointer"><Trash2 size={14} /></button>
+                  )}
+                </div>
+              </td>
             </tr>
-          )) : <tr><td colSpan="9" className="p-10 text-center text-slate-400">Belum ada aset.</td></tr>}
+          )) : <tr><td colSpan="11" className="p-10 text-center text-slate-400">Belum ada aset.</td></tr>}
         </tbody></table>
       </div>
       {showTransfer && <AssetImportExportModal accounts={accounts} onClose={() => setShowTransfer(false)} onImported={reload} />}
+      {editingAsset && <AssetEditModal asset={editingAsset} onSave={update} onClose={() => setEditingAsset(null)} />}
+      {disposingAsset && <AssetDisposeModal asset={disposingAsset} accounts={accounts} onDispose={dispose} onClose={() => setDisposingAsset(null)} />}
     </div>
   );
 }

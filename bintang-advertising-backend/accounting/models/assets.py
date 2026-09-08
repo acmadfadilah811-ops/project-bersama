@@ -48,6 +48,11 @@ class FixedAsset(models.Model):
         "melewati aset yang field ini kosong atau 0.",
     )
     last_depreciation_date = models.DateField(null=True, blank=True)
+    disposal_date = models.DateField(null=True, blank=True)
+    disposal_proceeds = models.DecimalField(max_digits=15, decimal_places=0, null=True, blank=True)
+    disposal_journal = models.OneToOneField(
+        JournalEntry, on_delete=models.PROTECT, null=True, blank=True, related_name="fixed_asset_disposal",
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="fixed_assets_created",
     )

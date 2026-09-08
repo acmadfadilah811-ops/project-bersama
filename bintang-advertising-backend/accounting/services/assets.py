@@ -6,6 +6,7 @@ from django.db import transaction
 
 from ..models import Account, AccountingSettings, FixedAsset, JournalEntry
 from .journal import build_pair_lines, create_journal_entry
+from .depreciation import get_accumulated_depreciation
 
 MAX_IMPORT_ROWS = 500
 
@@ -113,3 +114,69 @@ def create_fixed_assets_from_import(*, rows, shared_data, created_by):
         }
         assets.append(create_fixed_asset(data=payload, created_by=created_by))
     return assets
+
+
+@transaction.atomic
+def dispose_fixed_asset(*, asset, disposal_date, proceeds, proceeds_account, gain_loss_account, actor):
+    """Lepas/jual aset: hapus dari buku (kredit asset_account sebesar
+    acquisition_cost), hapus akumulasi penyusutan (debit
+    accumulated_depreciation_account), catat hasil pelepasan yang diterima
+    (debit proceeds_account -- 0 kalau dibuang/rusak, tidak apa-apa), dan
+    akui untung/rugi pelepasan (selisih proceeds - nilai buku) ke
+    gain_loss_account (baris ini dilewati kalau selisihnya persis 0)."""
+    if asset.status == FixedAsset.Status.DISPOSED:
+        raise ValidationError("Aset ini sudah dilepas sebelumnya.")
+    if disposal_date < asset.acquisition_date:
+        raise ValidationError("Tanggal pelepasan tidak boleh sebelum tanggal perolehan.")
+    proceeds = Decimal(proceeds)
+    if proceeds < 0:
+        raise ValidationError("Nilai hasil pelepasan tidak boleh negatif.")
+    if not proceeds_account.is_active:
+        raise ValidationError("Akun penerima hasil pelepasan harus aktif.")
+    if not gain_loss_account.is_active:
+        raise ValidationError("Akun untung/rugi pelepasan harus aktif.")
+
+    accumulated = get_accumulated_depreciation(asset)
+    book_value = asset.acquisition_cost - accumulated
+    gain_or_loss = proceeds - book_value
+
+    lines = [
+        {
+            "account": asset.accumulated_depreciation_account, "debit": accumulated, "kredit": Decimal(0),
+            "description": f"Hapus akumulasi penyusutan {asset.asset_code}",
+        },
+        {
+            "account": proceeds_account, "debit": proceeds, "kredit": Decimal(0),
+            "description": f"Hasil pelepasan aset {asset.asset_code}",
+        },
+        {
+            "account": asset.asset_account, "debit": Decimal(0), "kredit": asset.acquisition_cost,
+            "description": f"Hapus aset {asset.asset_code} dari buku",
+        },
+    ]
+    if gain_or_loss > 0:
+        lines.append({
+            "account": gain_loss_account, "debit": Decimal(0), "kredit": gain_or_loss,
+            "description": f"Untung pelepasan aset {asset.asset_code}",
+        })
+    elif gain_or_loss < 0:
+        lines.append({
+            "account": gain_loss_account, "debit": -gain_or_loss, "kredit": Decimal(0),
+            "description": f"Rugi pelepasan aset {asset.asset_code}",
+        })
+    lines = [line for line in lines if line["debit"] > 0 or line["kredit"] > 0]
+
+    entry = create_journal_entry(
+        date=disposal_date,
+        lines=lines,
+        description=f"Pelepasan aset {asset.asset_code} - {asset.name}",
+        source_type=JournalEntry.SourceType.ASSET_DISPOSAL,
+        source_id=asset.id,
+        created_by=actor,
+    )
+    asset.status = FixedAsset.Status.DISPOSED
+    asset.disposal_date = disposal_date
+    asset.disposal_proceeds = proceeds
+    asset.disposal_journal = entry
+    asset.save(update_fields=["status", "disposal_date", "disposal_proceeds", "disposal_journal", "updated_at"])
+    return asset

@@ -20,6 +20,10 @@ export async function postMonthlyDepreciation(period) {
   const { data } = await apiClient.post('/accounting/assets/depreciation/post/', period ? { period } : {});
   return data;
 }
+export async function disposeAsset(id, payload) {
+  const { data } = await apiClient.post(`/accounting/assets/${id}/dispose/`, payload);
+  return data;
+}
 export async function previewAssetImport(file, config) {
   const form = new FormData();
   form.append('file', file);
