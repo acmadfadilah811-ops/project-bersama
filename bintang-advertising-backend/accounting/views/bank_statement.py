@@ -1,6 +1,7 @@
 from calendar import monthrange
 from datetime import date
 
+from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.parsers import MultiPartParser
@@ -15,7 +16,12 @@ from ..services.bank_statement import build_preview, commit_lines, parse_csv_fil
 
 
 def _resolve_month_range(request):
-    """Default Bank Statement beda dari Jurnal Umum/Buku Besar: bulan berjalan penuh, bukan cuma hari ini."""
+    """Default Bank Statement beda dari Jurnal Umum/Buku Besar: bulan berjalan penuh, bukan cuma hari ini.
+
+    timezone.localdate() -- date.today() pakai jam OS server (UTC), bisa
+    salah "bulan berjalan" persis di dini hari WIB tanggal 1 (lihat
+    accounting/views/common.py::resolve_date_range untuk penjelasan lengkap).
+    """
     date_from_str = request.query_params.get("date_from")
     date_to_str = request.query_params.get("date_to")
     if date_from_str and date_to_str:
@@ -23,7 +29,7 @@ def _resolve_month_range(request):
             return date.fromisoformat(date_from_str), date.fromisoformat(date_to_str)
         except ValueError:
             pass
-    today = date.today()
+    today = timezone.localdate()
     start = today.replace(day=1)
     end = today.replace(day=monthrange(today.year, today.month)[1])
     return start, end

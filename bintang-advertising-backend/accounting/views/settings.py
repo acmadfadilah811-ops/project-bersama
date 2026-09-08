@@ -1,4 +1,3 @@
-from datetime import date
 from django.core.management import call_command
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
@@ -34,7 +33,7 @@ def _get_or_create_settings():
             ).first()
 
         settings = AccountingSettings.objects.create(
-            accounting_start_date=date.today(),
+            accounting_start_date=timezone.localdate(),
             opening_balance_equity_account=opening_balance_equity_account,
         )
     return settings

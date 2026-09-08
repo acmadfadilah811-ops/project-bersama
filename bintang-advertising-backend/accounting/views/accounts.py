@@ -3,6 +3,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q
+from django.utils import timezone
 from rest_framework import generics
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
@@ -15,8 +16,13 @@ from ..services.ledger import get_account_balances
 
 
 def _period_end_date(period_str):
-    """'2026-07' -> tanggal terakhir bulan itu. Default: bulan berjalan."""
-    today = date.today()
+    """'2026-07' -> tanggal terakhir bulan itu. Default: bulan berjalan.
+
+    timezone.localdate() -- date.today() pakai jam OS server (UTC), bisa
+    salah "bulan berjalan" persis di dini hari WIB tanggal 1 (lihat
+    accounting/views/common.py::resolve_date_range untuk penjelasan lengkap).
+    """
+    today = timezone.localdate()
     year, month = today.year, today.month
     if period_str:
         try:
