@@ -2,7 +2,12 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Calendar, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import dayjs from 'dayjs';
 import apiClient from '../../../api/apiClient';
-import { notifyApiError } from '../../../utils/notify';
+import { notify, notifyApiError } from '../../../utils/notify';
+
+// Batasi rentang tahun -- Tahun Awal/Tahun Akhir jauh (mis. 2020-2029) berarti
+// 10 request paralel ke /accounting/reports/income-statement/ sekaligus.
+// 8 kolom (8 tahun quarter yang sama) sudah cukup lebar untuk dibaca di tabel.
+const MAX_YEAR_SPAN = 8;
 
 export default function LabaRugiMultiPeriode() {
   // --- STATE TANGGAL & QUARTER ---
@@ -17,7 +22,7 @@ export default function LabaRugiMultiPeriode() {
 
   // --- STATE DATA & LOADING ---
   const [loading, setLoading] = useState(false);
-  const [reportData, setReportData] = useState(null); // [dataBulan1, dataBulan2, dataBulan3]
+  const [reportData, setReportData] = useState(null); // 1 entry per kolom (bulan atau tahun)
 
   // Format rupiah desimal ,00
   const formatRupiah = (val) => {
@@ -38,41 +43,55 @@ export default function LabaRugiMultiPeriode() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Helper 3 nama bulan berdasarkan Quarter
-  const getQuarterMonths = () => {
-    const yr = startYear || dayjs().format('YYYY');
-    if (selectedQuarter === 'Q1') {
-      return [`Jan ${yr}`, `Feb ${yr}`, `Mar ${yr}`];
-    } else if (selectedQuarter === 'Q2') {
-      return [`Apr ${yr}`, `May ${yr}`, `Jun ${yr}`];
-    } else if (selectedQuarter === 'Q3') {
-      return [`Jul ${yr}`, `Aug ${yr}`, `Sep ${yr}`];
-    } else {
-      return [`Oct ${yr}`, `Nov ${yr}`, `Dec ${yr}`];
-    }
-  };
-
-  const quarterMonths = getQuarterMonths();
-
-  // Rentang tanggal 3 bulan pada quarter terpilih (tahun `startYear` — sama
-  // dengan yang dipakai label kolom `quarterMonths` di atas).
-  const getQuarterMonthRanges = () => {
-    const yr = parseInt(startYear, 10) || dayjs().year();
+  // Kolom laporan -- kalau Tahun Awal == Tahun Akhir, tampil rincian 3 bulan
+  // kuartal terpilih (perilaku lama). Kalau beda, tiap kolom jadi 1 TAHUN
+  // (total 3 bulan kuartal itu di tahun tsb) supaya bisa dibandingkan
+  // antar-tahun -- ini yang bikin Tahun Akhir sebelumnya dekoratif (state
+  // tersimpan tapi tidak pernah dibaca), sekarang beneran dipakai.
+  const getColumns = () => {
+    const sYr = parseInt(startYear, 10) || dayjs().year();
+    const eYr = parseInt(endYear, 10) || sYr;
+    const yFrom = Math.min(sYr, eYr);
+    const yToRaw = Math.max(sYr, eYr);
+    const yTo = Math.min(yToRaw, yFrom + MAX_YEAR_SPAN - 1);
     const quarterStartMonth = { Q1: 0, Q2: 3, Q3: 6, Q4: 9 }[selectedQuarter];
-    return [0, 1, 2].map((offset) => {
-      const d = dayjs(new Date(yr, quarterStartMonth + offset, 1));
-      return { from: d.startOf('month').format('YYYY-MM-DD'), to: d.endOf('month').format('YYYY-MM-DD') };
-    });
+
+    if (yFrom === yTo) {
+      return {
+        capped: false,
+        columns: [0, 1, 2].map((offset) => {
+          const d = dayjs(new Date(yFrom, quarterStartMonth + offset, 1));
+          return {
+            label: d.format('MMM YYYY'),
+            from: d.startOf('month').format('YYYY-MM-DD'),
+            to: d.endOf('month').format('YYYY-MM-DD'),
+          };
+        }),
+      };
+    }
+
+    const columns = [];
+    for (let y = yFrom; y <= yTo; y++) {
+      const start = dayjs(new Date(y, quarterStartMonth, 1)).startOf('month');
+      const end = dayjs(new Date(y, quarterStartMonth + 2, 1)).endOf('month');
+      columns.push({
+        label: `${selectedQuarter} ${y}`,
+        from: start.format('YYYY-MM-DD'),
+        to: end.format('YYYY-MM-DD'),
+      });
+    }
+    return { capped: yToRaw > yTo, columns };
   };
 
-  // Fetch Report Data dari API — Laba Rugi per bulan, sama seperti Satu
-  // Periode, dipanggil 3x (1x per kolom bulan quarter).
+  const { columns, capped } = getColumns();
+
+  // Fetch Report Data dari API — Laba Rugi per kolom (bulan atau tahun),
+  // 1 request per kolom, dijalankan paralel.
   const fetchReportData = useCallback(async () => {
     setLoading(true);
     try {
-      const ranges = getQuarterMonthRanges();
       const results = await Promise.all(
-        ranges.map((r) => apiClient.get('/accounting/reports/income-statement/', {
+        columns.map((r) => apiClient.get('/accounting/reports/income-statement/', {
           params: { date_from: r.from, date_to: r.to },
         })),
       );
@@ -83,31 +102,41 @@ export default function LabaRugiMultiPeriode() {
     } finally {
       setLoading(false);
     }
-  }, [startYear, selectedQuarter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startYear, endYear, selectedQuarter]);
 
   useEffect(() => {
     fetchReportData();
   }, [fetchReportData]);
 
-  // Gabungkan baris akun dari 3 bulan (union kode akun, default 0 kalau akun
-  // itu tidak muncul di bulan tertentu).
+  useEffect(() => {
+    if (capped) {
+      notify({
+        type: 'info',
+        title: 'Rentang Tahun Dibatasi',
+        message: `Maksimal ${MAX_YEAR_SPAN} tahun sekaligus supaya tidak terlalu banyak permintaan ke server.`,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [capped, startYear, endYear, selectedQuarter]);
+
+  // Gabungkan baris akun dari semua kolom (union kode akun, default 0 kalau
+  // akun itu tidak muncul di kolom tertentu).
   const mergeSection = (key) => {
     const map = new Map();
-    (reportData || []).forEach((monthData, idx) => {
-      (monthData?.[key] || []).forEach((row) => {
-        if (!map.has(row.code)) map.set(row.code, { code: row.code, name: row.name, m1: 0, m2: 0, m3: 0 });
-        map.get(row.code)[`m${idx + 1}`] = Number(row.amount);
+    (reportData || []).forEach((periodData, idx) => {
+      (periodData?.[key] || []).forEach((row) => {
+        if (!map.has(row.code)) {
+          map.set(row.code, { code: row.code, name: row.name, values: columns.map(() => 0) });
+        }
+        map.get(row.code).values[idx] = Number(row.amount);
       });
     });
     return Array.from(map.values());
   };
 
-  // Total per bulan — dari perhitungan server (M6), bukan dijumlah ulang di sini.
-  const getTotal = (key) => ({
-    m1: Number(reportData?.[0]?.[key] || 0),
-    m2: Number(reportData?.[1]?.[key] || 0),
-    m3: Number(reportData?.[2]?.[key] || 0),
-  });
+  // Total per kolom — dari perhitungan server (M6), bukan dijumlah ulang di sini.
+  const getTotal = (key) => columns.map((_, idx) => Number(reportData?.[idx]?.[key] || 0));
 
   // Handler Pilih Tahun dari Popover Kalender
   const handleSelectYear = (yr) => {
@@ -122,25 +151,21 @@ export default function LabaRugiMultiPeriode() {
   // Generate Array 12 Tahun untuk Grid Picker
   const yearGrid = Array.from({ length: 12 }, (_, i) => pickerDecade + i);
 
-  // Baris akun per section, digabung dari 3 bulan (data asli, bukan mock).
+  // Baris akun per section, digabung dari semua kolom (data asli, bukan mock).
   const rawPendapatan = mergeSection('pendapatan');
   const rawHpp = mergeSection('hpp');
   const rawOverhead = mergeSection('biaya_operasional');
   const rawBiayaLainnya = mergeSection('biaya_non_operasional');
   const rawPendapatanLain = mergeSection('pendapatan_non_operasional');
 
-  // Total per bulan — dari perhitungan server (M6), bukan dijumlah ulang di sini.
+  // Total per kolom — dari perhitungan server (M6), bukan dijumlah ulang di sini.
   const subTotalPendapatan = getTotal('subtotal_pendapatan');
   const subTotalHpp = getTotal('subtotal_hpp');
   const subTotalLabaKotor = getTotal('total_laba_kotor');
   const subTotalOverhead = getTotal('total_biaya_operasional');
   const subTotalBiayaOp = subTotalOverhead;
 
-  const totalPendapatanOp = {
-    m1: subTotalLabaKotor.m1 - subTotalBiayaOp.m1,
-    m2: subTotalLabaKotor.m2 - subTotalBiayaOp.m2,
-    m3: subTotalLabaKotor.m3 - subTotalBiayaOp.m3,
-  };
+  const totalPendapatanOp = columns.map((_, idx) => subTotalLabaKotor[idx] - subTotalBiayaOp[idx]);
 
   const subTotalBiayaLainnya = getTotal('subtotal_biaya_non_operasional');
   const subTotalBiayaNonOp = subTotalBiayaLainnya;
@@ -150,6 +175,8 @@ export default function LabaRugiMultiPeriode() {
 
   const totalPendapatanNonOp = getTotal('total_pendapatan_non_operasional');
   const totalLabaBersih = getTotal('laba_bersih');
+
+  const colWidth = `${50 / Math.max(1, columns.length)}%`;
 
   return (
     <div className="space-y-4 font-sans text-slate-800">
@@ -254,6 +281,9 @@ export default function LabaRugiMultiPeriode() {
       <p className="text-[11px] text-slate-400 italic px-1">
         Dihitung dari jurnal terposting (Akuntansi) — bisa berbeda dari Laba Rugi di Laporan Penjualan yang
         dihitung dari transaksi penjualan. Keduanya sengaja terpisah untuk tujuan berbeda.
+        {startYear !== endYear && (
+          <> Tahun Awal ≠ Tahun Akhir: tiap kolom menampilkan total kuartal {selectedQuarter} per tahun (bukan rincian bulanan).</>
+        )}
       </p>
 
       {/* CARD TABEL LAPORAN LABA RUGI MULTI PERIODE */}
@@ -267,30 +297,30 @@ export default function LabaRugiMultiPeriode() {
           </div>
         )}
 
-        {/* CONTAINER TABEL DENGAN STICKY HEADER FIXED UNTUK DESKRIPSI & 3 BULAN QUARTER */}
+        {/* CONTAINER TABEL DENGAN STICKY HEADER FIXED UNTUK DESKRIPSI & KOLOM PERIODE */}
         <div className="overflow-x-auto max-h-[75vh]">
           <table className="w-full text-left border-collapse">
             {/* STICKY HEADER (TIDAK IKUT BERGESER SAAT SCROLL KE ATAS) */}
             <thead className="sticky top-0 z-10 bg-[#0099E6] text-white font-bold text-xs shadow-xs">
               <tr>
                 <th className="py-3 px-6 w-1/2 min-w-[280px]">Deskripsi</th>
-                <th className="py-3 px-6 text-right w-1/6">{quarterMonths[0]}</th>
-                <th className="py-3 px-6 text-right w-1/6">{quarterMonths[1]}</th>
-                <th className="py-3 px-6 text-right w-1/6">{quarterMonths[2]}</th>
+                {columns.map((c, idx) => (
+                  <th key={idx} className="py-3 px-6 text-right" style={{ width: colWidth }}>{c.label}</th>
+                ))}
               </tr>
             </thead>
 
             <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
               {/* SECTION 1: Pendapatan bersih operasional - Laba kotor */}
               <tr>
-                <td colSpan={4} className="bg-[#0099E6] text-white px-4 py-2 font-bold text-xs">
+                <td colSpan={1 + columns.length} className="bg-[#0099E6] text-white px-4 py-2 font-bold text-xs">
                   Pendapatan bersih operasional - Laba kotor
                 </td>
               </tr>
 
               {/* PENDAPATAN */}
               <tr>
-                <td colSpan={4} className="px-6 py-2 text-xs font-semibold text-slate-600 bg-slate-50/50">
+                <td colSpan={1 + columns.length} className="px-6 py-2 text-xs font-semibold text-slate-600 bg-slate-50/50">
                   Pendapatan
                 </td>
               </tr>
@@ -301,179 +331,179 @@ export default function LabaRugiMultiPeriode() {
                       {item.code ? `${item.code} ${item.name}` : item.name}
                     </span>
                   </td>
-                  <td className={`py-2 px-6 text-right ${item.m1 > 0 ? 'text-[#0088E8] font-bold' : 'text-slate-600'}`}>{formatRupiah(item.m1)}</td>
-                  <td className="py-2 px-6 text-right text-slate-600">{formatRupiah(item.m2)}</td>
-                  <td className="py-2 px-6 text-right text-slate-600">{formatRupiah(item.m3)}</td>
+                  {item.values.map((v, idx) => (
+                    <td key={idx} className={`py-2 px-6 text-right ${idx === 0 && v > 0 ? 'text-[#0088E8] font-bold' : 'text-slate-600'}`}>{formatRupiah(v)}</td>
+                  ))}
                 </tr>
               ))}
 
               {/* SUBTOTAL PENDAPATAN */}
               <tr className="bg-slate-50 font-bold border-t border-slate-800">
                 <td className="py-2.5 px-6">SubTotal Pendapatan</td>
-                <td className="py-2.5 px-6 text-right">{formatRupiah(subTotalPendapatan.m1)}</td>
-                <td className="py-2.5 px-6 text-right">{formatRupiah(subTotalPendapatan.m2)}</td>
-                <td className="py-2.5 px-6 text-right">{formatRupiah(subTotalPendapatan.m3)}</td>
+                {subTotalPendapatan.map((v, idx) => (
+                  <td key={idx} className="py-2.5 px-6 text-right">{formatRupiah(v)}</td>
+                ))}
               </tr>
 
               {/* BIAYA POKOK PENJUALAN */}
               <tr>
-                <td colSpan={4} className="px-6 py-2 text-xs font-semibold text-slate-600 bg-slate-50/50 pt-4">
+                <td colSpan={1 + columns.length} className="px-6 py-2 text-xs font-semibold text-slate-600 bg-slate-50/50 pt-4">
                   Biaya pokok penjualan
                 </td>
               </tr>
               {rawHpp.map((item, idx) => (
                 <tr key={idx} className="hover:bg-slate-50/60 transition-colors">
                   <td className="py-2 px-8 text-slate-700">{item.code ? `${item.code} ${item.name}` : item.name}</td>
-                  <td className="py-2 px-6 text-right text-slate-600">{formatRupiah(item.m1)}</td>
-                  <td className="py-2 px-6 text-right text-slate-600">{formatRupiah(item.m2)}</td>
-                  <td className="py-2 px-6 text-right text-slate-600">{formatRupiah(item.m3)}</td>
+                  {item.values.map((v, i) => (
+                    <td key={i} className="py-2 px-6 text-right text-slate-600">{formatRupiah(v)}</td>
+                  ))}
                 </tr>
               ))}
 
               {/* SUBTOTAL BIAYA POKOK PENJUALAN */}
               <tr className="bg-slate-50 font-bold border-t border-slate-800">
                 <td className="py-2.5 px-6">SubTotal Biaya pokok penjualan</td>
-                <td className="py-2.5 px-6 text-right">{formatRupiah(subTotalHpp.m1)}</td>
-                <td className="py-2.5 px-6 text-right">{formatRupiah(subTotalHpp.m2)}</td>
-                <td className="py-2.5 px-6 text-right">{formatRupiah(subTotalHpp.m3)}</td>
+                {subTotalHpp.map((v, idx) => (
+                  <td key={idx} className="py-2.5 px-6 text-right">{formatRupiah(v)}</td>
+                ))}
               </tr>
 
               {/* SUBTOTAL LABA KOTOR */}
               <tr className="bg-slate-100 font-bold border-t border-slate-800">
                 <td className="py-2.5 px-6">SubTotal Laba kotor</td>
-                <td className="py-2.5 px-6 text-right">{formatRupiah(subTotalLabaKotor.m1)}</td>
-                <td className="py-2.5 px-6 text-right">{formatRupiah(subTotalLabaKotor.m2)}</td>
-                <td className="py-2.5 px-6 text-right">{formatRupiah(subTotalLabaKotor.m3)}</td>
+                {subTotalLabaKotor.map((v, idx) => (
+                  <td key={idx} className="py-2.5 px-6 text-right">{formatRupiah(v)}</td>
+                ))}
               </tr>
 
               {/* SECTION 2: Pendapatan bersih operasional - Biaya Operasional */}
               <tr>
-                <td colSpan={4} className="bg-[#E0F2FE] text-slate-900 px-4 py-2 font-bold text-xs border-t border-slate-200">
+                <td colSpan={1 + columns.length} className="bg-[#E0F2FE] text-slate-900 px-4 py-2 font-bold text-xs border-t border-slate-200">
                   Pendapatan bersih operasional - Biaya Operasional
                 </td>
               </tr>
 
               {/* OVERHEAD */}
               <tr>
-                <td colSpan={4} className="px-6 py-2 text-xs font-semibold text-slate-600 bg-slate-50/50">
+                <td colSpan={1 + columns.length} className="px-6 py-2 text-xs font-semibold text-slate-600 bg-slate-50/50">
                   Overhead
                 </td>
               </tr>
               {rawOverhead.map((item) => (
                 <tr key={item.code} className="hover:bg-slate-50/60 transition-colors">
                   <td className="py-2 px-8 text-slate-700">{item.code} {item.name}</td>
-                  <td className="py-2 px-6 text-right text-slate-600">{formatRupiah(item.m1)}</td>
-                  <td className="py-2 px-6 text-right text-slate-600">{formatRupiah(item.m2)}</td>
-                  <td className="py-2 px-6 text-right text-slate-600">{formatRupiah(item.m3)}</td>
+                  {item.values.map((v, idx) => (
+                    <td key={idx} className="py-2 px-6 text-right text-slate-600">{formatRupiah(v)}</td>
+                  ))}
                 </tr>
               ))}
 
               {/* SUBTOTAL OVERHEAD */}
               <tr className="bg-slate-50 font-bold border-t border-slate-800">
                 <td className="py-2.5 px-6">SubTotal Overhead</td>
-                <td className="py-2.5 px-6 text-right">{formatRupiah(subTotalOverhead.m1)}</td>
-                <td className="py-2.5 px-6 text-right">{formatRupiah(subTotalOverhead.m2)}</td>
-                <td className="py-2.5 px-6 text-right">{formatRupiah(subTotalOverhead.m3)}</td>
+                {subTotalOverhead.map((v, idx) => (
+                  <td key={idx} className="py-2.5 px-6 text-right">{formatRupiah(v)}</td>
+                ))}
               </tr>
 
               {/* SUBTOTAL BIAYA OPERASIONAL */}
               <tr className="bg-slate-100 font-bold border-t border-slate-800">
                 <td className="py-2.5 px-6">SubTotal Biaya Operasional</td>
-                <td className="py-2.5 px-6 text-right">{formatRupiah(subTotalBiayaOp.m1)}</td>
-                <td className="py-2.5 px-6 text-right">{formatRupiah(subTotalBiayaOp.m2)}</td>
-                <td className="py-2.5 px-6 text-right">{formatRupiah(subTotalBiayaOp.m3)}</td>
+                {subTotalBiayaOp.map((v, idx) => (
+                  <td key={idx} className="py-2.5 px-6 text-right">{formatRupiah(v)}</td>
+                ))}
               </tr>
 
               {/* TOTAL PENDAPATAN BERSIH OPERASIONAL (GARIS HITAM DASHED MENEMPEL DI ATAS) */}
               <tr className="bg-slate-200/90 font-bold border-t border-dashed border-black">
                 <td className="py-3 px-6">Total Pendapatan bersih operasional</td>
-                <td className="py-3 px-6 text-right">{formatRupiah(totalPendapatanOp.m1)}</td>
-                <td className="py-3 px-6 text-right">{formatRupiah(totalPendapatanOp.m2)}</td>
-                <td className="py-3 px-6 text-right">{formatRupiah(totalPendapatanOp.m3)}</td>
+                {totalPendapatanOp.map((v, idx) => (
+                  <td key={idx} className="py-3 px-6 text-right">{formatRupiah(v)}</td>
+                ))}
               </tr>
 
               {/* SECTION 3: Total pendapatan non operasional - Biaya non operasional */}
               <tr>
-                <td colSpan={4} className="bg-[#E0F2FE] text-slate-900 px-4 py-2 font-bold text-xs border-t border-slate-200">
+                <td colSpan={1 + columns.length} className="bg-[#E0F2FE] text-slate-900 px-4 py-2 font-bold text-xs border-t border-slate-200">
                   Total pendapatan non operasional - Biaya non operasional
                 </td>
               </tr>
               <tr>
-                <td colSpan={4} className="px-6 py-2 text-xs font-semibold text-slate-600 bg-slate-50/50">
+                <td colSpan={1 + columns.length} className="px-6 py-2 text-xs font-semibold text-slate-600 bg-slate-50/50">
                   Biaya lainnya
                 </td>
               </tr>
               {rawBiayaLainnya.map((item) => (
                 <tr key={item.code} className="hover:bg-slate-50/60 transition-colors">
                   <td className="py-2 px-8 text-slate-700">{item.code} {item.name}</td>
-                  <td className="py-2 px-6 text-right text-slate-600">{formatRupiah(item.m1)}</td>
-                  <td className="py-2 px-6 text-right text-slate-600">{formatRupiah(item.m2)}</td>
-                  <td className="py-2 px-6 text-right text-slate-600">{formatRupiah(item.m3)}</td>
+                  {item.values.map((v, idx) => (
+                    <td key={idx} className="py-2 px-6 text-right text-slate-600">{formatRupiah(v)}</td>
+                  ))}
                 </tr>
               ))}
 
               <tr className="bg-slate-50 font-bold border-t border-slate-800">
                 <td className="py-2.5 px-6">SubTotal Biaya lainnya</td>
-                <td className="py-2.5 px-6 text-right">{formatRupiah(subTotalBiayaLainnya.m1)}</td>
-                <td className="py-2.5 px-6 text-right">{formatRupiah(subTotalBiayaLainnya.m2)}</td>
-                <td className="py-2.5 px-6 text-right">{formatRupiah(subTotalBiayaLainnya.m3)}</td>
+                {subTotalBiayaLainnya.map((v, idx) => (
+                  <td key={idx} className="py-2.5 px-6 text-right">{formatRupiah(v)}</td>
+                ))}
               </tr>
 
               <tr className="bg-slate-100 font-bold border-t border-slate-800">
                 <td className="py-2.5 px-6">SubTotal Biaya non operasional</td>
-                <td className="py-2.5 px-6 text-right">{formatRupiah(subTotalBiayaNonOp.m1)}</td>
-                <td className="py-2.5 px-6 text-right">{formatRupiah(subTotalBiayaNonOp.m2)}</td>
-                <td className="py-2.5 px-6 text-right">{formatRupiah(subTotalBiayaNonOp.m3)}</td>
+                {subTotalBiayaNonOp.map((v, idx) => (
+                  <td key={idx} className="py-2.5 px-6 text-right">{formatRupiah(v)}</td>
+                ))}
               </tr>
 
               {/* SECTION 4: Total pendapatan non operasional - Pendapatan non operasional */}
               <tr>
-                <td colSpan={4} className="bg-[#E0F2FE] text-slate-900 px-4 py-2 font-bold text-xs border-t border-slate-200">
+                <td colSpan={1 + columns.length} className="bg-[#E0F2FE] text-slate-900 px-4 py-2 font-bold text-xs border-t border-slate-200">
                   Total pendapatan non operasional - Pendapatan non operasional
                 </td>
               </tr>
               <tr>
-                <td colSpan={4} className="px-6 py-2 text-xs font-semibold text-slate-600 bg-slate-50/50">
+                <td colSpan={1 + columns.length} className="px-6 py-2 text-xs font-semibold text-slate-600 bg-slate-50/50">
                   Pendapatan lain
                 </td>
               </tr>
               {rawPendapatanLain.map((item) => (
                 <tr key={item.code} className="hover:bg-slate-50/60 transition-colors">
                   <td className="py-2 px-8 text-slate-700">{item.code} {item.name}</td>
-                  <td className="py-2 px-6 text-right text-slate-600">{formatRupiah(item.m1)}</td>
-                  <td className="py-2 px-6 text-right text-slate-600">{formatRupiah(item.m2)}</td>
-                  <td className="py-2 px-6 text-right text-slate-600">{formatRupiah(item.m3)}</td>
+                  {item.values.map((v, idx) => (
+                    <td key={idx} className="py-2 px-6 text-right text-slate-600">{formatRupiah(v)}</td>
+                  ))}
                 </tr>
               ))}
 
               <tr className="bg-slate-50 font-bold border-t border-slate-800">
                 <td className="py-2.5 px-6">SubTotal Pendapatan lain</td>
-                <td className="py-2.5 px-6 text-right">{formatRupiah(subTotalPendapatanLain.m1)}</td>
-                <td className="py-2.5 px-6 text-right">{formatRupiah(subTotalPendapatanLain.m2)}</td>
-                <td className="py-2.5 px-6 text-right">{formatRupiah(subTotalPendapatanLain.m3)}</td>
+                {subTotalPendapatanLain.map((v, idx) => (
+                  <td key={idx} className="py-2.5 px-6 text-right">{formatRupiah(v)}</td>
+                ))}
               </tr>
 
               <tr className="bg-slate-100 font-bold border-t border-slate-800">
                 <td className="py-2.5 px-6">SubTotal Pendapatan non operasional</td>
-                <td className="py-2.5 px-6 text-right">{formatRupiah(subTotalPendapatanNonOp.m1)}</td>
-                <td className="py-2.5 px-6 text-right">{formatRupiah(subTotalPendapatanNonOp.m2)}</td>
-                <td className="py-2.5 px-6 text-right">{formatRupiah(subTotalPendapatanNonOp.m3)}</td>
+                {subTotalPendapatanNonOp.map((v, idx) => (
+                  <td key={idx} className="py-2.5 px-6 text-right">{formatRupiah(v)}</td>
+                ))}
               </tr>
 
               {/* TOTAL PENDAPATAN NON OPERASIONAL (GARIS HITAM DASHED MENEMPEL DI ATAS) */}
               <tr className="bg-slate-200/90 font-bold border-t border-dashed border-black">
                 <td className="py-3 px-6">Total pendapatan non operasional</td>
-                <td className="py-3 px-6 text-right">{formatRupiah(totalPendapatanNonOp.m1)}</td>
-                <td className="py-3 px-6 text-right">{formatRupiah(totalPendapatanNonOp.m2)}</td>
-                <td className="py-3 px-6 text-right">{formatRupiah(totalPendapatanNonOp.m3)}</td>
+                {totalPendapatanNonOp.map((v, idx) => (
+                  <td key={idx} className="py-3 px-6 text-right">{formatRupiah(v)}</td>
+                ))}
               </tr>
 
               {/* TOTAL LABA BERSIH (GARIS HITAM DASHED MENEMPEL DI ATAS) */}
               <tr className="bg-slate-200/90 font-black border-t border-dashed border-black">
                 <td className="py-3 px-6 text-slate-900">Total Laba bersih</td>
-                <td className="py-3 px-6 text-right text-slate-900">{formatRupiah(totalLabaBersih.m1)}</td>
-                <td className="py-3 px-6 text-right text-slate-900">{formatRupiah(totalLabaBersih.m2)}</td>
-                <td className="py-3 px-6 text-right text-slate-900">{formatRupiah(totalLabaBersih.m3)}</td>
+                {totalLabaBersih.map((v, idx) => (
+                  <td key={idx} className="py-3 px-6 text-right text-slate-900">{formatRupiah(v)}</td>
+                ))}
               </tr>
             </tbody>
           </table>
