@@ -301,7 +301,14 @@ def create_sale(*, user, data):
             ))
             subtotal += line_total
 
-        if status_val == 'paid' and pos_settings.pos_mengurangi_stok():
+        # Guard ini SEBELUMNYA tidak memeriksa blokir_jual_jika_stok_kosong()
+        # sama sekali -- toggle di Pengaturan POS untuk mengizinkan jual
+        # walau stok kurang (backorder, stok tetap dipotong otomatis lewat
+        # pos_mengurangi_stok()) tidak berefek apa pun (ditemukan audit
+        # 2026-09-08). _validasi_aturan_pos (pos_views.py) sudah melakukan
+        # cek yang sama lebih dulu (pesan lebih ramah, sebelum ada baris
+        # ke-DB) -- guard di sini tetap dipertahankan sebagai lapis kedua.
+        if status_val == 'paid' and pos_settings.pos_mengurangi_stok() and pos_settings.blokir_jual_jika_stok_kosong():
             for key, total_qty in requested.items():
                 product, variant = stock_owners[key]
                 owner = variant or product
@@ -450,8 +457,10 @@ def create_sale(*, user, data):
         if client_total not in (None, '') and money(client_total) != total:
             raise ValidationError({'error': 'Total transaksi berubah. Muat ulang harga produk lalu coba lagi.', 'server_total': total})
 
+        idem_key = str(data.get('idempotency_key') or '').strip() or None
         sale = POSSale.objects.create(
             nomor=_nomor(), kasir=user, pelanggan=customer, shift=shift, dilayani_oleh=dilayani_oleh,
+            idempotency_key=idem_key,
             subtotal=money(subtotal), diskon=discount, kupon=kupon_obj, diskon_kupon=coupon_discount,
             sales_discount=sales_discount_rule, diskon_penjualan=sales_discount_amount,
             diskon_promo=promo_discount,
@@ -521,23 +530,46 @@ def create_sale(*, user, data):
                 prod.save(update_fields=['serial_numbers'])
 
         if status_val == 'paid' and pos_settings.pos_mengurangi_stok():
-            for product, variant, qty_base, package_name in stock_lines:
+            # Potong stok per (product_id, variant_id) DIAGREGASI (pakai
+            # requested/stock_owners yang sudah benar dijumlahkan dari semua
+            # baris -- sama seperti validasi pre-check di atas), BUKAN
+            # iterasi stock_lines mentah per baris. Sebelumnya tiap baris
+            # mengambil objek Python `owner` TERPISAH (masing-masing snapshot
+            # qty_stok dari SEBELUM baris lain memotong) -- kalau produk yang
+            # sama muncul di >=2 baris (mis. produk meteran ukuran berbeda,
+            # atau produk yang sama muncul lewat paket & baris langsung
+            # sekaligus), baris terakhir menimpa hasil baris sebelumnya
+            # dengan qty_stok basi (lost update) -- stok akhir jadi lebih
+            # tinggi dari seharusnya. Marker dedup BoM (`_potong_bahan_baku_bom`)
+            # juga cuma per product_id/sale, jadi kalau dipanggil 2x untuk
+            # produk yang sama baris kedua selalu di-skip -- agregasi di sini
+            # sekaligus memperbaiki itu (dipanggil sekali per produk dengan
+            # qty total). (Ditemukan audit 2026-09-08.)
+            package_names_by_key = {}
+            for _product, _variant, _qty_base, _package_name in stock_lines:
+                if _package_name:
+                    _key = (_product.id, _variant.id if _variant else None)
+                    package_names_by_key.setdefault(_key, set()).add(_package_name)
+
+            for key, total_qty in requested.items():
+                product, variant = stock_owners[key]
                 if product.lacak_inventori:
                     owner = variant or product
                     start = owner.qty_stok
-                    owner.qty_stok = start - qty_base
+                    owner.qty_stok = start - total_qty
                     owner.save(update_fields=['qty_stok'])
-                    suffix = f' - Paket {package_name}' if package_name else ''
+                    names = package_names_by_key.get(key)
+                    suffix = f" - Paket {', '.join(sorted(names))}" if names else ''
                     movement = ProductStockMovement.objects.create(
-                        product=product, variant=variant, user=user, tipe='penjualan', qty=qty_base,
+                        product=product, variant=variant, user=user, tipe='penjualan', qty=total_qty,
                         stok_awal=start, stok_akhir=owner.qty_stok, pos_sale=sale,
                         catatan=f'Penjualan POS {sale.nomor}{suffix}', tanggal=now,
                     )
-                    stock_fifo.consume_layers(product, variant, qty_base, movement=movement)
+                    stock_fifo.consume_layers(product, variant, total_qty, movement=movement)
 
                 # Potong bahan baku (BoM) kalau produk ini punya resep —
                 # independen dari lacak_inventori (instruksi user 2026-08-15).
-                _potong_bahan_baku_bom(product, variant, qty_base, sale, user)
+                _potong_bahan_baku_bom(product, variant, total_qty, sale, user)
 
             # Item gratis dari Promosi POS (BX/FI) — lihat batasan varian/No.
             # Seri di blok pre-check di atas (gratis_locked_products).
@@ -545,9 +577,15 @@ def create_sale(*, user, data):
                 qty_g = Decimal(str(gratis.qty or 0)).quantize(QTY)
                 if qty_g <= 0:
                     continue
-                produk_gratis = gratis_locked_products.get(gratis.product.id)
-                if produk_gratis is None:
+                if gratis_locked_products.get(gratis.product.id) is None:
                     continue
+                # Ambil ulang saldo TERBARU (bukan objek yang di-lock di
+                # tahap pre-check di atas) -- kalau produk yang sama JUGA
+                # dibeli (baris berbayar), loop paid di atas sudah memotong
+                # stoknya duluan; pakai objek lama di sini akan menimpa hasil
+                # itu dengan qty_stok basi (lost update yang sama seperti
+                # kasus multi-baris, cuma lintas loop paid vs gratis).
+                produk_gratis = Product.objects.select_for_update().get(pk=gratis.product.id)
                 if produk_gratis.lacak_inventori:
                     start = produk_gratis.qty_stok
                     produk_gratis.qty_stok = start - qty_g
@@ -679,6 +717,17 @@ def void_sale(*, sale_id, user):
         if sale.diambil_pada:
             raise ValidationError({'error': 'Transaksi ini sudah ditandai diambil pelanggan, tidak dapat di-void.'})
         if sale.status == 'paid' and pos_settings.pos_mengurangi_stok():
+            # Restorasi diagregasi per (product_id, variant_id) dari SEMUA
+            # POSSaleItem yang cocok -- create_sale sekarang membuat SATU
+            # ProductStockMovement gabungan per produk per transaksi (lihat
+            # create_sale). Kalau restorasi di sini tetap jalan per baris
+            # (per POSSaleItem) seperti sebelumnya, movement gabungan itu
+            # akan ketemu & dipulihkan DUA KALI saat produk yang sama muncul
+            # di >=2 baris (ditemukan audit 2026-09-08, mengikuti fix yang
+            # sama di create_sale -- BUKAN cuma soal urutan .first() yang
+            # salah ambil movement, tapi sekarang risiko double-restore kalau
+            # tidak diagregasi juga).
+            qty_by_key = {}
             for item in sale.items.select_related('product', 'variant'):
                 if not item.product or not item.product.lacak_inventori:
                     continue
@@ -690,16 +739,26 @@ def void_sale(*, sale_id, user):
                     # di sini — kalau tetap dijalankan, stok akan bertambah
                     # padahal tidak pernah dikurangi (bug ganda).
                     continue
-                product = Product.objects.select_for_update().get(pk=item.product_id)
-                variant = (ProductVariant.objects.select_for_update().get(pk=item.variant_id)
-                           if item.variant_id else None)
+                key = (item.product_id, item.variant_id)
+                qty_by_key[key] = qty_by_key.get(key, Decimal('0')) + item.qty
+
+            for (product_id, variant_id), total_qty in qty_by_key.items():
+                product = Product.objects.select_for_update().get(pk=product_id)
+                variant = (ProductVariant.objects.select_for_update().get(pk=variant_id)
+                           if variant_id else None)
                 owner = variant or product
                 start = owner.qty_stok
-                owner.qty_stok = start + item.qty
+                owner.qty_stok = start + total_qty
                 owner.save(update_fields=['qty_stok'])
+                # startswith (bukan exact match) -- movement dari baris paket
+                # (create_sale) punya suffix " - Paket <nama>" di catatan-nya;
+                # exact match sebelumnya selalu gagal menemukan `original`
+                # utk produk yang dijual lewat paket (bug lama terpisah,
+                # ditemukan sekalian saat memperbaiki ini). sale.nomor unik
+                # (timestamp+uuid, lihat _nomor()) jadi startswith aman.
                 original = (ProductStockMovement.objects.filter(
                     product=product, variant=variant, tipe='penjualan',
-                    catatan=f'Penjualan POS {sale.nomor}'
+                    catatan__startswith=f'Penjualan POS {sale.nomor}',
                 ).order_by('id').first())
                 restored_hpp = Decimal('0')
                 if original:
@@ -710,7 +769,7 @@ def void_sale(*, sale_id, user):
                             layer.sisa_qty += consumption.qty
                             layer.save(update_fields=['sisa_qty'])
                 ProductStockMovement.objects.create(
-                    product=product, variant=variant, user=user, tipe='pengembalian', qty=item.qty,
+                    product=product, variant=variant, user=user, tipe='pengembalian', qty=total_qty,
                     stok_awal=start, stok_akhir=owner.qty_stok, hpp_total=restored_hpp,
                     catatan=f'Pembatalan POS (Void) {sale.nomor}', tanggal=timezone.localdate(),
                 )

@@ -1,6 +1,6 @@
 import random
 import re
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.core.cache import cache
 from django.utils import timezone
 from django.utils.dateparse import parse_date
@@ -302,7 +302,37 @@ class POSSaleViewSet(viewsets.ModelViewSet):
         return None
 
     def create(self, request, *args, **kwargs):
-        sale = create_sale(user=request.user, data=request.data)
+        # idempotency_key opsional (kalau dikirim client) -- retry
+        # jaringan/timeout pada checkout Lunas sebelumnya bisa memposting
+        # transaksi dobel (create_sale() tidak punya dedup sama sekali,
+        # beda dgn /orders/checkout-pos/ yg sudah punya ini untuk alur DP,
+        # ditemukan audit 2026-09-08). Key sama -> kembalikan sale yang
+        # SUDAH ada (200), bukan bikin baris baru.
+        idem_key = str(request.data.get('idempotency_key') or '').strip()
+        if idem_key:
+            existing = POSSale.objects.filter(idempotency_key=idem_key).first()
+            if existing:
+                return Response(self.get_serializer(existing).data, status=status.HTTP_200_OK)
+
+        # _validasi_aturan_pos() sebelumnya tidak pernah dipanggil sama
+        # sekali -- setelan Pengaturan POS "blokir jual di bawah harga beli"
+        # dan "blokir jual jika stok kosong" tidak punya efek apa pun di
+        # server walau sudah aktif (ditemukan audit 2026-09-08).
+        items = request.data.get('items') or []
+        status_val = request.data.get('status', 'paid')
+        error = self._validasi_aturan_pos(items, status_val)
+        if error:
+            return Response({'error': error}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            sale = create_sale(user=request.user, data=request.data)
+        except IntegrityError:
+            # Race sungguhan (2 request idem_key sama nyaris bersamaan lolos
+            # cek "existing" di atas keduanya) -- bukan cuma retry berurutan.
+            if idem_key:
+                existing = POSSale.objects.filter(idempotency_key=idem_key).first()
+                if existing:
+                    return Response(self.get_serializer(existing).data, status=status.HTTP_200_OK)
+            raise
         return Response(self.get_serializer(sale).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], permission_classes=[IsOwnerManagerAdminOrKasir])

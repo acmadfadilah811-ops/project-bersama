@@ -95,6 +95,14 @@ class POSSale(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # Kunci idempotensi checkout Lunas dari kasir (padanan Order.idempotency_key
+    # utk alur DP, lihat views/orders.py) — retry jaringan (timeout di klien,
+    # request sebenarnya sukses di server) tidak boleh membuat transaksi
+    # dobel. Diisi client (UUID per klik konfirmasi bayar), unique di DB
+    # supaya create kedua dgn key yang sama ditolak/dikembalikan sale yang
+    # sudah ada, bukan membuat baris baru (ditemukan audit 2026-09-08).
+    idempotency_key = models.CharField(max_length=64, null=True, blank=True, unique=True)
+
     # Terisi saat kasir menandai pesanan (dengan SPK produksi) sudah diambil
     # pelanggan — padanan Order.status_global='selesai' utk transaksi POS.
     # Sebelum ini transaksi POS Lunas + SPK tidak punya status "siap

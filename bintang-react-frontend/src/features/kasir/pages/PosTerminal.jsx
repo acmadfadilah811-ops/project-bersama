@@ -694,6 +694,11 @@ export default function PosTerminal({ onToggleSidebar }) {
         kupon_kode: selectedCoupon?.kode || undefined,
         loyalty_redemption_id: selectedRedemption?.id || undefined,
         spk: spkPayload,
+        // Sebelumnya cuma dikirim di alur DP (/orders/checkout-pos/) --
+        // retry jaringan pada checkout Lunas (timeout di klien, request
+        // sebenarnya sukses di server) bisa memposting transaksi dobel
+        // (ditemukan audit 2026-09-08).
+        idempotency_key: paymentData.checkoutKey,
       });
 
       setLastTransaction({
