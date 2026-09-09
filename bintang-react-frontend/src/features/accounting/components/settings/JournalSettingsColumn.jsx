@@ -1,7 +1,17 @@
+import { useEffect, useState } from 'react';
 import { FileText } from 'lucide-react';
+import apiClient from '../../../../api/apiClient';
 import ToggleSwitchRow from './ToggleSwitchRow';
 
 export default function JournalSettingsColumn({ settings, onChange, onBlur, onToggle, onOpenLogModal }) {
+  const [accounts, setAccounts] = useState([]);
+
+  useEffect(() => {
+    apiClient.get('/accounting/accounts/')
+      .then((res) => setAccounts(res.data.results || res.data || []))
+      .catch(() => setAccounts([]));
+  }, []);
+
   return (
     <div className="space-y-5">
       <h3 className="text-sm font-bold text-slate-800 pb-2 border-b border-slate-100">
@@ -71,6 +81,28 @@ export default function JournalSettingsColumn({ settings, onChange, onBlur, onTo
           value={settings.calculate_coa_from_this_year}
           onChange={() => onToggle('calculate_coa_from_this_year')}
         />
+
+        <div className="space-y-2 pt-2 border-t border-slate-100">
+          <ToggleSwitchRow
+            label="Posting otomatis selisih kas kasir (tutup shift)"
+            value={settings.shift_cash_variance_auto_post_enabled}
+            onChange={() => onToggle('shift_cash_variance_auto_post_enabled')}
+          />
+          <p className="text-[11px] font-normal text-slate-400 leading-4">
+            Selisih kas fisik vs sistem saat kasir tutup shift otomatis diposting ke Jurnal Umum —
+            kas lebih jadi kredit (pendapatan lain), kas kurang jadi debit (beban lain). Kalau akun
+            belum dipilih, posting dilewati walau sakelar aktif (shift tetap berhasil ditutup).
+          </p>
+          <select
+            value={settings.shift_cash_variance_account || ''}
+            onChange={(e) => onChange('shift_cash_variance_account', e.target.value ? Number(e.target.value) : null)}
+            onBlur={() => onBlur('shift_cash_variance_account')}
+            className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-800 font-semibold focus:bg-white focus:border-[#0088E8] focus:ring-1 focus:ring-[#0088E8] transition-all outline-none"
+          >
+            <option value="">Akun Selisih Kas Kasir — belum dipilih</option>
+            {accounts.map((acc) => <option key={acc.id} value={acc.id}>{acc.code} — {acc.name}</option>)}
+          </select>
+        </div>
 
         <div className="pt-4 border-t border-slate-100">
           <button

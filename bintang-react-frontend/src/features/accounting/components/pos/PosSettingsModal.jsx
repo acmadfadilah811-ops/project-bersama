@@ -75,8 +75,6 @@ export default function PosSettingsModal({ isOpen, onClose }) {
         'pos_auto_post_enabled',
         'pos_post_discount_line_enabled',
         'default_pos_payment_method',
-        'shift_cash_variance_auto_post_enabled',
-        'shift_cash_variance_account',
         ...POS_ACCOUNT_FIELDS.map(({ key }) => key),
       ].reduce((result, key) => ({
         ...result,
@@ -141,33 +139,6 @@ export default function PosSettingsModal({ isOpen, onClose }) {
               <select value={settings.default_pos_payment_method || ''} onChange={(event) => update('default_pos_payment_method', event.target.value ? Number(event.target.value) : null)} className="w-full rounded-lg border border-slate-200 px-3 py-2">
                 <option value="">Belum dipilih — posting ditolak jika belum ada mapping</option>
                 {methods.filter((method) => method.is_active).map((method) => <option key={method.id} value={method.id}>{method.name} — {method.account_code || 'Tanpa akun'}</option>)}
-              </select>
-            </label>
-          </section>
-
-          <section className="space-y-3 border-b border-slate-100 pb-5">
-            <label className="flex items-center justify-between gap-4 font-bold text-slate-800">
-              <span>Posting otomatis selisih kas kasir (tutup shift)</span>
-              <input
-                type="checkbox"
-                checked={Boolean(settings.shift_cash_variance_auto_post_enabled)}
-                onChange={(event) => update('shift_cash_variance_auto_post_enabled', event.target.checked)}
-              />
-            </label>
-            <div className="rounded-lg border border-slate-100 bg-slate-50 p-3 text-[10px] leading-relaxed text-slate-500">
-              <p>• Saat kasir tutup shift, kas fisik yang disetor (aktual) dibandingkan dengan kas seharusnya menurut sistem (expected).</p>
-              <p>• Kalau ada selisih dan sakelar ini aktif, selisihnya otomatis diposting ke Jurnal Umum memakai akun di bawah — kas lebih jadi kredit (pendapatan lain), kas kurang jadi debit (beban lain).</p>
-              <p>• Kalau akun belum dipilih, posting dilewati walau sakelar aktif (shift tetap berhasil ditutup).</p>
-            </div>
-            <label className="block space-y-1.5">
-              <span className="font-bold text-slate-700">Akun Selisih Kas Kasir</span>
-              <select
-                value={settings.shift_cash_variance_account || ''}
-                onChange={(event) => update('shift_cash_variance_account', event.target.value ? Number(event.target.value) : null)}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2"
-              >
-                <option value="">Belum dipilih</option>
-                {accounts.map((account) => <option key={account.id} value={account.id}>{account.code} — {account.name}</option>)}
               </select>
             </label>
           </section>

@@ -15,6 +15,8 @@ const DEFAULT_SETTINGS = {
   ppn_rate_percent: '0.00',
   enable_ojek_online_fee: true,
   show_inventory_in_profit_loss: true,
+  shift_cash_variance_auto_post_enabled: false,
+  shift_cash_variance_account: null,
   is_active: true,
   initial_setup_completed_at: null,
 };
