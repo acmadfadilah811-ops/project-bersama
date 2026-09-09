@@ -172,9 +172,27 @@ class AccountingSettings(models.Model):
         blank=True,
         related_name="+",
         help_text=(
-            "Akun pendapatan default untuk pembayaran Order (DP/pelunasan). "
+            "Akun pendapatan default untuk Order — diakui PENUH saat Order berstatus 'Selesai' "
+            "(accrual basis, keputusan finance 2026-09-09), bukan lagi saat DP/pelunasan diterima. "
             "Berbeda dari akun pendapatan POS — admin dapat mengarahkan ke akun COA yang sama "
             "jika ingin menyatukan omzet Order dan POS dalam satu akun."
+        ),
+    )
+    order_receivable_account = models.ForeignKey(
+        Account, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+        help_text=(
+            "Akun Piutang Usaha — didebit penuh (bersama order_sales_revenue_account dikredit) "
+            "saat Order berstatus 'Selesai', lalu dikredit setiap pembayaran/cicilan setelahnya "
+            "sampai lunas. Wajib diisi supaya posting Order accrual berjalan."
+        ),
+    )
+    order_customer_deposit_account = models.ForeignKey(
+        Account, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+        help_text=(
+            "Akun Uang Muka Pelanggan (kewajiban) — dikredit saat pelanggan bayar DP SEBELUM "
+            "Order berstatus 'Selesai' (belum boleh diakui sebagai pendapatan, barang/jasa belum "
+            "diserahkan). Saat Order selesai, saldo ini dipindah (didebit) untuk mengurangi Piutang "
+            "Usaha yang baru dicatat. Wajib diisi supaya pembayaran sebelum 'Selesai' bisa diposting."
         ),
     )
     purchase_inventory_account = models.ForeignKey(

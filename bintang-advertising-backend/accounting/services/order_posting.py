@@ -23,6 +23,25 @@ from .journal import create_journal_entry
 logger = logging.getLogger(__name__)
 
 
+def _order_payment_source_ids(order) -> list[int]:
+    """ID OrderActivityLog tindakan='PAYMENT' milik Order ini -- dipakai sebagai
+    source_id JournalEntry ORDER_PAYMENT, dan untuk netting/reversal."""
+    from api.models import OrderActivityLog
+
+    return list(
+        OrderActivityLog.objects.filter(order=order, tindakan="PAYMENT").values_list("id", flat=True)
+    )
+
+
+def _order_credit_account_field(order) -> str:
+    """Accrual basis (keputusan finance 2026-09-09): pembayaran SEBELUM Order
+    'selesai' belum boleh diakui pendapatan -- masuk Uang Muka Pelanggan
+    (kewajiban). Setelah 'selesai', Piutang Usaha sudah diakui penuh lewat
+    post_order_revenue_recognition_journal(), jadi pembayaran berikutnya
+    tinggal melunasi Piutang itu."""
+    return "order_receivable_account" if order.status_global == "selesai" else "order_customer_deposit_account"
+
+
 def should_post_order_payment(order, jumlah_bayar: Decimal, payment_date=None) -> tuple[bool, str]:
     """
     Evaluasi apakah pembayaran Order dapat dan harus diposting ke JournalEntry.
@@ -42,8 +61,14 @@ def should_post_order_payment(order, jumlah_bayar: Decimal, payment_date=None) -
         return False, "Modul akuntansi sedang dinonaktifkan."
     if not settings_row.initial_setup_completed_at:
         return False, "Setup awal akuntansi belum diselesaikan."
-    if not settings_row.order_sales_revenue_account_id:
-        return False, "Akun pendapatan Order (order_sales_revenue_account) belum diatur di Pengaturan Akuntansi."
+
+    account_field = _order_credit_account_field(order)
+    if not getattr(settings_row, f"{account_field}_id"):
+        label = (
+            "Piutang Usaha (order_receivable_account)" if account_field == "order_receivable_account"
+            else "Uang Muka Pelanggan (order_customer_deposit_account)"
+        )
+        return False, f"Akun {label} belum diatur di Pengaturan Akuntansi."
 
     tanggal = payment_date or timezone.localdate()
     if tanggal < settings_row.accounting_start_date:
@@ -172,13 +197,20 @@ def post_order_payment_journal(
     pm = order.accounting_payment_method
     tipe_bayar = "DP" if is_dp else "Pelunasan/Cicilan"
     metode_label = order.metode_pembayaran or "tunai"
-    description = (
-        f"Pembayaran Order {order.id} — {tipe_bayar} via {metode_label.upper()}"
-    )
 
-    # 5. Bangun baris jurnal (T-202 §3)
+    # Accrual basis (keputusan finance 2026-09-09): pembayaran TIDAK LAGI
+    # langsung mengkredit Pendapatan. Sebelum Order 'selesai' -> Uang Muka
+    # Pelanggan (kewajiban, belum diakui pendapatan). Sesudah 'selesai' ->
+    # Piutang Usaha (yang sudah diakui penuh lewat
+    # post_order_revenue_recognition_journal) berkurang/dilunasi.
+    account_field = _order_credit_account_field(order)
+    credit_account = getattr(settings_row, account_field)
+    label = "Piutang" if account_field == "order_receivable_account" else "Uang Muka Pelanggan"
+    description = f"Pembayaran Order {order.id} — {tipe_bayar} via {metode_label.upper()} ({label})"
+
+    # 5. Bangun baris jurnal
     # Baris 1: DEBIT Kas/Bank/Transit (PaymentMethod.account)
-    # Baris 2: KREDIT Pendapatan Order (AccountingSettings.order_sales_revenue_account)
+    # Baris 2: KREDIT Piutang Usaha ATAU Uang Muka Pelanggan (lihat account_field)
     transit_status = "unsettled" if (pm and not pm.is_cash) else "not_applicable"
     lines = [
         {
@@ -189,7 +221,7 @@ def post_order_payment_journal(
             "settlement_status": transit_status,
         },
         {
-            "account": settings_row.order_sales_revenue_account,
+            "account": credit_account,
             "debit": Decimal("0"),
             "kredit": jumlah_bayar,
             "description": description,
@@ -223,6 +255,129 @@ def post_order_payment_journal(
                     return existing
                 raise exc
             # Retry — entry_number collision biasanya selesai di attempt ke-2
+    return None
+
+
+def post_order_revenue_recognition_journal(order, actor=None, activity_log=None) -> Optional[JournalEntry]:
+    """
+    Accrual basis (keputusan finance 2026-09-09): posting pengakuan pendapatan
+    PENUH Order saat status_global='selesai' -- barang/jasa sudah diserahkan.
+
+    Debit Piutang Usaha, Kredit Pendapatan Order untuk total_harga PENUH.
+    Kalau ada pembayaran yang sudah diterima SEBELUM order selesai (tercatat
+    sbg Uang Muka Pelanggan lewat post_order_payment_journal), di-netting
+    dalam entry yang sama: Debit Uang Muka Pelanggan / Kredit Piutang Usaha
+    -- supaya saldo Piutang akhir = sisa tagihan riil, bukan total_harga penuh.
+
+    Idempotent lewat source_id = OrderActivityLog (aksi 'COMPLETE'), fail-open
+    (return None + log warning) kalau modul belum aktif/akun belum diatur --
+    pola sama dengan post_order_material_hpp_journal (T-204).
+    """
+    from django.db.models import Sum
+
+    from ..models import JournalEntryLine
+
+    if activity_log is None:
+        from api.models import OrderActivityLog
+
+        log = OrderActivityLog.objects.filter(order=order, tindakan="COMPLETE").last()
+        if not log:
+            return None
+        activity_log = log
+
+    existing_entry = JournalEntry.objects.filter(
+        source_type=JournalEntry.SourceType.ORDER_REVENUE_RECOGNITION,
+        source_id=activity_log.id,
+    ).exclude(status=JournalEntry.Status.VOID).first()
+    if existing_entry:
+        return existing_entry
+
+    total_harga = Decimal(str(order.total_harga or 0))
+    if total_harga <= Decimal("0"):
+        return None
+
+    settings_row = AccountingSettings.objects.first()
+    if not settings_row or not settings_row.is_active or not settings_row.initial_setup_completed_at:
+        logger.warning("Posting pengakuan pendapatan Order #%s di-skip: akuntansi belum aktif/setup.", order.id)
+        return None
+    if not settings_row.order_sales_revenue_account_id:
+        logger.warning(
+            "Posting pengakuan pendapatan Order #%s di-skip: order_sales_revenue_account belum diatur.",
+            order.id,
+        )
+        return None
+    if not settings_row.order_receivable_account_id:
+        logger.warning(
+            "Posting pengakuan pendapatan Order #%s di-skip: order_receivable_account (Piutang Usaha) belum diatur.",
+            order.id,
+        )
+        return None
+
+    lines = [
+        {
+            "account": settings_row.order_receivable_account,
+            "debit": total_harga,
+            "kredit": Decimal("0"),
+            "description": f"Piutang Usaha Order {order.id}",
+        },
+        {
+            "account": settings_row.order_sales_revenue_account,
+            "debit": Decimal("0"),
+            "kredit": total_harga,
+            "description": f"Pengakuan Pendapatan Order {order.id} (Selesai)",
+        },
+    ]
+
+    # Netting Uang Muka Pelanggan yang sudah diterima sebelum order selesai —
+    # dihitung dari jurnal ORDER_PAYMENT yang benar-benar terposting ke akun
+    # ini (bukan order.dp_dibayar mentah, yang bisa saja belum sinkron persis
+    # dengan jurnal kalau ada gating skip sebelumnya).
+    if settings_row.order_customer_deposit_account_id:
+        payment_source_ids = _order_payment_source_ids(order)
+        deposit_amount = JournalEntryLine.objects.filter(
+            journal_entry__source_type=JournalEntry.SourceType.ORDER_PAYMENT,
+            journal_entry__source_id__in=payment_source_ids,
+            journal_entry__status=JournalEntry.Status.POSTED,
+            account_id=settings_row.order_customer_deposit_account_id,
+        ).aggregate(t=Sum("kredit"))["t"] or Decimal("0")
+
+        if deposit_amount > Decimal("0"):
+            lines.append({
+                "account": settings_row.order_customer_deposit_account,
+                "debit": deposit_amount,
+                "kredit": Decimal("0"),
+                "description": f"Uang Muka Order {order.id} dipindah ke Piutang",
+            })
+            lines.append({
+                "account": settings_row.order_receivable_account,
+                "debit": Decimal("0"),
+                "kredit": deposit_amount,
+                "description": f"Piutang Order {order.id} dikurangi Uang Muka yang sudah diterima",
+            })
+
+    description = f"Pengakuan Pendapatan Order {order.id} (Selesai)"
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            with transaction.atomic():
+                return create_journal_entry(
+                    date=timezone.localdate(),
+                    lines=lines,
+                    description=description,
+                    source_type=JournalEntry.SourceType.ORDER_REVENUE_RECOGNITION,
+                    source_id=activity_log.id,
+                    created_by=actor,
+                    status=JournalEntry.Status.POSTED,
+                )
+        except IntegrityError as exc:
+            if attempt == max_retries - 1:
+                existing = JournalEntry.objects.filter(
+                    source_type=JournalEntry.SourceType.ORDER_REVENUE_RECOGNITION,
+                    source_id=activity_log.id,
+                ).exclude(status=JournalEntry.Status.VOID).first()
+                if existing:
+                    return existing
+                raise exc
     return None
 
 
@@ -343,23 +498,29 @@ def post_order_reversal_journal(
     description_prefix: str = "Pembalikan Order",
 ):
     """
-    Membuat jurnal pembalik untuk semua JournalEntry Order yang sudah diposting.
+    Membuat jurnal pembalik untuk semua JournalEntry Order yang sudah diposting
+    -- pembayaran (ORDER_PAYMENT) DAN, kalau Order sudah pernah 'selesai'
+    (retur SELALU terjadi pada order 'selesai', lihat api/views/orders.py),
+    pengakuan pendapatan (ORDER_REVENUE_RECOGNITION) juga (accrual basis,
+    keputusan finance 2026-09-09) -- kalau tidak dibalik, Piutang/Pendapatan
+    yang sudah diakui akan tetap nyangkut walau Order dibatalkan/diretur.
     Dipanggil saat Order dibatalkan atau diretur.
     """
     from api.models import OrderActivityLog
 
-    payment_log_ids = list(
-        OrderActivityLog.objects.filter(order=order, tindakan="PAYMENT").values_list("id", flat=True)
-    )
-
-    valid_source_ids = [int(pid) for pid in payment_log_ids if pid]
+    payment_log_ids = [int(pid) for pid in _order_payment_source_ids(order) if pid]
+    valid_source_ids = list(payment_log_ids)
     if isinstance(order.id, int):
         valid_source_ids.append(order.id)
 
+    completion_log_ids = list(
+        OrderActivityLog.objects.filter(order=order, tindakan="COMPLETE").values_list("id", flat=True)
+    )
+
     entries_to_reverse = JournalEntry.objects.filter(
-        source_type=JournalEntry.SourceType.ORDER_PAYMENT,
+        Q(source_type=JournalEntry.SourceType.ORDER_PAYMENT, source_id__in=valid_source_ids)
+        | Q(source_type=JournalEntry.SourceType.ORDER_REVENUE_RECOGNITION, source_id__in=completion_log_ids),
         status=JournalEntry.Status.POSTED,
-        source_id__in=valid_source_ids,
     )
 
     reversal_entries = []

@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { FileText } from 'lucide-react';
+import { FileText, Receipt } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
 import ToggleSwitchRow from './ToggleSwitchRow';
+import PengaturanAkunOrderDrawer from '../PengaturanAkunOrderDrawer';
 
 export default function JournalSettingsColumn({ settings, onChange, onBlur, onToggle, onOpenLogModal }) {
   const [accounts, setAccounts] = useState([]);
+  const [isOrderAkunOpen, setIsOrderAkunOpen] = useState(false);
 
   useEffect(() => {
     apiClient.get('/accounting/accounts/')
@@ -104,7 +106,7 @@ export default function JournalSettingsColumn({ settings, onChange, onBlur, onTo
           </select>
         </div>
 
-        <div className="pt-4 border-t border-slate-100">
+        <div className="pt-4 border-t border-slate-100 flex flex-wrap gap-2">
           <button
             type="button"
             onClick={onOpenLogModal}
@@ -113,8 +115,18 @@ export default function JournalSettingsColumn({ settings, onChange, onBlur, onTo
             <FileText size={14} className="text-slate-500" />
             <span>Log Start/Stop Akuntansi</span>
           </button>
+          <button
+            type="button"
+            onClick={() => setIsOrderAkunOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs transition-all cursor-pointer shadow-2xs"
+          >
+            <Receipt size={14} className="text-slate-500" />
+            <span>Atur Akun Order</span>
+          </button>
         </div>
       </div>
+
+      <PengaturanAkunOrderDrawer isOpen={isOrderAkunOpen} onClose={() => setIsOrderAkunOpen(false)} />
     </div>
   );
 }

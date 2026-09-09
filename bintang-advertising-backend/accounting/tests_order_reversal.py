@@ -6,7 +6,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework import status
 
-from api.models import CustomUser, Order, OrderActivityLog
+from api.models import CustomUser, Order, OrderActivityLog, OrderItem
 from accounting.models import AccountingSettings, JournalEntry
 from accounting.models.coa import Account, AccountClassification
 from accounting.models.cashbank import PaymentMethod
@@ -24,11 +24,22 @@ class OrderReversalTestCase(TestCase):
             defaults={"account_type": "revenue", "order": 10},
         )
 
+        cls_liab, _ = AccountClassification.objects.get_or_create(
+            name="Kewajiban Test Reversal",
+            defaults={"account_type": "liability", "order": 20},
+        )
+
         self.kas_account = Account.objects.create(
             code="11101", name="Kas Tunai Test", account_type="asset", classification=cls_acc
         )
         self.revenue_account = Account.objects.create(
             code="41100", name="Pendapatan Order Test", account_type="revenue", classification=cls_rev
+        )
+        self.receivable_account = Account.objects.create(
+            code="11301", name="Piutang Usaha Test Reversal", account_type="asset", classification=cls_acc
+        )
+        self.deposit_account = Account.objects.create(
+            code="23001", name="Uang Muka Pelanggan Test Reversal", account_type="liability", classification=cls_liab
         )
 
         self.payment_method = PaymentMethod.objects.create(
@@ -51,6 +62,8 @@ class OrderReversalTestCase(TestCase):
             is_active=True,
             initial_setup_completed_at=timezone.now(),
             order_sales_revenue_account=self.revenue_account,
+            order_receivable_account=self.receivable_account,
+            order_customer_deposit_account=self.deposit_account,
         )
 
         self.client = APIClient()
@@ -89,11 +102,14 @@ class OrderReversalTestCase(TestCase):
         self.assertEqual(sum_debit, Decimal("50000"))
         self.assertEqual(sum_kredit, Decimal("50000"))
 
-        # In reversed entry, Kas (asset) is KREDIT 50.000, Pendapatan is DEBIT 50.000
+        # In reversed entry, Kas (asset) is KREDIT 50.000. Order masih 'proses'
+        # (belum 'selesai') saat DP dibayar -> jurnal asli kredit Uang Muka
+        # Pelanggan (accrual basis), bukan Pendapatan langsung -- jadi
+        # pembaliknya DEBIT akun Uang Muka Pelanggan.
         kas_line = reversal.lines.get(account=self.kas_account)
-        rev_line = reversal.lines.get(account=self.revenue_account)
+        deposit_line = reversal.lines.get(account=self.deposit_account)
         self.assertEqual(kas_line.kredit, Decimal("50000"))
-        self.assertEqual(rev_line.debit, Decimal("50000"))
+        self.assertEqual(deposit_line.debit, Decimal("50000"))
 
     def test_return_creates_reversal_journal(self):
         """Order diretur via POST /api/orders/{id}/retur/ memposting JournalEntry pembalik."""
@@ -127,6 +143,46 @@ class OrderReversalTestCase(TestCase):
         sum_kredit = sum(l.kredit for l in reversal.lines.all())
         self.assertEqual(sum_debit, Decimal("75000"))
         self.assertEqual(sum_kredit, Decimal("75000"))
+
+    def test_retur_membalikkan_piutang_dan_pengakuan_pendapatan_juga(self):
+        """Order accrual penuh (DP sebelum selesai -> Uang Muka Pelanggan,
+        lalu selesaikan_order() -> Piutang+Pendapatan diakui) yang diretur
+        harus membalik KEDUA jurnal: ORDER_PAYMENT (Uang Muka) DAN
+        ORDER_REVENUE_RECOGNITION (Piutang/Pendapatan) -- bukan cuma yang lama."""
+        from api.services.order_actions import selesaikan_order
+
+        order = Order.objects.create(
+            nomor_wa="08123456789", nama="Pelanggan Accrual Penuh",
+            accounting_payment_method=self.payment_method, status_global="proses",
+        )
+        OrderItem.objects.create(order=order, jenis_produk="Item Accrual", harga_jual=100_000)
+        order.refresh_from_db()
+
+        dp_log = OrderActivityLog.objects.create(order=order, user=self.user, tindakan="PAYMENT")
+        dp_entry = post_order_payment_journal(
+            order=order, activity_log=dp_log, actor=self.user, jumlah_bayar=Decimal("40000"), is_dp=True,
+        )
+        self.assertIsNotNone(dp_entry)
+        order.dp_dibayar = 40000
+        order.save(update_fields=["dp_dibayar"])
+
+        order = selesaikan_order(order, actor=self.user)
+        recognition_entry = JournalEntry.objects.get(
+            source_type=JournalEntry.SourceType.ORDER_REVENUE_RECOGNITION,
+        )
+        self.assertEqual(recognition_entry.status, JournalEntry.Status.POSTED)
+
+        res = self.client.post(
+            f"/api/orders/{order.id}/retur/",
+            data={"catatan": "Batal total", "nominal_refund": 100000},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.data)
+
+        dp_reversal = JournalEntry.objects.filter(reversed_entry=dp_entry).first()
+        recognition_reversal = JournalEntry.objects.filter(reversed_entry=recognition_entry).first()
+        self.assertIsNotNone(dp_reversal, "Jurnal Uang Muka (DP sebelum selesai) harus ikut dibalik.")
+        self.assertIsNotNone(recognition_reversal, "Jurnal pengakuan pendapatan (Piutang/Pendapatan) harus ikut dibalik.")
 
     def test_reversal_idempotency_retry(self):
         """Service post_order_reversal_journal dipanggil 2x tidak menggandakan jurnal."""

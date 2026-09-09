@@ -153,6 +153,9 @@ class Command(BaseCommand):
                 "purchase_inventory_account": Account.objects.filter(code="11400", is_active=True).first(),
                 "purchase_payable_account": Account.objects.filter(code="21000", is_active=True).first(),
                 "purchase_advance_account": Account.objects.filter(code="11710", is_active=True).first(),
+                "order_sales_revenue_account": Account.objects.filter(code="40000", is_active=True).first(),
+                "order_receivable_account": Account.objects.filter(code="11300", is_active=True).first(),
+                "order_customer_deposit_account": Account.objects.filter(code="23000", is_active=True).first(),
             }
             update_fields = []
             for field, account in mapping_defaults.items():

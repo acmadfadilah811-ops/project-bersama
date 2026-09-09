@@ -40,6 +40,7 @@ class JournalEntry(models.Model):
         ORDER_MATERIAL_HPP = "order_material_hpp", "HPP Bahan Baku Order (T-204)"
         PERIOD_CLOSE = "period_close", "Tutup Buku (Jurnal Penutup)"
         SHIFT_CASH_VARIANCE = "shift_cash_variance", "Selisih Kas Shift"
+        ORDER_REVENUE_RECOGNITION = "order_completion", "Pengakuan Pendapatan Order (Selesai)"
 
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"

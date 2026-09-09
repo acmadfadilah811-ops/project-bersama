@@ -24,6 +24,10 @@ class OrderSettlementTestCase(TestCase):
             name="Pendapatan Test",
             defaults={"account_type": "revenue", "order": 10},
         )
+        cls_liab, _ = AccountClassification.objects.get_or_create(
+            name="Kewajiban Test Settlement",
+            defaults={"account_type": "liability", "order": 20},
+        )
 
         self.bank_account = Account.objects.create(
             code="11102", name="Bank BCA Test", account_type="asset", classification=cls_acc
@@ -36,6 +40,9 @@ class OrderSettlementTestCase(TestCase):
         )
         self.mdr_account = Account.objects.create(
             code="60500", name="Beban MDR Test", account_type="expense", classification=cls_rev
+        )
+        self.deposit_account = Account.objects.create(
+            code="23100", name="Uang Muka Pelanggan Test Settlement", account_type="liability", classification=cls_liab
         )
 
         self.qris_pm = PaymentMethod.objects.create(
@@ -59,6 +66,7 @@ class OrderSettlementTestCase(TestCase):
             initial_setup_completed_at=timezone.now(),
             order_sales_revenue_account=self.revenue_account,
             pos_sales_revenue_account=self.revenue_account,
+            order_customer_deposit_account=self.deposit_account,
         )
 
         self.client = APIClient()

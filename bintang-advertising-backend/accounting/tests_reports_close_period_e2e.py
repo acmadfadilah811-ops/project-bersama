@@ -50,6 +50,9 @@ class ReportsAndClosePeriodEndToEndTestCase(TestCase):
         equity_cls = AccountClassification.objects.create(
             name="Ekuitas", account_type=AccountType.EQUITY, code_range_start=30000, code_range_end=30999,
         )
+        liab_cls = AccountClassification.objects.create(
+            name="Kewajiban", account_type=AccountType.LIABILITY, code_range_start=20000, code_range_end=29999,
+        )
 
         self.kas = Account.objects.create(
             code="11101", name="Kas T611", classification=asset_cls, account_type=AccountType.ASSET,
@@ -66,6 +69,12 @@ class ReportsAndClosePeriodEndToEndTestCase(TestCase):
         self.modal = Account.objects.create(
             code="31101", name="Modal T611", classification=equity_cls, account_type=AccountType.EQUITY,
         )
+        self.piutang = Account.objects.create(
+            code="11300", name="Piutang Usaha T611", classification=asset_cls, account_type=AccountType.ASSET,
+        )
+        self.uang_muka = Account.objects.create(
+            code="21101", name="Uang Muka Pelanggan T611", classification=liab_cls, account_type=AccountType.LIABILITY,
+        )
 
         self.settings = AccountingSettings.objects.create(
             accounting_start_date=timezone.localdate().replace(day=1) - timezone.timedelta(days=60),
@@ -75,6 +84,8 @@ class ReportsAndClosePeriodEndToEndTestCase(TestCase):
             pos_cogs_expense_account=self.hpp,
             pos_inventory_account=self.persediaan,
             order_sales_revenue_account=self.pendapatan,
+            order_receivable_account=self.piutang,
+            order_customer_deposit_account=self.uang_muka,
             # Wajib sejak Tutup Buku memposting Jurnal Penutup tradisional
             # (accounting/services/period.py::post_closing_entries) — reuse
             # akun Modal sebagai akun Closing/Laba Ditahan.
@@ -162,16 +173,22 @@ class ReportsAndClosePeriodEndToEndTestCase(TestCase):
         pos_entry = post_pos_sale_journal(sale, actor=self.owner)
         self.assertIsNotNone(pos_entry, "Posting POS harus berhasil (semua akun sudah dikonfigurasi)")
 
-        # 3. Order payment hari ini: Rp150.000 tunai
-        from api.models import Order, OrderActivityLog
+        # 3. Order payment hari ini: Rp150.000 tunai, lalu diselesaikan (accrual
+        # basis, keputusan finance 2026-09-09 -- Pendapatan Order baru diakui
+        # penuh saat order 'selesai', bukan lagi seketika saat dibayar).
+        from api.models import Order, OrderActivityLog, OrderItem
+        from api.services.order_actions import selesaikan_order
         order = Order.objects.create(
             nomor_wa="081399988800", nama="Pelanggan T611", accounting_payment_method=self.pm_cash,
         )
+        OrderItem.objects.create(order=order, jenis_produk="Jasa T611", harga_jual=150_000)
+        order.refresh_from_db()
         log = OrderActivityLog.objects.create(order=order, user=self.owner, tindakan="PAYMENT", keterangan="test")
         order_entry = post_order_payment_journal(
             order=order, activity_log=log, actor=self.owner, jumlah_bayar=Decimal("150000"),
         )
         self.assertIsNotNone(order_entry)
+        order = selesaikan_order(order, actor=self.owner)
 
         # ── Validasi laporan SEBELUM tutup buku ──────────────────────────
         bs_before = get_balance_sheet(self.period_start, self.period_end)

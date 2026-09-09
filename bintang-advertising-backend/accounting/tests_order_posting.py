@@ -41,6 +41,10 @@ class OrderPostingSetupMixin:
             name="Pendapatan Test",
             defaults={"account_type": "revenue", "order": 10},
         )
+        cls_liab, _ = AccountClassification.objects.get_or_create(
+            name="Kewajiban Test T202",
+            defaults={"account_type": "liability", "order": 20},
+        )
         cls.kas_account = Account.objects.create(
             code="1-T202-001", name="Kas Tunai Test T202",
             account_type="asset", classification=cls_acc,
@@ -48,6 +52,14 @@ class OrderPostingSetupMixin:
         cls.revenue_account = Account.objects.create(
             code="4-T202-001", name="Pendapatan Order Test T202",
             account_type="revenue", classification=cls_rev,
+        )
+        cls.receivable_account = Account.objects.create(
+            code="1-T202-002", name="Piutang Usaha Test T202",
+            account_type="asset", classification=cls_acc,
+        )
+        cls.deposit_account = Account.objects.create(
+            code="2-T202-001", name="Uang Muka Pelanggan Test T202",
+            account_type="liability", classification=cls_liab,
         )
 
         # PaymentMethod
@@ -75,6 +87,8 @@ class OrderPostingSetupMixin:
             is_active=True,
             initial_setup_completed_at=timezone.now(),
             order_sales_revenue_account=cls.revenue_account,
+            order_receivable_account=cls.receivable_account,
+            order_customer_deposit_account=cls.deposit_account,
         )
 
     def _make_order(self, with_pm=True):
@@ -204,11 +218,13 @@ class OrderPostingUnitTest(OrderPostingSetupMixin, TestCase):
         self.settings_row.is_active = True
         self.settings_row.save(update_fields=["is_active"])
 
-    def test_gating_skips_when_revenue_account_not_set(self):
-        """Posting di-skip jika order_sales_revenue_account belum dikonfigurasi."""
-        old_acc = self.settings_row.order_sales_revenue_account
-        self.settings_row.order_sales_revenue_account = None
-        self.settings_row.save(update_fields=["order_sales_revenue_account"])
+    def test_gating_skips_when_deposit_account_not_set(self):
+        """Posting di-skip jika order_customer_deposit_account belum dikonfigurasi
+        -- ini akun yang dicek untuk pembayaran SEBELUM order 'selesai' (accrual
+        basis, keputusan finance 2026-09-09), bukan lagi order_sales_revenue_account."""
+        old_acc = self.settings_row.order_customer_deposit_account
+        self.settings_row.order_customer_deposit_account = None
+        self.settings_row.save(update_fields=["order_customer_deposit_account"])
 
         order = self._make_order()
         activity_log = self._make_payment_log(order, 50_000)
@@ -220,8 +236,40 @@ class OrderPostingUnitTest(OrderPostingSetupMixin, TestCase):
         self.assertIsNone(result)
 
         # Restore
-        self.settings_row.order_sales_revenue_account = old_acc
-        self.settings_row.save(update_fields=["order_sales_revenue_account"])
+        self.settings_row.order_customer_deposit_account = old_acc
+        self.settings_row.save(update_fields=["order_customer_deposit_account"])
+
+    def test_pembayaran_sebelum_selesai_masuk_uang_muka_pelanggan(self):
+        """Accrual basis: pembayaran SEBELUM order 'selesai' kredit ke Uang
+        Muka Pelanggan (kewajiban), BUKAN ke Pendapatan langsung."""
+        order = self._make_order()
+        self.assertNotEqual(order.status_global, "selesai")
+        activity_log = self._make_payment_log(order, 100_000)
+
+        entry = post_order_payment_journal(
+            order=order, activity_log=activity_log, actor=self.kasir,
+            jumlah_bayar=Decimal("100000"), is_dp=True,
+        )
+        self.assertIsNotNone(entry)
+        credited_accounts = {l.account_id for l in entry.lines.all() if l.kredit > 0}
+        self.assertEqual(credited_accounts, {self.deposit_account.id})
+        self.assertNotIn(self.revenue_account.id, credited_accounts)
+
+    def test_pembayaran_setelah_selesai_melunasi_piutang(self):
+        """Accrual basis: pembayaran SETELAH order 'selesai' kredit ke Piutang
+        Usaha (melunasi), bukan Uang Muka Pelanggan."""
+        order = self._make_order()
+        order.status_global = "selesai"
+        order.save(update_fields=["status_global"])
+        activity_log = self._make_payment_log(order, 50_000)
+
+        entry = post_order_payment_journal(
+            order=order, activity_log=activity_log, actor=self.kasir,
+            jumlah_bayar=Decimal("50000"), is_dp=False,
+        )
+        self.assertIsNotNone(entry)
+        credited_accounts = {l.account_id for l in entry.lines.all() if l.kredit > 0}
+        self.assertEqual(credited_accounts, {self.receivable_account.id})
 
     def test_gating_skips_when_payment_method_not_set(self):
         """Posting di-skip jika Order.accounting_payment_method belum ter-resolve dan tidak ada PaymentMethod yang cocok."""

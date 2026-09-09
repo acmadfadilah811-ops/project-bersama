@@ -142,6 +142,13 @@ def selesaikan_order(order, actor):
         keterangan=keterangan,
     )
 
+    # Accrual basis (keputusan finance 2026-09-09): Piutang Usaha + Pendapatan
+    # PENUH diakui begitu order selesai (barang/jasa sudah diserahkan) --
+    # bukan lagi bertahap saat DP/pelunasan diterima. Gating internal (akun
+    # belum diatur) mengembalikan None dengan aman, tidak melempar.
+    from accounting.services.order_posting import post_order_revenue_recognition_journal
+    post_order_revenue_recognition_journal(order=order, actor=actor, activity_log=complete_log)
+
     # T-204: HPP bahan baku (JobBoard) diposting saat order selesai. Gating
     # internal (akun belum diatur/HPP nol) mengembalikan None dengan aman,
     # tidak melempar — konsisten pola fail-open task lain di file ini.

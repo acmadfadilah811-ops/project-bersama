@@ -35,6 +35,9 @@ class OrderAccountingEndToEndTestCase(APITestCase):
         exp_cls, _ = AccountClassification.objects.get_or_create(
             name="Beban T205", defaults={"account_type": "expense", "order": 50},
         )
+        liab_cls, _ = AccountClassification.objects.get_or_create(
+            name="Kewajiban T205", defaults={"account_type": "liability", "order": 20},
+        )
 
         cls.kas_account = Account.objects.create(
             code="1-T205-KAS", name="Kas Tunai T205", account_type="asset", classification=asset_cls,
@@ -51,6 +54,12 @@ class OrderAccountingEndToEndTestCase(APITestCase):
         cls.persediaan_account = Account.objects.create(
             code="1-T205-PERS", name="Persediaan Bahan Baku T205", account_type="asset", classification=asset_cls,
         )
+        cls.receivable_account = Account.objects.create(
+            code="1-T205-PIUT", name="Piutang Usaha T205", account_type="asset", classification=asset_cls,
+        )
+        cls.deposit_account = Account.objects.create(
+            code="2-T205-UM", name="Uang Muka Pelanggan T205", account_type="liability", classification=liab_cls,
+        )
 
         cls.settings_row = AccountingSettings.objects.create(
             accounting_start_date=timezone.localdate() - timezone.timedelta(days=30),
@@ -59,6 +68,8 @@ class OrderAccountingEndToEndTestCase(APITestCase):
             order_sales_revenue_account=cls.revenue_account,
             order_hpp_expense_account=cls.hpp_account,
             order_material_inventory_account=cls.persediaan_account,
+            order_receivable_account=cls.receivable_account,
+            order_customer_deposit_account=cls.deposit_account,
         )
 
         cls.pm_cash = PaymentMethod.objects.create(
@@ -109,10 +120,12 @@ class OrderAccountingEndToEndTestCase(APITestCase):
         dp_lines = list(dp_entry.lines.all())
         self.assertEqual(sum(l.debit for l in dp_lines), sum(l.kredit for l in dp_lines))
         self.assertEqual(sum(l.debit for l in dp_lines), Decimal("200000.00"))
-        # Revenue di-kredit sebesar kas riil diterima (net setelah diskon 10%
-        # sudah baked-in ke total_harga), BUKAN harga_jual kotor 500.000.
-        revenue_line = next(l for l in dp_lines if l.account_id == self.revenue_account.id)
-        self.assertEqual(revenue_line.kredit, Decimal("200000.00"))
+        # Accrual basis (keputusan finance 2026-09-09): DP SEBELUM order
+        # 'selesai' kredit Uang Muka Pelanggan (kewajiban), BUKAN Pendapatan
+        # langsung -- barang/jasa belum diserahkan, belum boleh diakui.
+        deposit_line = next(l for l in dp_lines if l.account_id == self.deposit_account.id)
+        self.assertEqual(deposit_line.kredit, Decimal("200000.00"))
+        self.assertFalse(any(l.account_id == self.revenue_account.id for l in dp_lines))
 
         # 2. T-203: overpay ditolak — coba bayar lebih dari sisa (250.000)
         res_overpay = self.client.post(
@@ -146,20 +159,22 @@ class OrderAccountingEndToEndTestCase(APITestCase):
         ).first()
         self.assertIsNotNone(pelunasan_entry)
 
-        # Rekonsiliasi: total pendapatan Order yang terjurnal = total_harga persis (450.000),
-        # tidak lebih (overpay ditolak) tidak kurang (DP+pelunasan lengkap).
-        all_payment_entries = JournalEntry.objects.filter(
-            source_type=JournalEntry.SourceType.ORDER_PAYMENT,
-            status=JournalEntry.Status.POSTED,
-        ).exclude(id=dp_entry.id).union(JournalEntry.objects.filter(id=dp_entry.id))
-        total_revenue = sum(
+        # Rekonsiliasi: total Uang Muka Pelanggan yang terjurnal dari kedua
+        # pembayaran (SEBELUM order 'selesai') = total_harga persis (450.000).
+        # Pendapatan BELUM diakui sama sekali di titik ini (accrual basis) --
+        # baru diakui penuh saat selesaikan() di langkah 4.
+        total_deposit = sum(
             line.kredit
             for entry in JournalEntry.objects.filter(
                 source_type=JournalEntry.SourceType.ORDER_PAYMENT, status=JournalEntry.Status.POSTED,
             )
-            for line in entry.lines.filter(account_id=self.revenue_account.id)
+            for line in entry.lines.filter(account_id=self.deposit_account.id)
         )
-        self.assertEqual(total_revenue, Decimal("450000.00"))
+        self.assertEqual(total_deposit, Decimal("450000.00"))
+        total_revenue_before_selesai = JournalEntry.objects.filter(
+            source_type=JournalEntry.SourceType.ORDER_REVENUE_RECOGNITION,
+        ).count()
+        self.assertEqual(total_revenue_before_selesai, 0, "Pendapatan belum boleh diakui sebelum order selesai")
 
         # 4. Produksi: job + konsumsi bahan baku, lalu selesaikan()
         item = self.order.items.first()
@@ -189,20 +204,42 @@ class OrderAccountingEndToEndTestCase(APITestCase):
         self.assertEqual(sum(l.debit for l in hpp_lines), sum(l.kredit for l in hpp_lines))
         self.assertEqual(sum(l.debit for l in hpp_lines), Decimal("150000.00"))  # 5 x 30.000
 
-        # 5. Rekonsiliasi akhir: SEMUA jurnal terkait order ini (payment x2 + HPP)
-        # masing-masing balance individual DAN gabungan (properti dasar double-entry).
+        # 4b. Accrual basis: begitu order selesai, Pendapatan PENUH (450.000)
+        # baru diakui sekarang -- lewat Piutang Usaha, lalu di entry yang sama
+        # di-netting dengan Uang Muka Pelanggan (450.000, sudah lunas duluan)
+        # sehingga Piutang akhir = 0 (sisa_tagihan memang 0).
+        recognition_entry = JournalEntry.objects.filter(
+            source_type=JournalEntry.SourceType.ORDER_REVENUE_RECOGNITION, source_id=complete_log.id,
+        ).first()
+        self.assertIsNotNone(recognition_entry, "Pengakuan pendapatan harus terbuat setelah selesaikan()")
+        recognition_lines = list(recognition_entry.lines.all())
+        self.assertEqual(sum(l.debit for l in recognition_lines), sum(l.kredit for l in recognition_lines))
+        revenue_line = next(l for l in recognition_lines if l.account_id == self.revenue_account.id)
+        self.assertEqual(revenue_line.kredit, Decimal("450000.00"))
+        piutang_net = (
+            sum(l.debit for l in recognition_lines if l.account_id == self.receivable_account.id)
+            - sum(l.kredit for l in recognition_lines if l.account_id == self.receivable_account.id)
+        )
+        self.assertEqual(piutang_net, Decimal("0.00"), "Piutang harus nol -- sudah lunas penuh lewat DP+pelunasan")
+
+        # 5. Rekonsiliasi akhir: SEMUA jurnal terkait order ini (payment x2 +
+        # pengakuan pendapatan + HPP) masing-masing balance individual DAN
+        # gabungan (properti dasar double-entry).
         all_entries = list(JournalEntry.objects.filter(
             source_type__in=[
                 JournalEntry.SourceType.ORDER_PAYMENT,
+                JournalEntry.SourceType.ORDER_REVENUE_RECOGNITION,
                 JournalEntry.SourceType.ORDER_MATERIAL_HPP,
             ],
             status=JournalEntry.Status.POSTED,
         ).filter(source_id__in=[dp_log.id, pelunasan_log.id, complete_log.id]))
-        self.assertEqual(len(all_entries), 3)
+        self.assertEqual(len(all_entries), 4)
         grand_debit = sum(l.debit for e in all_entries for l in e.lines.all())
         grand_kredit = sum(l.kredit for e in all_entries for l in e.lines.all())
         self.assertEqual(grand_debit, grand_kredit)
-        self.assertEqual(grand_debit, Decimal("600000.00"))  # 200k + 250k + 150k
+        # 200k(DP) + 250k(pelunasan) + 150k(HPP) + 900k(pengakuan pendapatan,
+        # 450k Piutang+Pendapatan + 450k netting Uang Muka->Piutang)
+        self.assertEqual(grand_debit, Decimal("1500000.00"))
 
     def test_batalkan_after_dp_creates_balanced_reversal(self):
         """T-207 dalam konteks E2E: Order dibatalkan setelah DP -> jurnal pembalik seimbang."""
