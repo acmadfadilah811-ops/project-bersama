@@ -119,6 +119,25 @@ class ReportsAndClosePeriodEndToEndTestCase(TestCase):
         # kas 1.000.000 + persediaan 500.000 (supaya HPP T-107 tidak membuat Persediaan negatif)
         self._post_opening_equity(kas_amount=Decimal("1000000"), persediaan_amount=Decimal("500000"))
 
+        # 1a. Lapisan stok (StockLayer) yang jadi basis nilai riil Persediaan
+        # (T-629 lanjutan: validasi rekonsiliasi stok) — 50 unit x 10.000 = 500.000,
+        # cocok dengan saldo awal akun Persediaan di atas.
+        from api.product_models import StockLayer
+        StockLayer.objects.create(
+            product=self.product, tanggal_masuk=self.opening_date,
+            qty_masuk=Decimal("50"), sisa_qty=Decimal("50"), harga_beli=Decimal("10000"),
+        )
+
+        # 1b. Tutup periode "modal awal" ini SEKARANG (sebelum ada transaksi bulan
+        # berjalan) — StockLayer.sisa_qty itu state mutable (bukan snapshot per
+        # tanggal, lihat get_computed_persediaan_value), jadi rekonsiliasi
+        # stok-vs-ledger harus dicek saat stok belum dipotong penjualan berikutnya.
+        opening_period = AccountingPeriod.objects.filter(
+            start_date__lte=self.opening_date, end_date__gte=self.opening_date,
+        ).first()
+        if opening_period and opening_period.status == AccountingPeriod.Status.OPEN:
+            close_accounting_period(period_id=opening_period.id, actor=self.owner)
+
         # 2. POS sale hari ini: 1 unit produk (harga jual 25.000, HPP 10.000) — reuse T-107
         sale = POSSale.objects.create(
             nomor="POS-T611-0001", kasir=self.owner, subtotal=Decimal("25000"),
@@ -185,6 +204,8 @@ class ReportsAndClosePeriodEndToEndTestCase(TestCase):
         self.assertEqual(modal_periode_ini_row["amount"], expected_laba)
 
         # ── Tutup Buku ────────────────────────────────────────────────────
+        # Periode "modal awal" (bulan sebelumnya) sudah ditutup di langkah 1b,
+        # sebelum stok riil dipotong oleh penjualan bulan berjalan.
         period = AccountingPeriod.objects.get(start_date=self.period_start, end_date=self.period_end)
         closed_period = close_accounting_period(period_id=period.id, actor=self.owner)
         self.assertEqual(closed_period.status, AccountingPeriod.Status.CLOSED)

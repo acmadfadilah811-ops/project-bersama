@@ -10,6 +10,60 @@ from .journal import create_journal_entry
 from .ledger import get_account_balances
 
 
+def get_computed_persediaan_value():
+    """Nilai buku persediaan riil = total sisa lapisan stok (StockLayer) x
+    harga beli tiap lapisan -- basis biaya yang SAMA dengan yang dipakai
+    sistem HPP (api/stock_fifo.py), bukan qty_stok x harga_beli RATA-RATA
+    SAAT INI (bisa drift dari histori harga beli tiap batch).
+
+    Keterbatasan: StockLayer.sisa_qty itu state MUTABLE (bukan snapshot per
+    tanggal) -- angka ini selalu "nilai stok SAAT DIHITUNG", bukan benar-benar
+    "nilai stok pada period.end_date" kalau tutup buku dilakukan jauh setelah
+    periode berakhir. Wajar untuk alur normal (tutup buku dilakukan tak lama
+    setelah periode berakhir)."""
+    from django.db.models import DecimalField, F, Sum
+    from api.product_models import StockLayer
+
+    agg = StockLayer.objects.filter(sisa_qty__gt=0).aggregate(
+        total=Sum(F("sisa_qty") * F("harga_beli"), output_field=DecimalField(max_digits=20, decimal_places=2))
+    )
+    return agg["total"] or Decimal("0")
+
+
+def _validate_stock_reconciliation(period):
+    """Blokir tutup buku kalau saldo akun Persediaan di buku besar tidak
+    cocok dengan nilai stok riil (lapisan FIFO) -- pola diadaptasi dari
+    ERPNext Period Closing Voucher (validate_stock_accounts_balance),
+    ditemukan lewat riset referensi 2026-09-09. Instruksi user eksplisit:
+    BLOKIR (bukan cuma peringatan) supaya selisih Persediaan tidak bisa
+    lolos ke depan tanpa diperbaiki -- pesan errornya harus jelas akun mana
+    dan berapa selisihnya, bukan cuma "ditolak".
+
+    Beda dari ERPNext (yang punya banyak akun bertipe Stock): kita cuma
+    punya 1 akun Persediaan sistem-lebar (AccountingSettings.pos_inventory_account).
+    Kalau belum dikonfigurasi, tidak ada yang bisa direkonsiliasi -- dilewati,
+    bukan diblokir (bisnis yang belum pakai pelacakan inventori otomatis
+    wajar tidak kena validasi ini)."""
+    settings_row = AccountingSettings.objects.select_related("pos_inventory_account").first()
+    inventory_account = settings_row.pos_inventory_account if settings_row else None
+    if not inventory_account:
+        return
+
+    stock_value = get_computed_persediaan_value()
+    gl_balance = get_account_balances([inventory_account], period.end_date).get(inventory_account.id) or Decimal("0")
+
+    selisih = (gl_balance - stock_value).quantize(Decimal("0.01"))
+    if selisih != 0:
+        raise ValidationError(
+            f"Tutup buku ditolak: saldo akun Persediaan ({inventory_account.code} — {inventory_account.name}) "
+            f"di buku besar per {period.end_date:%d %b %Y} adalah Rp {gl_balance:,.2f}, TIDAK COCOK dengan "
+            f"nilai stok riil (lapisan FIFO) Rp {stock_value:,.2f} -- selisih Rp {selisih:,.2f}. "
+            f"Perbaiki dulu sebelum tutup buku: cek/lengkapi saldo awal akun {inventory_account.code} di "
+            "Jurnal Umum, atau jalankan 'Sync Stok Produk' di Inventori kalau ada produk yang belum "
+            "punya lapisan stok tercatat."
+        )
+
+
 def get_negative_account_balances(as_of_date):
     """
     Saldo abnormal negatif akun aktif pada tanggal akhir periode.
@@ -28,6 +82,34 @@ def get_negative_account_balances(as_of_date):
         for account in accounts
         if balances.get(account.id, 0) < 0
     ]
+
+
+def _validate_sequential_closing(period):
+    """Blokir tutup buku kalau ada periode LEBIH AWAL yang masih Terbuka --
+    tutup buku harus berurutan dari bulan paling lama, tidak boleh ada bulan
+    yang "dilompati" (kalau tidak, saldo carry-forward jadi tidak jelas
+    dasarnya periode mana). Pola diadaptasi dari ERPNext Period Closing
+    Voucher (validate_start_and_end_date) -- ditemukan lewat riset referensi
+    2026-09-09, kita sebelumnya tidak punya validasi ini sama sekali.
+
+    Hanya AccountingPeriod yang SUDAH ADA baris-nya yang dihitung -- bulan
+    sebelum bisnis mulai beroperasi (tidak pernah ada aktivitas, tidak pernah
+    auto-vivified) wajar tidak diblokir."""
+    earlier_open = (
+        AccountingPeriod.objects.filter(
+            status=AccountingPeriod.Status.OPEN,
+            start_date__lt=period.start_date,
+        )
+        .exclude(pk=period.pk)
+        .order_by("start_date")
+        .first()
+    )
+    if earlier_open:
+        raise ValidationError(
+            f"Periode {earlier_open.start_date:%B %Y} masih Terbuka dan lebih awal dari periode ini. "
+            "Tutup buku harus berurutan dari bulan paling lama -- tutup periode itu dulu sebelum "
+            f"periode {period.start_date:%B %Y}."
+        )
 
 
 def get_period_journal_lines(period):
@@ -235,6 +317,12 @@ def close_accounting_period(*, period_id=None, start_date=None, end_date=None, a
     if period.status == AccountingPeriod.Status.CLOSED:
         return period
 
+    # 1b. Urutan tutup buku harus berurutan dari bulan paling lama (lihat
+    # _validate_sequential_closing) -- dicek SEBELUM draft/saldo negatif
+    # supaya pesan errornya paling relevan (percuma cek saldo periode ini
+    # kalau periode sebelumnya saja belum ditutup).
+    _validate_sequential_closing(period)
+
     # 2. Hard block validation: Cek apakah ada draft entry di periode ini
     has_drafts = JournalEntry.objects.filter(
         date__range=(start_date, end_date),
@@ -255,6 +343,13 @@ def close_accounting_period(*, period_id=None, start_date=None, end_date=None, a
             "Tutup buku ditolak karena ada saldo akun negatif pada akhir periode: "
             f"{preview}. Perbaiki jurnal atau saldo akun terlebih dahulu."
         )
+
+    # 3b. Hard block validation: saldo akun Persediaan di buku besar harus
+    # cocok dengan nilai stok riil (lapisan FIFO) -- lihat
+    # _validate_stock_reconciliation. Referensi: ERPNext Period Closing
+    # Voucher (validate_stock_accounts_balance). Keputusan pengguna: blokir
+    # (bukan sekadar peringatan) karena selisih yang lolos berisiko menumpuk.
+    _validate_stock_reconciliation(period)
 
     # 4. Jurnal Penutup tradisional -- WAJIB sebelum status jadi CLOSED,
     # karena create_journal_entry() menolak posting ke periode yang statusnya
@@ -280,9 +375,14 @@ def close_all_open_periods(*, fiscal_year=None, actor=None):
     """
     Tutup semua periode Terbuka yang sudah berakhir (end_date < hari ini),
     satu per satu urut dari yang tertua. Bulan berjalan yang belum selesai
-    tidak ikut. Tiap periode sudah atomic sendiri di close_accounting_period —
-    kegagalan satu periode (mis. saldo negatif) tidak menghentikan proses
-    periode lain, supaya hasil bulan yang valid tetap tersimpan.
+    tidak ikut. Tiap periode sudah atomic sendiri di close_accounting_period.
+
+    Sejak validasi urutan (_validate_sequential_closing) ditambahkan: kalau
+    1 periode gagal (mis. saldo negatif), SEMUA periode setelahnya juga akan
+    gagal (diblokir "periode sebelumnya belum ditutup") -- ini disengaja,
+    bukan bug, sesuai aturan akuntansi (tidak boleh tutup Maret kalau
+    Februari belum beres). `failed` tetap melaporkan tiap periode dengan
+    alasannya masing-masing supaya user tahu persis di mana rantainya putus.
     """
     today = timezone.localdate()
     qs = AccountingPeriod.objects.filter(status=AccountingPeriod.Status.OPEN, end_date__lt=today)

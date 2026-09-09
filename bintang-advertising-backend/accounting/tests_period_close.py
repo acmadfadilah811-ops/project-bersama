@@ -92,6 +92,36 @@ class AccountingPeriodCloseTestCase(TestCase):
         self.assertEqual(p1.id, p2.id)
         self.assertEqual(p2.status, AccountingPeriod.Status.CLOSED)
 
+    def test_tutup_buku_ditolak_kalau_periode_sebelumnya_masih_terbuka(self):
+        """Urutan tutup buku harus berurutan dari bulan paling lama -- pola
+        diadaptasi dari ERPNext Period Closing Voucher (riset referensi
+        2026-09-09). Juni masih Terbuka -> Juli (self.start_date) ditolak."""
+        juni = AccountingPeriod.objects.create(
+            fiscal_year=2026, start_date=date(2026, 6, 1), end_date=date(2026, 6, 30),
+            status=AccountingPeriod.Status.OPEN,
+        )
+        with self.assertRaises(ValidationError):
+            close_accounting_period(start_date=self.start_date, end_date=self.end_date, actor=self.owner)
+        juni.refresh_from_db()
+        self.assertEqual(juni.status, AccountingPeriod.Status.OPEN)
+
+    def test_tutup_buku_lolos_setelah_periode_sebelumnya_ditutup(self):
+        AccountingPeriod.objects.create(
+            fiscal_year=2026, start_date=date(2026, 6, 1), end_date=date(2026, 6, 30),
+            status=AccountingPeriod.Status.CLOSED, closed_at=timezone.now(),
+        )
+        period = close_accounting_period(start_date=self.start_date, end_date=self.end_date, actor=self.owner)
+        self.assertEqual(period.status, AccountingPeriod.Status.CLOSED)
+
+    def test_periode_lebih_lama_yang_sudah_closed_tidak_menghalangi(self):
+        """Periode sebelumnya yang statusnya CLOSED (bukan OPEN) wajar tidak diblokir."""
+        AccountingPeriod.objects.create(
+            fiscal_year=2026, start_date=date(2026, 5, 1), end_date=date(2026, 5, 31),
+            status=AccountingPeriod.Status.CLOSED, closed_at=timezone.now(),
+        )
+        period = close_accounting_period(start_date=self.start_date, end_date=self.end_date, actor=self.owner)
+        self.assertEqual(period.status, AccountingPeriod.Status.CLOSED)
+
     def test_close_period_rejected_when_active_account_has_negative_balance(self):
         kas_classification = AccountClassification.objects.create(
             name="Kas & Bank", account_type="asset", code_range_start=11000, code_range_end=11999,
@@ -141,6 +171,83 @@ class AccountingPeriodCloseTestCase(TestCase):
 
         period = close_accounting_period(start_date=self.start_date, end_date=self.end_date, actor=self.owner)
         self.assertEqual(period.status, AccountingPeriod.Status.CLOSED)
+
+    def test_close_period_skips_stock_check_when_no_inventory_account_configured(self):
+        """AccountingSettings.pos_inventory_account belum diisi (default setUp) ->
+        validasi rekonsiliasi stok dilewati, bukan diblokir."""
+        period = close_accounting_period(start_date=self.start_date, end_date=self.end_date, actor=self.owner)
+        self.assertEqual(period.status, AccountingPeriod.Status.CLOSED)
+
+    def test_close_period_allowed_when_stock_matches_ledger(self):
+        """Saldo akun Persediaan di buku besar cocok dengan nilai stok riil
+        (lapisan FIFO) -> tutup buku lolos."""
+        from api.product_models import Product, StockLayer
+
+        persediaan_cls = AccountClassification.objects.create(
+            name="Persediaan Stock1", account_type="asset", code_range_start=13000, code_range_end=13999,
+        )
+        modal_cls = AccountClassification.objects.create(
+            name="Ekuitas Stock1", account_type="equity", code_range_start=32000, code_range_end=32999,
+        )
+        persediaan = Account.objects.create(code="13101", name="Persediaan Stock1", account_type="asset", classification=persediaan_cls)
+        modal = Account.objects.create(code="32101", name="Modal Stock1", account_type="equity", classification=modal_cls)
+
+        settings = AccountingSettings.objects.first()
+        settings.pos_inventory_account = persediaan
+        settings.save(update_fields=["pos_inventory_account"])
+
+        product = Product.objects.create(nama="Produk Stock1", sku="STOCK1-001", harga_beli=Decimal("10000"), harga_jual_toko=Decimal("20000"))
+        StockLayer.objects.create(product=product, tanggal_masuk=self.start_date, qty_masuk=Decimal("10"), sisa_qty=Decimal("10"), harga_beli=Decimal("10000"))
+
+        create_journal_entry(
+            date=self.start_date,
+            lines=[
+                {"account": persediaan, "debit": Decimal("100000"), "kredit": 0, "description": "Saldo awal Persediaan"},
+                {"account": modal, "debit": 0, "kredit": Decimal("100000")},
+            ],
+            description="Saldo awal Persediaan cocok stok riil",
+        )
+
+        period = close_accounting_period(start_date=self.start_date, end_date=self.end_date, actor=self.owner)
+        self.assertEqual(period.status, AccountingPeriod.Status.CLOSED)
+
+    def test_close_period_blocked_when_stock_mismatches_ledger(self):
+        """Saldo akun Persediaan di buku besar TIDAK cocok dengan nilai stok
+        riil -> tutup buku diblokir dengan pesan yang menyebut akun & selisih
+        (instruksi eksplisit pengguna: blokir + catatan akun mana yang salah)."""
+        from api.product_models import Product, StockLayer
+
+        persediaan_cls = AccountClassification.objects.create(
+            name="Persediaan Stock2", account_type="asset", code_range_start=14000, code_range_end=14999,
+        )
+        modal_cls = AccountClassification.objects.create(
+            name="Ekuitas Stock2", account_type="equity", code_range_start=33000, code_range_end=33999,
+        )
+        persediaan = Account.objects.create(code="14101", name="Persediaan Stock2", account_type="asset", classification=persediaan_cls)
+        modal = Account.objects.create(code="33101", name="Modal Stock2", account_type="equity", classification=modal_cls)
+
+        settings = AccountingSettings.objects.first()
+        settings.pos_inventory_account = persediaan
+        settings.save(update_fields=["pos_inventory_account"])
+
+        product = Product.objects.create(nama="Produk Stock2", sku="STOCK2-001", harga_beli=Decimal("10000"), harga_jual_toko=Decimal("20000"))
+        StockLayer.objects.create(product=product, tanggal_masuk=self.start_date, qty_masuk=Decimal("10"), sisa_qty=Decimal("10"), harga_beli=Decimal("10000"))
+
+        # Saldo buku besar sengaja dibuat beda (150.000) dari nilai stok riil (100.000)
+        create_journal_entry(
+            date=self.start_date,
+            lines=[
+                {"account": persediaan, "debit": Decimal("150000"), "kredit": 0, "description": "Saldo awal Persediaan (selisih)"},
+                {"account": modal, "debit": 0, "kredit": Decimal("150000")},
+            ],
+            description="Saldo awal Persediaan tidak cocok stok riil",
+        )
+
+        with self.assertRaisesMessage(ValidationError, "14101"):
+            close_accounting_period(start_date=self.start_date, end_date=self.end_date, actor=self.owner)
+
+        period = AccountingPeriod.objects.get(start_date=self.start_date, end_date=self.end_date)
+        self.assertEqual(period.status, AccountingPeriod.Status.OPEN)
 
     def test_close_period_permission(self):
         """API Endpoint: Hanya staff/admin/owner yang bisa tutup buku."""
