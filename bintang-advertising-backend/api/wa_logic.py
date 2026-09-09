@@ -135,17 +135,6 @@ menunggu_pilihan_produk = CacheState(cache_prefix="wa_menunggu_pilihan_produk_")
 menunggu_status_desain = CacheState(cache_prefix="wa_menunggu_status_desain_")
 pending_order_form = CacheState(cache_prefix="wa_pending_order_form_")
 
-# Tahap interaktif Bahan/Finishing (2026-09-09, instruksi user) — disisipkan
-# antara "produk dipilih" dan "tanya status desain". Value = jenis_produk yang
-# sedang ditanya (sama pola dengan menunggu_status_desain). bahan_terpilih/
-# finishing_terpilih menyimpan HASIL yang sudah ditangkap supaya bisa dibawa
-# sampai ke pembuatan form order (get_form_order), tanpa mengubah bentuk
-# menunggu_status_desain yang sudah ada (tetap plain string, minim risiko).
-menunggu_pilihan_bahan = CacheState(cache_prefix="wa_menunggu_bahan_")
-menunggu_pilihan_finishing = CacheState(cache_prefix="wa_menunggu_finishing_")
-bahan_terpilih = CacheState(cache_prefix="wa_bahan_terpilih_")
-finishing_terpilih = CacheState(cache_prefix="wa_finishing_terpilih_")
-
 # Sekali per hari per nomor — sapaan "halo lagi" utk kontak yang SUDAH
 # tersimpan namanya tapi ini kemungkinan besar percakapan baru (2026-09-09,
 # perbaikan bug "greeting tidak aktif": kontak lama yang pesan pertamanya
@@ -1000,11 +989,13 @@ def get_form_order(nama_pelanggan="", jenis_produk="", bahan="", finishing=""):
     dipakai saat pelanggan sudah sebutkan produk spesifik yang dipilih di
     tahap tanya-produk sebelum form (lihat Trigger 2 cek_rules_awal & state
     menunggu_pilihan_produk/menunggu_status_desain di views/whatsapp.py).
-    `bahan`/`finishing` (opsional, 2026-09-09) pre-fill kolom yang sama dari
-    tahap tanya-Bahan/tanya-Finishing interaktif (menunggu_pilihan_bahan/
-    menunggu_pilihan_finishing) -- sebelumnya field ini SELALU kosong,
-    pelanggan harus isi sendiri tanpa dipandu bot (gap ditemukan audit
-    2026-09-09)."""
+    `bahan`/`finishing` (opsional) pre-fill kolom yang sama kalau caller
+    sudah tahu nilainya -- default kosong, pelanggan isi sendiri; validasi
+    kolom wajib dilakukan saat form disubmit balik (lihat
+    cek_bahan_finishing_kurang/format_pesan_field_kurang), BUKAN lewat
+    tanya-interaktif sebelum form (sempat dicoba 2026-09-09, dibatalkan
+    hari yang sama krn jawaban bebas pelanggan berupa pertanyaan balik
+    malah kepakai mentah2 jadi isi field)."""
     from .models import SystemConfig
     nama_isi = nama_pelanggan if nama_pelanggan else ""
     produk_isi = jenis_produk if jenis_produk else ""
@@ -1433,51 +1424,6 @@ def ekstrak_produk_pilihan(pesan, info_kategori=""):
         return hasil if hasil else pesan_bersih
     except Exception as e:
         logger.warning(f"Gagal ekstrak nama produk pilihan via AI, fallback ke pesan asli: {e}")
-        return pesan_bersih
-
-
-def ekstrak_pilihan_bebas(pesan, label_field, konteks=""):
-    """Versi generik `ekstrak_produk_pilihan()` utk field bebas lain (Bahan,
-    Finishing, dst, 2026-09-09) -- pola AI 70% (pemahaman bahasa bebas) /
-    bot 30% (state machine yg nentuin KAPAN nanya) yang sudah terbukti aman
-    dipakai utk pemilihan produk: AI cuma memoles jawaban pelanggan jadi
-    nilai bersih, BUKAN mengambil keputusan. Fallback ke pesan asli
-    (di-strip) kalau AI tidak tersedia/gagal -- alur tidak boleh macet
-    gara-gara AI down."""
-    pesan_bersih = pesan.strip()
-    if not pesan_bersih:
-        return pesan_bersih
-
-    client = get_ai_client()
-    if client is None:
-        return pesan_bersih
-
-    try:
-        model_name = os.getenv("KOBOI_MODEL", "gemini-2.5-pro")
-        konteks_txt = f"\n\nPilihan {label_field} yang paling sering dipakai pelanggan lain:\n{konteks}" if konteks else ""
-        response = client.chat.completions.create(
-            model=model_name,
-            messages=[
-                {"role": "system", "content": (
-                    f"Kamu membantu mengekstrak jawaban '{label_field}' dari pesan pelanggan "
-                    f"toko percetakan. Pelanggan baru saja ditanya '{label_field} apa yang "
-                    f"diinginkan'." + konteks_txt + "\n\n"
-                    f"Balas HANYA dengan nilai {label_field} yang dimaksud pelanggan, seringkas "
-                    "mungkin (mis. 'Vinyl Doff', 'Laminasi Glossy'), TANPA basa-basi/kalimat "
-                    "tambahan/tanda kutip. Kalau pelanggan bilang tidak perlu/tidak tahu/terserah, "
-                    "balas persis dengan kata '-'. Kalau pesan pelanggan tidak menyebut pilihan "
-                    "yang jelas sama sekali, balas dengan pesan pelanggan itu apa adanya."
-                )},
-                {"role": "user", "content": pesan_bersih},
-            ],
-            max_tokens=40, temperature=0.1, timeout=10.0,
-        )
-        if not response or not getattr(response, 'choices', None):
-            return pesan_bersih
-        hasil = (response.choices[0].message.content or '').strip().strip('"').strip("'")
-        return hasil if hasil else pesan_bersih
-    except Exception as e:
-        logger.warning(f"Gagal ekstrak {label_field} via AI, fallback ke pesan asli: {e}")
         return pesan_bersih
 
 
@@ -1976,6 +1922,27 @@ def cek_harga_produk(pesan, nama_pelanggan, nomor=None):
     )
 
 
+SAPAAN_LIST = ['halo', 'p', 'ping', 'hai', 'hi', 'min', 'tes', 'test',
+               'pagi', 'siang', 'sore', 'malam', 'hei', 'permisi', 'selamat', 'assalamualaikum', 'ass']
+
+
+def pesan_hanya_sapaan(pesan):
+    """True kalau pesan CUMA sapaan polos (mis. "malam", "hai"), tanpa
+    konten lain -- dipakai utk short-circuit SEBELUM klasifikasi_maksud_pesan
+    (2026-09-09, bug ditemukan user: chat "malam" jatuh ke kategori 'anomali'
+    krn AI dipaksa milih dari 7 kategori tetap dan sapaan polos tidak cocok
+    kategori mana pun -- padahal cek_rules_awal() sudah punya penanganan
+    sapaan yang benar & deterministik, sekadar tidak pernah kebagian giliran
+    krn Step 3c/klasifikasi jalan duluan). Toleransi typo HANYA utk sapaan
+    yang cukup panjang (>=3 huruf), spy sapaan 1-2 huruf ('p','hi') tidak
+    jadi terlalu longgar & salah memicu di kalimat panjang."""
+    p = (pesan or '').lower().strip()
+    if not p:
+        return False
+    sapaan_mirip = len(p) <= 10 and any(_mirip(p, s, 0.72) for s in SAPAAN_LIST if len(s) >= 3)
+    return p in SAPAAN_LIST or sapaan_mirip or p.startswith('ass') or p.startswith('wass')
+
+
 def cek_rules_awal(pesan, nomor, nama_pelanggan):
     """
     Rules berbasis keyword — dieksekusi sebelum AI.
@@ -1991,13 +1958,7 @@ def cek_rules_awal(pesan, nomor, nama_pelanggan):
         return f"Silakan tulis pertanyaan lainnya ya, {panggilan}. Saya siap membantu 😊"
 
     # ── SAPAAN ───────────────────────────────────────────────────
-    sapaan_list = ['halo', 'p', 'ping', 'hai', 'hi', 'min', 'tes', 'test',
-                   'pagi', 'siang', 'sore', 'malam', 'hei', 'permisi', 'selamat', 'assalamualaikum', 'ass']
-    # Toleransi typo HANYA untuk pesan pendek (mis. "hallo") dibanding sapaan
-    # yang cukup panjang (>=3 huruf) — supaya sapaan 1-2 huruf ('p', 'hi')
-    # tidak jadi terlalu longgar dan salah memicu di kalimat panjang.
-    sapaan_mirip = len(p) <= 10 and any(_mirip(p, s, 0.72) for s in sapaan_list if len(s) >= 3)
-    if p in sapaan_list or sapaan_mirip or p.startswith('ass') or p.startswith('wass'):
+    if pesan_hanya_sapaan(p):
         biz_name = get_business_name()
         if not nama_pelanggan:
             menunggu_nama.add(nomor)

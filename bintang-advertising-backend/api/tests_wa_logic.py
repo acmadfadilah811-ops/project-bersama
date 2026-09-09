@@ -46,7 +46,6 @@ from api.wa_logic import (
     menunggu_status_desain,
     pending_order_form,
     ekstrak_produk_pilihan,
-    ekstrak_pilihan_bebas,
     klasifikasi_maksud_pesan,
     KATEGORI_MAKSUD_PESAN,
 )
@@ -1316,13 +1315,13 @@ class PilihanProdukSebelumFormWebhookTest(TestCase):
         self.assertIn('628333000333', menunggu_pilihan_produk)
         self.assertNotIn('628333000333', menunggu_status_desain)
 
-    def test_tanya_bahan_dan_finishing_interaktif_sebelum_status_desain(self):
-        """Tahap baru (2026-09-09, instruksi user): produk yang butuh_bahan/
-        butuh_finishing=True HARUS ditanya bot secara interaktif, bukan cuma
-        field kosong di form. Alur lengkap: pilih produk -> tanya Bahan ->
-        tanya Finishing -> tanya status desain -> form terisi bahan+finishing."""
-        from api.wa_logic import menunggu_pilihan_bahan, menunggu_pilihan_finishing
-
+    def test_pilih_produk_langsung_tanya_status_desain_lalu_form_kosong(self):
+        """(2026-09-09) Tahap interaktif tanya-Bahan/tanya-Finishing SEBELUM
+        form sempat dicoba lalu DIBATALKAN hari yang sama -- bug produksi:
+        jawaban bebas pelanggan (mis. pertanyaan balik) malah kepakai mentah2
+        jadi isi field. Sekarang: pilih produk -> langsung tanya status
+        desain -> form dikirim dgn Bahan/Finishing KOSONG (pelanggan isi
+        sendiri, divalidasi saat form disubmit balik)."""
         Product.objects.create(
             nama="Roll Banner", price_type='flat', harga_jual_toko=250000,
             butuh_bahan=True, butuh_finishing=True,
@@ -1331,45 +1330,17 @@ class PilihanProdukSebelumFormWebhookTest(TestCase):
         self._kirim("mau cetak banner")
         self.assertIn('628333000333', menunggu_pilihan_produk)
 
-        jawaban_bahan = self._kirim("Roll Banner")
-        self.assertIn('628333000333', menunggu_pilihan_bahan)
-        self.assertNotIn('628333000333', menunggu_pilihan_produk)
-        self.assertIn('bahan', jawaban_bahan.lower())
-
-        jawaban_finishing = self._kirim("Flexi Korea")
-        self.assertIn('628333000333', menunggu_pilihan_finishing)
-        self.assertNotIn('628333000333', menunggu_pilihan_bahan)
-        self.assertIn('finishing', jawaban_finishing.lower())
-
-        jawaban_status = self._kirim("Mata Ayam")
+        jawaban_status = self._kirim("Roll Banner")
         self.assertIn('628333000333', menunggu_status_desain)
-        self.assertNotIn('628333000333', menunggu_pilihan_finishing)
+        self.assertNotIn('628333000333', menunggu_pilihan_produk)
         self.assertIn('file desainnya', jawaban_status.lower())
 
         jawaban_form = self._kirim("sudah ada")
         self.assertIn('FORM ORDER', jawaban_form)
         self.assertIn('Jenis Produk  : Roll Banner', jawaban_form)
-        self.assertIn('Bahan/Material: Flexi Korea', jawaban_form)
-        self.assertIn('Finishing     : Mata Ayam', jawaban_form)
+        self.assertIn('Bahan/Material: \n', jawaban_form)
+        self.assertIn('Finishing     : \n', jawaban_form)
         self.assertNotIn('628333000333', menunggu_status_desain)
-
-    def test_produk_tanpa_butuh_bahan_finishing_langsung_ke_status_desain(self):
-        """Produk dengan butuh_bahan=butuh_finishing=False (mis. jasa desain,
-        materai) TIDAK boleh ditanya Bahan/Finishing sama sekali -- langsung
-        ke tahap status desain seperti alur lama."""
-        from api.wa_logic import menunggu_pilihan_bahan, menunggu_pilihan_finishing
-
-        Product.objects.create(
-            nama="Jasa Desain Grafis", price_type='flat', harga_jual_toko=50000,
-            butuh_bahan=False, butuh_finishing=False,
-        )
-
-        self._kirim("mau cetak banner")
-        jawaban = self._kirim("Jasa Desain Grafis")
-        self.assertIn('628333000333', menunggu_status_desain)
-        self.assertNotIn('628333000333', menunggu_pilihan_bahan)
-        self.assertNotIn('628333000333', menunggu_pilihan_finishing)
-        self.assertIn('file desainnya', jawaban.lower())
 
     def test_konfirmasi_singkat_saja_juga_tidak_dipaksa_jadi_nama_produk(self):
         self._kirim("mau cetak banner")
