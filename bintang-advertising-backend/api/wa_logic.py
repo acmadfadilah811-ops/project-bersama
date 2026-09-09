@@ -135,6 +135,24 @@ menunggu_pilihan_produk = CacheState(cache_prefix="wa_menunggu_pilihan_produk_")
 menunggu_status_desain = CacheState(cache_prefix="wa_menunggu_status_desain_")
 pending_order_form = CacheState(cache_prefix="wa_pending_order_form_")
 
+# Tahap interaktif Bahan/Finishing (2026-09-09, instruksi user) — disisipkan
+# antara "produk dipilih" dan "tanya status desain". Value = jenis_produk yang
+# sedang ditanya (sama pola dengan menunggu_status_desain). bahan_terpilih/
+# finishing_terpilih menyimpan HASIL yang sudah ditangkap supaya bisa dibawa
+# sampai ke pembuatan form order (get_form_order), tanpa mengubah bentuk
+# menunggu_status_desain yang sudah ada (tetap plain string, minim risiko).
+menunggu_pilihan_bahan = CacheState(cache_prefix="wa_menunggu_bahan_")
+menunggu_pilihan_finishing = CacheState(cache_prefix="wa_menunggu_finishing_")
+bahan_terpilih = CacheState(cache_prefix="wa_bahan_terpilih_")
+finishing_terpilih = CacheState(cache_prefix="wa_finishing_terpilih_")
+
+# Sekali per hari per nomor — sapaan "halo lagi" utk kontak yang SUDAH
+# tersimpan namanya tapi ini kemungkinan besar percakapan baru (2026-09-09,
+# perbaikan bug "greeting tidak aktif": kontak lama yang pesan pertamanya
+# kebetulan cocok kata kunci harga tapi produknya tidak ketemu langsung
+# dapat balasan "maaf" tanpa pernah disapa dulu -- lihat views/whatsapp.py).
+sudah_disapa_hari_ini = CacheState(cache_prefix="wa_disapa_hari_ini_", timeout=86400)
+
 
 def ekstrak_nama_dari_pesan(pesan):
     """
@@ -977,14 +995,21 @@ def _eskalasi_ke_admin(nomor, nama_pelanggan, pesan_asli, alasan):
 # FORM ORDER — Dikirim hanya jika pelanggan eksplisit mau order
 # ════════════════════════════════════════════════════════════════
 
-def get_form_order(nama_pelanggan="", jenis_produk=""):
+def get_form_order(nama_pelanggan="", jenis_produk="", bahan="", finishing=""):
     """`jenis_produk` (opsional) pre-fill kolom "Jenis Produk" Item 1 —
     dipakai saat pelanggan sudah sebutkan produk spesifik yang dipilih di
     tahap tanya-produk sebelum form (lihat Trigger 2 cek_rules_awal & state
-    menunggu_pilihan_produk/menunggu_status_desain di views/whatsapp.py)."""
+    menunggu_pilihan_produk/menunggu_status_desain di views/whatsapp.py).
+    `bahan`/`finishing` (opsional, 2026-09-09) pre-fill kolom yang sama dari
+    tahap tanya-Bahan/tanya-Finishing interaktif (menunggu_pilihan_bahan/
+    menunggu_pilihan_finishing) -- sebelumnya field ini SELALU kosong,
+    pelanggan harus isi sendiri tanpa dipandu bot (gap ditemukan audit
+    2026-09-09)."""
     from .models import SystemConfig
     nama_isi = nama_pelanggan if nama_pelanggan else ""
     produk_isi = jenis_produk if jenis_produk else ""
+    bahan_isi = bahan if bahan else ""
+    finishing_isi = finishing if finishing else ""
     biz_name = get_business_name()
     default_template = (
         f"📋 *FORM ORDER - {biz_name}*\n"
@@ -996,8 +1021,8 @@ def get_form_order(nama_pelanggan="", jenis_produk=""):
         f"- Jenis Produk  : {produk_isi}\n"
         f"- Jumlah        : \n"
         f"- Ukuran        : \n"
-        f"- Bahan/Material: \n"
-        f"- Finishing     : \n"
+        f"- Bahan/Material: {bahan_isi}\n"
+        f"- Finishing     : {finishing_isi}\n"
         f"- File Desain   : *sudah ada* / *belum ada*\n"
         f"- Keterangan    : \n\n"
         f"📦 *Item 2 (isi jika ada, hapus jika tidak perlu)*\n"
@@ -1016,9 +1041,13 @@ def get_form_order(nama_pelanggan="", jenis_produk=""):
         template = conf.value
         if nama_pelanggan and "Nama    : " in template:
             template = template.replace("Nama    : ", f"Nama    : {nama_pelanggan}")
+        # count=1 di semua replace di bawah: cuma isi Item 1, Item 2 dst. tetap kosong
         if jenis_produk and "Jenis Produk  : " in template:
-            # count=1: cuma isi Item 1, Item 2 dst. tetap kosong
             template = template.replace("Jenis Produk  : ", f"Jenis Produk  : {jenis_produk}", 1)
+        if bahan and "Bahan/Material: " in template:
+            template = template.replace("Bahan/Material: ", f"Bahan/Material: {bahan}", 1)
+        if finishing and "Finishing     : " in template:
+            template = template.replace("Finishing     : ", f"Finishing     : {finishing}", 1)
         return template
     except SystemConfig.DoesNotExist:
         return default_template
@@ -1405,6 +1434,162 @@ def ekstrak_produk_pilihan(pesan, info_kategori=""):
     except Exception as e:
         logger.warning(f"Gagal ekstrak nama produk pilihan via AI, fallback ke pesan asli: {e}")
         return pesan_bersih
+
+
+def ekstrak_pilihan_bebas(pesan, label_field, konteks=""):
+    """Versi generik `ekstrak_produk_pilihan()` utk field bebas lain (Bahan,
+    Finishing, dst, 2026-09-09) -- pola AI 70% (pemahaman bahasa bebas) /
+    bot 30% (state machine yg nentuin KAPAN nanya) yang sudah terbukti aman
+    dipakai utk pemilihan produk: AI cuma memoles jawaban pelanggan jadi
+    nilai bersih, BUKAN mengambil keputusan. Fallback ke pesan asli
+    (di-strip) kalau AI tidak tersedia/gagal -- alur tidak boleh macet
+    gara-gara AI down."""
+    pesan_bersih = pesan.strip()
+    if not pesan_bersih:
+        return pesan_bersih
+
+    client = get_ai_client()
+    if client is None:
+        return pesan_bersih
+
+    try:
+        model_name = os.getenv("KOBOI_MODEL", "gemini-2.5-pro")
+        konteks_txt = f"\n\nPilihan {label_field} yang paling sering dipakai pelanggan lain:\n{konteks}" if konteks else ""
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": (
+                    f"Kamu membantu mengekstrak jawaban '{label_field}' dari pesan pelanggan "
+                    f"toko percetakan. Pelanggan baru saja ditanya '{label_field} apa yang "
+                    f"diinginkan'." + konteks_txt + "\n\n"
+                    f"Balas HANYA dengan nilai {label_field} yang dimaksud pelanggan, seringkas "
+                    "mungkin (mis. 'Vinyl Doff', 'Laminasi Glossy'), TANPA basa-basi/kalimat "
+                    "tambahan/tanda kutip. Kalau pelanggan bilang tidak perlu/tidak tahu/terserah, "
+                    "balas persis dengan kata '-'. Kalau pesan pelanggan tidak menyebut pilihan "
+                    "yang jelas sama sekali, balas dengan pesan pelanggan itu apa adanya."
+                )},
+                {"role": "user", "content": pesan_bersih},
+            ],
+            max_tokens=40, temperature=0.1, timeout=10.0,
+        )
+        if not response or not getattr(response, 'choices', None):
+            return pesan_bersih
+        hasil = (response.choices[0].message.content or '').strip().strip('"').strip("'")
+        return hasil if hasil else pesan_bersih
+    except Exception as e:
+        logger.warning(f"Gagal ekstrak {label_field} via AI, fallback ke pesan asli: {e}")
+        return pesan_bersih
+
+
+KATEGORI_MAKSUD_PESAN = (
+    'lihat_produk', 'cek_harga', 'buat_pesanan', 'tracking_pesanan',
+    'konsultasi_desain', 'pembayaran', 'anomali',
+)
+
+
+def klasifikasi_maksud_pesan(pesan):
+    """
+    Klasifikasi maksud pesan pelanggan ke salah satu dari 7 kategori
+    (KATEGORI_MAKSUD_PESAN) -- instruksi user 2026-09-09: "n8n sebagai
+    penyaring" diimplementasikan native di Python (bukan service n8n
+    terpisah) supaya tidak nambah titik gagal baru utk chatbot yang harus
+    selalu jalan, dan tetap tercakup test suite Django yang sudah ada.
+
+    Pola sama dengan ekstrak_pilihan_bebas()/ekstrak_produk_pilihan(): AI
+    HANYA mengklasifikasi (bukan mengeksekusi apa pun), caller yang tetap
+    memutuskan alur & rute ke handler deterministik yang sesuai. Return
+    None kalau AI tidak tersedia/gagal/hasil di luar 7 kategori -- caller
+    WAJIB fallback ke logic keyword lama (jangan pernah macet krn AI down).
+
+    'anomali' = pelanggan bercanda / pertanyaan di luar konteks bisnis
+    percetakan sama sekali (bukan sekadar pertanyaan yang belum kejawab).
+    """
+    pesan_bersih = (pesan or '').strip()
+    if not pesan_bersih:
+        return None
+
+    client = get_ai_client()
+    if client is None:
+        return None
+
+    try:
+        model_name = os.getenv("KOBOI_MODEL", "gemini-2.5-pro")
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": (
+                    "Kamu mengklasifikasi maksud pesan WhatsApp pelanggan toko percetakan "
+                    "ke SATU dari 7 kategori berikut, balas HANYA kode kategorinya "
+                    "(tanpa basa-basi/kalimat tambahan/tanda kutip):\n\n"
+                    "lihat_produk - mau lihat katalog/daftar produk yang tersedia\n"
+                    "cek_harga - menanyakan harga produk spesifik\n"
+                    "buat_pesanan - mau order/pesan/checkout\n"
+                    "tracking_pesanan - menanyakan status pesanan yang sudah dibuat\n"
+                    "konsultasi_desain - bertanya soal desain, ukuran, layout, warna, dsb\n"
+                    "pembayaran - menanyakan cara bayar, konfirmasi sudah transfer, dsb\n"
+                    "anomali - bercanda, iseng, atau sama sekali di luar konteks bisnis "
+                    "percetakan (BUKAN pertanyaan produk yang belum terjawab -- kalau "
+                    "masih ada kemungkinan terkait cetak/produk/pesanan, JANGAN pilih ini)"
+                )},
+                {"role": "user", "content": pesan_bersih},
+            ],
+            max_tokens=15, temperature=0.1, timeout=10.0,
+        )
+        if not response or not getattr(response, 'choices', None):
+            return None
+        hasil = (response.choices[0].message.content or '').strip().strip('"').strip("'").lower()
+        return hasil if hasil in KATEGORI_MAKSUD_PESAN else None
+    except Exception as e:
+        logger.warning(f"Gagal klasifikasi maksud pesan via AI: {e}")
+        return None
+
+
+def mulai_alur_buat_pesanan(pesan, nomor, nama_pelanggan):
+    """
+    Handler kategori 'buat_pesanan' dari klasifikasi_maksud_pesan()
+    (2026-09-09, instruksi user -- klasifikasi AI jadi router UTAMA,
+    bukan cuma jaring pengaman, supaya keyword lama yang rawan salah
+    tebak tidak lagi membajak pesan pelanggan).
+
+    Perilaku SENGAJA disamakan dengan Trigger 2 di cek_rules_awal() (niat
+    cetak + nama produk), tapi ditulis TERPISAH (bukan hasil ekstrak/panggil
+    balik ke cek_rules_awal) -- supaya Trigger 1/2 di cek_rules_awal() tetap
+    utuh tidak tersentuh sama sekali, karena itu jadi jaring pengaman kalau
+    AI klasifikasi mati/gagal (lihat pemanggil di views/whatsapp.py).
+    """
+    panggilan = f"Kak {nama_pelanggan}" if nama_pelanggan else "Kak"
+    p = (pesan or '').lower().strip()
+    cocok = _cocok_kategori_pricelist(p)
+    info_kategori = get_pricelist_kategori(cocok[1]) if cocok else None
+    if info_kategori:
+        menunggu_pilihan_produk.set(nomor, cocok[1])
+        return (
+            f"Kami memiliki beberapa pilihan terkait produk yang dipilih, sebagai berikut:\n\n"
+            f"{info_kategori}\n\n"
+            f"Produk yang mana yang {panggilan} mau pilih? 😊"
+        )
+    menunggu_pilihan_produk.set(nomor, '')
+    return (
+        f"Baik {panggilan}, dengan senang hati 😊 Mau order produk yang mana ya, Kak? "
+        f"Boleh sebutkan nama produknya dulu ya 🙏"
+    )
+
+
+def mulai_alur_lihat_produk(pesan, nama_pelanggan):
+    """
+    Handler kategori 'lihat_produk' dari klasifikasi_maksud_pesan()
+    (2026-09-09) -- coba jawab kategori spesifik dulu (cek_isi_kategori),
+    fallback ke katalog umum semua kategori (cek_katalog_produk), sama
+    persis urutan yang sudah dipakai cek_rules_awal() supaya konsisten.
+    """
+    jawaban = cek_isi_kategori(pesan, nama_pelanggan)
+    if jawaban:
+        return jawaban
+    jawaban = cek_katalog_produk(pesan, nama_pelanggan)
+    if jawaban:
+        return jawaban
+    panggilan = f"Kak {nama_pelanggan}" if nama_pelanggan else "Kak"
+    return f"Baik {panggilan}, produk apa yang ingin dilihat? Boleh sebutkan kategorinya ya 😊"
 
 
 # Frasa multi-kata: dicocokkan via _cocok_kata_kunci biasa (tiap kata di frasa

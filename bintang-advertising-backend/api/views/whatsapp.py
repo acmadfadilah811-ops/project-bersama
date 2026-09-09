@@ -590,6 +590,97 @@ class BaseWhatsAppWebhookView(APIView):
                 )
         return jawaban
 
+    def _coba_jawab_diluar_alur(self, sender_number, message_text, nama_pelanggan, status_label, tambahan_setelah=""):
+        """
+        Cek dulu apakah pelanggan nyeletuk hal lain (biasanya nanya harga
+        produk lain) di tengah alur bertahap (pilih produk/bahan/finishing/
+        status desain) SEBELUM pesannya ditelan mentah-mentah jadi jawaban
+        tahap itu -- pola yang sebelumnya di-copy-paste 4x terpisah (bug asal
+        ditemukan user 2026-08-15), dirapikan jadi satu fungsi (2026-09-09)
+        supaya tahap baru ke depan otomatis dapat perlindungan ini tanpa
+        perlu diingat-ingat & disalin manual lagi.
+
+        `tambahan_setelah` (opsional) ditempel di belakang jawaban buat
+        mengingatkan pertanyaan tahap yang masih ditunggu.
+
+        Return (jawaban, status_dict, http_status) kalau ketemu jawaban
+        diluar alur (caller harus langsung `return` nilai ini apa adanya),
+        atau None kalau tidak ketemu (lanjut proses tahap seperti biasa).
+        """
+        from ..wa_logic import cek_harga, simpan_ke_memori
+
+        jawaban_diluar_alur = cek_harga(message_text, nama_pelanggan, nomor=sender_number)
+        if not jawaban_diluar_alur:
+            return None
+        jawaban = f"{jawaban_diluar_alur}\n\n{tambahan_setelah}" if tambahan_setelah else jawaban_diluar_alur
+        simpan_ke_memori(sender_number, "assistant", jawaban, nama_pelanggan)
+        self._kirim_balas_async(sender_number, jawaban)
+        return jawaban, {'status': status_label}, status.HTTP_200_OK
+
+    @staticmethod
+    def _cari_product_untuk_tanya(nama_produk):
+        """Resolve nama produk bebas (hasil ekstrak_produk_pilihan) ke
+        Product asli utk cek butuh_bahan/butuh_finishing (2026-09-09).
+        Kalau tidak ketemu sama sekali, DEFAULT True/True (sama dgn default
+        field Product itu sendiri) -- lebih aman menanya berlebih drpd
+        diam-diam skip kebutuhan riil gara-gara pencarian meleset."""
+        from ..services.wa_ai_tools import cari_produk
+        from ..product_models import Product
+        try:
+            hasil = cari_produk(nama_produk)
+            produk_list = hasil.get('produk') or []
+            if produk_list:
+                produk = Product.objects.filter(pk=produk_list[0]['product_id']).first()
+                if produk:
+                    return produk
+        except Exception as e:
+            logger.warning(f"Gagal resolve produk '{nama_produk}' utk cek bahan/finishing: {e}")
+        return None
+
+    def _mulai_tanya_bahan_atau_lanjut(self, sender_number, panggilan, nama_pelanggan, nama_produk):
+        """Titik masuk setelah produk dipilih (2026-09-09): tanya Bahan kalau
+        produknya butuh, kalau tidak lanjut langsung ke tahap Finishing."""
+        from ..wa_logic import menunggu_pilihan_bahan, cek_bahan_terlaris, simpan_ke_memori
+
+        produk = self._cari_product_untuk_tanya(nama_produk)
+        butuh_bahan = produk.butuh_bahan if produk else True
+        if not butuh_bahan:
+            return self._mulai_tanya_finishing_atau_lanjut(sender_number, panggilan, nama_pelanggan, nama_produk)
+
+        menunggu_pilihan_bahan.set(sender_number, nama_produk)
+        terlaris = cek_bahan_terlaris(nama_produk)
+        saran = f" (paling sering dipilih: {', '.join(terlaris)})" if terlaris else ""
+        jawaban = f"Baik {panggilan}! Untuk *{nama_produk}* — mau pakai bahan/material apa, Kak?{saran} 😊"
+        simpan_ke_memori(sender_number, "assistant", jawaban, nama_pelanggan)
+        return jawaban
+
+    def _mulai_tanya_finishing_atau_lanjut(self, sender_number, panggilan, nama_pelanggan, nama_produk):
+        """Titik masuk setelah Bahan (atau langsung dari pilih produk kalau
+        produknya tidak butuh Bahan): tanya Finishing kalau produknya butuh,
+        kalau tidak lanjut langsung ke tahap status desain (2026-09-09)."""
+        from ..wa_logic import (
+            menunggu_pilihan_finishing, menunggu_status_desain,
+            cek_finishing_terlaris, simpan_ke_memori,
+        )
+
+        produk = self._cari_product_untuk_tanya(nama_produk)
+        butuh_finishing = produk.butuh_finishing if produk else True
+        if not butuh_finishing:
+            menunggu_status_desain.set(sender_number, nama_produk)
+            jawaban = (
+                f"Baik {panggilan}! Untuk *{nama_produk}* — apakah sudah punya "
+                f"file desainnya, atau belum ada, nih? 😊"
+            )
+            simpan_ke_memori(sender_number, "assistant", jawaban, nama_pelanggan)
+            return jawaban
+
+        menunggu_pilihan_finishing.set(sender_number, nama_produk)
+        terlaris = cek_finishing_terlaris(nama_produk)
+        saran = f" (paling sering dipilih: {', '.join(terlaris)})" if terlaris else ""
+        jawaban = f"Siap {panggilan}! Untuk finishing-nya, mau pakai apa, Kak?{saran} 😊"
+        simpan_ke_memori(sender_number, "assistant", jawaban, nama_pelanggan)
+        return jawaban
+
     def _proses_pesan_masuk(self, sender_raw, message_text, media_url="", push_name=""):
         from ..wa_logic import (
             menunggu_nama, menunggu_pilihan_produk, menunggu_status_desain, pending_order_form,
@@ -600,6 +691,11 @@ class BaseWhatsAppWebhookView(APIView):
             cocok_status_desain, cocok_konfirmasi_sesuai,
             get_pricelist_kategori, ekstrak_produk_pilihan,
             _pesan_konfirmasi_tanpa_produk,
+            menunggu_pilihan_bahan, menunggu_pilihan_finishing,
+            bahan_terpilih, finishing_terpilih, sudah_disapa_hari_ini,
+            ekstrak_pilihan_bebas, cek_bahan_terlaris, cek_finishing_terlaris,
+            klasifikasi_maksud_pesan, get_business_name,
+            mulai_alur_buat_pesanan, mulai_alur_lihat_produk,
         )
 
         sender_number = str(sender_raw).split('@')[0].replace('+', '').replace(' ', '').replace('-', '')
@@ -765,11 +861,11 @@ class BaseWhatsAppWebhookView(APIView):
             # ini, biar pelanggan masih bisa lanjut milih produk setelahnya
             # (bug ditemukan user 2026-08-15: pesan di luar alur kepaksa
             # masuk step ini & bikin jawaban ngaco).
-            jawaban_diluar_alur = cek_harga(message_text, nama_pelanggan, nomor=sender_number)
-            if jawaban_diluar_alur:
-                simpan_ke_memori(sender_number, "assistant", jawaban_diluar_alur, nama_pelanggan)
-                self._kirim_balas_async(sender_number, jawaban_diluar_alur)
-                return jawaban_diluar_alur, {'status': 'diluar_alur_pilihan_produk'}, status.HTTP_200_OK
+            hasil_diluar_alur = self._coba_jawab_diluar_alur(
+                sender_number, message_text, nama_pelanggan, 'diluar_alur_pilihan_produk',
+            )
+            if hasil_diluar_alur:
+                return hasil_diluar_alur
 
             if _pesan_konfirmasi_tanpa_produk(message_text):
                 # Pelanggan cuma konfirmasi niat ("mau order", "oke", "siap",
@@ -786,14 +882,68 @@ class BaseWhatsAppWebhookView(APIView):
             menunggu_pilihan_produk.discard(sender_number)
             info_konteks = get_pricelist_kategori(kategori_slug) if kategori_slug else ''
             nama_produk_dipilih = ekstrak_produk_pilihan(message_text, info_konteks)
-            menunggu_status_desain.set(sender_number, nama_produk_dipilih)
+            jawaban = self._mulai_tanya_bahan_atau_lanjut(
+                sender_number, panggilan, nama_pelanggan, nama_produk_dipilih,
+            )
+            self._kirim_balas_async(sender_number, jawaban)
+            return jawaban, {'status': 'product_choice_captured'}, status.HTTP_200_OK
+
+        # ── Jawaban BAHAN utk produk yang sudah dipilih (2026-09-09) ──
+        # Tahap baru: bot BERTANYA bahan (bukan cuma field kosong di form yang
+        # harus diisi sendiri pelanggan) -- instruksi user. AI cuma memoles
+        # jawaban bebas pelanggan jadi nilai bersih (pola sama dgn
+        # ekstrak_produk_pilihan), bot yang tetap nentukan alurnya.
+        produk_tanya_bahan = menunggu_pilihan_bahan.get(sender_number)
+        if produk_tanya_bahan:
+            hasil_diluar_alur = self._coba_jawab_diluar_alur(
+                sender_number, message_text, nama_pelanggan, 'diluar_alur_pilihan_bahan',
+            )
+            if hasil_diluar_alur:
+                return hasil_diluar_alur
+
+            if _pesan_konfirmasi_tanpa_produk(message_text):
+                jawaban = f"Baik {panggilan} 🙏 Bahan/material apa yang Kakak mau untuk *{produk_tanya_bahan}*? 😊"
+                simpan_ke_memori(sender_number, "assistant", jawaban, nama_pelanggan)
+                self._kirim_balas_async(sender_number, jawaban)
+                return jawaban, {'status': 'pilihan_bahan_belum_jelas'}, status.HTTP_200_OK
+
+            terlaris = cek_bahan_terlaris(produk_tanya_bahan)
+            bahan_dipilih = ekstrak_pilihan_bebas(message_text, "Bahan/Material", konteks=', '.join(terlaris))
+            bahan_terpilih.set(sender_number, bahan_dipilih)
+            menunggu_pilihan_bahan.discard(sender_number)
+            jawaban = self._mulai_tanya_finishing_atau_lanjut(
+                sender_number, panggilan, nama_pelanggan, produk_tanya_bahan,
+            )
+            self._kirim_balas_async(sender_number, jawaban)
+            return jawaban, {'status': 'bahan_captured'}, status.HTTP_200_OK
+
+        # ── Jawaban FINISHING utk produk yang sudah dipilih (2026-09-09) ──
+        produk_tanya_finishing = menunggu_pilihan_finishing.get(sender_number)
+        if produk_tanya_finishing:
+            hasil_diluar_alur = self._coba_jawab_diluar_alur(
+                sender_number, message_text, nama_pelanggan, 'diluar_alur_pilihan_finishing',
+            )
+            if hasil_diluar_alur:
+                return hasil_diluar_alur
+
+            if _pesan_konfirmasi_tanpa_produk(message_text):
+                jawaban = f"Baik {panggilan} 🙏 Finishing apa yang Kakak mau untuk *{produk_tanya_finishing}*? 😊"
+                simpan_ke_memori(sender_number, "assistant", jawaban, nama_pelanggan)
+                self._kirim_balas_async(sender_number, jawaban)
+                return jawaban, {'status': 'pilihan_finishing_belum_jelas'}, status.HTTP_200_OK
+
+            terlaris = cek_finishing_terlaris(produk_tanya_finishing)
+            finishing_dipilih = ekstrak_pilihan_bebas(message_text, "Finishing", konteks=', '.join(terlaris))
+            finishing_terpilih.set(sender_number, finishing_dipilih)
+            menunggu_pilihan_finishing.discard(sender_number)
+            menunggu_status_desain.set(sender_number, produk_tanya_finishing)
             jawaban = (
-                f"Baik {panggilan}! Untuk *{nama_produk_dipilih}* — apakah sudah punya "
+                f"Baik {panggilan}! Untuk *{produk_tanya_finishing}* — apakah sudah punya "
                 f"file desainnya, atau belum ada, nih? 😊"
             )
             simpan_ke_memori(sender_number, "assistant", jawaban, nama_pelanggan)
             self._kirim_balas_async(sender_number, jawaban)
-            return jawaban, {'status': 'product_choice_captured'}, status.HTTP_200_OK
+            return jawaban, {'status': 'finishing_captured'}, status.HTTP_200_OK
 
         # ── Jawaban status desain utk produk yang sudah dipilih ──
         produk_dipilih = menunggu_status_desain.get(sender_number)
@@ -806,19 +956,22 @@ class BaseWhatsAppWebhookView(APIView):
                 # JANGAN discard state, tanya lagi status desainnya nanti
                 # (bug ditemukan user 2026-08-15: pertanyaan estimasi harga
                 # kepaksa dianggap jawaban "sudah", langsung kirim form).
-                jawaban_diluar_alur = cek_harga(message_text, nama_pelanggan, nomor=sender_number)
-                if jawaban_diluar_alur:
-                    jawaban = (
-                        f"{jawaban_diluar_alur}\n\n"
-                        f"Btw {panggilan}, utk *{produk_dipilih}* yang tadi — sudah ada "
-                        f"file desainnya atau belum ya? 😊"
-                    )
-                    simpan_ke_memori(sender_number, "assistant", jawaban, nama_pelanggan)
-                    self._kirim_balas_async(sender_number, jawaban)
-                    return jawaban, {'status': 'diluar_alur_status_desain'}, status.HTTP_200_OK
+                hasil_diluar_alur = self._coba_jawab_diluar_alur(
+                    sender_number, message_text, nama_pelanggan, 'diluar_alur_status_desain',
+                    tambahan_setelah=f"Btw {panggilan}, utk *{produk_dipilih}* yang tadi — sudah ada file desainnya atau belum ya? 😊",
+                )
+                if hasil_diluar_alur:
+                    return hasil_diluar_alur
 
             menunggu_status_desain.discard(sender_number)
-            form = get_form_order(nama_pelanggan, jenis_produk=produk_dipilih)
+            bahan_isi = bahan_terpilih.get(sender_number) or ''
+            finishing_isi = finishing_terpilih.get(sender_number) or ''
+            bahan_terpilih.discard(sender_number)
+            finishing_terpilih.discard(sender_number)
+            form = get_form_order(
+                nama_pelanggan, jenis_produk=produk_dipilih,
+                bahan=bahan_isi, finishing=finishing_isi,
+            )
             if status_desain == 'belum':
                 jawaban = (
                     f"Baik {panggilan}, tidak masalah 😊 Silakan *copy* dan isi form order berikut "
@@ -912,9 +1065,75 @@ class BaseWhatsAppWebhookView(APIView):
                         mgr_wa = manager_user.no_hp.replace('+', '').replace(' ', '').replace('-', '')
                         self._kirim_balas_async(mgr_wa, admin_notify)
 
+        # Step 3c: Klasifikasi maksud pesan JADI ROUTER UTAMA (2026-09-09,
+        # instruksi user -- keyword lama rawan salah tebak/"membajak" pesan
+        # yang kebetulan mengandung kata kunci, bikin sistem tidak tepat
+        # sasaran; klasifikasi AI dipakai spt AI Agent filter di n8n, tapi
+        # native Python (lihat wa_logic.klasifikasi_maksud_pesan) supaya
+        # tidak nambah service terpisah yang jadi titik gagal baru).
+        #
+        # SENGAJA diletakkan SETELAH Step 2/3/3b (tracking, deteksi form
+        # order/desain, form pembatalan) -- itu semua deteksi STRUKTURAL
+        # (penanda teks pasti, mis. "Jenis Produk"+"No. WA") yang harus
+        # menang duluan drpd tebakan AI (bug ditemukan 2026-09-09: form
+        # order lengkap yang disubmit pelanggan malah kena klasifikasi AI
+        # duluan & disangka niat baru, bukan form yg lagi diisi).
+        #
+        # Kalau AI klasifikasi TIDAK TERSEDIA/GAGAL (maksud=None) ATAU
+        # kategorinya belum punya handler yang menghasilkan jawaban --
+        # JATUH KE Step 4-7 di bawah (jaring pengaman keyword lama, TIDAK
+        # dihapus, supaya sistem tidak pernah macet total kalau AI down).
+        # Pesan sangat pendek (mis. '1'/'ok') dilewati -- itu menu/konfirmasi
+        # yang sudah pasti tertangani deterministik di step lain.
+        if not jawaban and len(message_text.strip()) > 3:
+            maksud = klasifikasi_maksud_pesan(message_text)
+            jawaban_klasifikasi = None
+
+            if maksud == 'anomali':
+                biz_name_anomali = get_business_name()
+                jawaban_klasifikasi = (
+                    f"Hehe, ada-ada saja Kak 😄 Btw saya asisten virtual *{biz_name_anomali}*, "
+                    f"khusus bantu soal produk cetak, harga, pesanan, desain, sampai pembayaran ya. "
+                    f"Ada yang bisa dibantu terkait itu, Kak? 🙏"
+                )
+            elif maksud == 'lihat_produk':
+                jawaban_klasifikasi = mulai_alur_lihat_produk(message_text, nama_pelanggan)
+            elif maksud == 'cek_harga':
+                jawaban_klasifikasi = cek_harga(message_text, nama_pelanggan, nomor=sender_number)
+            elif maksud == 'buat_pesanan':
+                jawaban_klasifikasi = mulai_alur_buat_pesanan(message_text, sender_number, nama_pelanggan)
+            elif maksud == 'tracking_pesanan':
+                jawaban_klasifikasi = cek_tracking(message_text, sender_number, nama_pelanggan)
+            elif maksud in ('konsultasi_desain', 'pembayaran'):
+                # Belum ada alur khusus (2026-09-09) -- dialihkan ke AI
+                # kontekstual dulu, lebih relevan drpd jatuh ke jaring
+                # pengaman keyword lama yang bisa salah rute.
+                jawaban_klasifikasi = tanya_ai_finishing(sender_number, nama_pelanggan)
+
+            if jawaban_klasifikasi:
+                simpan_ke_memori(sender_number, "assistant", jawaban_klasifikasi, nama_pelanggan)
+                self._kirim_balas_async(sender_number, jawaban_klasifikasi)
+                return jawaban_klasifikasi, {'status': f'klasifikasi_{maksud}'}, status.HTTP_200_OK
+
         # Step 4: Cek tanya harga (jawab dari Product nyata, TANPA form)
         if not jawaban:
             jawaban = cek_harga(message_text, nama_pelanggan, nomor=sender_number)
+            # Perbaikan bug "greeting tidak aktif" (2026-09-09): kontak lama
+            # (nama sudah tersimpan, jadi Step 1 tidak pernah menyapa) yang
+            # pesan PERTAMA hari ini kebetulan cocok kata kunci harga tapi
+            # produknya tidak ketemu, sebelumnya langsung dapat balasan
+            # "maaf" mentah tanpa pernah disapa dulu -- terasa spt bot mati.
+            # Cukup TAMBAH sapaan di depan balasan yang SAMA (bukan intercept
+            # awal/ganti alur) supaya tidak mengganggu flow lain (bug
+            # ditemukan lewat test_button_reply_dipetakan_ke_menu_order dkk
+            # yang gagal saat sapaan dipasang sebagai early-return).
+            if (
+                jawaban and nama_pelanggan
+                and jawaban.startswith('Mohon maaf') and 'belum menemukan produk' in jawaban
+                and sender_number not in sudah_disapa_hari_ini
+            ):
+                sudah_disapa_hari_ini.set(sender_number, True)
+                jawaban = f"Halo {panggilan}! 👋 Selamat datang kembali. \n\n{jawaban}"
 
         # Step 5: Cek rules awal (sapaan, katalog nyata, minta form)
         if not jawaban:

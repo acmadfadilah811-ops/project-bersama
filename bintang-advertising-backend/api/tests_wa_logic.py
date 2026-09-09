@@ -46,6 +46,9 @@ from api.wa_logic import (
     menunggu_status_desain,
     pending_order_form,
     ekstrak_produk_pilihan,
+    ekstrak_pilihan_bebas,
+    klasifikasi_maksud_pesan,
+    KATEGORI_MAKSUD_PESAN,
 )
 from api.services.order_actions import batalkan_order, BatalkanOrderError
 from api.product_models import Product, ProductCategory, ProductPackage
@@ -429,6 +432,50 @@ class WALogicUnitTestCase(TestCase):
             self.assertIn("Admin kami akan segera membalas", jawaban)
 
 
+class KlasifikasiMaksudPesanTest(TestCase):
+    """Klasifikasi 7 kategori maksud pesan (2026-09-09, instruksi user --
+    'penyaring' native Python, bukan n8n terpisah)."""
+
+    def _mock_client(self, hasil_kategori):
+        mock_client = MagicMock()
+        mock_choice = MagicMock()
+        mock_choice.message.content = hasil_kategori
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+        mock_client.chat.completions.create.return_value = mock_response
+        return mock_client
+
+    def test_fallback_none_saat_ai_tidak_tersedia(self):
+        with patch("api.wa_logic.get_ai_client", return_value=None):
+            self.assertIsNone(klasifikasi_maksud_pesan("apa aja produknya"))
+
+    def test_fallback_none_saat_pesan_kosong(self):
+        self.assertIsNone(klasifikasi_maksud_pesan(""))
+        self.assertIsNone(klasifikasi_maksud_pesan("   "))
+
+    def test_fallback_none_saat_ai_gagal(self):
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.side_effect = RuntimeError("timeout")
+        with patch("api.wa_logic.get_ai_client", return_value=mock_client):
+            self.assertIsNone(klasifikasi_maksud_pesan("mau order banner"))
+
+    def test_fallback_none_saat_hasil_di_luar_7_kategori(self):
+        mock_client = self._mock_client("kategori_ngawur_tidak_valid")
+        with patch("api.wa_logic.get_ai_client", return_value=mock_client):
+            self.assertIsNone(klasifikasi_maksud_pesan("halo"))
+
+    def test_semua_7_kategori_valid_dikenali(self):
+        for kategori in KATEGORI_MAKSUD_PESAN:
+            mock_client = self._mock_client(kategori)
+            with patch("api.wa_logic.get_ai_client", return_value=mock_client):
+                self.assertEqual(klasifikasi_maksud_pesan("pesan uji"), kategori)
+
+    def test_hasil_dengan_tanda_kutip_dibersihkan(self):
+        mock_client = self._mock_client('"anomali"')
+        with patch("api.wa_logic.get_ai_client", return_value=mock_client):
+            self.assertEqual(klasifikasi_maksud_pesan("kucingku lucu ga sih kak"), 'anomali')
+
+
 class WhatsAppWebhookIntegrationTestCase(TestCase):
     """
     Test suite untuk pipeline WhatsApp webhook (Evolution API, Baileys)
@@ -478,10 +525,13 @@ class WhatsAppWebhookIntegrationTestCase(TestCase):
             }
         }
 
+        import threading
         with patch.dict(os.environ, {
             "EVOLUTION_API_KEY": "BintangEvolutionSecKey2026",
             "KOBOI_MODEL": "gemini-2.5-pro"
-        }), patch("api.whatsapp_client.whatsapp_client.send_text_message") as mock_send_text:
+        }), patch("api.whatsapp_client.whatsapp_client.send_text_message") as mock_send_text, \
+             patch("api.whatsapp_client.whatsapp_client.send_presence", return_value=None), \
+             patch("time.sleep", return_value=None):
             mock_send_text.return_value = {"status": "sent"}
 
             response = self.client.post(
@@ -490,9 +540,145 @@ class WhatsAppWebhookIntegrationTestCase(TestCase):
                 content_type="application/json",
                 HTTP_APIKEY="BintangEvolutionSecKey2026"
             )
+            # Tunggu thread background _kirim_balas_async selesai SEBELUM
+            # keluar dari context patch -- kalau tidak, kirim asli bisa
+            # kejadian belakangan & "bocor" ke test lain (bug ditemukan
+            # 2026-09-09 lewat test_webhook_pesan_anomali_dibalas_redirect_sopan
+            # yang tiba-tiba menerima 2 panggilan, salah satunya dari sini).
+            for t in threading.enumerate():
+                if t is not threading.current_thread() and t.daemon:
+                    t.join(timeout=5)
 
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.data.get("status"), "processed")
+
+    def test_webhook_pesan_anomali_dibalas_redirect_sopan(self):
+        """Pesan bercanda/di luar konteks bisnis (2026-09-09) -- kategori
+        'anomali' dari klasifikasi_maksud_pesan() harus di-redirect sopan
+        SEBELUM sempat masuk ke jalur tracking/harga/AI biasa."""
+        mock_client = self._mock_anomali_client()
+        Contact.objects.create(nomor_wa="628199988877", nama="Rian")
+        # Lewati gerbang "AI jawab pesan pertama sesi" (T-721,
+        # api/views/evolution_ai.py) -- beda dari klasifikasi_maksud_pesan,
+        # ini intercept SEMUA pesan pertama tanpa peduli isinya SEBELUM
+        # _proses_pesan_masuk sempat jalan sama sekali.
+        cache.set("wa_ai_respons_awal_628199988877", True, timeout=3600)
+
+        payload = {
+            "event": "messages.upsert",
+            "data": {
+                "key": {"remoteJid": "628199988877@s.whatsapp.net", "fromMe": False, "id": "MSG_ANOMALI_001"},
+                "pushName": "Rian",
+                "message": {"conversation": "eh kak tau ga tadi kucingku lucu banget wkwk"},
+            },
+        }
+        import threading
+        with patch.dict(os.environ, {"EVOLUTION_API_KEY": "BintangEvolutionSecKey2026"}), \
+             patch("api.wa_logic.get_ai_client", return_value=mock_client), \
+             patch("api.whatsapp_client.whatsapp_client.send_text_message") as mock_send_text, \
+             patch("api.whatsapp_client.whatsapp_client.send_presence", return_value=None), \
+             patch("time.sleep", return_value=None):
+            mock_send_text.return_value = {"status": "sent"}
+            response = self.client.post(
+                "/api/webhook/evolution/", payload,
+                content_type="application/json", HTTP_APIKEY="BintangEvolutionSecKey2026",
+            )
+            # _kirim_balas_async mengirim lewat thread terpisah -- tunggu
+            # sampai selesai sebelum cek isi pesan (pola sama dengan
+            # PilihanProdukSebelumFormWebhookTest._kirim()).
+            for t in threading.enumerate():
+                if t is not threading.current_thread() and t.daemon:
+                    t.join(timeout=5)
+        self.assertEqual(response.status_code, 200)
+        mock_send_text.assert_called_once()
+        teks_terkirim = mock_send_text.call_args[0][1]
+        self.assertIn("asisten virtual", teks_terkirim.lower())
+        # Tidak boleh nyasar ke jalur "produk tidak ditemukan"/tracking biasa
+        self.assertNotIn("belum menemukan produk", teks_terkirim.lower())
+        self.assertNotIn("ID Pesanan", teks_terkirim)
+
+    @staticmethod
+    def _mock_anomali_client():
+        return WhatsAppWebhookIntegrationTestCase._mock_kategori_client("anomali")
+
+    @staticmethod
+    def _mock_kategori_client(kategori):
+        mock_client = MagicMock()
+        mock_choice = MagicMock()
+        mock_choice.message.content = kategori
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+        mock_client.chat.completions.create.return_value = mock_response
+        return mock_client
+
+    def _kirim_dan_tunggu(self, payload, mock_client):
+        import threading
+        with patch.dict(os.environ, {"EVOLUTION_API_KEY": "BintangEvolutionSecKey2026"}), \
+             patch("api.wa_logic.get_ai_client", return_value=mock_client), \
+             patch("api.whatsapp_client.whatsapp_client.send_text_message") as mock_send_text, \
+             patch("api.whatsapp_client.whatsapp_client.send_presence", return_value=None), \
+             patch("time.sleep", return_value=None):
+            mock_send_text.return_value = {"status": "sent"}
+            response = self.client.post(
+                "/api/webhook/evolution/", payload,
+                content_type="application/json", HTTP_APIKEY="BintangEvolutionSecKey2026",
+            )
+            for t in threading.enumerate():
+                if t is not threading.current_thread() and t.daemon:
+                    t.join(timeout=5)
+        self.assertEqual(response.status_code, 200)
+        return mock_send_text
+
+    def test_klasifikasi_buat_pesanan_memicu_alur_pilih_produk(self):
+        """Kategori 'buat_pesanan' (2026-09-09) harus memicu
+        mulai_alur_buat_pesanan() -- tampilkan pilihan produk kategori yang
+        cocok & set state menunggu_pilihan_produk, BUKAN lewat keyword lama."""
+        from api.wa_logic import menunggu_pilihan_produk as _mpp
+        SystemConfig.objects.update_or_create(
+            key='wa_pricelist_kategori',
+            defaults={'value': '{"banner": "Daftar harga: Banner 340 Rp35.000/m2"}'},
+        )
+        Contact.objects.create(nomor_wa="628177766655", nama="Sinta")
+        cache.set("wa_ai_respons_awal_628177766655", True, timeout=3600)
+
+        payload = {
+            "event": "messages.upsert",
+            "data": {
+                "key": {"remoteJid": "628177766655@s.whatsapp.net", "fromMe": False, "id": "MSG_BUATPESANAN_001"},
+                "pushName": "Sinta",
+                "message": {"conversation": "kak saya pengen banget order spanduk buat acara kantor"},
+            },
+        }
+        mock_send_text = self._kirim_dan_tunggu(payload, self._mock_kategori_client("buat_pesanan"))
+        teks_terkirim = mock_send_text.call_args[0][1]
+        self.assertIn("produk yang mana", teks_terkirim.lower())
+        self.assertIn("628177766655", _mpp)
+
+    def test_klasifikasi_lihat_produk_menampilkan_katalog(self):
+        """Kategori 'lihat_produk' (2026-09-09) harus memicu
+        mulai_alur_lihat_produk() -- tampilkan katalog, bukan diarahkan ke
+        alur order."""
+        from api.management.commands.seed_wa_pricelist import KATEGORI_PRICELIST
+        SystemConfig.objects.update_or_create(
+            key='wa_pricelist_kategori',
+            defaults={'value': json.dumps(KATEGORI_PRICELIST, ensure_ascii=False)},
+        )
+        Contact.objects.create(nomor_wa="628177766656", nama="Doni")
+        cache.set("wa_ai_respons_awal_628177766656", True, timeout=3600)
+
+        payload = {
+            "event": "messages.upsert",
+            "data": {
+                "key": {"remoteJid": "628177766656@s.whatsapp.net", "fromMe": False, "id": "MSG_LIHATPRODUK_001"},
+                "pushName": "Doni",
+                "message": {"conversation": "kak emang di toko ini nyediain apa aja ya buat kebutuhan cetak"},
+            },
+        }
+        mock_send_text = self._kirim_dan_tunggu(payload, self._mock_kategori_client("lihat_produk"))
+        teks_terkirim = mock_send_text.call_args[0][1]
+        # Katalog nyata dari SystemConfig 'wa_pricelist_kategori', bukan
+        # pilihan produk dari 1 kategori spesifik / form order.
+        self.assertNotIn("FORM ORDER", teks_terkirim)
 
 
 class KatalogProdukTest(TestCase):
@@ -963,6 +1149,14 @@ class PilihanProdukSebelumFormWebhookTest(TestCase):
         # intercept SEMUA pesan pertama tanpa peduli isinya) supaya test ini
         # benar-benar menguji alur pilih-produk, bukan AI.
         cache.set("wa_ai_respons_awal_628333000333", True, timeout=3600)
+        # butuh_bahan/butuh_finishing=False: test class ini fokus ke alur
+        # pilih-produk -> status-desain -> form (bug lama 2026-08-15), BUKAN
+        # tahap tanya Bahan/Finishing (2026-09-09, dites terpisah di bawah)
+        # -- tanpa ini semua test di sini kepotong nyangkut di tahap Bahan.
+        Product.objects.create(
+            nama="Banner 340", price_type='per_m2', harga_jual_toko=35000,
+            butuh_bahan=False, butuh_finishing=False,
+        )
         SystemConfig.objects.update_or_create(
             key='wa_pricelist_kategori',
             defaults={'value': '{"banner": "Daftar harga: Banner 340 Rp35.000/m2, Roll Banner Rp250rb"}'},
@@ -1122,10 +1316,60 @@ class PilihanProdukSebelumFormWebhookTest(TestCase):
         self.assertIn('628333000333', menunggu_pilihan_produk)
         self.assertNotIn('628333000333', menunggu_status_desain)
 
-        # Lanjutkan dgn nama produk sebenarnya -> baru lanjut normal
-        self._kirim("Banner 340")
+    def test_tanya_bahan_dan_finishing_interaktif_sebelum_status_desain(self):
+        """Tahap baru (2026-09-09, instruksi user): produk yang butuh_bahan/
+        butuh_finishing=True HARUS ditanya bot secara interaktif, bukan cuma
+        field kosong di form. Alur lengkap: pilih produk -> tanya Bahan ->
+        tanya Finishing -> tanya status desain -> form terisi bahan+finishing."""
+        from api.wa_logic import menunggu_pilihan_bahan, menunggu_pilihan_finishing
+
+        Product.objects.create(
+            nama="Roll Banner", price_type='flat', harga_jual_toko=250000,
+            butuh_bahan=True, butuh_finishing=True,
+        )
+
+        self._kirim("mau cetak banner")
+        self.assertIn('628333000333', menunggu_pilihan_produk)
+
+        jawaban_bahan = self._kirim("Roll Banner")
+        self.assertIn('628333000333', menunggu_pilihan_bahan)
         self.assertNotIn('628333000333', menunggu_pilihan_produk)
-        self.assertEqual(menunggu_status_desain.get('628333000333'), 'Banner 340')
+        self.assertIn('bahan', jawaban_bahan.lower())
+
+        jawaban_finishing = self._kirim("Flexi Korea")
+        self.assertIn('628333000333', menunggu_pilihan_finishing)
+        self.assertNotIn('628333000333', menunggu_pilihan_bahan)
+        self.assertIn('finishing', jawaban_finishing.lower())
+
+        jawaban_status = self._kirim("Mata Ayam")
+        self.assertIn('628333000333', menunggu_status_desain)
+        self.assertNotIn('628333000333', menunggu_pilihan_finishing)
+        self.assertIn('file desainnya', jawaban_status.lower())
+
+        jawaban_form = self._kirim("sudah ada")
+        self.assertIn('FORM ORDER', jawaban_form)
+        self.assertIn('Jenis Produk  : Roll Banner', jawaban_form)
+        self.assertIn('Bahan/Material: Flexi Korea', jawaban_form)
+        self.assertIn('Finishing     : Mata Ayam', jawaban_form)
+        self.assertNotIn('628333000333', menunggu_status_desain)
+
+    def test_produk_tanpa_butuh_bahan_finishing_langsung_ke_status_desain(self):
+        """Produk dengan butuh_bahan=butuh_finishing=False (mis. jasa desain,
+        materai) TIDAK boleh ditanya Bahan/Finishing sama sekali -- langsung
+        ke tahap status desain seperti alur lama."""
+        from api.wa_logic import menunggu_pilihan_bahan, menunggu_pilihan_finishing
+
+        Product.objects.create(
+            nama="Jasa Desain Grafis", price_type='flat', harga_jual_toko=50000,
+            butuh_bahan=False, butuh_finishing=False,
+        )
+
+        self._kirim("mau cetak banner")
+        jawaban = self._kirim("Jasa Desain Grafis")
+        self.assertIn('628333000333', menunggu_status_desain)
+        self.assertNotIn('628333000333', menunggu_pilihan_bahan)
+        self.assertNotIn('628333000333', menunggu_pilihan_finishing)
+        self.assertIn('file desainnya', jawaban.lower())
 
     def test_konfirmasi_singkat_saja_juga_tidak_dipaksa_jadi_nama_produk(self):
         self._kirim("mau cetak banner")
