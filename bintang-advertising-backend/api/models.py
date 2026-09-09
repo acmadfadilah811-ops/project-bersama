@@ -1314,5 +1314,9 @@ from .finance_models import *
 # POSSaleItem, jadi registrasinya harus pasti — bukan efek samping impor URL.
 from .pos_models import *
 
+# Model integrasi eksternal (mis. FrappeProductSync -- sinkronisasi Product
+# satu arah ke Frappe, fase 1, 2026-09-09).
+from .integration_models import *
+
 # Import model Penggunaan Mesin (Mesin, PenggunaanMesin, MaintenanceMesin)
 from .machine_models import *
