@@ -655,7 +655,7 @@ class BaseWhatsAppWebhookView(APIView):
             sudah_disapa_hari_ini,
             klasifikasi_maksud_pesan, get_business_name,
             mulai_alur_buat_pesanan, mulai_alur_lihat_produk,
-            pesan_hanya_sapaan,
+            pesan_hanya_sapaan, jawab_sapaan,
         )
 
         sender_number = str(sender_raw).split('@')[0].replace('+', '').replace(' ', '').replace('-', '')
@@ -980,16 +980,24 @@ class BaseWhatsAppWebhookView(APIView):
         # JATUH KE Step 4-7 di bawah (jaring pengaman keyword lama, TIDAK
         # dihapus, supaya sistem tidak pernah macet total kalau AI down).
         # Pesan sangat pendek (mis. '1'/'ok') dilewati -- itu menu/konfirmasi
-        # yang sudah pasti tertangani deterministik di step lain. Sapaan
-        # polos (mis. "malam") JUGA dilewati -- dipaksa masuk 7 kategori
-        # tetap malah salah kena 'anomali' krn tidak ada kategori yg pas
-        # utk sapaan; cek_rules_awal() di Step 5 sudah menangani sapaan
-        # dgn benar & deterministik (bug produksi 2026-09-09).
-        if not jawaban and len(message_text.strip()) > 3 and not pesan_hanya_sapaan(message_text):
+        # yang sudah pasti tertangani deterministik di step lain.
+        #
+        # (2026-09-09) Sapaan TIDAK lagi dilewati dari klasifikasi -- AI
+        # sekarang punya kategori 'sapaan' sendiri (instruksi user "taruh AI
+        # di depan"), jadi variasi sapaan APA PUN (termasuk yang belum ada
+        # di SAPAAN_LIST keyword, mis. "hay") tetap dikenali AI & dibalas
+        # sapaan yang benar (jawab_sapaan -- SAMA fungsi dipakai cek_rules_awal
+        # sbg fallback), bukan salah kena 'anomali'/ditolak AI umum. Cek
+        # keyword pesan_hanya_sapaan() dipertahankan HANYA sbg jalur cepat
+        # (skip panggilan AI) utk sapaan yg SUDAH pasti dikenali persis --
+        # bukan lagi syarat kebenaran, cuma optimisasi biaya/latensi.
+        if not jawaban and len(message_text.strip()) > 1 and not pesan_hanya_sapaan(message_text):
             maksud = klasifikasi_maksud_pesan(message_text)
             jawaban_klasifikasi = None
 
-            if maksud == 'anomali':
+            if maksud == 'sapaan':
+                jawaban_klasifikasi = jawab_sapaan(sender_number, nama_pelanggan)
+            elif maksud == 'anomali':
                 biz_name_anomali = get_business_name()
                 jawaban_klasifikasi = (
                     f"Hehe, ada-ada saja Kak 😄 Btw saya asisten virtual *{biz_name_anomali}*, "
@@ -1011,6 +1019,14 @@ class BaseWhatsAppWebhookView(APIView):
                 jawaban_klasifikasi = tanya_ai_finishing(sender_number, nama_pelanggan)
 
             if jawaban_klasifikasi:
+                if jawaban_klasifikasi.startswith(TOMBOL_MARKER):
+                    teks_bersih = jawaban_klasifikasi[len(TOMBOL_MARKER):]
+                    simpan_ke_memori(sender_number, "assistant", teks_bersih, nama_pelanggan)
+                    self._kirim_tombol_atau_teks(
+                        sender_number, teks_bersih, MENU_TOMBOL,
+                        fallback_opsi_teks="1. 📋 Order\n2. 💰 Tanya Produk\n3. 📦 Cek Status\n_Balas dengan angkanya ya Kak_",
+                    )
+                    return teks_bersih, {'status': f'klasifikasi_{maksud}'}, status.HTTP_200_OK
                 simpan_ke_memori(sender_number, "assistant", jawaban_klasifikasi, nama_pelanggan)
                 self._kirim_balas_async(sender_number, jawaban_klasifikasi)
                 return jawaban_klasifikasi, {'status': f'klasifikasi_{maksud}'}, status.HTTP_200_OK

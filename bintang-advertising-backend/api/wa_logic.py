@@ -1429,13 +1429,13 @@ def ekstrak_produk_pilihan(pesan, info_kategori=""):
 
 KATEGORI_MAKSUD_PESAN = (
     'lihat_produk', 'cek_harga', 'buat_pesanan', 'tracking_pesanan',
-    'konsultasi_desain', 'pembayaran', 'anomali',
+    'konsultasi_desain', 'pembayaran', 'sapaan', 'anomali',
 )
 
 
 def klasifikasi_maksud_pesan(pesan):
     """
-    Klasifikasi maksud pesan pelanggan ke salah satu dari 7 kategori
+    Klasifikasi maksud pesan pelanggan ke salah satu dari 8 kategori
     (KATEGORI_MAKSUD_PESAN) -- instruksi user 2026-09-09: "n8n sebagai
     penyaring" diimplementasikan native di Python (bukan service n8n
     terpisah) supaya tidak nambah titik gagal baru utk chatbot yang harus
@@ -1444,11 +1444,21 @@ def klasifikasi_maksud_pesan(pesan):
     Pola sama dengan ekstrak_pilihan_bebas()/ekstrak_produk_pilihan(): AI
     HANYA mengklasifikasi (bukan mengeksekusi apa pun), caller yang tetap
     memutuskan alur & rute ke handler deterministik yang sesuai. Return
-    None kalau AI tidak tersedia/gagal/hasil di luar 7 kategori -- caller
+    None kalau AI tidak tersedia/gagal/hasil di luar 8 kategori -- caller
     WAJIB fallback ke logic keyword lama (jangan pernah macet krn AI down).
 
+    'sapaan' (2026-09-09, tambahan) = cuma menyapa/basa-basi netral tanpa
+    maksud bisnis spesifik (mis. "hai", "malam", "hay", "permisi") --
+    DIPISAH dari 'anomali' krn awalnya sapaan yang tidak dikenali daftar
+    kata tetap (SAPAAN_LIST) ikut kepental ke 'anomali' & dibalas seolah
+    pelanggan dianggap bercanda/di luar konteks (bug produksi ditemukan
+    user: pesan "hay" & "malam" dibalas penolakan sopan, bukan sapaan
+    balik) -- AI di sini jadi lini depan pengenalan sapaan yg menggeneralisasi
+    ke variasi bahasa apa pun, bukan cuma daftar kata yang harus terus
+    ditambah manual satu-satu tiap ada slang baru.
     'anomali' = pelanggan bercanda / pertanyaan di luar konteks bisnis
-    percetakan sama sekali (bukan sekadar pertanyaan yang belum kejawab).
+    percetakan sama sekali (BUKAN sapaan polos, BUKAN sekadar pertanyaan
+    yang belum kejawab).
     """
     pesan_bersih = (pesan or '').strip()
     if not pesan_bersih:
@@ -1465,7 +1475,7 @@ def klasifikasi_maksud_pesan(pesan):
             messages=[
                 {"role": "system", "content": (
                     "Kamu mengklasifikasi maksud pesan WhatsApp pelanggan toko percetakan "
-                    "ke SATU dari 7 kategori berikut, balas HANYA kode kategorinya "
+                    "ke SATU dari 8 kategori berikut, balas HANYA kode kategorinya "
                     "(tanpa basa-basi/kalimat tambahan/tanda kutip):\n\n"
                     "lihat_produk - mau lihat katalog/daftar produk yang tersedia\n"
                     "cek_harga - menanyakan harga produk spesifik\n"
@@ -1473,9 +1483,14 @@ def klasifikasi_maksud_pesan(pesan):
                     "tracking_pesanan - menanyakan status pesanan yang sudah dibuat\n"
                     "konsultasi_desain - bertanya soal desain, ukuran, layout, warna, dsb\n"
                     "pembayaran - menanyakan cara bayar, konfirmasi sudah transfer, dsb\n"
+                    "sapaan - CUMA menyapa/basa-basi netral tanpa maksud bisnis spesifik "
+                    "(mis. 'hai', 'halo', 'hay', 'pagi', 'malam', 'permisi', 'assalamualaikum', "
+                    "atau variasi/slang lain dari sapaan -- SELALU pilih ini utk sapaan polos "
+                    "apa pun bentuknya, JANGAN pilih 'anomali')\n"
                     "anomali - bercanda, iseng, atau sama sekali di luar konteks bisnis "
-                    "percetakan (BUKAN pertanyaan produk yang belum terjawab -- kalau "
-                    "masih ada kemungkinan terkait cetak/produk/pesanan, JANGAN pilih ini)"
+                    "percetakan (BUKAN sapaan polos -- itu 'sapaan'; BUKAN pertanyaan produk "
+                    "yang belum terjawab -- kalau masih ada kemungkinan terkait cetak/produk/"
+                    "pesanan, JANGAN pilih ini)"
                 )},
                 {"role": "user", "content": pesan_bersih},
             ],
@@ -1922,8 +1937,9 @@ def cek_harga_produk(pesan, nama_pelanggan, nomor=None):
     )
 
 
-SAPAAN_LIST = ['halo', 'p', 'ping', 'hai', 'hi', 'min', 'tes', 'test',
-               'pagi', 'siang', 'sore', 'malam', 'hei', 'permisi', 'selamat', 'assalamualaikum', 'ass']
+SAPAAN_LIST = ['halo', 'p', 'ping', 'hai', 'hay', 'haii', 'hi', 'hoy', 'woy', 'woi', 'yo',
+               'min', 'tes', 'test', 'pagi', 'siang', 'sore', 'malam', 'hei', 'permisi',
+               'selamat', 'assalamualaikum', 'ass']
 
 
 def pesan_hanya_sapaan(pesan):
@@ -1943,6 +1959,29 @@ def pesan_hanya_sapaan(pesan):
     return p in SAPAAN_LIST or sapaan_mirip or p.startswith('ass') or p.startswith('wass')
 
 
+def jawab_sapaan(nomor, nama_pelanggan):
+    """Balasan sapaan -- SATU sumber kebenaran dipakai baik dari
+    cek_rules_awal() (jalur cepat keyword SAPAAN_LIST, dicek sebelum AI)
+    MAUPUN dari klasifikasi_maksud_pesan() kategori 'sapaan' (2026-09-09:
+    AI jadi lini depan pengenalan sapaan, bukan cuma daftar kata tetap --
+    supaya variasi sapaan yang belum ada di SAPAAN_LIST (mis. slang baru)
+    tetap dikenali AI, tidak perlu terus-terusan ditambah manual satu-satu;
+    bug produksi ditemukan user: "hay" tidak dikenali & dijawab AI umum
+    yang menolak krn dianggap di luar konteks bisnis)."""
+    biz_name = get_business_name()
+    if not nama_pelanggan:
+        menunggu_nama.add(nomor)
+        return (
+            f"Halo Kak! Selamat datang di *{biz_name}* ⭐\n"
+            "Boleh tahu nama Kakak siapa? 😊"
+        )
+    panggilan = f"Kak {nama_pelanggan}"
+    return TOMBOL_MARKER + (
+        f"Halo {panggilan}! 👋 Selamat datang kembali di {biz_name}.\n"
+        f"Ada yang bisa kami bantu? Silakan pilih ya Kak 😊"
+    )
+
+
 def cek_rules_awal(pesan, nomor, nama_pelanggan):
     """
     Rules berbasis keyword — dieksekusi sebelum AI.
@@ -1959,17 +1998,7 @@ def cek_rules_awal(pesan, nomor, nama_pelanggan):
 
     # ── SAPAAN ───────────────────────────────────────────────────
     if pesan_hanya_sapaan(p):
-        biz_name = get_business_name()
-        if not nama_pelanggan:
-            menunggu_nama.add(nomor)
-            return (
-                f"Halo Kak! Selamat datang di *{biz_name}* ⭐\n"
-                "Boleh tahu nama Kakak siapa? 😊"
-            )
-        return TOMBOL_MARKER + (
-            f"Halo {panggilan}! 👋 Selamat datang kembali di {biz_name}.\n"
-            f"Ada yang bisa kami bantu? Silakan pilih ya Kak 😊"
-        )
+        return jawab_sapaan(nomor, nama_pelanggan)
 
     # ── MENU ANGKA ───────────────────────────────────────────────
     if p in ['1', '2', '3']:

@@ -458,12 +458,12 @@ class KlasifikasiMaksudPesanTest(TestCase):
         with patch("api.wa_logic.get_ai_client", return_value=mock_client):
             self.assertIsNone(klasifikasi_maksud_pesan("mau order banner"))
 
-    def test_fallback_none_saat_hasil_di_luar_7_kategori(self):
+    def test_fallback_none_saat_hasil_di_luar_kategori_valid(self):
         mock_client = self._mock_client("kategori_ngawur_tidak_valid")
         with patch("api.wa_logic.get_ai_client", return_value=mock_client):
             self.assertIsNone(klasifikasi_maksud_pesan("halo"))
 
-    def test_semua_7_kategori_valid_dikenali(self):
+    def test_semua_kategori_valid_dikenali(self):
         for kategori in KATEGORI_MAKSUD_PESAN:
             mock_client = self._mock_client(kategori)
             with patch("api.wa_logic.get_ai_client", return_value=mock_client):
@@ -595,6 +595,33 @@ class WhatsAppWebhookIntegrationTestCase(TestCase):
         # Tidak boleh nyasar ke jalur "produk tidak ditemukan"/tracking biasa
         self.assertNotIn("belum menemukan produk", teks_terkirim.lower())
         self.assertNotIn("ID Pesanan", teks_terkirim)
+
+    def test_webhook_pesan_sapaan_tidak_dikenal_keyword_tetap_dikenali_ai(self):
+        """(2026-09-09) Bug produksi: sapaan yang TIDAK ada di SAPAAN_LIST
+        keyword (mis. "hay") sebelumnya lolos ke kategori 'anomali'/AI umum
+        yang menolak. Sekarang AI punya kategori 'sapaan' sendiri -- pesan
+        sapaan APA PUN bentuknya (di sini sengaja pakai kata yg BUKAN
+        anggota SAPAAN_LIST, supaya benar2 menguji jalur klasifikasi AI,
+        bukan jalur cepat keyword) harus dibalas sapaan hangat, BUKAN
+        penolakan/redirect anomali."""
+        mock_client = self._mock_kategori_client("sapaan")
+        Contact.objects.create(nomor_wa="628177700011", nama="Dewi")
+        cache.set("wa_ai_respons_awal_628177700011", True, timeout=3600)
+
+        payload = {
+            "event": "messages.upsert",
+            "data": {
+                "key": {"remoteJid": "628177700011@s.whatsapp.net", "fromMe": False, "id": "MSG_SAPAAN_001"},
+                "pushName": "Dewi",
+                "message": {"conversation": "yoww kaka"},
+            },
+        }
+        mock_send_text = self._kirim_dan_tunggu(payload, mock_client)
+        mock_send_text.assert_called_once()
+        teks_terkirim = mock_send_text.call_args[0][1]
+        self.assertIn("selamat datang kembali", teks_terkirim.lower())
+        self.assertNotIn("ada-ada saja", teks_terkirim.lower())
+        self.assertNotIn("mohon maaf", teks_terkirim.lower())
 
     @staticmethod
     def _mock_anomali_client():
