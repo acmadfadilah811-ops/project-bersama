@@ -15,6 +15,7 @@ from ..serializers import (
 )
 from ..permissions import IsOwnerManagerAdminOrReadOnly, IsOwnerManagerAdminOrKasir
 from ..services.shift_summary import calculate_shift_cash_summary
+from accounting.services.shift_posting import post_shift_cash_variance_journal
 
 
 class POSPaymentMethodViewSet(viewsets.ModelViewSet):
@@ -124,6 +125,8 @@ class SaldoKasHarianViewSet(viewsets.ModelViewSet):
             keterangan=shift.catatan,
         )
 
+        jurnal_selisih = post_shift_cash_variance_journal(ringkasan, actor=request.user)
+
         return Response({
             'shift': SaldoKasHarianSerializer(shift).data,
             'ringkasan': RingkasanShiftSerializer(ringkasan).data,
@@ -132,6 +135,7 @@ class SaldoKasHarianViewSet(viewsets.ModelViewSet):
                 'aktual': kas_akhir,
                 'selisih': ringkasan.selisih,
             },
+            'selisih_kas_terposting': bool(jurnal_selisih),
         }, status=status.HTTP_201_CREATED)
 
 

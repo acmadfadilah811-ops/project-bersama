@@ -39,6 +39,7 @@ class JournalEntry(models.Model):
         ASSET_DISPOSAL = "asset_disposal", "Pelepasan Aset"
         ORDER_MATERIAL_HPP = "order_material_hpp", "HPP Bahan Baku Order (T-204)"
         PERIOD_CLOSE = "period_close", "Tutup Buku (Jurnal Penutup)"
+        SHIFT_CASH_VARIANCE = "shift_cash_variance", "Selisih Kas Shift"
 
     class Status(models.TextChoices):
         DRAFT = "draft", "Draft"

@@ -189,6 +189,17 @@ class AccountingSettings(models.Model):
         Account, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
         help_text="Akun Uang Muka Pembelian untuk DP sebelum barang diterima.",
     )
+    shift_cash_variance_auto_post_enabled = models.BooleanField(
+        default=False,
+        help_text="Posting otomatis selisih kas kasir (kas fisik vs sistem) ke jurnal saat shift "
+        "ditutup. Butuh shift_cash_variance_account terisi -- kalau tidak, posting dilewati "
+        "walau sakelar ini aktif.",
+    )
+    shift_cash_variance_account = models.ForeignKey(
+        Account, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+        help_text="Akun Selisih Kas (pola 'Cash Over/Short') -- dikredit (pendapatan lain) kalau "
+        "kas fisik LEBIH dari sistem saat tutup shift, didebit (beban lain) kalau kas fisik KURANG.",
+    )
 
     enable_product_account_group = models.BooleanField(
         default=False, help_text="Aktifkan pengelompokan akun berdasarkan grup produk (ProductAccountGroup).",

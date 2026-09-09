@@ -53,6 +53,8 @@ class AccountingSettingsSerializer(serializers.ModelSerializer):
             "purchase_inventory_account",
             "purchase_payable_account",
             "purchase_advance_account",
+            "shift_cash_variance_auto_post_enabled",
+            "shift_cash_variance_account",
             "enable_product_account_group",
             "enable_transfer_between_stores_as_sale",
             "enable_ojek_online_fee",
