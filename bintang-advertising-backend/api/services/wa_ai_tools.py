@@ -1,19 +1,27 @@
-"""Tool/function calling untuk AI bot WA — memberi AI akses baca ke katalog
-produk/paket/varian NYATA di Product & Inventori, menggantikan teks katalog
-hardcode dan tabel `ProductPrice` legacy. Harga SELALU dihitung lewat
-`hitung_harga_produk` (baca `Product.price_type`/`tiers` langsung) — AI tidak
-pernah diberi wewenang menghitung/menaksir harga sendiri (sama seperti M6 di
-alur kasir: server yang menghitung, bukan klien/AI).
+"""Tool/function calling untuk AI bot WA.
 
-Pengecualian penting: untuk pertanyaan JELAJAH KATALOG UMUM ("ada produk apa
-saja") jawabannya BUKAN dump `Product` DB (itu terlalu global -- tabel yang
-sama juga menyimpan Bahan Baku/item internal yang tidak layak ditampilkan ke
-pelanggan, bug nyata ditemukan user 2026-08-15 lalu diperbaiki, dan
-ditemukan LAGI oleh user 2026-09-10 setelah rebuild AI agent tidak sengaja
-menghidupkan lagi jalur ini lewat `cari_produk('')`). Untuk itu pakai
-`daftar_kategori_produk` -- sumbernya `SystemConfig['wa_pricelist_kategori']`,
-pricelist resmi yang di-maintain terpisah (lihat management/commands/
-seed_wa_pricelist.py & `#PRICELIST STAR DIGIPRINT...md`), bukan Product DB.
+PENTING (2026-09-10, instruksi eksplisit user): harga yang disampaikan ke
+PELANGGAN sekarang bersumber dari PRICELIST resmi (SystemConfig
+'wa_pricelist_kategori'/'wa_kalkulator_bahan', diisi management command
+seed_wa_pricelist dari `#PRICELIST STAR DIGIPRINT...md`), BUKAN dari
+`Product` DB. Root cause: `Product` DB ternyata punya banyak produk mirip
+nama tapi beda arti/harga (mis. "STIKER CROMO" Rp2.020 vs "A3+ S.CROMO CLR"
+Rp7.000 -- yang benar2 dijual sesuai pricelist adalah yang kedua), jadi
+pencarian nama-mirip bisa nyasar ke harga yang salah total & merusak
+kepercayaan pelanggan. `cari_produk`/`hitung_harga_produk` (Product DB)
+TETAP ADA di modul ini (dipakai internal utk validasi Bahan/Finishing di
+buat_pesanan & endpoint external-bot/tool lama) tapi SENGAJA TIDAK
+diekspos ke AI agent WA lagi (lihat TOOL_SCHEMAS) -- gantinya
+`daftar_kategori_produk` (referensi teks per kategori) &
+`hitung_harga_pricelist` (kalkulator angka utk 4 kategori yang datanya
+terstruktur: banner/stiker/kertas_a3/kartu_nama).
+
+Pengecualian lain: untuk pertanyaan JELAJAH KATALOG UMUM ("ada produk apa
+saja") jawabannya juga BUKAN dump `Product` DB (itu terlalu global -- ada
+Bahan Baku/item internal yang tidak layak ditampilkan ke pelanggan, bug
+nyata ditemukan user 2026-08-15 lalu diperbaiki, dan ditemukan LAGI
+2026-09-10 setelah rebuild AI agent tidak sengaja menghidupkan lagi jalur
+ini lewat `cari_produk('')`) -- pakai `daftar_kategori_produk`.
 """
 
 import difflib
@@ -33,13 +41,12 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "daftar_kategori_produk",
             "description": (
-                "Daftar kategori produk & harga REFERENSI resmi dari pricelist toko. WAJIB "
-                "dipakai untuk pertanyaan JELAJAH UMUM ('ada produk apa saja', 'jual apa aja', "
-                "minta lihat katalog) -- JANGAN PERNAH pakai cari_produk untuk kasus ini (itu "
-                "database internal operasional, terlalu global & ada item non-produk-jual seperti "
-                "bahan baku yang tidak relevan ditampilkan ke pelanggan). Panggil TANPA parameter "
-                "dulu untuk lihat daftar semua kategori, lalu panggil LAGI dengan parameter "
-                "`kategori` (salah satu slug dari hasil pertama) untuk detail harga kategori itu."
+                "Daftar kategori produk & harga REFERENSI resmi dari pricelist toko -- SATU-SATUNYA "
+                "sumber jawaban produk/harga utk pelanggan. WAJIB dipakai untuk pertanyaan JELAJAH "
+                "UMUM ('ada produk apa saja', 'jual apa aja', minta lihat katalog). Panggil TANPA "
+                "parameter dulu untuk lihat daftar semua kategori, lalu panggil LAGI dengan "
+                "parameter `kategori` (salah satu slug dari hasil pertama) untuk detail harga "
+                "kategori itu -- teks ini sudah berisi harga referensi per satuan/tier."
             ),
             "parameters": {
                 "type": "object",
@@ -56,46 +63,32 @@ TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
-            "name": "cari_produk",
+            "name": "hitung_harga_pricelist",
             "description": (
-                "Cari SATU produk/paket spesifik yang NAMANYA sudah disebut pelanggan (mis. "
-                "'banner 240', 'kartu nama ivory'), biasanya sebagai langkah SEBELUM "
-                "hitung_harga_produk atau buat_pesanan. JANGAN PERNAH panggil dengan kata_kunci "
-                "kosong untuk pertanyaan umum 'ada produk apa saja' -- pakai daftar_kategori_produk "
-                "untuk itu. JANGAN PERNAH mengarang nama produk sendiri, selalu panggil tool ini dulu."
+                "Hitung TOTAL harga resmi dari pricelist untuk kategori yang datanya terstruktur "
+                "(banner, stiker, kertas_a3, kartu_nama) -- WAJIB dipakai kalau pelanggan sebut "
+                "qty/ukuran spesifik & minta tahu totalnya, JANGAN PERNAH menghitung/menaksir "
+                "sendiri. Utk kategori LAIN di luar 4 ini (brosur, cetak_khusus, merchandise, kaos, "
+                "acrylic, cutting_finishing), harga referensi cukup dari teks daftar_kategori_produk "
+                "-- tool ini akan menolak kategori itu."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "kata_kunci": {
+                    "kategori": {
                         "type": "string",
-                        "description": "Nama/kata kunci produk spesifik yang disebut pelanggan, mis. 'banner' atau 'kartu nama'. WAJIB diisi -- jangan kosongkan.",
+                        "description": "Salah satu: banner, stiker, kertas_a3, kartu_nama.",
+                        "enum": ["banner", "stiker", "kertas_a3", "kartu_nama"],
                     },
+                    "qty": {
+                        "type": "integer",
+                        "description": "Jumlah lembar/box (stiker/kertas_a3/kartu_nama) atau jumlah lembar cetak (banner). Default 1.",
+                        "default": 1,
+                    },
+                    "panjang": {"type": "number", "description": "WAJIB utk kategori banner: panjang dalam meter."},
+                    "lebar": {"type": "number", "description": "WAJIB utk kategori banner: lebar dalam meter."},
                 },
-                "required": ["kata_kunci"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "hitung_harga_produk",
-            "description": (
-                "Hitung harga resmi satu produk berdasarkan product_id (dari hasil cari_produk), "
-                "qty, dan opsional panjang/lebar dalam meter (WAJIB diisi untuk produk yang "
-                "dihitung per meter persegi — cek field 'price_type' dari cari_produk). WAJIB "
-                "dipakai setiap kali memberi angka harga ke pelanggan — JANGAN PERNAH menghitung "
-                "atau menaksir harga sendiri."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "product_id": {"type": "integer", "description": "ID produk dari hasil cari_produk."},
-                    "qty": {"type": "number", "description": "Jumlah/qty yang dipesan.", "default": 1},
-                    "panjang": {"type": "number", "description": "Panjang dalam meter (khusus produk per meter persegi)."},
-                    "lebar": {"type": "number", "description": "Lebar dalam meter (khusus produk per meter persegi)."},
-                },
-                "required": ["product_id"],
+                "required": ["kategori"],
             },
         },
     },
@@ -330,6 +323,76 @@ def daftar_kategori_produk(kategori=None):
     return {'ok': True, 'kategori': kategori, 'detail': detail}
 
 
+def _harga_tier(daftar_harga, batas_tier, qty):
+    """`batas_tier` = batas ATAS tiap tingkatan qty (mis. [1, 5] -> 1 /
+    2-5 / >5), `daftar_harga` 1 elemen lebih banyak dari `batas_tier`
+    (elemen terakhir = tingkatan di atas semua batas). Sama persis dgn
+    versi lama di wa_logic.py sebelum dihapus saat rebuild AI agent --
+    logikanya sudah teruji, cuma dipindah jadi tool AI-callable."""
+    for i, batas in enumerate(batas_tier):
+        if qty <= batas:
+            return daftar_harga[i]
+    return daftar_harga[-1]
+
+
+def hitung_harga_pricelist(kategori=None, qty=1, panjang=None, lebar=None):
+    """Kalkulator harga dari data TERSTRUKTUR pricelist (SystemConfig
+    'wa_kalkulator_bahan', diisi seed_wa_pricelist) -- SATU-SATUNYA jalur
+    menghitung total harga utk pelanggan sekarang (instruksi eksplisit
+    user 2026-09-10: jangan lagi pakai Product DB, ketemu kasus nyata
+    'STIKER CROMO' di DB Rp2.020 padahal pricelist bilang Rp7.000 --
+    Product DB ada banyak nama mirip yang gampang salah kena)."""
+    from ..models import SystemConfig
+
+    kategori = (kategori or '').strip()
+    try:
+        qty = int(qty)
+    except (TypeError, ValueError):
+        return {'ok': False, 'error': 'qty harus berupa angka bulat.'}
+    if qty <= 0:
+        return {'ok': False, 'error': 'qty harus lebih dari nol.'}
+
+    try:
+        semua = json.loads(SystemConfig.objects.get(key='wa_kalkulator_bahan').value)
+    except SystemConfig.DoesNotExist:
+        semua = None
+    if not semua:
+        return {'ok': False, 'error': 'Kalkulator harga belum tersedia, langsung eskalasi_admin saja.'}
+
+    data = semua.get(kategori)
+    if not data:
+        return {
+            'ok': False,
+            'error': f"Kategori '{kategori}' tidak punya kalkulator terstruktur.",
+            'kategori_tersedia': list(semua.keys()),
+        }
+
+    if kategori == 'banner':
+        try:
+            panjang = float(panjang)
+            lebar = float(lebar)
+        except (TypeError, ValueError):
+            return {'ok': False, 'error': 'Kategori banner wajib diisi panjang & lebar (meter).'}
+        if panjang <= 0 or lebar <= 0:
+            return {'ok': False, 'error': 'panjang & lebar harus lebih dari nol.'}
+        luas = panjang * lebar
+        rincian = [
+            {'nama': b['nama'], 'harga_per_m2': b['harga'], 'subtotal': round(luas * b['harga'] * qty)}
+            for b in data['bahan']
+        ]
+        return {
+            'ok': True, 'kategori': kategori, 'satuan': 'm2', 'luas_m2': round(luas, 2), 'qty': qty,
+            'rincian': rincian,
+        }
+
+    # stiker / kertas_a3 / kartu_nama -- harga bertingkat per qty
+    rincian = [
+        {'nama': b['nama'], 'harga_per_satuan': _harga_tier(b['harga'], data['tiers'], qty), 'subtotal': _harga_tier(b['harga'], data['tiers'], qty) * qty}
+        for b in data['bahan']
+    ]
+    return {'ok': True, 'kategori': kategori, 'satuan': data['satuan'], 'qty': qty, 'rincian': rincian}
+
+
 def cari_produk(kata_kunci=''):
     from ..product_models import Product, ProductPackage
 
@@ -546,6 +609,13 @@ def eskalasi_admin(alasan=None, nomor=None, nama_pelanggan=None, pesan_asli=None
 
 TOOL_FUNCTIONS = {
     'daftar_kategori_produk': daftar_kategori_produk,
+    'hitung_harga_pricelist': hitung_harga_pricelist,
+    # cari_produk/hitung_harga_produk (Product DB) SENGAJA TIDAK ada di
+    # TOOL_SCHEMAS (AI WA tidak bisa lagi memanggilnya utk kutip harga ke
+    # pelanggan, lihat catatan di kepala file) -- tapi fungsinya tetap
+    # didaftarkan di sini krn masih dipakai jalur lain: validasi Bahan/
+    # Finishing internal (_cocokkan_produk_tunggal di wa_logic.py) & agent
+    # eksternal lama lewat endpoint views/external_bot.py.
     'cari_produk': cari_produk,
     'hitung_harga_produk': hitung_harga_produk,
     'cek_status_pesanan': cek_status_pesanan,

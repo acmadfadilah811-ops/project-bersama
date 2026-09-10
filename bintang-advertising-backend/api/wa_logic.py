@@ -196,14 +196,19 @@ def get_system_prompt(nama_pelanggan=""):
         "Kamu terhubung langsung ke sistem asli toko lewat tools -- JANGAN PERNAH MENGARANG, "
         "MENAKSIR, ATAU MENGINGAT-INGAT harga/nama produk/status pesanan dari percakapan sebelumnya. "
         "Selalu panggil tool yang sesuai, bahkan kalau kamu 'merasa' sudah tahu jawabannya:\n"
-        "- Pelanggan tanya SECARA UMUM produk/jasa apa saja yang tersedia (mis. 'ada produk apa "
-        "aja', 'jual apa aja', minta lihat katalog) -> panggil daftar_kategori_produk, JANGAN "
-        "cari_produk (cari_produk itu database internal operasional, bukan utk ditampilkan mentah "
-        "ke pelanggan -- ada juga item non-jual spt bahan baku di situ).\n"
-        "- Pelanggan SUDAH sebut nama produk spesifik (mis. 'banner 240', 'kartu nama') -> panggil "
-        "cari_produk dgn nama itu. Pelanggan tanya harga (dgn atau tanpa ukuran/qty jelas) -> "
-        "cari_produk lalu hitung_harga_produk. JANGAN PERNAH sebut angka harga tanpa lewat "
-        "hitung_harga_produk, dan JANGAN PERNAH panggil cari_produk dgn kata kunci kosong.\n"
+        "- SEMUA pertanyaan produk & harga (baik jelajah umum 'ada produk apa aja' MAUPUN produk "
+        "spesifik yang sudah disebut namanya, mis. 'banner 240', 'stiker cromo') -> panggil "
+        "daftar_kategori_produk. Panggil TANPA parameter dulu kalau belum tahu kategorinya, lalu "
+        "panggil lagi dgn parameter kategori utk detail harga referensi.\n"
+        "- Pelanggan sebut qty/ukuran spesifik & minta tahu TOTAL harganya, utk kategori banner/"
+        "stiker/kertas_a3/kartu_nama -> panggil hitung_harga_pricelist (kalkulator resmi dari "
+        "pricelist) SETELAH tahu kategorinya dari daftar_kategori_produk. Kategori LAIN cukup pakai "
+        "harga referensi dari daftar_kategori_produk apa adanya (biasanya sudah per-pcs/per-paket, "
+        "tinggal dikalikan qty kalau perlu -- TETAP jangan mengarang harga per-satuan sendiri, "
+        "ambil angkanya PERSIS dari teks pricelist).\n"
+        "- JANGAN PERNAH sebut angka harga dari sumber lain selain daftar_kategori_produk/"
+        "hitung_harga_pricelist (mis. dari 'ingatan' produk serupa) -- pricelist adalah SATU-SATUNYA "
+        "acuan harga resmi ke pelanggan sekarang.\n"
         "- Pelanggan belum tahu mau pesan apa -> tawarkan produk_terlaris atau (kalau dia sebut "
         "nominal budget) produk_sesuai_budget.\n"
         "- Pelanggan tanya status pesanan -> cek_status_pesanan (kosongkan nomor_order kalau dia "
@@ -643,9 +648,11 @@ def proses_form_pembatalan(detail, nama_pelanggan):
 
 def _cocokkan_produk_tunggal(jenis_produk):
     """Cocokkan teks 'Jenis Produk' dari form ke satu Product nyata via
-    cari_produk() (sumber sama dipakai cek_harga_produk/katalog). Kembalikan
-    None kalau tidak match persis 1 produk — sengaja TIDAK menebak untuk
-    nama ambigu/tidak dikenal, biar tidak salah blokir."""
+    cari_produk() -- HANYA utk validasi Bahan/Finishing (butuh_bahan/
+    butuh_finishing), BUKAN utk kutip harga ke pelanggan (lihat catatan di
+    kepala wa_ai_tools.py kenapa Product DB tidak lagi dipakai utk itu).
+    Kembalikan None kalau tidak match persis 1 produk — sengaja TIDAK
+    menebak untuk nama ambigu/tidak dikenal, biar tidak salah blokir."""
     if not jenis_produk or jenis_produk.strip().lower() == 'umum':
         return None
     from .services.wa_ai_tools import cari_produk

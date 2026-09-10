@@ -34,6 +34,7 @@ from api.services.wa_ai_tools import (
     TOOL_FUNCTIONS,
     jalankan_tool,
     daftar_kategori_produk,
+    hitung_harga_pricelist,
     cari_produk,
     cek_status_pesanan,
     produk_terlaris,
@@ -108,9 +109,14 @@ class WALogicUnitTestCase(TestCase):
         self.assertIn("Andi", prompt)
         self.assertIn("Bintang Advertising", prompt)
         # (2026-09-10) AI sekarang WAJIB pakai tools, bukan diarahkan minta
-        # pelanggan ketik ulang / isi form manual duluan.
-        self.assertIn("cari_produk", prompt)
-        self.assertIn("hitung_harga_produk", prompt)
+        # pelanggan ketik ulang / isi form manual duluan. Harga WAJIB dari
+        # pricelist (daftar_kategori_produk/hitung_harga_pricelist), BUKAN
+        # cari_produk/hitung_harga_produk (Product DB) -- lihat bug nyata
+        # "STIKER CROMO" Rp2.020 vs pricelist Rp7.000.
+        self.assertIn("daftar_kategori_produk", prompt)
+        self.assertIn("hitung_harga_pricelist", prompt)
+        self.assertNotIn("cari_produk", prompt)
+        self.assertNotIn("hitung_harga_produk", prompt)
         self.assertIn("buat_pesanan", prompt)
         self.assertIn("eskalasi_admin", prompt)
 
@@ -312,6 +318,48 @@ class WaAiToolsTest(TestCase):
     def test_daftar_kategori_produk_belum_diseed(self):
         SystemConfig.objects.filter(key='wa_pricelist_kategori').delete()
         hasil = daftar_kategori_produk()
+        self.assertFalse(hasil['ok'])
+
+    def _seed_kalkulator_bahan(self):
+        from api.management.commands.seed_wa_pricelist import KALKULATOR_BAHAN
+        SystemConfig.objects.update_or_create(
+            key='wa_kalkulator_bahan',
+            defaults={'value': json.dumps(KALKULATOR_BAHAN, ensure_ascii=False)},
+        )
+
+    def test_hitung_harga_pricelist_banner(self):
+        # (2026-09-10) Sumbernya HARUS pricelist, bukan Product DB -- lihat
+        # bug nyata "STIKER CROMO" Rp2.020 vs pricelist Rp7.000.
+        self._seed_kalkulator_bahan()
+        hasil = hitung_harga_pricelist(kategori='banner', qty=2, panjang=3, lebar=1)
+        self.assertTrue(hasil['ok'])
+        self.assertEqual(hasil['luas_m2'], 3.0)
+        rincian_240 = next(b for b in hasil['rincian'] if b['nama'] == 'Banner 240')
+        self.assertEqual(rincian_240['subtotal'], 3.0 * 18000 * 2)
+
+    def test_hitung_harga_pricelist_banner_tanpa_dimensi_ditolak(self):
+        self._seed_kalkulator_bahan()
+        hasil = hitung_harga_pricelist(kategori='banner', qty=1)
+        self.assertFalse(hasil['ok'])
+
+    def test_hitung_harga_pricelist_stiker_pakai_tier(self):
+        self._seed_kalkulator_bahan()
+        hasil = hitung_harga_pricelist(kategori='stiker', qty=30)
+        self.assertTrue(hasil['ok'])
+        chromo = next(b for b in hasil['rincian'] if b['nama'] == 'Chromo')
+        # qty=30 -> tier kedua (>25, <=50) = 6800/lbr
+        self.assertEqual(chromo['harga_per_satuan'], 6800)
+        self.assertEqual(chromo['subtotal'], 6800 * 30)
+
+    def test_hitung_harga_pricelist_kategori_tidak_terstruktur(self):
+        self._seed_kalkulator_bahan()
+        hasil = hitung_harga_pricelist(kategori='merchandise', qty=1)
+        self.assertFalse(hasil['ok'])
+        self.assertIn('kategori_tersedia', hasil)
+
+    def test_hitung_harga_pricelist_belum_diseed(self):
+        SystemConfig.objects.filter(key='wa_kalkulator_bahan').delete()
+        hasil = hitung_harga_pricelist(kategori='banner', qty=1, panjang=1, lebar=1)
         self.assertFalse(hasil['ok'])
 
     def test_cari_produk_tidak_ketemu(self):

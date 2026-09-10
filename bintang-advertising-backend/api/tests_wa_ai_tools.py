@@ -26,9 +26,15 @@ class CariProdukTest(TestCase):
         self.assertIn('Banner Flexi 280gr', nama_hasil)
 
     def test_cari_produk_tidak_mengembalikan_produk_nonaktif(self):
-        hasil = cari_produk('')
+        hasil = cari_produk('Produk')
         nama_hasil = [p['nama'] for p in hasil['produk']]
         self.assertNotIn('Produk Nonaktif', nama_hasil)
+
+    def test_cari_produk_kata_kunci_kosong_tidak_dump_semua(self):
+        # (2026-09-10) kata_kunci kosong TIDAK BOLEH lagi jadi jalur browse
+        # katalog -- lihat daftar_kategori_produk di wa_ai_tools.py.
+        hasil = cari_produk('')
+        self.assertEqual(hasil['produk'], [])
 
     def test_cari_produk_ikut_kembalikan_paket(self):
         hasil = cari_produk('grand opening')
