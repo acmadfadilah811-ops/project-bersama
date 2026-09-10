@@ -155,9 +155,9 @@ class BaseWhatsAppWebhookView(APIView):
         task_id = f"async_task_{uuid.uuid4().hex}"
         cache.set(task_id, {"status": "pending", "number": number, "text": text[:50], "timestamp": time.time()}, timeout=3600)
 
-        def worker():
+        def kirim_sebenarnya():
             cache.set(task_id, {"status": "running", "number": number, "text": text[:50], "timestamp": time.time()}, timeout=3600)
-            
+
             # Hitung delay berdasarkan panjang karakter (misal 30 karakter per detik)
             char_delay = len(text) / 30.0
             total_delay = min(max(2.0, char_delay), 15.0)
@@ -167,9 +167,9 @@ class BaseWhatsAppWebhookView(APIView):
                 whatsapp_client.send_presence(number, "composing")
             except Exception as e:
                 logger.warning(f"Failed to send presence composing: {e}")
-                
+
             time.sleep(total_delay)
-            
+
             # Kirim pesan dan matikan presence dengan retry
             success = False
             error_msg = ""
@@ -185,7 +185,7 @@ class BaseWhatsAppWebhookView(APIView):
                     error_msg = str(e)
                     logger.error(f"Attempt {attempt+1} failed to send WA message: {e}")
                 time.sleep(2)
-            
+
             try:
                 whatsapp_client.send_presence(number, "paused")
             except Exception as e:
@@ -196,6 +196,18 @@ class BaseWhatsAppWebhookView(APIView):
             else:
                 logger.critical(f"[WA_SEND_FAILURE] Failed to send message to {number} after 3 attempts. Error: {error_msg}. Text: {text}")
                 cache.set(task_id, {"status": "failed", "number": number, "error": error_msg, "timestamp": time.time()}, timeout=86400)
+
+        def worker():
+            # Kunci per-nomor yang SAMA dgn _proses_pesan_masuk (2026-09-10)
+            # -- dipegang sepanjang jeda "mengetik" + pengiriman, supaya
+            # balasan utk pesan yang datang lebih dulu juga TERKIRIM lebih
+            # dulu (bukan cuma DIPROSES lebih dulu). Tanpa ini, balasan
+            # panjang (jeda lama) bisa disalip balasan pendek dari pesan
+            # berikutnya yang datang tak lama sesudahnya -- urutan chat di
+            # HP pelanggan jadi terbalik & membingungkan. Toleransi tunggu
+            # lebih longgar (20d) drpd kunci proses (6d) krn ini thread
+            # background, tidak menahan respons webhook ke Evolution API.
+            self._dengan_kunci_pengirim(number, kirim_sebenarnya, tunggu_detik=20)
 
         threading.Thread(target=worker, daemon=True).start()
         return task_id
@@ -221,7 +233,7 @@ class BaseWhatsAppWebhookView(APIView):
         import threading
         import time
 
-        def worker():
+        def kirim_sebenarnya():
             try:
                 whatsapp_client.send_presence(number, "composing")
             except Exception as e:
@@ -244,6 +256,12 @@ class BaseWhatsAppWebhookView(APIView):
                 whatsapp_client.send_presence(number, "paused")
             except Exception as e:
                 logger.warning(f"Failed to send presence paused (tombol): {e}")
+
+        def worker():
+            # Sama seperti _kirim_balas_async -- kunci per-nomor dipegang
+            # sepanjang jeda+kirim, supaya urutan balasan sesuai urutan
+            # pesan masuk (2026-09-10).
+            self._dengan_kunci_pengirim(number, kirim_sebenarnya, tunggu_detik=20)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -643,6 +661,55 @@ class BaseWhatsAppWebhookView(APIView):
         return jawaban
 
     def _proses_pesan_masuk(self, sender_raw, message_text, media_url="", push_name=""):
+        """Wrapper tipis: kunci proses per-nomor pengirim (2026-09-10, temuan
+        user) SEBELUM masuk ke logic sebenarnya (_proses_pesan_masuk_terkunci).
+
+        Tanpa kunci ini, 2 pesan BERBEDA dari nomor yang SAMA yang datang
+        nyaris bersamaan (bisa kena container/thread backend berbeda -- ada
+        3 replica) bisa diproses PARALEL & race terhadap status percakapan
+        yang sama di Redis (menunggu_pilihan_produk, pending_order_form, dst):
+        baca-putuskan-tulis tidak atomic sbg satu rangkaian meski tiap
+        get/set individual di CacheState/CacheSet atomic. Risiko konkret
+        paling parah: pelanggan kirim "sesuai" 2x cepat (double-tap/WA
+        redeliver dgn message_id beda shg lolos dedup) -- kedua request
+        sama2 baca pending_order_form SEBELUM salah satu sempat discard,
+        berpotensi bikin 2 Order tersimpan dari 1 form yang sama.
+        """
+        sender_number = str(sender_raw).split('@')[0].replace('+', '').replace(' ', '').replace('-', '')
+        if not sender_number:
+            return "", {'error': 'No sender number found'}, status.HTTP_400_BAD_REQUEST
+        return self._dengan_kunci_pengirim(
+            sender_number,
+            lambda: self._proses_pesan_masuk_terkunci(sender_raw, message_text, media_url, push_name),
+        )
+
+    @staticmethod
+    def _dengan_kunci_pengirim(sender_number, fn, tunggu_detik=6):
+        """Redis lock atomic (cache.add = SET NX) per nomor pengirim.
+
+        Kalau kunci lagi dipegang request lain utk nomor yg sama, tunggu
+        sebentar (polling, maks `tunggu_detik`) baru coba lagi -- BUKAN
+        block selamanya, supaya kalau ada request lain yang tak terduga
+        lama (mis. AI down & retry berkali-kali sampai puluhan detik)
+        pelanggan tetap dibalas (fail-open), bukan macet tanpa respons
+        sama sekali. Lock timeout 60 detik sbg jaring pengaman terakhir
+        kalau proses crash sebelum sempat melepas kunci."""
+        from django.core.cache import cache
+        import time as _time
+
+        lock_key = f"wa_proses_lock_{sender_number}"
+        deadline = _time.monotonic() + tunggu_detik
+        got_lock = cache.add(lock_key, True, timeout=60)
+        while not got_lock and _time.monotonic() < deadline:
+            _time.sleep(0.2)
+            got_lock = cache.add(lock_key, True, timeout=60)
+        try:
+            return fn()
+        finally:
+            if got_lock:
+                cache.delete(lock_key)
+
+    def _proses_pesan_masuk_terkunci(self, sender_raw, message_text, media_url="", push_name=""):
         from ..wa_logic import (
             menunggu_nama, menunggu_pilihan_produk, menunggu_status_desain, pending_order_form,
             simpan_ke_memori, cek_tracking, cek_harga, cek_rules_awal,
@@ -662,7 +729,14 @@ class BaseWhatsAppWebhookView(APIView):
         if not sender_number:
             return "", {'error': 'No sender number found'}, status.HTTP_400_BAD_REQUEST
 
-        if not message_text:
+        # (2026-09-10) Dulu SEMUA pesan tanpa teks di-skip total di sini --
+        # termasuk file/gambar/dokumen yang dikirim TANPA caption (kasus
+        # SANGAT umum di WA, pelanggan sering kirim file polos tanpa
+        # keterangan apa pun). Akibatnya file itu tidak PERNAH sampai ke
+        # proses_kirim_desain() sama sekali (bug ditemukan user: "pelanggan
+        # sudah kirim file tapi bot tidak mendeteksinya"). Sekarang hanya
+        # skip kalau BENAR-BENAR tidak ada apa pun (tanpa teks MAUPUN media).
+        if not message_text and not media_url:
             return "", {'status': 'ignored_empty_message'}, status.HTTP_200_OK
 
         # 1. Cek jika pengirim adalah staff yang sedang mengisi alasan absensi

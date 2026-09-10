@@ -1,7 +1,7 @@
 import json
 import os
 from unittest.mock import patch, MagicMock
-from django.test import TestCase, override_settings
+from django.test import TestCase, TransactionTestCase, override_settings, Client
 from django.core.cache import cache
 
 from api.models import (
@@ -1160,6 +1160,144 @@ class FormOrderValidasiIntegrationTest(TestCase):
 
         self._kirim_form("sesuai")
         self.assertTrue(Order.objects.filter(nomor_wa="628222000222").exists())
+
+
+class KonfirmasiOrderKonkurenTest(TransactionTestCase):
+    """(2026-09-10) Bug konkurensi ditemukan user: kalau pelanggan kirim
+    'sesuai' 2x hampir bersamaan (double-tap, atau WA redeliver dgn
+    message_id beda shg lolos anti-duplikasi inbound), dua request bisa
+    sama-sama baca pending_order_form SEBELUM salah satu sempat
+    menghapusnya -> berpotensi 2 Order tersimpan dari 1 form yang sama.
+    Perbaikan: kunci per-nomor pengirim (_dengan_kunci_pengirim di
+    views/whatsapp.py) menyerialkan pemrosesan pesan dari nomor yang sama."""
+
+    def setUp(self):
+        cache.clear()
+        Contact.objects.create(nomor_wa="628222000999", nama="Rudi")
+        Product.objects.create(
+            nama='Banner Flexi Konkuren', price_type='per_m2', harga_jual_toko=25000,
+            is_active=True, butuh_bahan=False, butuh_finishing=False,
+        )
+        cache.set("wa_ai_respons_awal_628222000999", True, timeout=3600)
+
+    def tearDown(self):
+        cache.clear()
+
+    def _kirim(self, isi, msg_id):
+        payload = {
+            "event": "messages.upsert",
+            "data": {
+                "key": {"remoteJid": "628222000999@s.whatsapp.net", "fromMe": False, "id": msg_id},
+                "pushName": "Rudi",
+                "message": {"conversation": isi},
+            },
+        }
+        with patch.dict(os.environ, {"EVOLUTION_API_KEY": "TestKey123"}), \
+             patch("api.whatsapp_client.whatsapp_client.send_text_message") as mock_send, \
+             patch("api.whatsapp_client.whatsapp_client.send_presence", return_value=None), \
+             patch("time.sleep", return_value=None):
+            mock_send.return_value = {"status": "sent"}
+            return Client().post(
+                "/api/webhook/evolution/", payload, content_type="application/json",
+                HTTP_APIKEY="TestKey123",
+            )
+
+    def test_konfirmasi_sesuai_dobel_hampir_bersamaan_cuma_bikin_1_order(self):
+        form = (
+            "Nama Pemesan: Rudi\n"
+            "No. WA: 628222000999\n"
+            "Item 1\n"
+            "Jenis Produk: Banner Flexi Konkuren\n"
+            "Jumlah: 1\n"
+            "Ukuran: 1x1\n"
+        )
+        self._kirim(form, "MSG_FORM_001")
+        self.assertFalse(Order.objects.filter(nomor_wa="628222000999").exists())
+
+        import threading
+        results = []
+
+        def kirim_sesuai(msg_id):
+            res = self._kirim("sesuai", msg_id)
+            results.append(res.status_code)
+
+        # message_id BEDA supaya tidak tertangkap anti-duplikasi inbound
+        # (itu mekanisme LAIN, bukan yang diuji di sini) -- yang diuji
+        # murni race pending_order_form.
+        threads = [
+            threading.Thread(target=kirim_sesuai, args=(f"MSG_SESUAI_{i}",))
+            for i in range(2)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=15)
+
+        self.assertEqual(sorted(results), [200, 200])
+        self.assertEqual(
+            Order.objects.filter(nomor_wa="628222000999").count(), 1,
+            "Dua konfirmasi 'sesuai' hampir bersamaan harus cuma bikin 1 Order, bukan 2.",
+        )
+
+
+class KirimDesainTanpaIDPesananTest(TestCase):
+    """(2026-09-10) Bug ditemukan user: pelanggan kirim file desain (foto/
+    dokumen) TANPA menyebut ID pesanan di caption -- kasus SANGAT umum,
+    kebanyakan orang kirim file WA polos tanpa keterangan -- sebelumnya
+    file itu diam-diam diabaikan total (bahkan sebelum sempat sampai ke
+    proses_kirim_desain(), pesan tanpa teks di-skip duluan). Sekarang
+    dicari pesanan aktif milik nomor itu: auto-tautkan kalau cuma 1, minta
+    pelanggan pilih kalau >1, minta ID manual kalau tidak ada sama sekali."""
+
+    def setUp(self):
+        cache.clear()
+
+    def test_media_tanpa_id_satu_order_aktif_auto_tertaut(self):
+        order = Order.objects.create(nomor_wa="628555000111", status_global='review')
+        OrderItem.objects.create(order=order, jenis_produk='Banner', qty=1)
+
+        jawaban = proses_kirim_desain(
+            "", "628555000111", "Nita", media_url="https://mmg.whatsapp.net/file123.jpg",
+        )
+        self.assertIsNotNone(jawaban)
+        self.assertIn(order.id, jawaban)
+        item = order.items.first()
+        item.refresh_from_db()
+        self.assertEqual(item.gdrive_customer_link, "https://mmg.whatsapp.net/file123.jpg")
+        self.assertTrue(item.desain_susulan)
+
+    def test_media_tanpa_id_lebih_dari_1_order_aktif_minta_pilih(self):
+        o1 = Order.objects.create(nomor_wa="628555000222", status_global='review')
+        o2 = Order.objects.create(nomor_wa="628555000222", status_global='dikerjakan')
+
+        jawaban = proses_kirim_desain(
+            "", "628555000222", "Budi", media_url="https://mmg.whatsapp.net/file456.jpg",
+        )
+        self.assertIsNotNone(jawaban)
+        self.assertIn(o1.id, jawaban)
+        self.assertIn(o2.id, jawaban)
+
+    def test_media_tanpa_id_tanpa_order_aktif_minta_id_manual(self):
+        jawaban = proses_kirim_desain(
+            "", "628555000333", "Wati", media_url="https://mmg.whatsapp.net/file789.jpg",
+        )
+        self.assertIsNotNone(jawaban)
+        self.assertIn("ID Pesanan", jawaban)
+
+    def test_media_dengan_id_di_caption_tetap_jalur_lama(self):
+        """Regresi: jalur lama (media + ID pesanan disebut eksplisit) tidak
+        boleh berubah perilakunya."""
+        order = Order.objects.create(nomor_wa="628555000444", status_global='review')
+        OrderItem.objects.create(order=order, jenis_produk='Banner', qty=1)
+
+        jawaban = proses_kirim_desain(
+            f"{order.id}", "628555000444", "Sinta", media_url="https://mmg.whatsapp.net/fileabc.jpg",
+        )
+        self.assertIsNotNone(jawaban)
+        self.assertIn(order.id, jawaban)
+
+    def test_pesan_kosong_tanpa_media_tetap_none(self):
+        self.assertIsNone(proses_kirim_desain("", "628555000555", "Tono", media_url=""))
 
 
 class HumanTakeoverAutoPauseTest(TestCase):

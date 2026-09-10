@@ -444,10 +444,12 @@ def proses_kirim_desain(pesan, nomor, nama_pelanggan, media_url=""):
 
     is_kirim_desain = 'kirim desain' in p
     match = re.search(r'(ord-[\w-]+)', p)
+    order_id = None
 
     # 1. Jika ada media_url dan ID order terdeteksi
     if media_url and match:
         gdrive_link = media_url
+        order_id = match.group(1).upper()
     # 2. Jika ada keyword kirim desain
     elif is_kirim_desain:
         if not match:
@@ -467,10 +469,38 @@ def proses_kirim_desain(pesan, nomor, nama_pelanggan, media_url=""):
                 f"Silakan sertakan link file desain Kakak (misal: link Google Drive atau Dropbox).\n"
                 f"Contoh: *Kirim Desain {match.group(1).upper()} https://drive.google.com/...*"
             )
+        order_id = match.group(1).upper()
+    # 3. (2026-09-10) File/gambar dikirim TANPA ID pesanan di teks/caption --
+    # kasus SANGAT UMUM (pelanggan kirim foto/dokumen polos tanpa keterangan
+    # apa pun). Sebelumnya TIDAK PERNAH terdeteksi sama sekali: guard pesan
+    # kosong di views/whatsapp.py men-skip total pesan tanpa caption sebelum
+    # sempat sampai ke fungsi ini, dan sekalipun ada caption tanpa ID
+    # pesanan, cabang di atas jatuh ke None diam-diam (bug ditemukan user).
+    # Sekarang: cari pesanan aktif milik nomor ini -- auto-tautkan kalau cuma
+    # 1, minta pelanggan pilih kalau >1, minta ID manual kalau tidak ada.
+    elif media_url:
+        orders_aktif = list(
+            Order.objects.filter(nomor_wa=nomor)
+            .exclude(status_global__in=['selesai', 'batal'])
+            .order_by('-waktu')[:5]
+        )
+        if not orders_aktif:
+            return (
+                f"File sudah kami terima {panggilan} 🙏, tapi kami belum menemukan pesanan "
+                f"aktif atas nomor ini. Boleh sebutkan ID Pesanannya ya Kak? "
+                f"Contoh: *ORD-20260606-XXXX*"
+            )
+        if len(orders_aktif) > 1:
+            daftar = "\n".join(f"- {o.id}" for o in orders_aktif)
+            return (
+                f"File sudah kami terima {panggilan} 🙏 Kakak punya beberapa pesanan aktif, "
+                f"boleh sebutkan mau dikaitkan ke pesanan yang mana?\n\n{daftar}"
+            )
+        gdrive_link = media_url
+        order_id = orders_aktif[0].id
     else:
         return None
 
-    order_id = match.group(1).upper()
     try:
         order = Order.objects.get(id__iexact=order_id)
     except Order.DoesNotExist:
