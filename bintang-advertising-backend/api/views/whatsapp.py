@@ -798,6 +798,17 @@ class BaseWhatsAppWebhookView(APIView):
         # pengaman keyword di baliknya.
         if not jawaban:
             jawaban = proses_dengan_ai_agent(sender_number, nama_pelanggan, pesan_asli=message_text)
+
+        # Kirim balasan APA PUN sumbernya (rekap form order/desain Step 3,
+        # balasan form pembatalan Step 3b, atau AI agent Step 4) — disatukan
+        # di sini SENGAJA (bug ditemukan user 2026-09-10: rekap form order
+        # dihitung benar oleh Step 3 tapi TIDAK PERNAH terkirim ke pelanggan,
+        # krn pengiriman dulu cuma menempel di blok Step 4 lama yg sudah
+        # dihapus saat rebuild AI agent — Step 3/3b jadi kehilangan jalur
+        # kirimnya). Aman dari kirim dobel: semua step LAIN yg sudah kirim
+        # sendiri (konfirmasi 'sesuai', Step 2 proses_kirim_desain, dst)
+        # selalu `return` segera setelah kirim, tidak pernah sampai ke sini.
+        if jawaban:
             simpan_ke_memori(sender_number, "assistant", jawaban, nama_pelanggan)
             self._kirim_balas_async(sender_number, jawaban)
 

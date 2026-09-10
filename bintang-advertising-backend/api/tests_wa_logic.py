@@ -571,6 +571,12 @@ class FormOrderValidasiIntegrationTest(TestCase):
         # pesan (mis. form lalu 'sesuai') — ada anti-duplikasi inbound
         # berbasis message id di webhook (lihat views/whatsapp.py "Inbound
         # Deduplication"), pesan kedua dengan id sama akan diabaikan diam-diam.
+        # Tunggu thread background _kirim_balas_async & return mock_send
+        # supaya test BENAR-BENAR bisa verifikasi balasan terkirim, bukan
+        # cuma efek sampingnya di DB (bug nyata ditemukan user 2026-09-10:
+        # rekap form dihitung benar tapi tidak pernah terkirim -- lolos test
+        # lama krn tidak pernah cek mock_send sama sekali).
+        import threading
         import uuid as _uuid
         payload = {
             "event": "messages.upsert",
@@ -581,12 +587,18 @@ class FormOrderValidasiIntegrationTest(TestCase):
             },
         }
         with patch.dict(os.environ, {"EVOLUTION_API_KEY": "TestKey123"}), \
-             patch("api.whatsapp_client.whatsapp_client.send_text_message") as mock_send:
+             patch("api.whatsapp_client.whatsapp_client.send_text_message") as mock_send, \
+             patch("api.whatsapp_client.whatsapp_client.send_presence", return_value=None), \
+             patch("time.sleep", return_value=None):
             mock_send.return_value = {"status": "sent"}
-            return self.client.post(
+            self.client.post(
                 "/api/webhook/evolution/", payload, content_type="application/json",
                 HTTP_APIKEY="TestKey123",
             )
+            for t in threading.enumerate():
+                if t is not threading.current_thread() and t.daemon:
+                    t.join(timeout=5)
+        return mock_send
 
     def test_form_kurang_bahan_finishing_tidak_tersimpan(self):
         form = (
@@ -599,8 +611,10 @@ class FormOrderValidasiIntegrationTest(TestCase):
             "Bahan/Material: \n"
             "Finishing: \n"
         )
-        self._kirim_form(form)
+        mock_send = self._kirim_form(form)
         self.assertFalse(Order.objects.filter(nomor_wa="628222000222").exists())
+        mock_send.assert_called_once()
+        self.assertIn("Bahan/Material, Finishing", mock_send.call_args[0][1])
 
     def test_form_lengkap_menunggu_konfirmasi_lalu_tersimpan(self):
         """Form order lengkap sekarang direkap dulu & TIDAK langsung membuat
@@ -616,11 +630,17 @@ class FormOrderValidasiIntegrationTest(TestCase):
             "Bahan/Material: Flexi Korea\n"
             "Finishing: Mata Ayam\n"
         )
-        self._kirim_form(form)
+        mock_send_rekap = self._kirim_form(form)
         self.assertFalse(Order.objects.filter(nomor_wa="628222000222").exists())
+        # Rekap WAJIB benar-benar terkirim ke pelanggan (bukan cuma dihitung
+        # & disimpan ke pending_order_form) -- lihat catatan bug di _kirim_form.
+        mock_send_rekap.assert_called_once()
+        self.assertIn("Banner Flexi", mock_send_rekap.call_args[0][1])
+        self.assertIn("sesuai", mock_send_rekap.call_args[0][1].lower())
 
-        self._kirim_form("sesuai")
+        mock_send_konfirmasi = self._kirim_form("sesuai")
         self.assertTrue(Order.objects.filter(nomor_wa="628222000222").exists())
+        mock_send_konfirmasi.assert_called_once()
 
 
 class KonfirmasiOrderKonkurenTest(TransactionTestCase):
