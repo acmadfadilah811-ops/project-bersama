@@ -33,6 +33,7 @@ from api.services.wa_ai_tools import (
     TOOL_SCHEMAS,
     TOOL_FUNCTIONS,
     jalankan_tool,
+    daftar_kategori_produk,
     cari_produk,
     cek_status_pesanan,
     produk_terlaris,
@@ -265,17 +266,53 @@ class WaAiToolsTest(TestCase):
     def tearDown(self):
         cache.clear()
 
-    def test_cari_produk_kata_kunci_kosong_kembalikan_semua(self):
+    def test_cari_produk_kata_kunci_kosong_redirect_bukan_dump_db(self):
+        # (2026-09-10) cari_produk TIDAK BOLEH lagi jadi jalur browse katalog
+        # umum -- itu database operasional internal (ada Bahan Baku dkk,
+        # tidak dikurasi utk pelanggan). Redirect ke daftar_kategori_produk.
         Product.objects.create(nama='Banner Flexi 280gr', price_type='flat', harga_jual_toko=25000, is_active=True)
+        Product.objects.create(nama='Kain Blacu Bahan Baku', price_type='flat', harga_jual_toko=1000, is_active=True)
         hasil = cari_produk('')
         self.assertTrue(hasil['ok'])
-        self.assertEqual(len(hasil['produk']), 1)
+        self.assertEqual(hasil['produk'], [])
+        self.assertIn('daftar_kategori_produk', hasil['catatan'])
 
     def test_cari_produk_typo_toleran(self):
         Product.objects.create(nama='Banner Flexi 280gr', price_type='flat', harga_jual_toko=25000, is_active=True)
         hasil = cari_produk('benner')
         self.assertTrue(hasil['ok'])
         self.assertEqual(hasil['produk'][0]['nama'], 'Banner Flexi 280gr')
+
+    def test_daftar_kategori_produk_tanpa_parameter_kembalikan_daftar_slug(self):
+        SystemConfig.objects.update_or_create(
+            key='wa_pricelist_kategori',
+            defaults={'value': '{"banner": "Info harga banner", "stiker": "Info harga stiker"}'},
+        )
+        hasil = daftar_kategori_produk()
+        self.assertTrue(hasil['ok'])
+        self.assertEqual(set(hasil['kategori_tersedia']), {'banner', 'stiker'})
+
+    def test_daftar_kategori_produk_dengan_parameter_kembalikan_detail(self):
+        SystemConfig.objects.update_or_create(
+            key='wa_pricelist_kategori',
+            defaults={'value': '{"banner": "Banner 240 Rp18.000/m2"}'},
+        )
+        hasil = daftar_kategori_produk(kategori='banner')
+        self.assertTrue(hasil['ok'])
+        self.assertIn('Rp18.000', hasil['detail'])
+
+    def test_daftar_kategori_produk_kategori_tidak_dikenal(self):
+        SystemConfig.objects.update_or_create(
+            key='wa_pricelist_kategori', defaults={'value': '{"banner": "x"}'},
+        )
+        hasil = daftar_kategori_produk(kategori='kategori_ngawur')
+        self.assertFalse(hasil['ok'])
+        self.assertIn('banner', hasil['kategori_tersedia'])
+
+    def test_daftar_kategori_produk_belum_diseed(self):
+        SystemConfig.objects.filter(key='wa_pricelist_kategori').delete()
+        hasil = daftar_kategori_produk()
+        self.assertFalse(hasil['ok'])
 
     def test_cari_produk_tidak_ketemu(self):
         hasil = cari_produk('produk zzz yang tidak ada sama sekali')

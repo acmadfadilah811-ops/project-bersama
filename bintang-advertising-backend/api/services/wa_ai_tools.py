@@ -4,9 +4,20 @@ hardcode dan tabel `ProductPrice` legacy. Harga SELALU dihitung lewat
 `hitung_harga_produk` (baca `Product.price_type`/`tiers` langsung) — AI tidak
 pernah diberi wewenang menghitung/menaksir harga sendiri (sama seperti M6 di
 alur kasir: server yang menghitung, bukan klien/AI).
+
+Pengecualian penting: untuk pertanyaan JELAJAH KATALOG UMUM ("ada produk apa
+saja") jawabannya BUKAN dump `Product` DB (itu terlalu global -- tabel yang
+sama juga menyimpan Bahan Baku/item internal yang tidak layak ditampilkan ke
+pelanggan, bug nyata ditemukan user 2026-08-15 lalu diperbaiki, dan
+ditemukan LAGI oleh user 2026-09-10 setelah rebuild AI agent tidak sengaja
+menghidupkan lagi jalur ini lewat `cari_produk('')`). Untuk itu pakai
+`daftar_kategori_produk` -- sumbernya `SystemConfig['wa_pricelist_kategori']`,
+pricelist resmi yang di-maintain terpisah (lihat management/commands/
+seed_wa_pricelist.py & `#PRICELIST STAR DIGIPRINT...md`), bukan Product DB.
 """
 
 import difflib
+import json
 import logging
 import re
 
@@ -20,23 +31,48 @@ TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "daftar_kategori_produk",
+            "description": (
+                "Daftar kategori produk & harga REFERENSI resmi dari pricelist toko. WAJIB "
+                "dipakai untuk pertanyaan JELAJAH UMUM ('ada produk apa saja', 'jual apa aja', "
+                "minta lihat katalog) -- JANGAN PERNAH pakai cari_produk untuk kasus ini (itu "
+                "database internal operasional, terlalu global & ada item non-produk-jual seperti "
+                "bahan baku yang tidak relevan ditampilkan ke pelanggan). Panggil TANPA parameter "
+                "dulu untuk lihat daftar semua kategori, lalu panggil LAGI dengan parameter "
+                "`kategori` (salah satu slug dari hasil pertama) untuk detail harga kategori itu."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "kategori": {
+                        "type": "string",
+                        "description": "Slug kategori dari hasil panggilan tanpa parameter sebelumnya, mis. 'banner'. Kosongkan untuk lihat daftar semua kategori dulu.",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "cari_produk",
             "description": (
-                "Cari produk, paket, atau jasa cetak yang tersedia di StarPhoto & Advertising "
-                "berdasarkan kata kunci (nama produk atau kategori). Gunakan ini setiap kali "
-                "pelanggan bertanya produk/jasa apa saja yang tersedia, atau menyebut nama "
-                "produk tertentu. JANGAN PERNAH mengarang nama atau daftar produk sendiri — "
-                "selalu panggil tool ini dulu."
+                "Cari SATU produk/paket spesifik yang NAMANYA sudah disebut pelanggan (mis. "
+                "'banner 240', 'kartu nama ivory'), biasanya sebagai langkah SEBELUM "
+                "hitung_harga_produk atau buat_pesanan. JANGAN PERNAH panggil dengan kata_kunci "
+                "kosong untuk pertanyaan umum 'ada produk apa saja' -- pakai daftar_kategori_produk "
+                "untuk itu. JANGAN PERNAH mengarang nama produk sendiri, selalu panggil tool ini dulu."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "kata_kunci": {
                         "type": "string",
-                        "description": "Kata kunci pencarian, mis. 'banner' atau 'kartu nama'. Kosongkan untuk daftar umum.",
+                        "description": "Nama/kata kunci produk spesifik yang disebut pelanggan, mis. 'banner' atau 'kartu nama'. WAJIB diisi -- jangan kosongkan.",
                     },
                 },
-                "required": [],
+                "required": ["kata_kunci"],
             },
         },
     },
@@ -263,10 +299,49 @@ def _cari_produk_typo_toleran(kata_kunci, ambang=0.78, batas_produk=15, batas_pa
     return produk_cocok, paket_cocok
 
 
+def daftar_kategori_produk(kategori=None):
+    """Sumber jelajah katalog UMUM untuk pelanggan -- pricelist resmi
+    (SystemConfig 'wa_pricelist_kategori', diisi management command
+    seed_wa_pricelist dari file pricelist resmi), BUKAN dump Product DB.
+    Product DB itu tabel operasional internal (ada Bahan Baku dkk, tidak
+    dikurasi untuk konsumsi pelanggan) -- bug nyata ditemukan user
+    2026-08-15, lalu ketemu LAGI 2026-09-10 setelah cari_produk('') tanpa
+    sengaja jadi jalur browse katalog di rebuild AI agent."""
+    from ..models import SystemConfig
+
+    try:
+        data = json.loads(SystemConfig.objects.get(key='wa_pricelist_kategori').value)
+    except SystemConfig.DoesNotExist:
+        data = None
+    if not data:
+        return {'ok': False, 'error': 'Daftar kategori produk belum tersedia, langsung eskalasi_admin saja.'}
+
+    kategori = (kategori or '').strip()
+    if not kategori:
+        return {
+            'ok': True,
+            'kategori_tersedia': list(data.keys()),
+            'catatan': 'Panggil lagi tool ini dgn parameter kategori (salah satu slug di atas) utk detail harga.',
+        }
+
+    detail = data.get(kategori)
+    if detail is None:
+        return {'ok': False, 'error': f"Kategori '{kategori}' tidak dikenal.", 'kategori_tersedia': list(data.keys())}
+    return {'ok': True, 'kategori': kategori, 'detail': detail}
+
+
 def cari_produk(kata_kunci=''):
     from ..product_models import Product, ProductPackage
 
     kata_kunci = (kata_kunci or '').strip()
+    if not kata_kunci:
+        return {
+            'ok': True, 'produk': [], 'paket': [],
+            'catatan': (
+                'kata_kunci kosong -- tool ini bukan untuk jelajah katalog umum. Untuk '
+                "pertanyaan 'ada produk apa saja' pakai tool daftar_kategori_produk."
+            ),
+        }
     produk_qs = Product.objects.filter(is_active=True).select_related('kategori')
     paket_qs = ProductPackage.objects.filter(publikasi=True)
     if kata_kunci:
@@ -470,6 +545,7 @@ def eskalasi_admin(alasan=None, nomor=None, nama_pelanggan=None, pesan_asli=None
 
 
 TOOL_FUNCTIONS = {
+    'daftar_kategori_produk': daftar_kategori_produk,
     'cari_produk': cari_produk,
     'hitung_harga_produk': hitung_harga_produk,
     'cek_status_pesanan': cek_status_pesanan,
