@@ -432,85 +432,32 @@ class BaseWhatsAppWebhookView(APIView):
 
     def _buat_order_dari_data(self, parsed):
         """Simpan hasil _parse_form_order() ke DB — dipanggil setelah pelanggan
-        konfirmasi 'sesuai' atas rekap. Logic sama persis dengan
-        _simpan_order_dari_form() versi lama (status_global 'draft', gdrive
-        link dari pesan, fallback 'Format tidak terurai')."""
-        nomor = parsed['nomor']
-        nama_kontak = parsed['nama_kontak']
-        detail = parsed['raw_detail']
+        konfirmasi 'sesuai' atas rekap. Bungkus tipis di atas
+        order_actions.buat_order_dari_items() (2026-09-10) -- logic
+        pembuatan Order/OrderItem/JobBoard diekstrak ke sana supaya sumber
+        LAIN (mis. agent luar lewat api/views/external_bot.py) tidak perlu
+        salinan kedua yang bisa divergen dari alur WA ini."""
+        from ..services.order_actions import buat_order_dari_items
 
-        with transaction.atomic():
-            contact, _ = Contact.objects.get_or_create(
-                nomor_wa=nomor, defaults={'nama': nama_kontak}
-            )
-            existing_orders = Order.objects.filter(nomor_wa=nomor)
-            contact.total_order = existing_orders.count() + 1
-            contact.total_spent = sum(
-                item.harga_jual
-                for o in existing_orders.prefetch_related('items')
-                for item in o.items.all()
-            )
-            contact.last_order = timezone.localdate()
-            contact.save()
+        items = list(parsed['items'])
+        if not items:
+            # Fallback 'Format tidak terurai' -- perilaku lama dipertahankan
+            # persis (item generik 'Umum' + Keterangan cuplikan form asli).
+            items = [{
+                'jenis_produk': 'Umum',
+                'qty': 1,
+                'detail_json': [{"key": "Info", "value": "Format tidak terurai"}],
+                'keterangan': parsed['raw_detail'][:200],
+            }]
 
-            order_id = f"ORD-{timezone.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:4].upper()}"
-            order = Order.objects.create(
-                id=order_id,
-                nomor_wa=contact.nomor_wa,
-                nama=parsed['nama_order'],
-                status_global='draft',
-                sumber='wa',
-                catatan_pelanggan=detail,  # Store the full raw form message
-            )
-
-            items_dibuat = 0
-            for item_data in parsed['items']:
-                order_item = OrderItem.objects.create(
-                    order=order,
-                    jenis_produk=item_data['jenis_produk'],
-                    qty=item_data['qty'],
-                    panjang=item_data['panjang'],
-                    lebar=item_data['lebar'],
-                    bahan=item_data['bahan'] or '',
-                    harga_jual=0,
-                    detail=item_data['detail_json'],
-                    keterangan_detail=item_data['keterangan'] or '',
-                    gdrive_customer_link=item_data['gdrive_link'],
-                )
-
-                # Tentukan tahap awal
-                if item_data['file_desain_belum']:
-                    tahap_awal = TahapProses.objects.filter(
-                        nama__icontains='desain'
-                    ).order_by('urutan').first()
-                else:
-                    tahap_awal = TahapProses.objects.order_by('urutan').first()
-
-                if tahap_awal:
-                    JobBoard.objects.create(
-                        order_item=order_item,
-                        tahap=tahap_awal,
-                        status_pekerjaan='antrean'
-                    )
-                items_dibuat += 1
-
-            if items_dibuat == 0:
-                order_item = OrderItem.objects.create(
-                    order=order,
-                    jenis_produk='Umum',
-                    qty=1,
-                    harga_jual=0,
-                    detail=[{"key": "Info", "value": "Format tidak terurai"}],
-                    keterangan_detail=detail[:200],
-                )
-                tahap_awal = TahapProses.objects.order_by('urutan').first()
-                if tahap_awal:
-                    JobBoard.objects.create(
-                        order_item=order_item,
-                        tahap=tahap_awal,
-                        status_pekerjaan='antrean'
-                    )
-
+        order_id, _order = buat_order_dari_items(
+            nomor_wa=parsed['nomor'],
+            nama_kontak=parsed['nama_kontak'],
+            nama_order=parsed['nama_order'],
+            items=items,
+            raw_detail=parsed['raw_detail'],
+            sumber='wa',
+        )
         return order_id, parsed['is_desain_ready']
 
     def _bangun_balasan_rekap_order(self, parsed, panggilan):

@@ -8,6 +8,7 @@ from . import production_views
 from . import marketing_views
 from .marketing_views import PromoPreviewView
 from . import customer_views
+from .views.external_bot import ExternalBotToolView, ExternalBotBuatOrderView
 from . import finance_views
 from .report_views import ReportDataView, ReportExportView
 from .views.purchase_workflow import PurchaseWorkflowView
@@ -153,6 +154,12 @@ urlpatterns = [
 
     # Webhook Bot WA (Local Baileys Gateway)
     path('wa/webhook/', views.WAWebhookView.as_view(), name='webhook-wa'),
+
+    # API untuk agent/bot EKSTERNAL (n8n, Chatwoot Agent Bot, dsb) -- otak
+    # percakapan boleh di luar Django, data produk/harga/order tetap lewat
+    # sini (2026-09-10, lihat api/views/external_bot.py).
+    path('external-bot/tool/', ExternalBotToolView.as_view(), name='external-bot-tool'),
+    path('external-bot/buat-order/', ExternalBotBuatOrderView.as_view(), name='external-bot-buat-order'),
 
     # Business Settings (mirip OrgSettings di Django CRM)
     path('business-settings/', BusinessSettingsView.as_view(), name='business-settings'),

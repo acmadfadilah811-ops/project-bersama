@@ -171,7 +171,7 @@ class Order(models.Model):
         max_length=10,
         choices=(
             ('wa', 'WhatsApp'), ('pos', 'POS Terminal'), ('manual', 'Input Manual'),
-            ('staff', 'Dibantu Staff'),
+            ('staff', 'Dibantu Staff'), ('agent', 'AI Agent Eksternal'),
         ),
         default='manual',
         db_index=True

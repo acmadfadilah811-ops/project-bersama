@@ -17,12 +17,13 @@ Catatan penting soal desain (jangan diubah tanpa alasan kuat):
   OrderActivityLog + notifikasi WA ke admin (lihat _proses_pesan_masuk di
   views/whatsapp.py) — admin yang memicu retur() manual dari dashboard.
 """
+import uuid
 from decimal import Decimal
 
 from django.db import transaction
 from django.utils import timezone
 
-from ..models import Order, OrderActivityLog
+from ..models import Contact, JobBoard, Order, OrderActivityLog, OrderItem, TahapProses
 
 
 class BatalkanOrderError(Exception):
@@ -154,5 +155,99 @@ def selesaikan_order(order, actor):
     # tidak melempar — konsisten pola fail-open task lain di file ini.
     from accounting.services.order_posting import post_order_material_hpp_journal
     post_order_material_hpp_journal(order=order, actor=actor, activity_log=complete_log)
+
+    return order
+
+
+def buat_order_dari_items(nomor_wa, nama_kontak, nama_order, items, raw_detail='', sumber='wa'):
+    """Buat Order + OrderItem + JobBoard tahap awal dari data yang SUDAH
+    tervalidasi/terstruktur (2026-09-10) -- diekstrak dari
+    BaseWhatsAppWebhookView._buat_order_dari_data() di views/whatsapp.py
+    supaya bot WA (parsing teks form) DAN sumber lain (mis. n8n/agent luar
+    lewat api/views/external_bot.py) sama-sama lewat SATU logic pembuatan
+    order, tidak ada salinan kedua yang bisa divergen.
+
+    `items`: list of dict, tiap dict WAJIB punya key: jenis_produk (str),
+    qty (int > 0). Opsional: panjang, lebar (float, default 0), bahan,
+    finishing, keterangan (str, default ''), detail_json (list, default
+    dari bahan/finishing/ukuran kalau ada), gdrive_link (str, default ''),
+    file_desain_belum (bool, default False).
+
+    Status awal SELALU 'draft' + harga_jual=0 -- harga & konfirmasi akhir
+    tetap tanggung jawab staff/kasir (bot/agent luar TIDAK PERNAH menentukan
+    harga final), sama seperti alur WA yang sudah ada.
+
+    Return (order_id, order) -- order_id dipakai bot/API buat balasan ke
+    pelanggan, `order` (instance) buat caller yang butuh field lain.
+    """
+    if not items:
+        raise ValueError("items tidak boleh kosong.")
+
+    with transaction.atomic():
+        contact, _ = Contact.objects.get_or_create(
+            nomor_wa=nomor_wa, defaults={'nama': nama_kontak}
+        )
+        existing_orders = Order.objects.filter(nomor_wa=nomor_wa)
+        contact.total_order = existing_orders.count() + 1
+        contact.total_spent = sum(
+            item.harga_jual
+            for o in existing_orders.prefetch_related('items')
+            for item in o.items.all()
+        )
+        contact.last_order = timezone.localdate()
+        contact.save()
+
+        order_id = f"ORD-{timezone.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:4].upper()}"
+        order = Order.objects.create(
+            id=order_id,
+            nomor_wa=contact.nomor_wa,
+            nama=nama_order or nama_kontak or '-',
+            status_global='draft',
+            sumber=sumber,
+            catatan_pelanggan=raw_detail,
+        )
+
+        for item_data in items:
+            jenis_produk = str(item_data.get('jenis_produk') or 'Umum').strip() or 'Umum'
+            qty = int(item_data.get('qty') or 0)
+            if qty <= 0:
+                raise ValueError(f"Jumlah item '{jenis_produk}' harus lebih dari nol.")
+
+            bahan = str(item_data.get('bahan') or '')
+            finishing = str(item_data.get('finishing') or '')
+            ukuran = item_data.get('ukuran') or ''
+            detail_json = item_data.get('detail_json')
+            if detail_json is None:
+                detail_json = []
+                if ukuran: detail_json.append({"key": "Ukuran", "value": ukuran})
+                if finishing: detail_json.append({"key": "Finishing", "value": finishing})
+                if bahan: detail_json.append({"key": "Bahan", "value": bahan})
+
+            order_item = OrderItem.objects.create(
+                order=order,
+                jenis_produk=jenis_produk,
+                qty=qty,
+                panjang=float(item_data.get('panjang') or 0),
+                lebar=float(item_data.get('lebar') or 0),
+                bahan=bahan,
+                harga_jual=0,
+                detail=detail_json,
+                keterangan_detail=str(item_data.get('keterangan') or ''),
+                gdrive_customer_link=str(item_data.get('gdrive_link') or ''),
+            )
+
+            file_desain_belum = bool(item_data.get('file_desain_belum'))
+            if file_desain_belum:
+                tahap_awal = TahapProses.objects.filter(nama__icontains='desain').order_by('urutan').first()
+            else:
+                tahap_awal = TahapProses.objects.order_by('urutan').first()
+            if tahap_awal:
+                JobBoard.objects.create(
+                    order_item=order_item,
+                    tahap=tahap_awal,
+                    status_pekerjaan='antrean',
+                )
+
+    return order_id, order
 
     return order

@@ -60,6 +60,15 @@ class OrderStatusActionsTestCase(APITestCase):
         url = f"/api/orders/{self.order_proses.id}/selesaikan/"
         response = self.client.post(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Bug ditemukan 2026-09-10: order_actions.selesaikan_order() tidak
+        # pernah `return order`, jadi view (yang melakukan
+        # `order = selesaikan_order(order, ...)`) menyerialisasi None --
+        # DRF tidak crash (Serializer(None).data balik ke initial/default
+        # kosong), status_code 200 tetap lolos, TAPI body response salah
+        # total (id kosong, dsb). Assert di bawah SENGAJA cek isi body,
+        # bukan cuma status_code, supaya regresi ini tidak lolos lagi.
+        self.assertEqual(response.data.get('id'), self.order_proses.id)
+        self.assertEqual(response.data.get('status_global'), 'selesai')
         self.order_proses.refresh_from_db()
         self.assertEqual(self.order_proses.status_global, "selesai")
 
