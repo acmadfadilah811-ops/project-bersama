@@ -63,6 +63,140 @@ TOOL_SCHEMAS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "cek_status_pesanan",
+            "description": (
+                "Cek status pesanan pelanggan. Isi nomor_order kalau pelanggan sebut ID pesanan "
+                "(format ORD-...). Kosongkan nomor_order untuk cari pesanan TERBARU milik pelanggan "
+                "yang sedang chat ini secara otomatis (sistem tahu nomor WA-nya sendiri)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "nomor_order": {"type": "string", "description": "ID pesanan, mis. 'ORD-20260910-XXXX'. Kosongkan kalau pelanggan tidak menyebutnya."},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "produk_terlaris",
+            "description": "Daftar produk paling sering dipesan pelanggan lain (data riwayat order asli) — pakai untuk rekomendasi kalau pelanggan belum tahu mau pesan apa.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "produk_sesuai_budget",
+            "description": (
+                "Cari produk dengan harga TETAP (bukan per meter persegi) yang muat di budget "
+                "pelanggan. Pakai kalau pelanggan sebut nominal budget tanpa nama produk spesifik."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "budget": {"type": "number", "description": "Nominal budget dalam Rupiah, mis. 200000 untuk 'budget 200rb'."},
+                },
+                "required": ["budget"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "cek_faq",
+            "description": "Cari jawaban dari daftar FAQ resmi toko (jam buka, lokasi, kebijakan umum, dll) sebelum menjawab dari pengetahuan umum.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "pertanyaan": {"type": "string", "description": "Pertanyaan pelanggan apa adanya."},
+                },
+                "required": ["pertanyaan"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ambil_template_form_order",
+            "description": (
+                "Ambil TEMPLATE resmi form order untuk dikirim ke pelanggan yang siap order. "
+                "WAJIB relay hasilnya PERSIS APA ADANYA ke pelanggan (jangan diketik ulang/diubah "
+                "formatnya) — pelanggan akan copy-isi-kirim balik form ini."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "jenis_produk": {"type": "string", "description": "Nama produk yang sudah diketahui, buat pre-isi kolom. Kosongkan kalau belum tahu."},
+                    "bahan": {"type": "string", "description": "Bahan yang sudah disebut pelanggan, kalau ada."},
+                    "finishing": {"type": "string", "description": "Finishing yang sudah disebut pelanggan, kalau ada."},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "buat_pesanan",
+            "description": (
+                "Buat draft pesanan dari data yang sudah dikumpulkan lewat percakapan (nama produk, "
+                "jumlah, ukuran, bahan, finishing untuk tiap item). SELALU validasi dulu Bahan & "
+                "Finishing kalau produknya butuh -- kalau tool ini balas field_kurang, minta "
+                "pelanggan lengkapi dulu, JANGAN coba panggil lagi sebelum datanya lengkap. Kalau "
+                "berhasil, tool ini akan balas REKAP -- sampaikan rekap itu ke pelanggan APA ADANYA "
+                "dan minta konfirmasi 'sesuai' sebelum pesanan benar-benar tersimpan (pelanggan balas "
+                "'sesuai' langsung ditangani sistem, BUKAN tugas kamu lagi)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "jenis_produk": {"type": "string"},
+                                "qty": {"type": "integer", "description": "Jumlah, wajib > 0."},
+                                "panjang": {"type": "number", "description": "Panjang dalam meter, khusus produk per m2."},
+                                "lebar": {"type": "number", "description": "Lebar dalam meter, khusus produk per m2."},
+                                "bahan": {"type": "string"},
+                                "finishing": {"type": "string"},
+                                "keterangan": {"type": "string"},
+                                "file_desain_sudah_ada": {"type": "boolean", "description": "true kalau pelanggan bilang sudah punya file desain."},
+                            },
+                            "required": ["jenis_produk", "qty"],
+                        },
+                    },
+                },
+                "required": ["items"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "eskalasi_admin",
+            "description": (
+                "Teruskan permintaan pelanggan ke admin/manager manusia -- pakai ini untuk hal di "
+                "luar wewenangmu: komplain, retur/pembatalan pesanan yang sudah selesai, permintaan "
+                "diskon khusus, atau kalau kamu benar-benar tidak yakin jawabannya setelah coba tools "
+                "lain. JANGAN pernah menjanjikan sesuatu yang bukan wewenangmu (refund, diskon, dll)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "alasan": {"type": "string", "description": "Ringkasan singkat kenapa perlu eskalasi ke admin."},
+                },
+                "required": ["alasan"],
+            },
+        },
+    },
 ]
 
 
@@ -171,18 +305,202 @@ def hitung_harga_produk(product_id=None, qty=1, panjang=None, lebar=None):
     return hasil
 
 
+def cek_status_pesanan(nomor_order=None, nomor=None):
+    """`nomor` (nomor WA pengirim) SENGAJA tidak ada di TOOL_SCHEMAS --
+    diinjeksi otomatis oleh jalankan_tool() dari konteks percakapan asli,
+    BUKAN parameter yang bisa diisi AI/pelanggan (keamanan: cegah pelanggan
+    "minta" AI mengecek nomor WA orang lain lewat prompt injection)."""
+    from ..models import Order
+    from ..wa_logic import format_tracking
+
+    if nomor_order:
+        order_id = str(nomor_order).strip().upper()
+        try:
+            order = Order.objects.prefetch_related('items__jobs').get(id=order_id)
+            return {'ok': True, 'status_text': format_tracking(order)}
+        except Order.DoesNotExist:
+            return {'ok': False, 'error': f"Pesanan {order_id} tidak ditemukan."}
+
+    orders = Order.objects.filter(nomor_wa=nomor).order_by('-waktu')[:3] if nomor else []
+    if not orders:
+        return {'ok': False, 'error': 'Belum ada pesanan tersimpan atas nomor ini.'}
+    if len(orders) == 1:
+        return {'ok': True, 'status_text': format_tracking(orders[0])}
+    return {
+        'ok': True,
+        'catatan': 'Ada beberapa pesanan, minta pelanggan sebutkan ID spesifik kalau mau detail salah satu.',
+        'daftar_pesanan': [
+            {'id': o.id, 'produk': (o.items.first().jenis_produk if o.items.exists() else 'Umum'), 'status': o.status_global}
+            for o in orders
+        ],
+    }
+
+
+def produk_terlaris():
+    from ..wa_logic import cek_produk_terlaris
+    hasil = cek_produk_terlaris()
+    if not hasil:
+        return {'ok': True, 'produk_terlaris': [], 'catatan': 'Belum ada cukup data histori pesanan.'}
+    return {'ok': True, 'produk_terlaris': [{'nama': nama, 'jumlah_dipesan': jumlah} for nama, jumlah in hasil]}
+
+
+def produk_sesuai_budget(budget=None):
+    from ..product_models import Product
+    try:
+        budget = float(budget)
+    except (TypeError, ValueError):
+        return {'ok': False, 'error': 'Budget harus berupa angka.'}
+    if budget <= 0:
+        return {'ok': False, 'error': 'Budget harus lebih dari nol.'}
+
+    produk_list = list(
+        Product.objects.filter(
+            is_active=True, price_type='flat', harga_jual_toko__lte=budget, harga_jual_toko__gt=0,
+        ).order_by('-harga_jual_toko')[:5]
+    )
+    if not produk_list:
+        return {
+            'ok': True, 'produk': [],
+            'catatan': (
+                'Tidak ada produk harga tetap yang muat di budget ini. Banyak produk kami dihitung '
+                'per ukuran (per m2) jadi bisa disesuaikan -- tanyakan produk spesifiknya ke pelanggan.'
+            ),
+        }
+    return {
+        'ok': True,
+        'produk': [{'product_id': p.id, 'nama': p.nama, 'harga': float(p.harga_jual_toko)} for p in produk_list],
+    }
+
+
+def cek_faq(pertanyaan=None):
+    from ..wa_logic import cek_database_faq
+    hasil = cek_database_faq(pertanyaan or '', '')
+    if hasil is None:
+        return {'ok': True, 'jawaban': None, 'catatan': 'Tidak ada FAQ yang cocok, jawab dari informasi bisnis di system prompt kalau relevan.'}
+    return {'ok': True, 'jawaban': hasil}
+
+
+def ambil_template_form_order(jenis_produk='', bahan='', finishing=''):
+    from ..wa_logic import get_form_order
+    return {'ok': True, 'template': get_form_order(jenis_produk=jenis_produk, bahan=bahan, finishing=finishing)}
+
+
+def buat_pesanan(items=None, nomor=None, nama_pelanggan=None):
+    """`nomor`/`nama_pelanggan` diinjeksi dari konteks (lihat catatan di
+    cek_status_pesanan) -- BUKAN parameter yang AI/pelanggan bisa atur.
+
+    Validasi Bahan/Finishing WAJIB terjadi di sini, PALING AWAL, SEBELUM
+    apa pun lain (instruksi user 2026-09-10: gerbang konfirmasi harus
+    setelah validasi ini, bukan sebaliknya -- pernah ada insiden lolos
+    validasi krn urutan kebalik di alur interaktif lama). Kalau lolos,
+    draft disimpan ke wa_logic.pending_order_form -- CacheState yang SAMA
+    dipakai jalur form-teks manual (views/whatsapp.py Step 2 "Konfirmasi
+    'sesuai'"), jadi konfirmasi pelanggan berikutnya otomatis tertangkap
+    logic yang SUDAH ADA & teruji, tidak perlu tool 'konfirmasi' terpisah."""
+    from ..wa_logic import cek_bahan_finishing_kurang, format_pesan_field_kurang, pending_order_form
+
+    if not items:
+        return {'ok': False, 'error': 'Belum ada item pesanan.'}
+    if not nomor:
+        return {'ok': False, 'error': 'Nomor pelanggan tidak diketahui, tidak bisa membuat pesanan.'}
+
+    field_kurang_list = []
+    items_bersih = []
+    for i, item in enumerate(items, start=1):
+        jenis_produk = str(item.get('jenis_produk') or '').strip()
+        qty = item.get('qty')
+        if not jenis_produk:
+            return {'ok': False, 'error': f"Item ke-{i}: jenis_produk wajib diisi."}
+        if not isinstance(qty, int) or qty <= 0:
+            return {'ok': False, 'error': f"Item ke-{i} ({jenis_produk}): qty wajib angka bulat > 0."}
+
+        bahan = str(item.get('bahan') or '')
+        finishing = str(item.get('finishing') or '')
+        kurang = cek_bahan_finishing_kurang(jenis_produk, bahan, finishing)
+        if kurang:
+            field_kurang_list.append((i, jenis_produk, kurang))
+
+        items_bersih.append({
+            'jenis_produk': jenis_produk,
+            'qty': qty,
+            'panjang': float(item.get('panjang') or 0),
+            'lebar': float(item.get('lebar') or 0),
+            'bahan': bahan,
+            'finishing': finishing,
+            'keterangan': str(item.get('keterangan') or ''),
+            'file_desain_belum': not bool(item.get('file_desain_sudah_ada')),
+        })
+
+    if field_kurang_list:
+        # BERHENTI DI SINI -- tidak ada state disimpan, tidak ada rekap dibuat.
+        return {'ok': False, 'field_kurang': True, 'error': format_pesan_field_kurang(field_kurang_list)}
+
+    pending_order_form.set(nomor, {
+        'nomor': nomor,
+        'nama_kontak': nama_pelanggan or '',
+        'nama_order': nama_pelanggan or '',
+        'raw_detail': '(dibuat via AI agent tools)',
+        'items': items_bersih,
+        'is_desain_ready': any(not it['file_desain_belum'] for it in items_bersih),
+    })
+
+    baris = []
+    for i, it in enumerate(items_bersih, start=1):
+        baris.append(f"*Item {i}: {it['jenis_produk']}*")
+        baris.append(f"- Jumlah: {it['qty']}")
+        if it['panjang'] and it['lebar']:
+            baris.append(f"- Ukuran: {it['panjang']:.1f}x{it['lebar']:.1f}m")
+        if it['bahan']:
+            baris.append(f"- Bahan/Material: {it['bahan']}")
+        if it['finishing']:
+            baris.append(f"- Finishing: {it['finishing']}")
+        baris.append(f"- File Desain: {'belum ada' if it['file_desain_belum'] else 'sudah ada'}")
+    rekap = "\n".join(baris)
+    return {
+        'ok': True,
+        'rekap': rekap,
+        'instruksi': "Sampaikan rekap ini ke pelanggan APA ADANYA, lalu minta konfirmasi dgn kata 'sesuai' kalau semua sudah benar.",
+    }
+
+
+def eskalasi_admin(alasan=None, nomor=None, nama_pelanggan=None, pesan_asli=None):
+    from ..wa_logic import _eskalasi_ke_admin
+    _eskalasi_ke_admin(nomor, nama_pelanggan, pesan_asli, alasan or 'Eskalasi dari AI agent')
+    return {'ok': True, 'catatan': 'Admin sudah diberi tahu. Sampaikan ke pelanggan bahwa admin akan segera membantu.'}
+
+
 TOOL_FUNCTIONS = {
     'cari_produk': cari_produk,
     'hitung_harga_produk': hitung_harga_produk,
+    'cek_status_pesanan': cek_status_pesanan,
+    'produk_terlaris': produk_terlaris,
+    'produk_sesuai_budget': produk_sesuai_budget,
+    'cek_faq': cek_faq,
+    'ambil_template_form_order': ambil_template_form_order,
+    'buat_pesanan': buat_pesanan,
+    'eskalasi_admin': eskalasi_admin,
 }
 
 
-def jalankan_tool(nama_tool, argumen):
+def jalankan_tool(nama_tool, argumen, konteks=None):
+    """`konteks` (nomor, nama_pelanggan, pesan_asli) = data TERPERCAYA dari
+    webhook, bukan dari AI -- diinjeksi ke tool yang mendeklarasikan kwarg
+    itu (cek nama parameter via inspect), dan SELALU MENANG kalau AI juga
+    somehow menyertakan key yang sama (defense in depth thd prompt
+    injection: pelanggan tidak bisa menyuruh AI "atas nama nomor lain")."""
+    import inspect
+
     fn = TOOL_FUNCTIONS.get(nama_tool)
     if fn is None:
         return {'ok': False, 'error': f"Tool '{nama_tool}' tidak dikenal."}
+    kwargs = dict(argumen or {})
+    if konteks:
+        diterima = set(inspect.signature(fn).parameters)
+        for k, v in konteks.items():
+            if k in diterima:
+                kwargs[k] = v
     try:
-        return fn(**(argumen or {}))
+        return fn(**kwargs)
     except TypeError as e:
         logger.warning(f"Argumen tool '{nama_tool}' tidak valid: {e}")
         return {'ok': False, 'error': 'Argumen tidak valid.'}
