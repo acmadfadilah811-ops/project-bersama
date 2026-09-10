@@ -1012,7 +1012,7 @@ class BaseWhatsAppWebhookView(APIView):
                 jawaban_klasifikasi = mulai_alur_buat_pesanan(message_text, sender_number, nama_pelanggan)
             elif maksud == 'tracking_pesanan':
                 jawaban_klasifikasi = cek_tracking(message_text, sender_number, nama_pelanggan)
-            elif maksud in ('konsultasi_desain', 'pembayaran'):
+            elif maksud in ('konsultasi_desain', 'pembayaran', 'lainnya'):
                 # Belum ada alur khusus (2026-09-09) -- dialihkan ke AI
                 # kontekstual dulu, lebih relevan drpd jatuh ke jaring
                 # pengaman keyword lama yang bisa salah rute.

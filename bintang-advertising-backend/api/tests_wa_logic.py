@@ -596,6 +596,44 @@ class WhatsAppWebhookIntegrationTestCase(TestCase):
         self.assertNotIn("belum menemukan produk", teks_terkirim.lower())
         self.assertNotIn("ID Pesanan", teks_terkirim)
 
+    def test_webhook_pesan_ada_maksud_tidak_salah_kena_sapaan(self):
+        """(2026-09-09) Bug produksi kedua: pesan "Kalo tanya-tanya boleh"
+        (minta izin bertanya -- ADA maksud) salah kena kategori 'sapaan' &
+        dibalas menu template kaku "Selamat datang kembali...", padahal
+        pelanggan jelas mau bertanya sesuatu. Kategori 'lainnya' (baru)
+        harus menangkap kasus ini & diarahkan ke AI kontekstual (bisa
+        membaca kalimat aslinya), BUKAN balasan template sapaan."""
+        mock_client = MagicMock()
+        mock_choice_klasifikasi = MagicMock()
+        mock_choice_klasifikasi.message.content = "lainnya"
+        mock_response_klasifikasi = MagicMock()
+        mock_response_klasifikasi.choices = [mock_choice_klasifikasi]
+
+        mock_choice_ai = MagicMock()
+        mock_choice_ai.message.content = "Boleh banget Kak, silakan mau tanya apa? 😊"
+        mock_response_ai = MagicMock()
+        mock_response_ai.choices = [mock_choice_ai]
+
+        mock_client.chat.completions.create.side_effect = [mock_response_klasifikasi, mock_response_ai]
+
+        Contact.objects.create(nomor_wa="628177700022", nama="Fajar")
+        cache.set("wa_ai_respons_awal_628177700022", True, timeout=3600)
+
+        payload = {
+            "event": "messages.upsert",
+            "data": {
+                "key": {"remoteJid": "628177700022@s.whatsapp.net", "fromMe": False, "id": "MSG_LAINNYA_001"},
+                "pushName": "Fajar",
+                "message": {"conversation": "Kalo tanya-tanya boleh"},
+            },
+        }
+        mock_send_text = self._kirim_dan_tunggu(payload, mock_client)
+        mock_send_text.assert_called_once()
+        teks_terkirim = mock_send_text.call_args[0][1]
+        self.assertIn("boleh banget", teks_terkirim.lower())
+        self.assertNotIn("selamat datang kembali", teks_terkirim.lower())
+        self.assertNotIn("ada-ada saja", teks_terkirim.lower())
+
     def test_webhook_pesan_sapaan_tidak_dikenal_keyword_tetap_dikenali_ai(self):
         """(2026-09-09) Bug produksi: sapaan yang TIDAK ada di SAPAAN_LIST
         keyword (mis. "hay") sebelumnya lolos ke kategori 'anomali'/AI umum

@@ -1429,13 +1429,13 @@ def ekstrak_produk_pilihan(pesan, info_kategori=""):
 
 KATEGORI_MAKSUD_PESAN = (
     'lihat_produk', 'cek_harga', 'buat_pesanan', 'tracking_pesanan',
-    'konsultasi_desain', 'pembayaran', 'sapaan', 'anomali',
+    'konsultasi_desain', 'pembayaran', 'sapaan', 'lainnya', 'anomali',
 )
 
 
 def klasifikasi_maksud_pesan(pesan):
     """
-    Klasifikasi maksud pesan pelanggan ke salah satu dari 8 kategori
+    Klasifikasi maksud pesan pelanggan ke salah satu dari 9 kategori
     (KATEGORI_MAKSUD_PESAN) -- instruksi user 2026-09-09: "n8n sebagai
     penyaring" diimplementasikan native di Python (bukan service n8n
     terpisah) supaya tidak nambah titik gagal baru utk chatbot yang harus
@@ -1444,21 +1444,28 @@ def klasifikasi_maksud_pesan(pesan):
     Pola sama dengan ekstrak_pilihan_bebas()/ekstrak_produk_pilihan(): AI
     HANYA mengklasifikasi (bukan mengeksekusi apa pun), caller yang tetap
     memutuskan alur & rute ke handler deterministik yang sesuai. Return
-    None kalau AI tidak tersedia/gagal/hasil di luar 8 kategori -- caller
+    None kalau AI tidak tersedia/gagal/hasil di luar 9 kategori -- caller
     WAJIB fallback ke logic keyword lama (jangan pernah macet krn AI down).
 
-    'sapaan' (2026-09-09, tambahan) = cuma menyapa/basa-basi netral tanpa
-    maksud bisnis spesifik (mis. "hai", "malam", "hay", "permisi") --
-    DIPISAH dari 'anomali' krn awalnya sapaan yang tidak dikenali daftar
-    kata tetap (SAPAAN_LIST) ikut kepental ke 'anomali' & dibalas seolah
-    pelanggan dianggap bercanda/di luar konteks (bug produksi ditemukan
-    user: pesan "hay" & "malam" dibalas penolakan sopan, bukan sapaan
-    balik) -- AI di sini jadi lini depan pengenalan sapaan yg menggeneralisasi
-    ke variasi bahasa apa pun, bukan cuma daftar kata yang harus terus
-    ditambah manual satu-satu tiap ada slang baru.
+    'sapaan' (2026-09-09) = SAPAAN MURNI TANPA maksud/pertanyaan apa pun
+    menyertai (mis. "hai", "malam", "hay", "permisi") -- DIPISAH dari
+    'anomali' krn awalnya sapaan yang tidak dikenali daftar kata tetap
+    (SAPAAN_LIST) ikut kepental ke 'anomali' & dibalas seolah pelanggan
+    dianggap bercanda/di luar konteks (bug produksi ditemukan user: pesan
+    "hay" & "malam" dibalas penolakan sopan, bukan sapaan balik).
+
+    'lainnya' (2026-09-09, tambahan kedua) = pesan yang ADA maksud/mau
+    bertanya sesuatu, tapi tidak cocok kategori spesifik mana pun di atas
+    DAN bukan sapaan murni. DIPISAH dari 'sapaan' krn bug produksi kedua
+    ditemukan user: pesan "Kalo tanya-tanya boleh" (minta izin mau
+    bertanya -- ADA maksud) ikut salah kena 'sapaan' & dibalas menu
+    template kaku "Selamat datang kembali..." alih2 dijawab kontekstual
+    "Boleh kak, silakan mau tanya apa?" -- kategori ini diarahkan ke AI
+    kontekstual (bisa membaca kalimat aslinya), BUKAN balasan template
+    tetap spt 'sapaan'/'anomali'.
     'anomali' = pelanggan bercanda / pertanyaan di luar konteks bisnis
-    percetakan sama sekali (BUKAN sapaan polos, BUKAN sekadar pertanyaan
-    yang belum kejawab).
+    percetakan sama sekali (BUKAN sapaan polos -- itu 'sapaan'; BUKAN
+    pesan yang ada maksud tapi kategorinya tidak jelas -- itu 'lainnya').
     """
     pesan_bersih = (pesan or '').strip()
     if not pesan_bersih:
@@ -1475,7 +1482,7 @@ def klasifikasi_maksud_pesan(pesan):
             messages=[
                 {"role": "system", "content": (
                     "Kamu mengklasifikasi maksud pesan WhatsApp pelanggan toko percetakan "
-                    "ke SATU dari 8 kategori berikut, balas HANYA kode kategorinya "
+                    "ke SATU dari 9 kategori berikut, balas HANYA kode kategorinya "
                     "(tanpa basa-basi/kalimat tambahan/tanda kutip):\n\n"
                     "lihat_produk - mau lihat katalog/daftar produk yang tersedia\n"
                     "cek_harga - menanyakan harga produk spesifik\n"
@@ -1483,14 +1490,17 @@ def klasifikasi_maksud_pesan(pesan):
                     "tracking_pesanan - menanyakan status pesanan yang sudah dibuat\n"
                     "konsultasi_desain - bertanya soal desain, ukuran, layout, warna, dsb\n"
                     "pembayaran - menanyakan cara bayar, konfirmasi sudah transfer, dsb\n"
-                    "sapaan - CUMA menyapa/basa-basi netral tanpa maksud bisnis spesifik "
-                    "(mis. 'hai', 'halo', 'hay', 'pagi', 'malam', 'permisi', 'assalamualaikum', "
-                    "atau variasi/slang lain dari sapaan -- SELALU pilih ini utk sapaan polos "
-                    "apa pun bentuknya, JANGAN pilih 'anomali')\n"
+                    "sapaan - HANYA sapaan/basa-basi MURNI, TIDAK ada maksud/pertanyaan apa "
+                    "pun yang menyertai (mis. 'hai', 'halo', 'hay', 'pagi', 'malam', 'permisi', "
+                    "'assalamualaikum', atau variasi/slang lain dari sapaan murni)\n"
+                    "lainnya - pesan yang ADA maksud/mau bertanya sesuatu (meski samar/tidak "
+                    "eksplisit, mis. 'kalo tanya-tanya boleh', 'mau nanya dong', 'ada waktu ga "
+                    "kak'), TAPI tidak cocok satu pun dari 4 kategori spesifik di atas DAN "
+                    "BUKAN sapaan murni -- kalau pesan menyebut sapaan TAPI juga menyiratkan "
+                    "ingin bertanya/ada maksud lain, pilih 'lainnya', JANGAN 'sapaan'\n"
                     "anomali - bercanda, iseng, atau sama sekali di luar konteks bisnis "
-                    "percetakan (BUKAN sapaan polos -- itu 'sapaan'; BUKAN pertanyaan produk "
-                    "yang belum terjawab -- kalau masih ada kemungkinan terkait cetak/produk/"
-                    "pesanan, JANGAN pilih ini)"
+                    "percetakan (BUKAN sapaan polos -- itu 'sapaan'; BUKAN pesan yang ada "
+                    "maksud tapi kategorinya tidak jelas -- itu 'lainnya')"
                 )},
                 {"role": "user", "content": pesan_bersih},
             ],
