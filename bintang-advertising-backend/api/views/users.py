@@ -9,8 +9,8 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 import calendar
 from django.utils import timezone
 
-from ..models import CustomUser, Divisi, ShiftTiming, JobBoard
-from ..serializers import CustomUserSerializer, DivisiSerializer, ShiftTimingSerializer
+from ..models import CustomUser, Divisi, UnitBisnis, ShiftTiming, JobBoard
+from ..serializers import CustomUserSerializer, DivisiSerializer, UnitBisnisSerializer, ShiftTimingSerializer
 from ..permissions import IsOwnerManagerOrAdmin, IsOwnerOrManager, IsOwnerManagerAdminOrReadOnly
 from users.models import SecurityAuditLog
 
@@ -140,6 +140,8 @@ class CreateUserView(APIView):
             return Response({'error': 'Hanya Owner yang dapat membuat akun Owner/Manager.'}, status=403)
         no_hp    = request.data.get('no_hp', '')
         divisi   = request.data.get('divisi', None)
+        unit_bisnis = request.data.get('unit_bisnis', None)
+        posisi   = request.data.get('posisi', '')
         first_name = request.data.get('first_name', '')
 
         # Validasi field wajib
@@ -162,11 +164,17 @@ class CreateUserView(APIView):
             role=role,
             no_hp=no_hp,
             first_name=first_name,
+            posisi=posisi,
         )
         if divisi:
             try:
                 user.divisi = Divisi.objects.get(pk=divisi)
             except Divisi.DoesNotExist:
+                pass
+        if unit_bisnis:
+            try:
+                user.unit_bisnis = UnitBisnis.objects.get(pk=unit_bisnis)
+            except UnitBisnis.DoesNotExist:
                 pass
 
         user.set_password(password)  # Hash password dengan benar
@@ -186,6 +194,14 @@ class CreateUserView(APIView):
 class DivisiViewSet(viewsets.ModelViewSet):
     queryset = Divisi.objects.all()
     serializer_class = DivisiSerializer
+    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+
+
+class UnitBisnisViewSet(viewsets.ModelViewSet):
+    queryset = UnitBisnis.objects.all().order_by('nama')
+    serializer_class = UnitBisnisSerializer
+    # Read-only untuk semua role (staff/kasir perlu baca daftar unit buat
+    # dropdown form Customer) -- create/edit/delete tetap owner/manager/admin.
     permission_classes = [IsOwnerManagerAdminOrReadOnly]
 
 

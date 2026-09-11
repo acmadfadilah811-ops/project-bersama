@@ -18,6 +18,7 @@ class CustomerGroupSerializer(serializers.ModelSerializer):
 
 class CustomerSerializer(serializers.ModelSerializer):
     customer_group_nama = serializers.ReadOnlyField(source='customer_group.nama')
+    unit_bisnis_nama = serializers.ReadOnlyField(source='unit_bisnis.nama')
     password = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
     class Meta:

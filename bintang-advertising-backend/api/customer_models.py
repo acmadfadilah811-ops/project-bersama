@@ -49,6 +49,11 @@ class Customer(models.Model):
 
     nama = models.CharField(max_length=255)
     kode_pelanggan = models.CharField(max_length=50, blank=True, default='')
+    # Label unit bisnis (StarFoto / Star Advertising) -- murni penanda supaya
+    # kasir input data pelanggan dengan benar & laporan lebih rapi. TIDAK
+    # membatasi visibilitas -- satu pelanggan bisa saja transaksi di kedua
+    # unit, jadi ini tidak dipakai di scoped_by_unit_bisnis().
+    unit_bisnis = models.ForeignKey('UnitBisnis', on_delete=models.SET_NULL, null=True, blank=True, related_name='customers')
     customer_group = models.ForeignKey(CustomerGroup, on_delete=models.SET_NULL, null=True, blank=True, related_name='customers')
     handphone = models.CharField(max_length=20, blank=True, default='')
     email = models.EmailField(blank=True, default='')

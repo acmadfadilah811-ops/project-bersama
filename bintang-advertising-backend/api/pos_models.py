@@ -1,6 +1,6 @@
 from django.db import models
 from django.conf import settings
-from .models import Contact, CustomUser, SaldoKasHarian
+from .models import Contact, CustomUser, SaldoKasHarian, UnitBisnis
 from .product_models import Product, ProductPackage, ProductVariant
 from django.utils import timezone
 
@@ -13,6 +13,10 @@ class POSSale(models.Model):
 
     nomor = models.CharField(max_length=50, unique=True)
     kasir = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='pos_sales')
+    # Diisi OTOMATIS dari unit_bisnis milik kasir saat sale dibuat (lihat
+    # save() di bawah) -- bukan dipilih manual -- supaya laporan per unit
+    # akurat.
+    unit_bisnis = models.ForeignKey(UnitBisnis, on_delete=models.SET_NULL, null=True, blank=True, related_name='pos_sales')
     # Karyawan yang MELAYANI/menjadi "service order" pelanggan (bisa siapa saja),
     # dicatat oleh kasir yang menginput. Beda dari `kasir` (akun penginput).
     dilayani_oleh = models.ForeignKey(
@@ -112,6 +116,13 @@ class POSSale(models.Model):
     # jadi pesanan Lunas via Terminal Kasir tidak pernah tampil di sana
     # meski masih dalam produksi (bug ditemukan & diperbaiki 2026-08-13).
     diambil_pada = models.DateTimeField(null=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        # unit_bisnis diisi otomatis dari kasir, bukan dipilih manual --
+        # hanya kalau belum diisi, supaya nilai yang sudah ada tidak tertimpa.
+        if self.kasir_id and not self.unit_bisnis_id:
+            self.unit_bisnis_id = self.kasir.unit_bisnis_id
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.nomor} - {self.status}"

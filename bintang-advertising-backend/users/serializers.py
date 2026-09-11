@@ -33,8 +33,9 @@ class UserMeSerializer(serializers.ModelSerializer):
 
     profile = ProfileSerializer(read_only=True)
     divisi_nama = serializers.CharField(source="divisi.nama", read_only=True, default=None)
+    unit_bisnis_nama = serializers.CharField(source="unit_bisnis.nama", read_only=True, default=None)
     is_online = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = CustomUser
         fields = [
@@ -46,6 +47,9 @@ class UserMeSerializer(serializers.ModelSerializer):
             "role",
             "divisi",
             "divisi_nama",
+            "unit_bisnis",
+            "unit_bisnis_nama",
+            "posisi",
             "no_hp",
             "kota",
             "negara",

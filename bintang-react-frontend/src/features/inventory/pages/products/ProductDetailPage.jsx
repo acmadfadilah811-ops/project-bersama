@@ -73,7 +73,14 @@ function EditButton({ onClick }) {
   );
 }
 
-function SaveCancelHeader({ storeName, onCancel, onSave, saving }) {
+function SaveCancelHeader({ storeName, unitBisnisNama, onCancel, onSave, saving }) {
+  // unitBisnisNama (kalau dikasih) = nilai Unit Bisnis produk yang SEBENARNYA
+  // tersimpan (lihat field "Unit Bisnis" di section Info Umum) -- badge di
+  // bawah dulu cuma tempelan nama bisnis global tanpa terikat data apapun,
+  // dan tombol "x"-nya tidak melakukan apa-apa (dekoratif, ditemukan &
+  // dilaporkan owner). unitBisnisNama undefined = fallback ke storeName lama
+  // di section lain yang belum ikut diperbaiki.
+  const label = unitBisnisNama !== undefined ? (unitBisnisNama || '(Semua unit)') : storeName;
   return (
     <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12 }}>
       <div>
@@ -100,8 +107,7 @@ function SaveCancelHeader({ storeName, onCancel, onSave, saving }) {
             borderRadius: '12px',
             border: '1px solid #e2e8f0',
           }}>
-            {storeName}
-            <span style={{ cursor: 'pointer', color: '#94a3b8', fontSize: '12px', fontWeight: 'bold', marginLeft: 2 }}>&times;</span>
+            {label}
           </span>
         </div>
       </div>
@@ -238,7 +244,7 @@ function FormRow({ label, desc, children }) {
   );
 }
 
-export default function ProductDetailPage({ product, onBack, onUpdated, categories = [], brands = [], storeName = 'StarPhoto & Advertising', initialCopyMode = false }) {
+export default function ProductDetailPage({ product, onBack, onUpdated, categories = [], brands = [], unitBisnisOptions = [], storeName = 'StarPhoto & Advertising', initialCopyMode = false }) {
   const [activeTab, setActiveTab] = useState('profil');
   const [editingSection, setEditingSection] = useState(null);
   const [savingSection, setSavingSection] = useState(false);
@@ -252,6 +258,7 @@ export default function ProductDetailPage({ product, onBack, onUpdated, categori
   const [formKategori, setFormKategori] = useState('');
   const [formKoleksi, setFormKoleksi] = useState('');
   const [formBrand, setFormBrand] = useState('');
+  const [formUnitBisnis, setFormUnitBisnis] = useState('');
   const [formSku, setFormSku] = useState('');
   const [formBarcode, setFormBarcode] = useState('');
   const [formKondisi, setFormKondisi] = useState('Baru');
@@ -537,6 +544,7 @@ export default function ProductDetailPage({ product, onBack, onUpdated, categori
     setFormKategori(product.kategori ? String(product.kategori) : '');
     setFormKoleksi(product.koleksi ? String(product.koleksi) : '');
     setFormBrand(product.brand ? String(product.brand) : '');
+    setFormUnitBisnis(product.unit_bisnis ? String(product.unit_bisnis) : '');
     setFormSku(product.sku || '');
     setFormBarcode(product.barcode || '');
     setFormKondisi(product.kondisi || 'Baru');
@@ -566,6 +574,7 @@ export default function ProductDetailPage({ product, onBack, onUpdated, categori
         kategori: formKategori || null,
         koleksi: formKoleksi || null,
         brand: formBrand || null,
+        unit_bisnis: formUnitBisnis || null,
         sku: formSku || null,
         barcode: formBarcode || null,
         kondisi: formKondisi,
@@ -1400,7 +1409,13 @@ export default function ProductDetailPage({ product, onBack, onUpdated, categori
             title="Info Umum"
             headerRight={
               editingSection === 'info_umum' ? (
-                <SaveCancelHeader storeName={storeName} onCancel={cancelEdit} onSave={saveInfoUmum} saving={savingSection} />
+                <SaveCancelHeader
+                  storeName={storeName}
+                  unitBisnisNama={unitBisnisOptions.find((u) => String(u.id) === String(formUnitBisnis))?.nama}
+                  onCancel={cancelEdit}
+                  onSave={saveInfoUmum}
+                  saving={savingSection}
+                />
               ) : (
                 <div style={{ display: 'flex', gap: 8 }}>
                   <EditButton onClick={startEditInfoUmum} />
@@ -1455,6 +1470,14 @@ export default function ProductDetailPage({ product, onBack, onUpdated, categori
                     <option value="">Pilih salah satu</option>
                     {localBrands.map((b) => (
                       <option key={b.id} value={String(b.id)}>{b.nama}</option>
+                    ))}
+                  </select>
+                </FormRow>
+                <FormRow label="Unit Bisnis" desc="Kosongkan supaya produk tetap tampil ke kedua unit -- staff/kasir cuma lihat unit sendiri kalau ditandai">
+                  <select value={formUnitBisnis ? String(formUnitBisnis) : ''} onChange={(e) => setFormUnitBisnis(e.target.value)}>
+                    <option value="">(Semua unit)</option>
+                    {unitBisnisOptions.map((u) => (
+                      <option key={u.id} value={String(u.id)}>{u.nama}</option>
                     ))}
                   </select>
                 </FormRow>

@@ -19,6 +19,7 @@ from .protected_media import serve_protected_media
 router = DefaultRouter()
 
 router.register(r'divisi', views.DivisiViewSet)
+router.register(r'unit-bisnis', views.UnitBisnisViewSet)
 router.register(r'tahap-proses', views.TahapProsesViewSet)
 router.register(r'users', views.CustomUserViewSet)
 router.register(r'contacts', views.ContactViewSet)

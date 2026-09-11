@@ -9,6 +9,20 @@ import logging
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------
+# 0. MASTER DATA: UNIT BISNIS (StarFoto vs Star Advertising)
+# ---------------------------------------------------------
+class UnitBisnis(models.Model):
+    """Unit bisnis tempat staff/kasir bertugas dan produk/transaksi dikategorikan
+    (mis. StarFoto, Star Advertising) -- BEDA dari Divisi di bawah, yang berarti
+    tahapan proses produksi (Desain/Cetak/dst), bukan unit bisnis."""
+    nama = models.CharField(max_length=100, unique=True)
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.nama
+
+
+# ---------------------------------------------------------
 # 1. MASTER DATA: DIVISI
 # ---------------------------------------------------------
 class Divisi(models.Model):
@@ -49,7 +63,16 @@ class CustomUser(AbstractUser):
     )
     
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='staff', db_index=True)
-    divisi = models.ForeignKey(Divisi, on_delete=models.SET_NULL, null=True, blank=True, related_name='users') 
+    divisi = models.ForeignKey(Divisi, on_delete=models.SET_NULL, null=True, blank=True, related_name='users')
+    # Unit bisnis tempat staff/kasir ini bertugas (StarFoto / Star Advertising).
+    # Kosong untuk owner/manager/admin -- role itu tidak kena filter unit
+    # bisnis di manapun, jadi tidak butuh nilai ini. Untuk staff/kasir,
+    # dipakai scoped_by_unit_bisnis() (api/permissions.py) supaya mereka
+    # cuma lihat produk/order/transaksi unit mereka sendiri.
+    unit_bisnis = models.ForeignKey(UnitBisnis, on_delete=models.SET_NULL, null=True, blank=True, related_name='karyawan')
+    # Jabatan/posisi bebas teks (mis. "Operator", "Editor", "Fotografer" untuk
+    # staff StarFoto) -- murni informational/laporan, tidak memengaruhi hak akses.
+    posisi = models.CharField(max_length=100, blank=True, default='')
     no_hp = models.CharField(max_length=20, null=True, blank=True)
     kota = models.CharField(max_length=50, null=True, blank=True)
     negara = models.CharField(max_length=50, default='Indonesia')
@@ -182,6 +205,10 @@ class Order(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='orders_dilayani', help_text='Karyawan yang melayani pelanggan',
     )
+    # Diisi OTOMATIS dari unit_bisnis milik dilayani_oleh saat order dibuat
+    # (lihat save() di bawah) -- bukan dipilih manual -- supaya laporan per
+    # unit akurat tanpa staff/kasir perlu ingat memilihnya sendiri.
+    unit_bisnis = models.ForeignKey('UnitBisnis', on_delete=models.SET_NULL, null=True, blank=True, related_name='orders')
 
     # TAMBAHAN FIELD MODUL 1: KEUANGAN & DISKON
     dp_dibayar = models.IntegerField(default=0, help_text="Uang muka yang sudah dibayar")
@@ -311,6 +338,11 @@ class Order(models.Model):
         from django.db import transaction
 
         with transaction.atomic():
+            # unit_bisnis diisi otomatis dari karyawan yang melayani, bukan
+            # dipilih manual -- hanya kalau belum diisi, supaya nilai yang
+            # sudah ada (mis. di-set manual lewat admin) tidak tertimpa.
+            if self.dilayani_oleh_id and not self.unit_bisnis_id:
+                self.unit_bisnis_id = self.dilayani_oleh.unit_bisnis_id
             # Hitung ulang total_harga dari item-itemnya secara dinamis jika order sudah ada
             if self.pk:
                 try:

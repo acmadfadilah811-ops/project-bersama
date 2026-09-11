@@ -4,7 +4,7 @@ from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from .models import (
-    Divisi, TahapProses, CustomUser, Contact, Order, OrderItem, JobBoard,
+    UnitBisnis, Divisi, TahapProses, CustomUser, Contact, Order, OrderItem, JobBoard,
     InventoryItem, RestockHistory, ProductPrice, SystemConfig, FAQ,
     OrderActivityLog, KomplainOrder, KomplainLog, CustomerActivity,
     BillOfMaterials, BoMItem, ShiftTiming, POSAntrianDevice, SaldoKasHarian,
@@ -74,6 +74,11 @@ class ShiftTimingSerializer(serializers.ModelSerializer):
         model = ShiftTiming
         fields = '__all__'
 
+class UnitBisnisSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UnitBisnis
+        fields = '__all__'
+
 class DivisiSerializer(serializers.ModelSerializer):
     class Meta:
         model = Divisi
@@ -89,14 +94,15 @@ class TahapProsesSerializer(serializers.ModelSerializer):
 # --- 2. Account & User Serializers ---
 class CustomUserSerializer(serializers.ModelSerializer):
     divisi_nama = serializers.ReadOnlyField(source='divisi.nama')
-    
+    unit_bisnis_nama = serializers.ReadOnlyField(source='unit_bisnis.nama')
+
     class Meta:
         model = CustomUser
         fields = [
-            'id', 'username', 'email', 'role', 'divisi', 'divisi_nama', 'no_hp', 'kota', 
-            'negara', 'alamat', 'bio', 'foto_profil', 'last_login', 'date_joined', 
+            'id', 'username', 'email', 'role', 'divisi', 'divisi_nama', 'no_hp', 'kota',
+            'negara', 'alamat', 'bio', 'foto_profil', 'last_login', 'date_joined',
             'status_karyawan', 'jenis_kontrak', 'kontrak_mulai', 'kontrak_selesai',
-            'no_kpj', 'bpjs_kes', 'file_pkwt', 'nip'
+            'no_kpj', 'bpjs_kes', 'file_pkwt', 'nip', 'unit_bisnis', 'unit_bisnis_nama', 'posisi'
         ]
 
     def to_representation(self, instance):
@@ -571,6 +577,7 @@ class OrderSerializer(serializers.ModelSerializer):
     kupon_info = serializers.SerializerMethodField()
     dilayani_oleh_nama = serializers.SerializerMethodField()
     kode_pelanggan = serializers.SerializerMethodField()
+    unit_bisnis_nama = serializers.ReadOnlyField(source='unit_bisnis.nama')
 
     class Meta:
         model = Order
@@ -582,6 +589,7 @@ class OrderSerializer(serializers.ModelSerializer):
             'kupon_kode', 'diskon_kupon', 'kupon_info',
             'diskon_total',
             'dilayani_oleh', 'dilayani_oleh_nama',
+            'unit_bisnis', 'unit_bisnis_nama',
             'metode_diskon', 'diskon_otomatis',
             # Metadata & Pengiriman (T-209 Revisi 2)
             'email_pelanggan', 'alamat_pelanggan', 'kurir_pengiriman', 'layanan_pengiriman',
@@ -598,6 +606,9 @@ class OrderSerializer(serializers.ModelSerializer):
             # Provenans order (wa/pos/manual) hanya boleh diset server saat
             # dibuat (form WA, checkout_pos, dst) — bukan dari payload klien.
             'sumber': {'read_only': True},
+            # unit_bisnis diisi otomatis dari dilayani_oleh (lihat Order.save()),
+            # bukan dipilih manual dari client.
+            'unit_bisnis': {'read_only': True},
         }
 
     def get_pengembalian_aktif(self, obj):

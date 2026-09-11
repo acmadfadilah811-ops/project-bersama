@@ -23,6 +23,7 @@ class POSSaleSerializer(serializers.ModelSerializer):
     pelanggan_name = serializers.ReadOnlyField(source='pelanggan.nama')
     dilayani_oleh_nama = serializers.SerializerMethodField()
     diskon_total = serializers.SerializerMethodField()
+    unit_bisnis_nama = serializers.ReadOnlyField(source='unit_bisnis.nama')
 
     class Meta:
         model = POSSale

@@ -39,7 +39,7 @@ from .dashboard import (
 )
 from .users import (
     CustomUserViewSet, CreateUserView,
-    DivisiViewSet, ShiftTimingViewSet, StaffPerformanceReportView
+    DivisiViewSet, UnitBisnisViewSet, ShiftTimingViewSet, StaffPerformanceReportView
 )
 from .pos import (
     POSAntrianDeviceViewSet, SaldoKasHarianViewSet, RingkasanShiftViewSet,

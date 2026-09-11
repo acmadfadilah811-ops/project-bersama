@@ -73,6 +73,7 @@ export default function ProductsPage() {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [brands, setBrands] = useState([]);
+  const [unitBisnisOptions, setUnitBisnisOptions] = useState([]);
   const [collections, setCollections] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -392,16 +393,18 @@ export default function ProductsPage() {
   useEffect(() => {
     (async () => {
       try {
-        const [catRes, brandRes, collRes] = await Promise.all([
+        const [catRes, brandRes, collRes, unitBisnisRes] = await Promise.all([
           apiClient.get('/product-categories/'),
           apiClient.get('/brands/'),
           apiClient.get('/collections/'),
+          apiClient.get('/unit-bisnis/'),
         ]);
         setCategories(Array.isArray(catRes.data) ? catRes.data : catRes.data?.results || []);
         setBrands(Array.isArray(brandRes.data) ? brandRes.data : brandRes.data?.results || []);
         setCollections(Array.isArray(collRes.data) ? collRes.data : collRes.data?.results || []);
+        setUnitBisnisOptions(Array.isArray(unitBisnisRes.data) ? unitBisnisRes.data : unitBisnisRes.data?.results || []);
       } catch (err) {
-        console.error('[ProductsPage] fetch categories/brands/collections error:', err);
+        console.error('[ProductsPage] fetch categories/brands/collections/unit-bisnis error:', err);
       }
     })();
   }, []);
@@ -682,6 +685,7 @@ export default function ProductsPage() {
         onUpdated={setViewingProduct}
         categories={categories}
         brands={brands}
+        unitBisnisOptions={unitBisnisOptions}
         storeName={businessSettings?.nama_bisnis || 'StarPhoto & Advertising'}
         initialCopyMode={initialCopyMode}
       />

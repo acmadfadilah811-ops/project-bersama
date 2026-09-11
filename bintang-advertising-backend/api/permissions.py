@@ -1,6 +1,24 @@
 from rest_framework.permissions import BasePermission, SAFE_METHODS
+from django.db.models import Q
 from django.utils import timezone
 from hr.models import Absensi
+
+
+def scoped_by_unit_bisnis(qs, user, field="unit_bisnis"):
+    """
+    Batasi `qs` ke unit bisnis milik `user`, HANYA untuk role staff/kasir.
+    owner/manager/admin selalu lihat gabungan kedua unit (tidak difilter).
+
+    Baris yang belum ditandai unit bisnis-nya (`field` IS NULL) tetap ikut
+    tampil ke staff/kasir juga -- fail-open, supaya data lama yang belum
+    sempat ditandai tidak mendadak hilang dari pandangan mereka. Lihat PRD
+    "Pemisahan Data per Unit Bisnis" asumsi #3.
+    """
+    role = getattr(user, "role", None)
+    unit_id = getattr(user, "unit_bisnis_id", None)
+    if role in ("staff", "kasir") and unit_id:
+        qs = qs.filter(Q(**{f"{field}__isnull": True}) | Q(**{field: unit_id}))
+    return qs
 
 class IsOwnerOrManager(BasePermission):
     """

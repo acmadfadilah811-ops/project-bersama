@@ -18,7 +18,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.exceptions import ValidationError
-from api.permissions import IsOwnerManagerAdminOrReadOnly
+from api.permissions import IsOwnerManagerAdminOrReadOnly, scoped_by_unit_bisnis
 from rest_framework.response import Response
 
 from .product_models import (
@@ -374,6 +374,7 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        queryset = scoped_by_unit_bisnis(queryset, self.request.user)
         # is_active=true/false SEBELUMNYA dikirim Kasir (PosTerminal.jsx,
         # ProductListPage.jsx) tapi diam-diam diabaikan di sini — produk yang
         # sudah dinonaktifkan tetap muncul & bisa dijual di POS (dibuktikan

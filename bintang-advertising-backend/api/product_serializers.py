@@ -72,6 +72,7 @@ class ProductSerializer(serializers.ModelSerializer):
     kategori_nama = serializers.ReadOnlyField(source='kategori.nama')
     brand_nama = serializers.ReadOnlyField(source='brand.nama')
     koleksi_nama = serializers.ReadOnlyField(source='koleksi.nama')
+    unit_bisnis_nama = serializers.ReadOnlyField(source='unit_bisnis.nama')
     related_products_details = serializers.SerializerMethodField()
 
     @staticmethod

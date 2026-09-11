@@ -60,6 +60,10 @@ class Product(models.Model):
     bebas_pajak = models.BooleanField(default=False)
     bebas_biaya_layanan = models.BooleanField(default=False)
     kategori = models.ForeignKey(ProductCategory, on_delete=models.SET_NULL, null=True, related_name='products')
+    # Unit bisnis pemilik produk ini (StarFoto / Star Advertising). Kosong =
+    # tampil ke kedua unit (fail-open, backward compatible untuk produk lama
+    # yang belum ditandai) -- lihat scoped_by_unit_bisnis() di api/permissions.py.
+    unit_bisnis = models.ForeignKey('UnitBisnis', on_delete=models.SET_NULL, null=True, blank=True, related_name='products')
     brand = models.ForeignKey(Brand, on_delete=models.SET_NULL, null=True, blank=True, related_name='products')
     koleksi = models.ForeignKey(Collection, on_delete=models.SET_NULL, null=True, blank=True, related_name='products')
     tipe_special = models.ForeignKey(SpecialType, on_delete=models.SET_NULL, null=True, blank=True, related_name='products')

@@ -17,7 +17,7 @@ from . import stock_fifo
 from . import uom
 from . import pos_settings
 from . import spk
-from .permissions import IsOwnerManagerAdminOrKasir
+from .permissions import IsOwnerManagerAdminOrKasir, scoped_by_unit_bisnis
 from .throttles import PasskeyRateThrottle
 from .pos_services import create_sale, void_sale
 from .services.pos_receipt_whatsapp import (
@@ -62,6 +62,7 @@ class POSSaleViewSet(viewsets.ModelViewSet):
                 qs = qs.filter(created_at__date=timezone.localdate())
             if pos_settings.sembunyikan_transaksi_perangkat_lain():
                 qs = qs.filter(kasir=user)
+        qs = scoped_by_unit_bisnis(qs, user)
         return qs
 
     @action(detail=False, methods=['post'], url_path='verify-passkey', throttle_classes=[PasskeyRateThrottle])

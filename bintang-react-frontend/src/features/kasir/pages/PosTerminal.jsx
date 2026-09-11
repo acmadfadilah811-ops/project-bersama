@@ -527,6 +527,11 @@ export default function PosTerminal({ onToggleSidebar }) {
         }
         const custRes = await apiClient.post('/customers/', {
           nama: updatedData.nama,
+          // Label unit bisnis otomatis dari kasir yang input, supaya data
+          // pelanggan baru langsung benar tanpa kasir perlu pilih manual
+          // (owner/manager/admin tidak punya unit_bisnis, jadi otomatis
+          // kosong/label netral kalau mereka yang input).
+          unit_bisnis: user?.unit_bisnis || null,
           customer_group: updatedData.tipe_pelanggan || null,
           jenis_kelamin: updatedData.gender === 'Female' ? 'P' : 'L',
           handphone: nomorBersih,

@@ -126,7 +126,10 @@ export default function Settings() {
     role: 'staff',
     no_hp: '',
     email: '',
+    unit_bisnis: '',
+    posisi: '',
   });
+  const [unitBisnisList, setUnitBisnisList] = useState([]);
 
   // ── Tab Keamanan ──
   const [sessions, setSessions] = useState([]);
@@ -214,6 +217,15 @@ export default function Settings() {
     }
   };
 
+  const fetchUnitBisnis = async () => {
+    try {
+      const res = await apiClient.get('/unit-bisnis/');
+      setUnitBisnisList(Array.isArray(res.data) ? res.data : res.data?.results || []);
+    } catch {
+      /* silent */
+    }
+  };
+
   const fetchSecurity = async () => {
     setSecLoading(true);
     try {
@@ -260,7 +272,7 @@ export default function Settings() {
   };
 
   useEffect(() => {
-    if (activeTab === 'karyawan') fetchEmployees();
+    if (activeTab === 'karyawan') { fetchEmployees(); fetchUnitBisnis(); }
     if (activeTab === 'keamanan' && isOwner) fetchSecurity();
     if (activeTab === 'bisnis') fetchBisnis();
     if (activeTab === 'akun-saya') fetchProfil();
@@ -455,7 +467,7 @@ export default function Settings() {
       await apiClient.post('/auth/create-user/', formData);
       setFormSuccess('Karyawan berhasil ditambahkan!');
       setIsModalOpen(false);
-      setFormData({ username: '', password: '', role: 'staff', no_hp: '', email: '' });
+      setFormData({ username: '', password: '', role: 'staff', no_hp: '', email: '', unit_bisnis: '', posisi: '' });
       fetchEmployees();
     } catch (err) {
       setFormError(
@@ -1526,11 +1538,46 @@ export default function Settings() {
                     focus:border-indigo-400 outline-none transition-all appearance-none cursor-pointer"
                 >
                   <option value="staff">Staff</option>
+                  <option value="kasir">Kasir</option>
                   <option value="admin">Admin</option>
                   <option value="manager">Manager</option>
                   {user?.role?.toLowerCase() === 'owner' && <option value="owner">Owner</option>}
                 </select>
               </div>
+
+              {(formData.role === 'staff' || formData.role === 'kasir') && (
+                <>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-slate-700">Unit Bisnis</label>
+                    <select
+                      value={formData.unit_bisnis}
+                      onChange={(e) => setFormData({ ...formData, unit_bisnis: e.target.value })}
+                      className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm
+                        bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-400
+                        focus:border-indigo-400 outline-none transition-all appearance-none cursor-pointer"
+                    >
+                      <option value="">(Belum ditentukan)</option>
+                      {unitBisnisList.map((u) => (
+                        <option key={u.id} value={u.id}>{u.nama}</option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-slate-400">Menentukan produk & transaksi mana yang bisa dilihat akun ini.</p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-slate-700">Posisi (Opsional)</label>
+                    <input
+                      type="text"
+                      value={formData.posisi}
+                      onChange={(e) => setFormData({ ...formData, posisi: e.target.value })}
+                      placeholder="contoh: Operator, Editor, Fotografer"
+                      className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm
+                        bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-400
+                        focus:border-indigo-400 outline-none transition-all"
+                    />
+                  </div>
+                </>
+              )}
 
               <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-2">
                 <button

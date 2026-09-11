@@ -18,6 +18,7 @@ from django.http import HttpResponse
 
 
 from .. import spk
+from ..permissions import scoped_by_unit_bisnis
 from ..models import (
     Order, OrderItem, JobBoard, CustomUser, Contact, OrderActivityLog, TahapProses,
     PengembalianOrder, OrderPayment, SaldoKasHarian,
@@ -81,7 +82,8 @@ class OrderViewSet(viewsets.ModelViewSet):
             'payments__dibuat_oleh',
             'payments__shift',
         ).order_by('-waktu', '-id')
-        
+        base_qs = scoped_by_unit_bisnis(base_qs, user)
+
         # ✅ Filter by nomor_wa if provided in query params (optimasi query detail customer)
         nomor_wa = self.request.query_params.get('nomor_wa')
         if nomor_wa:
