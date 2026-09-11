@@ -37,7 +37,9 @@ curl -fsS http://127.0.0.1/api/health/
 docker compose logs cloudflared | grep trycloudflare.com
 ```
 
-URL `https://xxxxx.trycloudflare.com` ini **berubah tiap `cloudflared` restart** — begitu ada, update `deploy/.env` (`CORS_ALLOWED_ORIGINS`, `CSRF_TRUSTED_ORIGINS`, tambahkan domain Netlify juga), lalu update `bintang-react-frontend/public/_redirects` (baris `/api/*`) dengan URL baru ini, commit, dan redeploy Netlify.
+URL `https://xxxxx.trycloudflare.com` ini **berubah tiap `cloudflared` restart** — begitu ada, update `deploy/.env` (`CORS_ALLOWED_ORIGINS`, `CSRF_TRUSTED_ORIGINS`) dengan URL baru ini.
+
+(Catatan: di VPS produksi saat ini tunnel-nya sudah pakai domain tetap lewat Cloudflare Tunnel, bukan Quick Tunnel berubah-ubah lagi — langkah 3b ini relevan cuma untuk setup VPS baru dari nol.)
 
 ## 4. Verifikasi backup manual
 
@@ -54,7 +56,7 @@ gunzip -c deploy/backup/backups/bintang_db_<STAMP>.sql.gz | docker compose exec 
 
 ## Catatan arsitektur
 
-- VPS ini cuma jalankan **backend** (Django/Daphne + Postgres + Redis + Evolution API). Frontend (React) di-deploy terpisah ke **Netlify** (`bintang-react-frontend/netlify.toml`), bukan container di VPS — disk VPS ini kecil (11GB), jadi sengaja tidak dipakai untuk build/serve frontend.
-- Semua service jalan lewat `docker compose` di folder ini — satu checkout monorepo, bukan 2 checkout terpisah seperti VPS lama. Update kode backend = `git pull` di root repo, lalu `docker compose build backend` + `up -d backend` di sini.
-- `gateway` (nginx) hanya bind ke loopback host (`127.0.0.1:80`) dan diakses publik melalui Cloudflare Tunnel. API-only: `/api/`, `/admin/` → `backend` (round-robin ke semua replica), `/static/`/`/media/` → volume bersama. Root `/` cuma balas teks penanda, bukan situs — situs publiknya di Netlify.
-- Cloudflare Tunnel masih Quick Tunnel (URL publik berubah tiap restart `cloudflared`, belum ada domain) — lihat langkah 3b buat cara ambil URL-nya dan menyambungkannya ke Netlify.
+- VPS ini jalankan **backend** (Django/Daphne + Postgres + Redis + Evolution API) **dan** **frontend** (React, di-build via service `frontend` di `docker-compose.yml`, context `../bintang-react-frontend`) — keduanya container di VPS ini, BUKAN Netlify (dokumen ini sempat menyebut Netlify, itu sudah tidak berlaku/salah).
+- Semua service jalan lewat `docker compose` di folder ini — satu checkout monorepo, bukan 2 checkout terpisah seperti VPS lama. Update kode backend = `git pull` di root repo, lalu `docker compose build backend` + `up -d backend` di sini. Update kode frontend = `git pull`, lalu `docker compose build frontend` + `up -d frontend`.
+- `gateway` (nginx) hanya bind ke loopback host (`127.0.0.1:80`) dan diakses publik melalui Cloudflare Tunnel. `/api/`, `/admin/` → `backend` (round-robin ke semua replica), `/static/`/`/media/` → volume bersama, sisanya → `frontend` (SPA).
+- Cloudflare Tunnel di VPS produksi sudah pakai domain tetap (`app.starphotoadvertising.com` dkk., dikonfigurasi dari dashboard Cloudflare Zero Trust, bukan file lokal) — langkah 3b di atas cuma relevan untuk setup VPS baru dari nol yang belum ada domain.
