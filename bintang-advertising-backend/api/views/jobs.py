@@ -205,10 +205,14 @@ class JobMaterialDeductView(APIView):
     def post(self, request, job_id):
         job = get_object_or_404(JobBoard, pk=job_id)
 
-        # Staff (dan SPV/Kordiv yang diperlakukan setara staff -- mereka
-        # bukan pic_staff manapun, murni memantau) hanya bisa input untuk
-        # job miliknya sendiri.
-        if request.user.role in ('staff', 'spv', 'kordiv') and job.pic_staff != request.user:
+        # Staff hanya bisa input untuk job miliknya sendiri. SPV/Kordiv boleh
+        # input untuk job MILIK BAWAHANNYA (rekursif) -- mereka sendiri tidak
+        # pernah jadi pic_staff, jadi dibedakan dari staff biasa.
+        if request.user.role == 'staff' and job.pic_staff != request.user:
+            return Response({'error': 'Akses ditolak.'}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.role in ('spv', 'kordiv') and (
+            not job.pic_staff_id or job.pic_staff_id not in get_subordinate_user_ids(request.user)
+        ):
             return Response({'error': 'Akses ditolak.'}, status=status.HTTP_403_FORBIDDEN)
 
         materials = request.data.get('materials', [])
@@ -439,6 +443,13 @@ class JobBoardViewSet(viewsets.ModelViewSet):
         # Owner, Manager & Admin bisa lihat semua job
         if user.role in ['owner', 'manager', 'admin']:
             scoped_qs = base_qs
+        # SPV/Kordiv: bisa lihat & kelola job milik SELURUH bawahannya
+        # (rekursif, lihat get_subordinate_user_ids) -- cabang organisasi
+        # sendiri saja, tidak pernah divisi/cabang SPV lain. Mereka sendiri
+        # tidak pernah jadi pic_staff (JobBoard.pic_staff dibatasi
+        # role='staff'), jadi tidak perlu klausa "job miliknya sendiri".
+        elif user.role in ('spv', 'kordiv'):
+            scoped_qs = base_qs.filter(pic_staff_id__in=get_subordinate_user_ids(user))
         # Staff: bisa lihat job miliknya ATAU job unassigned di divisinya
         elif user.divisi:
             scoped_qs = base_qs.filter(

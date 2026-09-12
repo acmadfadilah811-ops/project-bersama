@@ -16,6 +16,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date
 
 from .models import CustomUser, JobBoard, TahapProses
+from .permissions import get_subordinate_user_ids
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +63,21 @@ def resolve_staff(staff_id, pemohon=None):
             403,
         )
     try:
-        return CustomUser.objects.get(pk=staff_id, role='staff')
+        staff = CustomUser.objects.get(pk=staff_id, role='staff')
     except CustomUser.DoesNotExist:
         raise SpkError('Staff tidak ditemukan.', 404)
+
+    # SPV/Kordiv cuma boleh menugaskan ke bawahannya sendiri di struktur
+    # organisasi (CustomUser.atasan) -- mencegah SPV/Kordiv satu cabang
+    # menugaskan pekerjaan ke staff milik cabang/divisi lain.
+    if pemohon is not None and getattr(pemohon, 'role', None) in ('spv', 'kordiv'):
+        if staff.pk not in get_subordinate_user_ids(pemohon):
+            raise SpkError(
+                'Anda hanya dapat menugaskan pekerjaan ke bawahan Anda sendiri.',
+                403,
+            )
+
+    return staff
 
 
 def resolve_tahap(tahap_id=None, divisi_id=None, staff=None):

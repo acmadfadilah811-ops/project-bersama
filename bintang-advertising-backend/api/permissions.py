@@ -77,6 +77,20 @@ class IsStrictOwnerOrManager(BasePermission):
 # Alias for compatibility
 IsOwnerManagerOrAdmin = IsOwnerOrManager
 
+class IsOwnerManagerAdminKasirSpvKordiv(BasePermission):
+    """
+    Owner, Manager, Admin, Kasir, SPV, atau Kordiv -- khusus dipakai
+    AssignOrderView (penerbitan/penugasan SPK). SPV/Kordiv hanya boleh
+    menugaskan ke bawahannya sendiri, dibatasi terpisah di
+    spk.resolve_staff(), BUKAN di permission class ini.
+    """
+    def has_permission(self, request, view):
+        return bool(
+            request.user and
+            request.user.is_authenticated and
+            getattr(request.user, 'role', '') in ['owner', 'manager', 'admin', 'kasir', 'spv', 'kordiv']
+        )
+
 class IsOwnerManagerAdminOrKasir(BasePermission):
     """
     Hanya Owner, Manager, Admin, atau Kasir (Staff dilarang).

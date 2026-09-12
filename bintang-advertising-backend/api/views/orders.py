@@ -26,7 +26,7 @@ from ..models import (
 from ..serializers import (
     OrderSerializer, OrderItemSerializer, JobBoardSerializer, PengembalianOrderSerializer
 )
-from ..permissions import IsOwnerOrManager, IsOwnerManagerAdminOrKasir, IsClockedIn
+from ..permissions import IsOwnerOrManager, IsOwnerManagerAdminOrKasir, IsOwnerManagerAdminKasirSpvKordiv, IsClockedIn, get_subordinate_user_ids
 from users.models import SecurityAuditLog
 
 from .jobs import deduct_job_materials_if_needed
@@ -178,7 +178,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         # perform_update, sekarang versi CREATE-nya). Order staff masuk
         # sumber='staff', diproses kasir lewat antrean terpisah sebelum
         # diterbitkan SPK (fitur "Buat Order" staff, 2026-09-06).
-        if self.request.user.role == 'staff':
+        if self.request.user.role in ('staff', 'spv', 'kordiv'):
             serializer.validated_data['sumber'] = 'staff'
             serializer.validated_data['dilayani_oleh'] = self.request.user
             serializer.validated_data['status_global'] = 'review'
@@ -1433,9 +1433,10 @@ class AssignOrderView(APIView):
 
     Kasir ikut diizinkan karena menerbitkan SPK adalah bagian dari alur Buat
     Order di terminal kasir, tetapi hanya ke antrean divisi. Penunjukan staff
-    tertentu ditolak di spk.resolve_staff().
+    tertentu ditolak di spk.resolve_staff() (untuk kasir tanpa syarat, untuk
+    SPV/Kordiv kalau staff tujuan bukan bawahannya).
     """
-    permission_classes = [IsOwnerManagerAdminOrKasir]
+    permission_classes = [IsOwnerManagerAdminKasirSpvKordiv]
 
     def post(self, request, order_id):
         staff_id = request.data.get('staff_id')  # ditolak bila pemohon kasir
@@ -1446,10 +1447,16 @@ class AssignOrderView(APIView):
             biaya_desain = int(request.data.get('biaya_desain', 0) or 0)
         except (ValueError, TypeError):
             biaya_desain = 0
-        try:
-            insentif = int(request.data.get('insentif', 0) or 0)
-        except (ValueError, TypeError):
+        # Insentif tetap wewenang Manager saja -- SPV/Kordiv boleh menugaskan
+        # pekerjaan tapi tidak boleh menentukan nilai insentifnya (batasan
+        # yang sudah disepakati sebelumnya, tidak berubah).
+        if request.user.role in ('spv', 'kordiv'):
             insentif = 0
+        else:
+            try:
+                insentif = int(request.data.get('insentif', 0) or 0)
+            except (ValueError, TypeError):
+                insentif = 0
 
         order_item_id = request.data.get('order_item_id', None)
 
@@ -1671,10 +1678,16 @@ class ForwardJobView(APIView):
         except JobBoard.DoesNotExist:
             return Response({'error': 'Job tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
 
-        # Staff (dan SPV/Kordiv yang diperlakukan setara staff -- mereka
-        # bukan pic_staff manapun, murni memantau) hanya bisa forward job
-        # miliknya sendiri.
-        if request.user.role in ('staff', 'spv', 'kordiv') and job.pic_staff != request.user:
+        # Staff hanya bisa forward job miliknya sendiri. SPV/Kordiv boleh
+        # forward job MILIK BAWAHANNYA (rekursif, lihat get_subordinate_user_ids)
+        # -- mereka sendiri tidak pernah jadi pic_staff (JobBoard.pic_staff
+        # dibatasi role='staff'), jadi cek "job.pic_staff != request.user"
+        # akan selalu gagal untuk mereka kalau tidak dibedakan begini.
+        if request.user.role == 'staff' and job.pic_staff != request.user:
+            return Response({'error': 'Anda tidak memiliki akses ke job ini.'}, status=status.HTTP_403_FORBIDDEN)
+        if request.user.role in ('spv', 'kordiv') and (
+            not job.pic_staff_id or job.pic_staff_id not in get_subordinate_user_ids(request.user)
+        ):
             return Response({'error': 'Anda tidak memiliki akses ke job ini.'}, status=status.HTTP_403_FORBIDDEN)
 
         aksi         = request.data.get('aksi')          # 'forward', 'selesai', atau 'gagal'
@@ -1734,6 +1747,20 @@ class ForwardJobView(APIView):
             except TahapProses.DoesNotExist:
                 return Response({'error': 'Tahap tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
 
+        # Resolusi pic_staff_id SEBELUM transaction.atomic() (pola sama dengan
+        # tahap_baru di atas) -- spk.resolve_staff() menegakkan pembatasan
+        # SPV/Kordiv cuma boleh menugaskan ke bawahannya sendiri (api/spk.py),
+        # sama seperti jalur AssignOrderView. Kalau divalidasi di DALAM
+        # atomic(), gagalnya cuma bikin return dini tanpa rollback (job yang
+        # sudah ditandai selesai di atas tetap ter-commit, padahal
+        # forward-nya sendiri gagal) -- makanya divalidasi di sini dulu.
+        pic_staff_resolved = None
+        if pic_staff_id:
+            try:
+                pic_staff_resolved = spk.resolve_staff(pic_staff_id, pemohon=request.user)
+            except spk.SpkError as exc:
+                return Response({'error': exc.pesan}, status=exc.status_code)
+
         # SPK dapat berasal dari OrderItem atau POSSaleItem. Penerusan harus
         # mempertahankan sumber yang sama agar job POS tidak crash/kehilangan
         # relasi ketika dikirim ke tahap atau divisi berikutnya.
@@ -1786,11 +1813,8 @@ class ForwardJobView(APIView):
                     existing_cat = existing.catatan_staff if isinstance(existing.catatan_staff, list) else []
                     existing.catatan_staff = existing_cat + catatan_sebelumnya
                     
-                    if pic_staff_id:
-                        try:
-                            existing.pic_staff = CustomUser.objects.get(pk=pic_staff_id, role='staff')
-                        except CustomUser.DoesNotExist:
-                            pass
+                    if pic_staff_resolved:
+                        existing.pic_staff = pic_staff_resolved
                     existing.save()
                     new_job_id = existing.id
                 else:
@@ -1801,11 +1825,8 @@ class ForwardJobView(APIView):
                         status_pekerjaan = 'antrean',
                         catatan_staff   = catatan_sebelumnya
                     )
-                    if pic_staff_id:
-                        try:
-                            new_job.pic_staff = CustomUser.objects.get(pk=pic_staff_id, role='staff')
-                        except CustomUser.DoesNotExist:
-                            pass
+                    if pic_staff_resolved:
+                        new_job.pic_staff = pic_staff_resolved
                     new_job.save()
                     new_job_id = new_job.id
 
