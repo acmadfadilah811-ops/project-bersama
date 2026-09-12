@@ -9,6 +9,7 @@ from . import marketing_views
 from .marketing_views import PromoPreviewView
 from . import customer_views
 from .views.external_bot import ExternalBotToolView, ExternalBotBuatOrderView
+from .views.hr_bridge import HRBridgeCreateAccountView
 from . import finance_views
 from .report_views import ReportDataView, ReportExportView
 from .views.purchase_workflow import PurchaseWorkflowView
@@ -161,6 +162,10 @@ urlpatterns = [
     # sini (2026-09-10, lihat api/views/external_bot.py).
     path('external-bot/tool/', ExternalBotToolView.as_view(), name='external-bot-tool'),
     path('external-bot/buat-order/', ExternalBotBuatOrderView.as_view(), name='external-bot-buat-order'),
+
+    # Jembatan HR (Horilla) -> Bintang: auto-provision akun karyawan saat HR
+    # buat karyawan baru/approve rekrutmen (lihat api/views/hr_bridge.py).
+    path('bridge/hr-employee/', HRBridgeCreateAccountView.as_view(), name='hr-bridge-create-account'),
 
     # Business Settings (mirip OrgSettings di Django CRM)
     path('business-settings/', BusinessSettingsView.as_view(), name='business-settings'),

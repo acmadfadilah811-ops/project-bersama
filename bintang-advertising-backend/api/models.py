@@ -88,6 +88,13 @@ class CustomUser(AbstractUser):
     # staff StarFoto, atau "Admin Finance" untuk role='kordiv') -- murni
     # informational/laporan, tidak memengaruhi hak akses.
     posisi = models.CharField(max_length=100, blank=True, default='')
+    # ID karyawan dari sistem HR (Horilla) -- kunci penghubung lintas sistem
+    # supaya satu orang tidak punya identitas ganda antara HR & Bintang.
+    # Diisi OTOMATIS oleh endpoint bridge (api/views/hr_bridge.py) saat HR
+    # membuat karyawan baru/approve rekrutmen, BUKAN diisi manual lewat form
+    # biasa. Nullable karena akun yang dibuat langsung di Bintang (bukan
+    # lewat HR) tidak punya nilai ini.
+    hr_employee_id = models.IntegerField(null=True, blank=True, unique=True)
     no_hp = models.CharField(max_length=20, null=True, blank=True)
     kota = models.CharField(max_length=50, null=True, blank=True)
     negara = models.CharField(max_length=50, default='Indonesia')
