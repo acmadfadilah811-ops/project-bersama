@@ -128,6 +128,7 @@ export default function Settings() {
     email: '',
     unit_bisnis: '',
     posisi: '',
+    atasan: '',
   });
   const [unitBisnisList, setUnitBisnisList] = useState([]);
 
@@ -467,7 +468,7 @@ export default function Settings() {
       await apiClient.post('/auth/create-user/', formData);
       setFormSuccess('Karyawan berhasil ditambahkan!');
       setIsModalOpen(false);
-      setFormData({ username: '', password: '', role: 'staff', no_hp: '', email: '', unit_bisnis: '', posisi: '' });
+      setFormData({ username: '', password: '', role: 'staff', no_hp: '', email: '', unit_bisnis: '', posisi: '', atasan: '' });
       fetchEmployees();
     } catch (err) {
       setFormError(
@@ -1539,13 +1540,15 @@ export default function Settings() {
                 >
                   <option value="staff">Staff</option>
                   <option value="kasir">Kasir</option>
+                  <option value="kordiv">Koordinator Divisi (Kordiv)</option>
+                  <option value="spv">SPV / Supervisor</option>
                   <option value="admin">Admin</option>
                   <option value="manager">Manager</option>
                   {user?.role?.toLowerCase() === 'owner' && <option value="owner">Owner</option>}
                 </select>
               </div>
 
-              {(formData.role === 'staff' || formData.role === 'kasir') && (
+              {(formData.role === 'staff' || formData.role === 'kasir' || formData.role === 'spv' || formData.role === 'kordiv') && (
                 <>
                   <div className="space-y-1.5">
                     <label className="text-sm font-medium text-slate-700">Unit Bisnis</label>
@@ -1570,12 +1573,35 @@ export default function Settings() {
                       type="text"
                       value={formData.posisi}
                       onChange={(e) => setFormData({ ...formData, posisi: e.target.value })}
-                      placeholder="contoh: Operator, Editor, Fotografer"
+                      placeholder="contoh: Operator, Editor, Fotografer, Admin Finance"
                       className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm
                         bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-400
                         focus:border-indigo-400 outline-none transition-all"
                     />
                   </div>
+
+                  {(formData.role === 'spv' || formData.role === 'kordiv') && (
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium text-slate-700">Atasan Langsung (Opsional)</label>
+                      <select
+                        value={formData.atasan}
+                        onChange={(e) => setFormData({ ...formData, atasan: e.target.value })}
+                        className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm
+                          bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-400
+                          focus:border-indigo-400 outline-none transition-all appearance-none cursor-pointer"
+                      >
+                        <option value="">(Belum ditentukan)</option>
+                        {employees
+                          .filter((e) => ['owner', 'manager', 'spv'].includes((e.role || '').toLowerCase()))
+                          .map((e) => (
+                            <option key={e.id} value={e.id}>{e.username} ({e.role})</option>
+                          ))}
+                      </select>
+                      <p className="text-xs text-slate-400">
+                        Menentukan cabang tim mana yang tercakup di ringkasan kinerja Papan Kerja akun ini.
+                      </p>
+                    </div>
+                  )}
                 </>
               )}
 

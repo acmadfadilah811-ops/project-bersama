@@ -142,6 +142,7 @@ class CreateUserView(APIView):
         divisi   = request.data.get('divisi', None)
         unit_bisnis = request.data.get('unit_bisnis', None)
         posisi   = request.data.get('posisi', '')
+        atasan   = request.data.get('atasan', None)
         first_name = request.data.get('first_name', '')
 
         # Validasi field wajib
@@ -175,6 +176,11 @@ class CreateUserView(APIView):
             try:
                 user.unit_bisnis = UnitBisnis.objects.get(pk=unit_bisnis)
             except UnitBisnis.DoesNotExist:
+                pass
+        if atasan:
+            try:
+                user.atasan = CustomUser.objects.get(pk=atasan)
+            except CustomUser.DoesNotExist:
                 pass
 
         user.set_password(password)  # Hash password dengan benar

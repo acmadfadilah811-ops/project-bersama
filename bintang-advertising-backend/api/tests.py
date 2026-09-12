@@ -166,6 +166,22 @@ class ApiTestCase(APITestCase):
         self.assertEqual(response.data["username"], "karyawan_baru")
         self.assertTrue(CustomUser.objects.filter(username="karyawan_baru").exists())
 
+    def test_create_user_spv_dengan_atasan(self):
+        """create-user/ harus bisa membuat akun role spv/kordiv sekaligus
+        mengisi field atasan (hierarki organisasi untuk ringkasan Papan Kerja)."""
+        manager_atasan = CustomUser.objects.create_user(username="manager_atasan_test", password="pw12345", role="manager")
+        self.client.force_authenticate(user=self.owner)
+        response = self.client.post("/api/auth/create-user/", {
+            "username": "spv_baru_test",
+            "password": "newpassword123",
+            "role": "spv",
+            "atasan": manager_atasan.pk,
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        user_baru = CustomUser.objects.get(username="spv_baru_test")
+        self.assertEqual(user_baru.role, "spv")
+        self.assertEqual(user_baru.atasan_id, manager_atasan.pk)
+
     def test_orders_list_and_create_api(self):
         """Uji API endpoint orders untuk menampilkan daftar pesanan dan membuat pesanan."""
         self.client.force_authenticate(user=self.owner)
