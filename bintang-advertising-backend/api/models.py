@@ -58,10 +58,12 @@ class CustomUser(AbstractUser):
         ('owner', 'Owner / Boss'),
         ('manager', 'Manager'),
         ('admin', 'Admin'),
+        ('spv', 'SPV / Supervisor'),
+        ('kordiv', 'Koordinator Divisi'),
         ('staff', 'Staff Produksi'),
         ('kasir', 'Kasir'),
     )
-    
+
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='staff', db_index=True)
     divisi = models.ForeignKey(Divisi, on_delete=models.SET_NULL, null=True, blank=True, related_name='users')
     # Unit bisnis tempat staff/kasir ini bertugas (StarFoto / Star Advertising).
@@ -70,8 +72,21 @@ class CustomUser(AbstractUser):
     # dipakai scoped_by_unit_bisnis() (api/permissions.py) supaya mereka
     # cuma lihat produk/order/transaksi unit mereka sendiri.
     unit_bisnis = models.ForeignKey(UnitBisnis, on_delete=models.SET_NULL, null=True, blank=True, related_name='karyawan')
+    # Atasan langsung di struktur organisasi (mis. Kordiv -> SPV, SPV ->
+    # Manager). HANYA dipakai untuk visibilitas ringkasan kinerja tim
+    # berjenjang di Papan Kerja (lihat get_subordinate_user_ids() di
+    # api/permissions.py) -- TIDAK memengaruhi role/permission tier
+    # (ROLE_CHOICES) atau hak edit apa pun. Nullable & opt-in: kosong untuk
+    # semua user sampai diisi manual lewat CustomUserViewSet, sama seperti
+    # unit_bisnis/posisi ditambahkan tanpa backfill. on_delete=SET_NULL
+    # supaya penghapusan akun atasan tidak pernah ikut menghapus atau
+    # memblokir penghapusan bawahannya.
+    atasan = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True, related_name='bawahan_langsung',
+    )
     # Jabatan/posisi bebas teks (mis. "Operator", "Editor", "Fotografer" untuk
-    # staff StarFoto) -- murni informational/laporan, tidak memengaruhi hak akses.
+    # staff StarFoto, atau "Admin Finance" untuk role='kordiv') -- murni
+    # informational/laporan, tidak memengaruhi hak akses.
     posisi = models.CharField(max_length=100, blank=True, default='')
     no_hp = models.CharField(max_length=20, null=True, blank=True)
     kota = models.CharField(max_length=50, null=True, blank=True)
@@ -114,7 +129,7 @@ class CustomUser(AbstractUser):
                     except ValueError:
                         pass
                 self.nip = f"STF-{current_year}-{next_num:03d}"
-        elif self.role != 'staff' and self.nip and re.match(r'^STF-\d{4}-\d{3}$', self.nip):
+        elif self.role not in ('staff', 'spv', 'kordiv') and self.nip and re.match(r'^STF-\d{4}-\d{3}$', self.nip):
             # Role field default-nya 'staff' - kalau akun dibuat via
             # create_user()/create_superuser() tanpa role di kwargs lalu
             # role diubah SESUDAH create (bukan sekaligus di awal), save()
@@ -122,6 +137,10 @@ class CustomUser(AbstractUser):
             # NIP format staff itu tidak relevan buat non-staff - bersihkan
             # di sini supaya nomornya bisa dipakai staff sungguhan
             # berikutnya, bukan tersandera akun owner/manager/kasir/admin.
+            # spv/kordiv DIKECUALIKAN dari pembersihan ini -- banyak SPV/
+            # Kordiv naik jabatan dari staff produksi dan sudah punya NIP
+            # STF- aktif; me-retag role mereka tidak boleh menghapus riwayat
+            # NIP itu.
             self.nip = None
         super().save(*args, **kwargs)
 

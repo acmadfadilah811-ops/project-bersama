@@ -1671,8 +1671,10 @@ class ForwardJobView(APIView):
         except JobBoard.DoesNotExist:
             return Response({'error': 'Job tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
 
-        # Staff hanya bisa forward job miliknya
-        if request.user.role == 'staff' and job.pic_staff != request.user:
+        # Staff (dan SPV/Kordiv yang diperlakukan setara staff -- mereka
+        # bukan pic_staff manapun, murni memantau) hanya bisa forward job
+        # miliknya sendiri.
+        if request.user.role in ('staff', 'spv', 'kordiv') and job.pic_staff != request.user:
             return Response({'error': 'Anda tidak memiliki akses ke job ini.'}, status=status.HTTP_403_FORBIDDEN)
 
         aksi         = request.data.get('aksi')          # 'forward', 'selesai', atau 'gagal'

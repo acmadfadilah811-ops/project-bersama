@@ -370,8 +370,9 @@ class CustomerActivityViewSet(viewsets.ModelViewSet):
         elif selesai_filter == 'false':
             qs = qs.filter(selesai=False)
 
-        # Staff hanya melihat task miliknya
-        if self.request.user.role == 'staff':
+        # Staff (dan SPV/Kordiv yang diperlakukan setara staff di sini)
+        # hanya melihat task miliknya.
+        if self.request.user.role in ('staff', 'spv', 'kordiv'):
             qs = qs.filter(pic=self.request.user)
 
         return qs

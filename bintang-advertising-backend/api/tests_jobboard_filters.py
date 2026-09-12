@@ -16,7 +16,9 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
+from api.machine_models import Mesin, PenggunaanMesin
 from api.models import Divisi, TahapProses, JobBoard, Order, OrderItem
+from api.permissions import get_subordinate_user_ids
 from hr.models import Absensi
 
 User = get_user_model()
@@ -149,3 +151,112 @@ class JobBoardFiltersTests(APITestCase):
         self.assertIn(self.job_unassigned_a.id, ids)
         self.assertNotIn(self.job_unassigned_b.id, ids)
         self.assertNotIn(self.job_a2.id, ids)
+
+
+class GetSubordinateUserIdsTests(APITestCase):
+    """Unit test murni untuk get_subordinate_user_ids() (api/permissions.py)
+    -- fitur hierarki atasan/bawahan untuk ringkasan kinerja tim SPV/Kordiv."""
+
+    def test_tanpa_bawahan_hanya_diri_sendiri(self):
+        user = User.objects.create_user(username='sendirian', password='pw12345', role='staff')
+        self.assertEqual(get_subordinate_user_ids(user), {user.id})
+
+    def test_rollup_berjenjang_multi_level(self):
+        spv = User.objects.create_user(username='spv_rollup', password='pw12345', role='spv')
+        kordiv = User.objects.create_user(username='kordiv_rollup', password='pw12345', role='kordiv', atasan=spv)
+        staff = User.objects.create_user(username='staff_rollup', password='pw12345', role='staff', atasan=kordiv)
+        self.assertEqual(get_subordinate_user_ids(spv), {spv.id, kordiv.id, staff.id})
+        self.assertEqual(get_subordinate_user_ids(kordiv), {kordiv.id, staff.id})
+        self.assertEqual(get_subordinate_user_ids(staff), {staff.id})
+
+    def test_rantai_atasan_melingkar_tidak_infinite_loop(self):
+        """Data cacat (atasan membentuk lingkaran) tidak boleh pernah terjadi
+        secara normal, tapi helper harus tetap berhenti (dijaga cap 10
+        iterasi), bukan macet selamanya."""
+        a = User.objects.create_user(username='lingkar_a', password='pw12345', role='spv')
+        b = User.objects.create_user(username='lingkar_b', password='pw12345', role='kordiv', atasan=a)
+        a.atasan_id = b.id
+        a.save(update_fields=['atasan'])
+        hasil = get_subordinate_user_ids(a)
+        self.assertEqual(hasil, {a.id, b.id})
+
+
+class RingkasanTimEndpointTests(APITestCase):
+    """GET /api/jobs/ringkasan-tim/ -- ringkasan kinerja tim (jumlah job per
+    status + laporan pemakaian mesin) untuk akun SPV/Kordiv, mencakup seluruh
+    bawahan di cabang organisasinya, tanpa membocorkan cabang lain."""
+
+    def setUp(self):
+        self.mesin = Mesin.objects.create(nama='DocuColor Ringkasan', tipe='docucolor')
+        order = Order.objects.create(id='ORD-RINGKASAN-1', nomor_wa='08122222222', nama='Pelanggan Ringkasan')
+        self.item = OrderItem.objects.create(order=order, jenis_produk='Item Ringkasan', qty=1, harga_jual=10000)
+
+        # Cabang 1: spv1 -> kordiv1 -> staff1
+        self.spv1 = User.objects.create_user(username='spv1_ringkasan', password='pw12345', role='spv')
+        self.kordiv1 = User.objects.create_user(
+            username='kordiv1_ringkasan', password='pw12345', role='kordiv', atasan=self.spv1,
+        )
+        self.staff1 = User.objects.create_user(
+            username='staff1_ringkasan', password='pw12345', role='staff', atasan=self.kordiv1,
+        )
+
+        # Cabang 2, independen -- TIDAK boleh ikut kelihatan oleh cabang 1.
+        self.spv2 = User.objects.create_user(username='spv2_ringkasan', password='pw12345', role='spv')
+        self.kordiv2 = User.objects.create_user(
+            username='kordiv2_ringkasan', password='pw12345', role='kordiv', atasan=self.spv2,
+        )
+        self.staff2 = User.objects.create_user(
+            username='staff2_ringkasan', password='pw12345', role='staff', atasan=self.kordiv2,
+        )
+
+        self.staff_polos = User.objects.create_user(username='staff_polos_ringkasan', password='pw12345', role='staff')
+
+        today = timezone.localdate()
+        for u in (self.spv1, self.kordiv1, self.staff1, self.spv2, self.kordiv2, self.staff2, self.staff_polos):
+            Absensi.objects.create(staff=u, tanggal=today, jam_masuk=timezone.now())
+
+        # Cabang 1: 2 selesai, 1 gagal.
+        JobBoard.objects.create(order_item=self.item, pic_staff=self.staff1, status_pekerjaan='selesai')
+        JobBoard.objects.create(order_item=self.item, pic_staff=self.staff1, status_pekerjaan='selesai')
+        JobBoard.objects.create(order_item=self.item, pic_staff=self.staff1, status_pekerjaan='gagal')
+        PenggunaanMesin.objects.create(mesin=self.mesin, operator=self.staff1, lembar_color=10, lembar_mono=5)
+
+        # Cabang 2: 1 dikerjakan -- tidak boleh ikut terhitung di cabang 1.
+        JobBoard.objects.create(order_item=self.item, pic_staff=self.staff2, status_pekerjaan='dikerjakan')
+        PenggunaanMesin.objects.create(mesin=self.mesin, operator=self.staff2, lembar_color=99, lembar_mono=99)
+
+    def test_kordiv_lihat_ringkasan_staff_langsungnya(self):
+        self.client.force_authenticate(user=self.kordiv1)
+        res = self.client.get('/api/jobs/ringkasan-tim/')
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(res.data['job_per_status'].get('selesai'), 2)
+        self.assertEqual(res.data['job_per_status'].get('gagal'), 1)
+        self.assertNotIn('dikerjakan', res.data['job_per_status'])
+        self.assertEqual(res.data['pemakaian_mesin'][0]['total_lembar_color'], 10)
+
+    def test_spv_lihat_rollup_dua_level(self):
+        """SPV harus melihat gabungan seluruh cabangnya (lewat Kordiv sampai
+        ke staff pelaksana), bukan cuma bawahan langsungnya."""
+        self.client.force_authenticate(user=self.spv1)
+        res = self.client.get('/api/jobs/ringkasan-tim/')
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(res.data['job_per_status'].get('selesai'), 2)
+        self.assertEqual(res.data['job_per_status'].get('gagal'), 1)
+
+    def test_cabang_berbeda_tidak_saling_terlihat(self):
+        """Syarat bisnis inti: SPV cabang 1 tidak boleh melihat data cabang 2,
+        dan sebaliknya."""
+        self.client.force_authenticate(user=self.spv1)
+        res = self.client.get('/api/jobs/ringkasan-tim/')
+        self.assertNotIn('dikerjakan', res.data['job_per_status'])
+
+        self.client.force_authenticate(user=self.spv2)
+        res2 = self.client.get('/api/jobs/ringkasan-tim/')
+        self.assertEqual(res2.data['job_per_status'].get('dikerjakan'), 1)
+        self.assertNotIn('selesai', res2.data['job_per_status'])
+        self.assertNotIn('gagal', res2.data['job_per_status'])
+
+    def test_staff_biasa_ditolak(self):
+        self.client.force_authenticate(user=self.staff_polos)
+        res = self.client.get('/api/jobs/ringkasan-tim/')
+        self.assertEqual(res.status_code, 403)

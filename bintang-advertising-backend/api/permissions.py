@@ -2,6 +2,7 @@ from rest_framework.permissions import BasePermission, SAFE_METHODS
 from django.db.models import Q
 from django.utils import timezone
 from hr.models import Absensi
+from .models import CustomUser
 
 
 def scoped_by_unit_bisnis(qs, user, field="unit_bisnis"):
@@ -16,9 +17,40 @@ def scoped_by_unit_bisnis(qs, user, field="unit_bisnis"):
     """
     role = getattr(user, "role", None)
     unit_id = getattr(user, "unit_bisnis_id", None)
-    if role in ("staff", "kasir") and unit_id:
+    if role in ("staff", "kasir", "spv", "kordiv") and unit_id:
         qs = qs.filter(Q(**{f"{field}__isnull": True}) | Q(**{field: unit_id}))
     return qs
+
+
+def get_subordinate_user_ids(user):
+    """
+    Kumpulkan id `user` itu sendiri + seluruh bawahannya di struktur
+    organisasi (CustomUser.atasan), rekursif turun berapa pun level-nya
+    (mis. SPV -> Kordiv -> staff). Dipakai untuk scoping ringkasan kinerja
+    tim di Papan Kerja (lihat JobBoardViewSet.get_queryset()).
+
+    Django tidak punya recursive-CTE bawaan yang praktis, jadi dipakai
+    pendekatan iteratif turun satu level per query -- bagan organisasi
+    perusahaan ini cuma ~5 level, jadi performanya tidak masalah. Loop
+    dibatasi 10 iterasi sebagai jaga-jaga kalau ada data atasan yang
+    membentuk lingkaran (seharusnya tidak pernah terjadi secara normal).
+
+    User tanpa bawahan cukup balikin {user.id} sendiri -- fail-open/no-op,
+    konsisten dengan filosofi scoped_by_unit_bisnis() di atas.
+    """
+    collected = {user.id}
+    frontier = {user.id}
+    for _ in range(10):
+        next_level = set(
+            CustomUser.objects.filter(atasan_id__in=frontier).values_list("id", flat=True)
+        )
+        next_level -= collected
+        if not next_level:
+            break
+        collected |= next_level
+        frontier = next_level
+    return collected
+
 
 class IsOwnerOrManager(BasePermission):
     """

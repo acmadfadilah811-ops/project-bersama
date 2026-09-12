@@ -8,7 +8,7 @@ from rest_framework.exceptions import ValidationError
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.db import transaction
-from django.db.models import Prefetch, Q
+from django.db.models import Count, Prefetch, Q, Sum
 from django.shortcuts import get_object_or_404
 
 from ..models import (
@@ -16,7 +16,7 @@ from ..models import (
     PenggunaanMesin,
 )
 from ..serializers import JobBoardSerializer, TahapProsesSerializer
-from ..permissions import IsClockedIn, IsOwnerManagerAdminOrReadOnly
+from ..permissions import IsClockedIn, IsOwnerManagerAdminOrReadOnly, get_subordinate_user_ids
 
 from .inventory import record_material_consumption_to_general_ledger
 
@@ -205,8 +205,10 @@ class JobMaterialDeductView(APIView):
     def post(self, request, job_id):
         job = get_object_or_404(JobBoard, pk=job_id)
 
-        # Staff hanya bisa input untuk job miliknya
-        if request.user.role == 'staff' and job.pic_staff != request.user:
+        # Staff (dan SPV/Kordiv yang diperlakukan setara staff -- mereka
+        # bukan pic_staff manapun, murni memantau) hanya bisa input untuk
+        # job miliknya sendiri.
+        if request.user.role in ('staff', 'spv', 'kordiv') and job.pic_staff != request.user:
             return Response({'error': 'Akses ditolak.'}, status=status.HTTP_403_FORBIDDEN)
 
         materials = request.data.get('materials', [])
@@ -482,6 +484,53 @@ class JobBoardViewSet(viewsets.ModelViewSet):
             scoped_qs = scoped_qs.filter(waktu_selesai__date__lte=date_to)
 
         return scoped_qs
+
+    @action(detail=False, methods=['get'], url_path='ringkasan-tim', permission_classes=[IsAuthenticated, IsClockedIn])
+    def ringkasan_tim(self, request):
+        """
+        Ringkasan kinerja tim untuk SPV/Koordinator Divisi: jumlah job per
+        status (dikerjakan/selesai/gagal/dst) + laporan pemakaian mesin,
+        mencakup seluruh bawahan di cabang organisasinya (rekursif -- lihat
+        get_subordinate_user_ids()). Hanya angka rekap, BUKAN daftar detail
+        per-job -- SPV/Kordiv tidak diberi akses buka satu-satu pekerjaan
+        bawahannya, cuma ringkasannya (batasan yang disepakati).
+
+        Khusus role spv/kordiv -- role lain pakai jalur yang sudah ada:
+        staff lihat job miliknya sendiri lewat /api/jobs/ biasa, owner/
+        manager/admin sudah lihat semua job company-wide di sana juga.
+        """
+        user = request.user
+        if user.role not in ('spv', 'kordiv'):
+            return Response(
+                {'error': 'Endpoint ini khusus akun SPV/Koordinator Divisi.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        subordinate_ids = get_subordinate_user_ids(user)
+
+        status_counts = dict(
+            JobBoard.objects.filter(pic_staff_id__in=subordinate_ids)
+            .values_list('status_pekerjaan')
+            .annotate(jumlah=Count('id'))
+            .values_list('status_pekerjaan', 'jumlah')
+        )
+
+        pemakaian_mesin = list(
+            PenggunaanMesin.objects.filter(operator_id__in=subordinate_ids)
+            .values('mesin__nama')
+            .annotate(
+                jumlah_pemakaian=Count('id'),
+                total_lembar_color=Sum('lembar_color'),
+                total_lembar_mono=Sum('lembar_mono'),
+            )
+            .order_by('-jumlah_pemakaian')
+        )
+
+        return Response({
+            'jumlah_anggota_tim': len(subordinate_ids) - 1,  # tidak menghitung diri sendiri
+            'job_per_status': status_counts,
+            'pemakaian_mesin': pemakaian_mesin,
+        })
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsClockedIn])
     def claim(self, request, pk=None):
