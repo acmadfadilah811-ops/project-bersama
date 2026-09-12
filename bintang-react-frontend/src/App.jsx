@@ -10,6 +10,7 @@ import Login from './features/auth/pages/Login';
 import Dashboard from './features/dashboard/pages/Dashboard';
 import AdminDashboard from './features/dashboard/pages/AdminDashboard';
 import StaffDashboard from './features/dashboard/pages/StaffDashboard';
+import RingkasanTim from './features/dashboard/pages/RingkasanTim';
 import ExecutiveDashboard from './features/dashboard/pages/ExecutiveDashboard';
 import AiBusinessAnalyst from './features/dashboard/pages/AiBusinessAnalyst';
 import Orders from './features/orders/pages/Orders';
@@ -41,6 +42,7 @@ function HomeRedirect() {
   const role = user?.role?.toLowerCase();
   if (role === 'staff') return <Navigate to="/staff-dashboard" replace />;
   if (role === 'kasir') return <Navigate to="/kasir" replace />;
+  if (role === 'spv' || role === 'kordiv') return <Navigate to="/ringkasan-tim" replace />;
   return <Navigate to="/dashboard" replace />;
 }
 
@@ -131,6 +133,7 @@ function App() {
                 {/* Dashboard */}
                 <Route path="/dashboard" element={<DashboardRouter />} />
                 <Route path="/staff-dashboard" element={<StaffDashboard />} />
+                <Route path="/ringkasan-tim" element={<RingkasanTim />} />
                 {/* Backend membatasi ke owner/manager; route ini hanya jalur masuknya. */}
                 <Route path="/dashboard-eksekutif" element={<ExecutiveDashboard />} />
                 <Route path="/dashboard-eksekutif/ai-analyst" element={<AiBusinessAnalyst />} />

@@ -139,6 +139,11 @@ const menuStaff = [
   { path: '/profile', label: 'Profil', icon: User, isGroup: false },
 ];
 
+const menuSpvKordiv = [
+  { path: '/ringkasan-tim', label: 'Ringkasan Tim', icon: Users, isGroup: false },
+  { path: '/profile', label: 'Profil', icon: User, isGroup: false },
+];
+
 const menuKasir = [
   { path: '/kasir/dashboard', label: 'Dashboard', icon: LayoutDashboard, isGroup: false },
   { path: '/kasir/terminal', label: 'Kasir (POS)', icon: CreditCard, isGroup: false },
@@ -232,6 +237,8 @@ export default function Sidebar() {
       ? menuKasir
       : userRole === 'admin'
       ? menuAdmin
+      : userRole === 'spv' || userRole === 'kordiv'
+      ? menuSpvKordiv
       : groupedMenuOwnerManager;
 
   // Filter menu berdasarkan perizinan hak akses dinamis
