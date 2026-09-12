@@ -36,6 +36,7 @@ import {
   Wifi,
   WifiOff,
   RefreshCw,
+  Pencil,
 } from 'lucide-react';
 
 // ─── Helper ───────────────────────────────────────────────
@@ -117,6 +118,7 @@ export default function Settings() {
   const [employees, setEmployees] = useState([]);
   const [empLoading, setEmpLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState(null); // null = mode buat baru, object = mode edit
   const [formLoading, setFormLoading] = useState(false);
   const [formError, setFormError] = useState('');
   const [formSuccess, setFormSuccess] = useState('');
@@ -458,23 +460,65 @@ export default function Settings() {
     }
   };
 
-  // ── Create user ─────────────────────────────────────────
-  const handleCreateUser = async (e) => {
+  // ── Buat / edit user ─────────────────────────────────────
+  const openCreateModal = () => {
+    setEditingUser(null);
+    setFormData({ username: '', password: '', role: 'staff', no_hp: '', email: '', unit_bisnis: '', posisi: '', atasan: '' });
+    setFormError('');
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (emp) => {
+    setEditingUser(emp);
+    setFormData({
+      username: emp.username || '',
+      password: '',
+      role: emp.role || 'staff',
+      no_hp: emp.no_hp || '',
+      email: emp.email || '',
+      unit_bisnis: emp.unit_bisnis || '',
+      posisi: emp.posisi || '',
+      atasan: emp.atasan || '',
+    });
+    setFormError('');
+    setIsModalOpen(true);
+  };
+
+  const handleSaveUser = async (e) => {
     e.preventDefault();
     setFormLoading(true);
     setFormError('');
     setFormSuccess('');
     try {
-      await apiClient.post('/auth/create-user/', formData);
-      setFormSuccess('Karyawan berhasil ditambahkan!');
+      if (editingUser) {
+        // Edit akun yang sudah ada: username & password tidak ikut dikirim
+        // (username tidak diubah lewat form ini, password pakai alur Reset
+        // Password terpisah). Field role HANYA dikirim kalau akun yang login
+        // adalah Owner -- backend (CustomUserViewSet._guard_role_change)
+        // menolak permintaan apa pun yang menyertakan field role kalau
+        // pengirimnya bukan Owner, walau nilainya tidak berubah sama sekali.
+        const { username, password, role, ...rest } = formData;
+        const payload = { ...rest };
+        if (role !== editingUser.role) {
+          payload.role = role;
+        }
+        await apiClient.patch(`/users/${editingUser.id}/`, payload);
+        setFormSuccess('Perubahan berhasil disimpan!');
+      } else {
+        await apiClient.post('/auth/create-user/', formData);
+        setFormSuccess('Karyawan berhasil ditambahkan!');
+      }
       setIsModalOpen(false);
+      setEditingUser(null);
       setFormData({ username: '', password: '', role: 'staff', no_hp: '', email: '', unit_bisnis: '', posisi: '', atasan: '' });
       fetchEmployees();
     } catch (err) {
       setFormError(
         err.response?.status === 403
-          ? 'Anda tidak memiliki izin untuk membuat akun.'
-          : 'Gagal membuat akun. Pastikan username belum digunakan.'
+          ? (err.response?.data?.error || 'Anda tidak memiliki izin untuk melakukan ini.')
+          : editingUser
+            ? 'Gagal menyimpan perubahan.'
+            : 'Gagal membuat akun. Pastikan username belum digunakan.'
       );
     } finally {
       setFormLoading(false);
@@ -515,8 +559,7 @@ export default function Settings() {
         {activeTab === 'karyawan' && canManageUsers && (
           <button
             onClick={() => {
-              setIsModalOpen(true);
-              setFormError('');
+              openCreateModal();
               setFormSuccess('');
             }}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-all shadow-sm hover:shadow-md hover:-translate-y-px cursor-pointer"
@@ -1119,24 +1162,37 @@ export default function Settings() {
                           {emp.divisi_nama || '–'}
                         </td>
                         <td className="px-6 py-4 text-sm">
-                          {/* Sembunyikan tombol jika target memiliki role owner/manager dan role kita manager */}
-                          {(role?.toLowerCase() === 'owner' ||
-                            (role?.toLowerCase() === 'manager' &&
-                              emp.role !== 'owner' &&
-                              emp.role !== 'manager')) && (
-                            <button
-                              onClick={() => {
-                                setResetTarget(emp);
-                                setResetPasswordOpen(true);
-                                setResetPwError('');
-                                setResetPwSuccess('');
-                                setResetPwForm({ password: '', confirm: '' });
-                              }}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-xs font-bold transition-all cursor-pointer border border-rose-100"
-                            >
-                              <KeyRound size={12} /> Reset Password
-                            </button>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {/* Sembunyikan tombol jika target memiliki role owner/manager dan role kita bukan owner */}
+                            {(role?.toLowerCase() === 'owner' ||
+                              (['manager', 'admin'].includes(role?.toLowerCase()) &&
+                                emp.role !== 'owner' &&
+                                emp.role !== 'manager')) && (
+                              <button
+                                onClick={() => openEditModal(emp)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg text-xs font-bold transition-all cursor-pointer border border-indigo-100"
+                              >
+                                <Pencil size={12} /> Edit
+                              </button>
+                            )}
+                            {(role?.toLowerCase() === 'owner' ||
+                              (role?.toLowerCase() === 'manager' &&
+                                emp.role !== 'owner' &&
+                                emp.role !== 'manager')) && (
+                              <button
+                                onClick={() => {
+                                  setResetTarget(emp);
+                                  setResetPasswordOpen(true);
+                                  setResetPwError('');
+                                  setResetPwSuccess('');
+                                  setResetPwForm({ password: '', confirm: '' });
+                                }}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-xs font-bold transition-all cursor-pointer border border-rose-100"
+                              >
+                                <KeyRound size={12} /> Reset Password
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -1453,17 +1509,19 @@ export default function Settings() {
                 <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
                   <Users size={15} className="text-indigo-600" />
                 </div>
-                <h2 className="font-bold text-slate-800">Buat Akun Karyawan Baru</h2>
+                <h2 className="font-bold text-slate-800">
+                  {editingUser ? `Edit Akun: ${editingUser.username}` : 'Buat Akun Karyawan Baru'}
+                </h2>
               </div>
               <button
-                onClick={() => setIsModalOpen(false)}
+                onClick={() => { setIsModalOpen(false); setEditingUser(null); }}
                 className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors cursor-pointer"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleCreateUser} className="p-6 space-y-4">
+            <form onSubmit={handleSaveUser} className="p-6 space-y-4">
               {formError && (
                 <div
                   className="bg-red-50 text-red-600 text-sm px-4 py-3 rounded-xl flex items-center
@@ -1478,28 +1536,32 @@ export default function Settings() {
                 <input
                   type="text"
                   required
+                  disabled={!!editingUser}
                   value={formData.username}
                   onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                   placeholder="contoh: budi_desain"
                   className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm
                     bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-400
-                    focus:border-indigo-400 outline-none transition-all"
+                    focus:border-indigo-400 outline-none transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-700">Password</label>
-                <input
-                  type="password"
-                  required
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  placeholder="Min. 8 karakter"
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm
-                    bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-400
-                    focus:border-indigo-400 outline-none transition-all"
-                />
-              </div>
+              {!editingUser && (
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-slate-700">Password</label>
+                  <input
+                    type="password"
+                    required
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    placeholder="Min. 8 karakter"
+                    className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm
+                      bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-400
+                      focus:border-indigo-400 outline-none transition-all"
+                  />
+                  <p className="text-xs text-slate-400">Untuk akun yang sudah ada, gunakan tombol "Reset Password" di daftar karyawan.</p>
+                </div>
+              )}
 
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-slate-700">
@@ -1533,10 +1595,12 @@ export default function Settings() {
                 <label className="text-sm font-medium text-slate-700">Role</label>
                 <select
                   value={formData.role}
+                  disabled={!!editingUser && user?.role?.toLowerCase() !== 'owner'}
                   onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                   className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm
                     bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-400
-                    focus:border-indigo-400 outline-none transition-all appearance-none cursor-pointer"
+                    focus:border-indigo-400 outline-none transition-all appearance-none cursor-pointer
+                    disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <option value="staff">Staff</option>
                   <option value="kasir">Kasir</option>
@@ -1546,6 +1610,9 @@ export default function Settings() {
                   <option value="manager">Manager</option>
                   {user?.role?.toLowerCase() === 'owner' && <option value="owner">Owner</option>}
                 </select>
+                {!!editingUser && user?.role?.toLowerCase() !== 'owner' && (
+                  <p className="text-xs text-slate-400">Hanya Owner yang dapat mengubah role akun.</p>
+                )}
               </div>
 
               {(formData.role === 'staff' || formData.role === 'kasir' || formData.role === 'spv' || formData.role === 'kordiv') && (
@@ -1593,6 +1660,7 @@ export default function Settings() {
                         <option value="">(Belum ditentukan)</option>
                         {employees
                           .filter((e) => ['owner', 'manager', 'spv'].includes((e.role || '').toLowerCase()))
+                          .filter((e) => !editingUser || e.id !== editingUser.id)
                           .map((e) => (
                             <option key={e.id} value={e.id}>{e.username} ({e.role})</option>
                           ))}
@@ -1608,7 +1676,7 @@ export default function Settings() {
               <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-2">
                 <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={() => { setIsModalOpen(false); setEditingUser(null); }}
                   className="px-4 py-2 text-sm font-medium text-slate-600 border border-slate-300
                     hover:bg-slate-50 rounded-lg transition-colors cursor-pointer"
                 >

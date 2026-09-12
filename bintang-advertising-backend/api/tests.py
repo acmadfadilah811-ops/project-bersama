@@ -182,6 +182,32 @@ class ApiTestCase(APITestCase):
         self.assertEqual(user_baru.role, "spv")
         self.assertEqual(user_baru.atasan_id, manager_atasan.pk)
 
+    def test_edit_user_manager_bisa_ubah_atasan_tanpa_kirim_role(self):
+        """Frontend edit-akun sengaja tidak mengirim field role kalau tidak
+        berubah -- manager harus tetap bisa ubah field lain (mis. atasan)
+        tanpa terjegal _guard_role_change (yang menolak field role apa pun
+        dari non-owner, bahkan kalau nilainya sama)."""
+        spv_atasan = CustomUser.objects.create_user(username="spv_utk_edit_test", password="pw12345", role="spv")
+        target = CustomUser.objects.create_user(username="kordiv_target_edit_test", password="pw12345", role="kordiv")
+        manager = CustomUser.objects.create_user(username="manager_edit_test", password="pw12345", role="manager")
+
+        self.client.force_authenticate(user=manager)
+        response = self.client.patch(f"/api/users/{target.pk}/", {"atasan": spv_atasan.pk}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        target.refresh_from_db()
+        self.assertEqual(target.atasan_id, spv_atasan.pk)
+
+    def test_edit_user_non_owner_ditolak_kalau_kirim_field_role(self):
+        """Manager mengirim field role (walau nilainya sama dengan yang
+        sudah tersimpan) harus tetap ditolak -- hanya Owner yang boleh
+        mengubah role, sesuai _guard_role_change."""
+        target = CustomUser.objects.create_user(username="staff_target_role_test", password="pw12345", role="staff")
+        manager = CustomUser.objects.create_user(username="manager_role_test", password="pw12345", role="manager")
+
+        self.client.force_authenticate(user=manager)
+        response = self.client.patch(f"/api/users/{target.pk}/", {"role": "staff"}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
     def test_orders_list_and_create_api(self):
         """Uji API endpoint orders untuk menampilkan daftar pesanan dan membuat pesanan."""
         self.client.force_authenticate(user=self.owner)
