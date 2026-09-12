@@ -1499,12 +1499,12 @@ export default function Settings() {
           MODAL: Tambah Karyawan
       ══════════════════════════════════════════════════ */}
       {isModalOpen && canManageUsers && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 py-8">
           <div
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto
             animate-[revealUp_0.25s_ease]"
           >
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white z-10">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
                   <Users size={15} className="text-indigo-600" />
