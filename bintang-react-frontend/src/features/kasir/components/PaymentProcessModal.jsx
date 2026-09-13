@@ -53,6 +53,11 @@ export default function PaymentProcessModal({
   const handleNumpadClick = (val) => {
     if (val === 'C') {
       setPayAmountStr('0');
+    } else if (val === 'BACKSPACE') {
+      setPayAmountStr((prev) => {
+        const next = prev.slice(0, -1);
+        return next === '' ? '0' : next;
+      });
     } else if (val === '00') {
       if (payAmountStr === '0' || !payAmountStr) return;
       setPayAmountStr((prev) => prev + '00');
@@ -64,6 +69,39 @@ export default function PaymentProcessModal({
       }
     }
   };
+
+  // Nominal pembayaran cuma bisa diisi lewat klik numpad di layar -- tidak
+  // ada elemen <input> sungguhan di panel ini, jadi keyboard fisik/eksternal
+  // sama sekali tidak berfungsi untuk mengisi nominal. Dengarkan keydown di
+  // level window selama modal terbuka supaya angka, Backspace, Enter (bayar)
+  // dan Escape (tutup) bisa dipakai juga -- dilewati kalau fokus sedang di
+  // input lain di dalam modal ini (mis. field Jatuh Tempo untuk DP).
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const onKeyDown = (event) => {
+      const tag = event.target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+
+      if (event.key >= '0' && event.key <= '9') {
+        event.preventDefault();
+        handleNumpadClick(event.key);
+      } else if (event.key === 'Backspace') {
+        event.preventDefault();
+        handleNumpadClick('BACKSPACE');
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+      } else if (event.key === 'Enter') {
+        event.preventDefault();
+        handlePaySubmit();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  });
 
   const handlePaySubmit = () => {
     if (paymentType === 'lunas' && currentPayAmount < totalAmount) {
