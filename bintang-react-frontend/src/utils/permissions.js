@@ -76,6 +76,8 @@ export const DEFAULT_PERMISSIONS = {
   ],
   staff: ['staff-dashboard', 'jobs'],
   kasir: ['kasir-pos'],
+  spv: ['staff-dashboard', 'jobs'],
+  kordiv: ['staff-dashboard', 'jobs'],
 };
 
 
@@ -85,6 +87,8 @@ const LOCKED_PERMISSIONS = {
   manager: ['dashboard'],
   staff: ['staff-dashboard'],
   kasir: ['kasir-pos'],
+  spv: ['staff-dashboard'],
+  kordiv: ['staff-dashboard'],
 };
 
 // Mendapatkan hak akses saat ini, dengan jaminan LOCKED_PERMISSIONS selalu ada

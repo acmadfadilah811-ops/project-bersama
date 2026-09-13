@@ -140,7 +140,10 @@ const menuStaff = [
 ];
 
 const menuSpvKordiv = [
+  { path: '/staff-dashboard', label: 'Dashboard', icon: LayoutDashboard, isGroup: false },
   { path: '/ringkasan-tim', label: 'Ringkasan Tim', icon: Users, isGroup: false },
+  { path: '/produksi', label: 'Papan Kerja (SPK)', icon: Kanban, isGroup: false },
+  { path: '/buat-order', label: 'Buat Order', icon: ShoppingCart, isGroup: false },
   { path: '/profile', label: 'Profil', icon: User, isGroup: false },
 ];
 
