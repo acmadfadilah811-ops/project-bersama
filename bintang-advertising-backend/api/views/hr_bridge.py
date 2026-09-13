@@ -125,6 +125,18 @@ class HRBridgeCreateAccountView(APIView):
         unit_bisnis_nama = DEPARTEMEN_KE_UNIT_BISNIS.get(department.lower())
         unit_bisnis = UnitBisnis.objects.filter(nama=unit_bisnis_nama).first() if unit_bisnis_nama else None
 
+        # Dicari lewat hr_employee_id atasan (bukan ID Bintang -- HR tidak
+        # tahu itu). Kalau atasannya belum pernah ter-bridge, ini None; TIDAK
+        # dianggap error, dan pada UPDATE tidak menghapus atasan yang sudah
+        # ada sebelumnya (mis. yang di-set manual) hanya karena panggilan
+        # kali ini gagal me-resolve-nya -- baru ditimpa kalau berhasil
+        # ketemu match yang valid.
+        reporting_manager_hr_employee_id = request.data.get('reporting_manager_hr_employee_id')
+        atasan = (
+            CustomUser.objects.filter(hr_employee_id=reporting_manager_hr_employee_id).first()
+            if reporting_manager_hr_employee_id else None
+        )
+
         existing = CustomUser.objects.filter(hr_employee_id=hr_employee_id).first()
         if existing:
             # Idempotent: panggilan berikutnya (mis. HR simpan ulang data
@@ -136,6 +148,8 @@ class HRBridgeCreateAccountView(APIView):
             existing.posisi = job_position or existing.posisi
             existing.role = role
             existing.unit_bisnis = unit_bisnis
+            if atasan:
+                existing.atasan = atasan
             existing.save()
             return Response({
                 'id': existing.id, 'username': existing.username, 'role': existing.role,
@@ -155,6 +169,7 @@ class HRBridgeCreateAccountView(APIView):
             role=role,
             unit_bisnis=unit_bisnis,
             hr_employee_id=hr_employee_id,
+            atasan=atasan,
         )
         user.set_password(password_sementara)
         user.save()

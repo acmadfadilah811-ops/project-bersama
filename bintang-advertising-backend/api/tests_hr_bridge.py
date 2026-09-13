@@ -17,19 +17,24 @@ class HRBridgeAuthTests(APITestCase):
     def test_tanpa_api_key_dikonfigurasi_di_server_ditolak_500(self):
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("HR_BRIDGE_API_KEY", None)
-            response = self.client.post(URL, {"hr_employee_id": 1}, format="json")
+            response = self.client.post(
+                URL, {"hr_employee_id": 1}, format="json", HTTP_X_FORWARDED_PROTO="https"
+            )
         self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def test_api_key_salah_ditolak_401(self):
         with mock.patch.dict(os.environ, {"HR_BRIDGE_API_KEY": "kunci-benar"}):
             response = self.client.post(
-                URL, {"hr_employee_id": 1}, format="json", HTTP_X_API_KEY="kunci-salah"
+                URL, {"hr_employee_id": 1}, format="json", HTTP_X_API_KEY="kunci-salah",
+                HTTP_X_FORWARDED_PROTO="https",
             )
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_tanpa_header_api_key_ditolak_401(self):
         with mock.patch.dict(os.environ, {"HR_BRIDGE_API_KEY": "kunci-benar"}):
-            response = self.client.post(URL, {"hr_employee_id": 1}, format="json")
+            response = self.client.post(
+                URL, {"hr_employee_id": 1}, format="json", HTTP_X_FORWARDED_PROTO="https"
+            )
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
 
@@ -42,7 +47,15 @@ class HRBridgeCreateAccountTests(APITestCase):
         UnitBisnis.objects.get_or_create(nama="Star Advertising")
 
     def _post(self, payload):
-        return self.client.post(URL, payload, format="json", HTTP_X_API_KEY="kunci-uji")
+        # HTTP_X_FORWARDED_PROTO: production (DEBUG=False) punya
+        # SECURE_SSL_REDIRECT=True, sama seperti panggilan sungguhan dari
+        # HR (lihat _sinkron_ke() -- mengirim header yang sama persis),
+        # jadi request test tanpa ini kena redirect 301 saat dites langsung
+        # di container produksi.
+        return self.client.post(
+            URL, payload, format="json", HTTP_X_API_KEY="kunci-uji",
+            HTTP_X_FORWARDED_PROTO="https",
+        )
 
     def test_job_position_kordiv_a3_dipetakan_role_kordiv_dan_unit_star_advertising(self):
         response = self._post({
@@ -117,3 +130,53 @@ class HRBridgeCreateAccountTests(APITestCase):
     def test_field_wajib_hr_employee_id_kosong_ditolak_400(self):
         response = self._post({"first_name": "Tanpa", "last_name": "Id"})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_atasan_terisi_lewat_hr_employee_id_reporting_manager(self):
+        self._post({
+            "hr_employee_id": 200, "first_name": "Boss", "last_name": "Fotografi",
+            "job_position": "SPV Fotografi", "department": "Fotografi",
+        })
+        response = self._post({
+            "hr_employee_id": 201, "first_name": "Anak", "last_name": "Buah",
+            "job_position": "Fotografer", "department": "Fotografi",
+            "reporting_manager_hr_employee_id": 200,
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        boss = CustomUser.objects.get(hr_employee_id=200)
+        anak_buah = CustomUser.objects.get(hr_employee_id=201)
+        self.assertEqual(anak_buah.atasan_id, boss.id)
+
+    def test_atasan_belum_ter_bridge_tidak_error_dan_dibiarkan_kosong(self):
+        response = self._post({
+            "hr_employee_id": 202, "first_name": "Yatim", "last_name": "Piatu",
+            "job_position": "Fotografer", "department": "Fotografi",
+            "reporting_manager_hr_employee_id": 9999,  # tidak pernah ada
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        user = CustomUser.objects.get(hr_employee_id=202)
+        self.assertIsNone(user.atasan_id)
+
+    def test_update_tidak_menghapus_atasan_yang_sudah_ada_kalau_gagal_resolve(self):
+        self._post({
+            "hr_employee_id": 210, "first_name": "Boss2", "last_name": "Digital",
+            "job_position": "SPV Digital Printing", "department": "Digital Printing",
+        })
+        self._post({
+            "hr_employee_id": 211, "first_name": "Staff2", "last_name": "Digital",
+            "job_position": "Operator", "department": "Digital Printing",
+            "reporting_manager_hr_employee_id": 210,
+        })
+        boss = CustomUser.objects.get(hr_employee_id=210)
+        staff = CustomUser.objects.get(hr_employee_id=211)
+        self.assertEqual(staff.atasan_id, boss.id)
+
+        # Panggilan kedua tanpa reporting_manager_hr_employee_id (mis. HR
+        # simpan ulang data lain, atasan tidak ikut dikirim) tidak boleh
+        # menghapus atasan yang sudah benar tersimpan.
+        response2 = self._post({
+            "hr_employee_id": 211, "first_name": "Staff2", "last_name": "Digital",
+            "job_position": "Operator", "department": "Digital Printing",
+        })
+        self.assertEqual(response2.status_code, status.HTTP_200_OK)
+        staff.refresh_from_db()
+        self.assertEqual(staff.atasan_id, boss.id)
