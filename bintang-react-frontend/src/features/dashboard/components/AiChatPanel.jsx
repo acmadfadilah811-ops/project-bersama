@@ -97,6 +97,44 @@ function GelembungPesan({ pesan }) {
   );
 }
 
+function KonfirmasiHapus({ konfirmasi, onKonfirmasi, onBatal }) {
+  if (!konfirmasi) return null;
+  const semua = konfirmasi.type === 'semua';
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 max-w-sm w-full p-6 flex flex-col items-center text-center">
+        <div className="p-3 rounded-full mb-3 bg-rose-50 text-rose-500">
+          <Trash2 size={22} />
+        </div>
+        <h3 className="text-sm font-extrabold text-slate-900 mb-1.5">
+          {semua ? 'Hapus semua riwayat?' : 'Hapus percakapan ini?'}
+        </h3>
+        <p className="text-xs text-slate-500 mb-5">
+          {semua
+            ? 'Semua riwayat percakapan akan dihapus permanen. Tindakan ini tidak bisa dibatalkan.'
+            : 'Percakapan ini akan dihapus permanen.'}
+        </p>
+        <div className="flex gap-2 w-full">
+          <button
+            type="button"
+            onClick={onBatal}
+            className="flex-1 py-2.5 rounded-xl font-bold text-xs text-slate-600 border border-slate-200 hover:bg-slate-50"
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            onClick={onKonfirmasi}
+            className="flex-1 py-2.5 rounded-xl font-bold text-xs text-white bg-rose-600 hover:bg-rose-700"
+          >
+            Hapus
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function IndikatorMengetik() {
   return (
     <div className="flex gap-3">
@@ -132,6 +170,8 @@ export default function AiChatPanel() {
   const scrollRef = useRef(null);
   const textareaRef = useRef(null);
 
+  const [konfirmasi, setKonfirmasi] = useState(null);
+
   const active = conversations.find((c) => c.id === activeId) || conversations[0];
 
   useEffect(() => { saveConversations(conversations); }, [conversations]);
@@ -147,24 +187,31 @@ export default function AiChatPanel() {
     setDraft('');
   }, []);
 
-  const hapusPercakapan = useCallback((id, e) => {
+  const mintaHapusPercakapan = useCallback((id, e) => {
     e.stopPropagation();
-    if (!window.confirm('Hapus percakapan ini?')) return;
-    setConversations((prev) => {
-      const sisa = prev.filter((c) => c.id !== id);
-      const hasil = sisa.length ? sisa : [buatPercakapanBaru()];
-      if (id === activeId) setActiveId(hasil[0].id);
-      return hasil;
-    });
-  }, [activeId]);
-
-  const hapusSemuaRiwayat = useCallback(() => {
-    if (!window.confirm('Hapus semua riwayat percakapan? Tindakan ini tidak bisa dibatalkan.')) return;
-    const baru = buatPercakapanBaru();
-    setConversations([baru]);
-    setActiveId(baru.id);
-    setDraft('');
+    setKonfirmasi({ type: 'satu', id });
   }, []);
+
+  const mintaHapusSemua = useCallback(() => {
+    setKonfirmasi({ type: 'semua' });
+  }, []);
+
+  const eksekusiKonfirmasi = useCallback(() => {
+    if (konfirmasi?.type === 'semua') {
+      const baru = buatPercakapanBaru();
+      setConversations([baru]);
+      setActiveId(baru.id);
+      setDraft('');
+    } else if (konfirmasi?.type === 'satu') {
+      setConversations((prev) => {
+        const sisa = prev.filter((c) => c.id !== konfirmasi.id);
+        const hasil = sisa.length ? sisa : [buatPercakapanBaru()];
+        if (konfirmasi.id === activeId) setActiveId(hasil[0].id);
+        return hasil;
+      });
+    }
+    setKonfirmasi(null);
+  }, [konfirmasi, activeId]);
 
   const kirimPesan = useCallback((teks) => {
     const isi = teks.trim();
@@ -217,7 +264,7 @@ export default function AiChatPanel() {
           </button>
           <button
             type="button"
-            onClick={hapusSemuaRiwayat}
+            onClick={mintaHapusSemua}
             title="Hapus semua riwayat"
             className="shrink-0 w-8 h-8 inline-flex items-center justify-center text-slate-400 border border-slate-200 rounded-lg hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50"
           >
@@ -240,7 +287,7 @@ export default function AiChatPanel() {
               <span className="flex-1 truncate">{c.title}</span>
               <button
                 type="button"
-                onClick={(e) => hapusPercakapan(c.id, e)}
+                onClick={(e) => mintaHapusPercakapan(c.id, e)}
                 className="shrink-0 text-slate-300 group-hover:text-slate-400 hover:!text-rose-500 p-0.5"
                 title="Hapus percakapan"
               >
@@ -309,6 +356,12 @@ export default function AiChatPanel() {
           </div>
         </div>
       </section>
+
+      <KonfirmasiHapus
+        konfirmasi={konfirmasi}
+        onKonfirmasi={eksekusiKonfirmasi}
+        onBatal={() => setKonfirmasi(null)}
+      />
     </div>
   );
 }
