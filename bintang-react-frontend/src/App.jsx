@@ -14,7 +14,6 @@ import RingkasanTim from './features/dashboard/pages/RingkasanTim';
 import ExecutiveDashboard from './features/dashboard/pages/ExecutiveDashboard';
 import ExecutiveNav from './features/dashboard/components/ExecutiveNav';
 import AiBusinessAnalyst from './features/dashboard/pages/AiBusinessAnalyst';
-import AiChat from './features/dashboard/pages/AiChat';
 import Orders from './features/orders/pages/Orders';
 import SettingsApp from './features/settings/pages/SettingsApp';
 import Profile from './features/settings/pages/Profile';
@@ -149,7 +148,6 @@ function App() {
                   element={<><ExecutiveNav /><Dashboard /></>}
                 />
                 <Route path="/dashboard-eksekutif/ai-analyst" element={<AiBusinessAnalyst />} />
-                <Route path="/dashboard-eksekutif/tanya-ai" element={<AiChat />} />
 
                 {/* Operasional */}
                 <Route path="/orders" element={<Orders />} />

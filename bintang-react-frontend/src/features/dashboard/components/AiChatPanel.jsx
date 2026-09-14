@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Bot, MessageSquare, Plus, Send, Trash2, User } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import ExecutiveNav from '../components/ExecutiveNav';
 
 // Backend AI (KoboiLLM + fallback 9router) belum dibangun -- ini baru
 // tampilan percakapan. Riwayat disimpan lokal per-browser (localStorage),
@@ -121,7 +120,8 @@ const JAWABAN_BELUM_TERHUBUNG = [
   'berdasarkan data Bintang, HR, dan CRM yang sebenarnya.',
 ].join('\n');
 
-export default function AiChat() {
+/** Panel tanya-jawab AI -- ditanam sebagai salah satu tab di halaman AI Business Analyst. */
+export default function AiChatPanel() {
   const [conversations, setConversations] = useState(() => {
     const stored = loadConversations();
     return stored.length ? stored : [buatPercakapanBaru()];
@@ -195,106 +195,102 @@ export default function AiChat() {
   const urutkanTerbaru = [...conversations].sort((a, b) => b.updatedAt - a.updatedAt);
 
   return (
-    <div className="space-y-4 w-full max-w-7xl mx-auto px-4 pb-4 flex flex-col h-[calc(100vh-2rem)]">
-      <ExecutiveNav />
+    <div className="flex gap-4 h-[70vh] min-h-[480px]">
+      {/* Sidebar riwayat percakapan */}
+      <aside className="hidden md:flex flex-col w-64 shrink-0 bg-white border border-slate-200 rounded-2xl overflow-hidden">
+        <div className="p-3 border-b border-slate-100">
+          <button
+            type="button"
+            onClick={percakapanBaru}
+            className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+          >
+            <Plus size={14} /> Percakapan Baru
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          {urutkanTerbaru.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => setActiveId(c.id)}
+              className={`group w-full flex items-center gap-2 text-left px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                c.id === active?.id ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <MessageSquare size={13} className="shrink-0 opacity-60" />
+              <span className="flex-1 truncate">{c.title}</span>
+              <span
+                role="button"
+                tabIndex={-1}
+                onClick={(e) => hapusPercakapan(c.id, e)}
+                className="shrink-0 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-500 p-0.5"
+                title="Hapus percakapan"
+              >
+                <Trash2 size={13} />
+              </span>
+            </button>
+          ))}
+        </div>
+      </aside>
 
-      <div className="flex-1 min-h-0 flex gap-4">
-        {/* Sidebar riwayat percakapan */}
-        <aside className="hidden md:flex flex-col w-64 shrink-0 bg-white border border-slate-200 rounded-2xl overflow-hidden">
-          <div className="p-3 border-b border-slate-100">
+      {/* Area chat utama */}
+      <section className="flex-1 min-w-0 flex flex-col bg-white border border-slate-200 rounded-2xl overflow-hidden">
+        <header className="px-5 py-3 border-b border-slate-100">
+          <h1 className="text-sm font-black text-slate-900">Tanya AI</h1>
+          <p className="text-[11px] text-slate-500">Tanya jawab seputar data Bintang, HR, dan CRM -- jawaban dirender markdown</p>
+        </header>
+
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {active?.messages.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
+                <Bot size={22} />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-slate-800">Tanya apapun soal data bisnis kamu</p>
+                <p className="text-xs text-slate-500 mt-1">Backend AI masih dalam pengembangan -- ini baru tampilannya</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-md w-full">
+                {SARAN_PERTANYAAN.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => kirimPesan(s)}
+                    className="text-left text-xs font-semibold text-slate-600 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 hover:bg-slate-100"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            active.messages.map((m) => <GelembungPesan key={m.ts} pesan={m} />)
+          )}
+          {isThinking && <IndikatorMengetik />}
+        </div>
+
+        <div className="p-3 border-t border-slate-100">
+          <div className="flex items-end gap-2 bg-slate-50 border border-slate-200 rounded-2xl p-2">
+            <textarea
+              ref={textareaRef}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Tulis pertanyaan... (Enter kirim, Shift+Enter baris baru)"
+              rows={1}
+              className="flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none max-h-32"
+            />
             <button
               type="button"
-              onClick={percakapanBaru}
-              className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+              onClick={() => kirimPesan(draft)}
+              disabled={!draft.trim() || isThinking}
+              className="shrink-0 w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700 disabled:opacity-40 disabled:hover:bg-blue-600"
             >
-              <Plus size={14} /> Percakapan Baru
+              <Send size={15} />
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            {urutkanTerbaru.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => setActiveId(c.id)}
-                className={`group w-full flex items-center gap-2 text-left px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
-                  c.id === active?.id ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                <MessageSquare size={13} className="shrink-0 opacity-60" />
-                <span className="flex-1 truncate">{c.title}</span>
-                <span
-                  role="button"
-                  tabIndex={-1}
-                  onClick={(e) => hapusPercakapan(c.id, e)}
-                  className="shrink-0 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-500 p-0.5"
-                  title="Hapus percakapan"
-                >
-                  <Trash2 size={13} />
-                </span>
-              </button>
-            ))}
-          </div>
-        </aside>
-
-        {/* Area chat utama */}
-        <section className="flex-1 min-w-0 flex flex-col bg-white border border-slate-200 rounded-2xl overflow-hidden">
-          <header className="px-5 py-3 border-b border-slate-100">
-            <h1 className="text-sm font-black text-slate-900">Tanya AI</h1>
-            <p className="text-[11px] text-slate-500">Tanya jawab seputar data Bintang, HR, dan CRM -- jawaban dirender markdown</p>
-          </header>
-
-          <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-            {active?.messages.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
-                  <Bot size={22} />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-slate-800">Tanya apapun soal data bisnis kamu</p>
-                  <p className="text-xs text-slate-500 mt-1">Backend AI masih dalam pengembangan -- ini baru tampilannya</p>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-md w-full">
-                  {SARAN_PERTANYAAN.map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => kirimPesan(s)}
-                      className="text-left text-xs font-semibold text-slate-600 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 hover:bg-slate-100"
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              active.messages.map((m) => <GelembungPesan key={m.ts} pesan={m} />)
-            )}
-            {isThinking && <IndikatorMengetik />}
-          </div>
-
-          <div className="p-3 border-t border-slate-100">
-            <div className="flex items-end gap-2 bg-slate-50 border border-slate-200 rounded-2xl p-2">
-              <textarea
-                ref={textareaRef}
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Tulis pertanyaan... (Enter kirim, Shift+Enter baris baru)"
-                rows={1}
-                className="flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none max-h-32"
-              />
-              <button
-                type="button"
-                onClick={() => kirimPesan(draft)}
-                disabled={!draft.trim() || isThinking}
-                className="shrink-0 w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700 disabled:opacity-40 disabled:hover:bg-blue-600"
-              >
-                <Send size={15} />
-              </button>
-            </div>
-          </div>
-        </section>
-      </div>
+        </div>
+      </section>
     </div>
   );
 }

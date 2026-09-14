@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Info, RefreshCw } from 'lucide-react';
+import { Info, MessageSquareText, RefreshCw } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import ExecutiveNav from '../components/ExecutiveNav';
+import AiChatPanel from '../components/AiChatPanel';
 import { AbcList, ChannelCompare, MarginList, ProdukTable, StokKategoriTable } from '../components/AiAnalystCharts';
 
 const PERIODE = [
@@ -114,27 +115,11 @@ export default function AiBusinessAnalyst() {
 
   useEffect(() => { load(); }, [load]);
 
-  if (loading && !data) {
-    return (
-      <div className="space-y-6 w-full max-w-7xl mx-auto px-4 pb-10">
-        <ExecutiveNav />
-        <div className="flex h-[60vh] items-center justify-center">
-          <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-        </div>
-      </div>
-    );
-  }
-
-  if (error && !data) {
-    return (
-      <div className="space-y-6 w-full max-w-7xl mx-auto px-4 pb-10">
-        <ExecutiveNav />
-        <div className="bg-rose-50 text-rose-700 rounded-xl p-4 text-sm">{error}</div>
-      </div>
-    );
-  }
-
-  const modul = data.modul[tab];
+  // "Tanya AI" tidak butuh data /ai-business-analyst/ (endpoint chat sendiri
+  // belum ada) -- sengaja tidak ikut early-return loading/error di bawah,
+  // supaya tetap bisa dibuka walau analitik statis gagal/lambat dimuat.
+  const isChat = tab === 'tanya_ai';
+  const modul = data?.modul?.[tab];
 
   return (
     <div className="space-y-6 w-full max-w-7xl mx-auto px-4 pb-10">
@@ -143,34 +128,36 @@ export default function AiBusinessAnalyst() {
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-black text-slate-900">AI Business Analyst</h1>
-          <p className="text-xs text-slate-500 mt-1">{data.periode.label}</p>
+          <p className="text-xs text-slate-500 mt-1">{isChat ? 'Tanya jawab seputar data bisnis' : data?.periode?.label}</p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex bg-slate-100 rounded-lg p-1">
-            {PERIODE.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => setPeriod(p.id)}
-                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${
-                  period === p.id ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
+        {!isChat && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex bg-slate-100 rounded-lg p-1">
+              {PERIODE.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setPeriod(p.id)}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${
+                    period === p.id ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <button type="button" onClick={load} className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50">
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Segarkan
+            </button>
           </div>
-          <button type="button" onClick={load} className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50">
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Segarkan
-          </button>
-        </div>
+        )}
       </header>
 
-      {error && <div className="bg-rose-50 text-rose-700 rounded-xl p-3 text-sm">{error}</div>}
+      {error && !isChat && <div className="bg-rose-50 text-rose-700 rounded-xl p-3 text-sm">{error}</div>}
 
-      <div className="flex gap-1 overflow-x-auto border-b border-slate-200 pb-px">
+      <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-200 pb-px">
         {DOMAIN.map((d) => {
-          const tersedia = data.modul[d.key]?.tersedia !== false;
+          const tersedia = data?.modul?.[d.key]?.tersedia !== false;
           return (
             <button
               key={d.key}
@@ -187,13 +174,37 @@ export default function AiBusinessAnalyst() {
             </button>
           );
         })}
+        <span className="shrink-0 w-px self-stretch my-1.5 bg-slate-200" />
+        <button
+          type="button"
+          onClick={() => setTab('tanya_ai')}
+          className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold border-b-2 transition-colors ${
+            isChat
+              ? 'border-indigo-600 text-indigo-600'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <MessageSquareText size={13} /> Tanya AI
+        </button>
       </div>
 
       <div>
-        {!modul.tersedia && <BelumTersedia alasan={modul.alasan} />}
-        {modul.tersedia && tab === 'penjualan_produk' && <PenjualanProduk data={modul} />}
-        {modul.tersedia && tab === 'profitabilitas' && <Profitabilitas data={modul} />}
-        {modul.tersedia && tab === 'stok' && <Stok data={modul} />}
+        {isChat ? (
+          <AiChatPanel />
+        ) : loading && !data ? (
+          <div className="flex h-[50vh] items-center justify-center">
+            <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : error && !data ? (
+          <div className="bg-rose-50 text-rose-700 rounded-xl p-4 text-sm">{error}</div>
+        ) : (
+          <>
+            {!modul.tersedia && <BelumTersedia alasan={modul.alasan} />}
+            {modul.tersedia && tab === 'penjualan_produk' && <PenjualanProduk data={modul} />}
+            {modul.tersedia && tab === 'profitabilitas' && <Profitabilitas data={modul} />}
+            {modul.tersedia && tab === 'stok' && <Stok data={modul} />}
+          </>
+        )}
       </div>
     </div>
   );
