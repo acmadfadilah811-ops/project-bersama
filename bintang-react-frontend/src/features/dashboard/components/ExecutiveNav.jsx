@@ -4,6 +4,7 @@ const TABS = [
   { to: '/dashboard-eksekutif', label: 'Ringkasan' },
   { to: '/dashboard-eksekutif/operasional', label: 'Operasional' },
   { to: '/dashboard-eksekutif/ai-analyst', label: 'AI Business Analyst' },
+  { to: '/dashboard-eksekutif/tanya-ai', label: 'Tanya AI' },
 ];
 
 /** Navigasi antar sub-halaman Dashboard Eksekutif (area khusus owner/manager). */
