@@ -20,8 +20,20 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_HR_INSIGHTS_URL = "http://horilla-hr-web-1:8000/api/insights/hr/"
-DEFAULT_CRM_INSIGHTS_URL = "http://horilla-crm-web-1:8000/api/insights/crm/"
+
+# Lewat domain publik (HTTPS, ke luar via Cloudflare), BUKAN hostname
+# docker internal seperti hr_bintang_bridge.py di sisi HR (yang MENERIMA
+# panggilan, arah sebaliknya) -- ALLOWED_HOSTS di HR/CRM hanya berisi
+# domain publik mereka (lihat masing-masing .env di VPS), jadi memanggil
+# lewat hostname internal (mis. http://horilla-hr-web-1:8000/...) kena
+# ditolak Django (400 DisallowedHost) kecuali hostname itu ditambahkan ke
+# ALLOWED_HOSTS secara eksplisit -- ditemukan langsung saat verifikasi
+# live: CRM kebetulan sudah punya hostname-nya sendiri di ALLOWED_HOSTS,
+# HR belum. Lewat domain publik sekalian menghindari kerapuhan itu di
+# kedua sisi, dengan trade-off round-trip lewat Cloudflare (dampaknya
+# kecil -- endpoint ini dipanggil per buka dashboard, bukan per request).
+DEFAULT_HR_INSIGHTS_URL = "https://hr.starphotoadvertising.com/api/insights/hr/"
+DEFAULT_CRM_INSIGHTS_URL = "https://crm.starphotoadvertising.com/api/insights/crm/"
 
 TIMEOUT = 10
 
