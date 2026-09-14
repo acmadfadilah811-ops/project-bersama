@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Bot, MessageSquare, Plus, Send, Trash2, User } from 'lucide-react';
+import { Bot, MessageSquare, Plus, Send, Trash2, User, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -149,6 +149,7 @@ export default function AiChatPanel() {
 
   const hapusPercakapan = useCallback((id, e) => {
     e.stopPropagation();
+    if (!window.confirm('Hapus percakapan ini?')) return;
     setConversations((prev) => {
       const sisa = prev.filter((c) => c.id !== id);
       const hasil = sisa.length ? sisa : [buatPercakapanBaru()];
@@ -156,6 +157,14 @@ export default function AiChatPanel() {
       return hasil;
     });
   }, [activeId]);
+
+  const hapusSemuaRiwayat = useCallback(() => {
+    if (!window.confirm('Hapus semua riwayat percakapan? Tindakan ini tidak bisa dibatalkan.')) return;
+    const baru = buatPercakapanBaru();
+    setConversations([baru]);
+    setActiveId(baru.id);
+    setDraft('');
+  }, []);
 
   const kirimPesan = useCallback((teks) => {
     const isi = teks.trim();
@@ -195,40 +204,49 @@ export default function AiChatPanel() {
   const urutkanTerbaru = [...conversations].sort((a, b) => b.updatedAt - a.updatedAt);
 
   return (
-    <div className="flex gap-4 h-[70vh] min-h-[480px]">
+    <div className="flex gap-4 h-full min-h-[420px]">
       {/* Sidebar riwayat percakapan */}
       <aside className="hidden md:flex flex-col w-64 shrink-0 bg-white border border-slate-200 rounded-2xl overflow-hidden">
-        <div className="p-3 border-b border-slate-100">
+        <div className="p-3 border-b border-slate-100 flex items-center gap-2">
           <button
             type="button"
             onClick={percakapanBaru}
-            className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+            className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700"
           >
             <Plus size={14} /> Percakapan Baru
+          </button>
+          <button
+            type="button"
+            onClick={hapusSemuaRiwayat}
+            title="Hapus semua riwayat"
+            className="shrink-0 w-8 h-8 inline-flex items-center justify-center text-slate-400 border border-slate-200 rounded-lg hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50"
+          >
+            <Trash2 size={14} />
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
           {urutkanTerbaru.map((c) => (
-            <button
+            <div
               key={c.id}
-              type="button"
+              role="button"
+              tabIndex={0}
               onClick={() => setActiveId(c.id)}
-              className={`group w-full flex items-center gap-2 text-left px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
+              onKeyDown={(e) => { if (e.key === 'Enter') setActiveId(c.id); }}
+              className={`group w-full flex items-center gap-2 text-left px-3 py-2 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${
                 c.id === active?.id ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'
               }`}
             >
               <MessageSquare size={13} className="shrink-0 opacity-60" />
               <span className="flex-1 truncate">{c.title}</span>
-              <span
-                role="button"
-                tabIndex={-1}
+              <button
+                type="button"
                 onClick={(e) => hapusPercakapan(c.id, e)}
-                className="shrink-0 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-500 p-0.5"
+                className="shrink-0 text-slate-300 group-hover:text-slate-400 hover:!text-rose-500 p-0.5"
                 title="Hapus percakapan"
               >
-                <Trash2 size={13} />
-              </span>
-            </button>
+                <X size={14} />
+              </button>
+            </div>
           ))}
         </div>
       </aside>
