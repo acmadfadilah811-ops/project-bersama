@@ -1,16 +1,23 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, Download, Info, RefreshCw, Table2, TrendingDown, TrendingUp } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
-import { BarTerlaris, SERIES, STATUS, StokBar, TrenChart, rupiah } from '../components/ExecutiveCharts';
+import {
+  BarList, BarTerlaris, MonthlyTrendChart, SERIES, STATUS, StokBar, TrenChart, rupiah,
+} from '../components/ExecutiveCharts';
 import ExecutiveNav from '../components/ExecutiveNav';
 
 /**
- * Dashboard eksekutif — ringkasan lintas periode untuk owner/manager.
+ * Dashboard eksekutif ("Ringkasan") — ringkasan lintas periode untuk
+ * owner/manager, sekarang lintas SISTEM juga (Bintang+HR+CRM lewat
+ * /insights/combined/, Fase 1 Dashboard Insight Owner).
  *
- * Semua angka di sini berasal dari data nyata. Metrik yang butuh buku besar
- * (laba bersih, kas, rasio lancar) sengaja tidak ditampilkan sebagai angka,
- * melainkan didaftar di panel "Belum tersedia" beserta alasannya — lihat
- * api/executive_dashboard.py.
+ * Semua angka Bintang di sini berasal dari data nyata. Metrik yang butuh
+ * buku besar (laba bersih, kas, rasio lancar) sengaja tidak ditampilkan
+ * sebagai angka, melainkan didaftar di panel "Belum tersedia" beserta
+ * alasannya — lihat api/executive_dashboard.py. Section HR/CRM yang
+ * gagal dimuat (sistem itu down) ditampilkan sebagai catatan tidak
+ * tersedia, BUKAN dikosongkan diam-diam atau dianggap nol — prinsip yang
+ * sama.
  */
 
 const PERIODE = [
@@ -22,6 +29,7 @@ const PERIODE = [
 
 const money = rupiah;
 const angka = (v) => new Intl.NumberFormat('id-ID').format(Number(v) || 0);
+const persen = (v) => `${angka(v)}%`;
 
 function Delta({ value }) {
   // null = tidak ada periode pembanding. Menampilkan "0%" akan menyesatkan.
@@ -99,6 +107,28 @@ function TabelTren({ rows }) {
   );
 }
 
+/** Section wrapper standar — dipakai semua kartu HR/CRM di bawah. */
+function SectionCard({ title, subtitle, className = '', children }) {
+  return (
+    <section className={`bg-white border border-slate-200 rounded-2xl p-5 shadow-sm ${className}`}>
+      <h3 className="font-bold text-slate-900">{title}</h3>
+      {subtitle && <p className="text-xs text-slate-500 mb-4">{subtitle}</p>}
+      {!subtitle && <div className="mb-4" />}
+      {children}
+    </section>
+  );
+}
+
+/** Tampil saat satu sub-sistem (HR/CRM) gagal dimuat -- bukan dikosongkan
+ * diam-diam, konsisten dengan panel "Belum tersedia" Bintang. */
+function TidakTersedia({ sistem }) {
+  return (
+    <div className="flex items-center gap-2 py-6 text-xs text-slate-500">
+      <Info size={14} className="shrink-0" /> Data {sistem} tidak tersedia saat ini.
+    </div>
+  );
+}
+
 export default function ExecutiveDashboard() {
   const [period, setPeriod] = useState('ytd');
   const [data, setData] = useState(null);
@@ -110,7 +140,7 @@ export default function ExecutiveDashboard() {
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const res = await apiClient.get('/executive-dashboard/', { params: { period } });
+      const res = await apiClient.get('/insights/combined/', { params: { period } });
       setData(res.data);
     } catch (err) {
       setError(err.response?.status === 403
@@ -152,14 +182,18 @@ export default function ExecutiveDashboard() {
     return <div className="max-w-7xl mx-auto px-4 py-10"><div className="bg-rose-50 text-rose-700 rounded-xl p-4 text-sm">{error}</div></div>;
   }
 
+  const bintang = data.bintang;
+  const hr = data.hr || {};
+  const crm = data.crm || {};
+
   return (
     <div className="space-y-6 w-full max-w-7xl mx-auto px-4 pb-10">
       <ExecutiveNav />
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-black text-slate-900">Dashboard Eksekutif</h1>
+          <h1 className="text-xl font-black text-slate-900">Ringkasan</h1>
           <p className="text-xs text-slate-500 mt-1">
-            {data.periode.label} · dibanding {data.periode.pembanding}
+            {bintang.periode.label} · dibanding {bintang.periode.pembanding}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -188,8 +222,9 @@ export default function ExecutiveDashboard() {
 
       {error && <div className="bg-rose-50 text-rose-700 rounded-xl p-3 text-sm">{error}</div>}
 
+      {/* ===== Bintang (operasional & keuangan) ===== */}
       <section className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-        {data.kpi.map((item) => <KpiCard key={item.key} item={item} />)}
+        {bintang.kpi.map((item) => <KpiCard key={item.key} item={item} />)}
       </section>
 
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
@@ -200,7 +235,7 @@ export default function ExecutiveDashboard() {
               <p className="text-xs text-slate-500">HPP dan laba kotor menyusun total pendapatan</p>
             </div>
             <div className="flex items-center gap-4">
-              <Legend adaRugi={data.tren.some((r) => r.laba_kotor < 0)} />
+              <Legend adaRugi={bintang.tren.some((r) => r.laba_kotor < 0)} />
               <button
                 type="button"
                 onClick={() => setTabel((v) => !v)}
@@ -211,16 +246,16 @@ export default function ExecutiveDashboard() {
               </button>
             </div>
           </div>
-          {tabel ? <TabelTren rows={data.tren} /> : <TrenChart rows={data.tren} />}
+          {tabel ? <TabelTren rows={bintang.tren} /> : <TrenChart rows={bintang.tren} />}
         </section>
 
         <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
           <h2 className="font-bold text-slate-900 mb-4">Kesehatan Stok</h2>
-          <StokBar stok={data.stok} />
-          {data.stok.habis > 0 && (
+          <StokBar stok={bintang.stok} />
+          {bintang.stok.habis > 0 && (
             <div className="mt-4 flex gap-2 bg-rose-50 text-rose-700 rounded-lg p-3 text-xs">
               <AlertTriangle size={15} className="shrink-0 mt-0.5" />
-              <span>{data.stok.habis} produk habis stok dan {data.stok.menipis} di bawah stok minimum.</span>
+              <span>{bintang.stok.habis} produk habis stok dan {bintang.stok.menipis} di bawah stok minimum.</span>
             </div>
           )}
         </section>
@@ -230,26 +265,125 @@ export default function ExecutiveDashboard() {
         <section className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
           <h2 className="font-bold text-slate-900">Produk Terlaris</h2>
           <p className="text-xs text-slate-500 mb-4">Berdasarkan nilai penjualan POS</p>
-          <BarTerlaris rows={data.produk_terlaris} />
+          <BarTerlaris rows={bintang.produk_terlaris} />
         </section>
 
         <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
           <h2 className="font-bold text-slate-900 mb-2">Produksi</h2>
           <p className="text-sm text-slate-600">
-            <strong className="text-slate-900">{angka(data.produksi.selesai)}</strong> dari {angka(data.produksi.total)} dokumen selesai
+            <strong className="text-slate-900">{angka(bintang.produksi.selesai)}</strong> dari {angka(bintang.produksi.total)} dokumen selesai
           </p>
 
           <h2 className="font-bold text-slate-900 mt-6 mb-2 flex items-center gap-1.5">
             <Info size={15} className="text-slate-400" /> Belum tersedia
           </h2>
           <ul className="space-y-2 text-xs text-slate-500">
-            {data.unavailable.map((u) => (
+            {bintang.unavailable.map((u) => (
               <li key={u.label}>
                 <strong className="text-slate-700">{u.label}</strong> — {u.reason}
               </li>
             ))}
           </ul>
         </section>
+      </div>
+
+      {/* ===== SDM (HR) ===== */}
+      <h2 className="text-lg font-black text-slate-900 pt-2">SDM</h2>
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
+        <SectionCard title="Karyawan per Departemen">
+          {hr.headcount
+            ? <BarList rows={hr.headcount.departments.map((d) => ({ label: d.department, value: d.count }))} format={angka} />
+            : <TidakTersedia sistem="karyawan" />}
+        </SectionCard>
+
+        <SectionCard title="Kehadiran Hari Ini" subtitle={hr.attendance ? `Periode terpantau: ${hr.attendance.period.from_date} – ${hr.attendance.period.to_date}` : undefined}>
+          {hr.attendance ? (
+            <div className="space-y-4">
+              <p className="text-2xl font-black text-slate-900">{persen(hr.attendance.attendance_rate_today)}</p>
+              <div>
+                <p className="text-xs font-semibold text-slate-500 mb-1.5">Sering telat</p>
+                {hr.attendance.frequently_late.length
+                  ? <ul className="text-sm text-slate-700 space-y-1">
+                      {hr.attendance.frequently_late.map((e) => (
+                        <li key={e.employee_id} className="flex justify-between"><span>{e.name}</span><span className="font-bold">{e.late_count}×</span></li>
+                      ))}
+                    </ul>
+                  : <p className="text-xs text-slate-400">Tidak ada.</p>}
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-slate-500 mb-1.5">Sering tidak hadir</p>
+                {hr.attendance.frequently_absent.length
+                  ? <ul className="text-sm text-slate-700 space-y-1">
+                      {hr.attendance.frequently_absent.map((e) => (
+                        <li key={e.employee_id} className="flex justify-between"><span>{e.name}</span><span className="font-bold">{e.absent_count}×</span></li>
+                      ))}
+                    </ul>
+                  : <p className="text-xs text-slate-400">Tidak ada.</p>}
+              </div>
+            </div>
+          ) : <TidakTersedia sistem="kehadiran" />}
+        </SectionCard>
+
+        <SectionCard title="Tren Cuti" subtitle="Disetujui / menunggu / ditolak per bulan">
+          {hr.leave_trend
+            ? <MonthlyTrendChart rows={hr.leave_trend.months} format={angka} series={[
+                { key: 'approved', label: 'Disetujui', color: STATUS.good.color },
+                { key: 'pending', label: 'Menunggu', color: STATUS.warning.color },
+                { key: 'rejected', label: 'Ditolak', color: STATUS.critical.color },
+              ]} />
+            : <TidakTersedia sistem="tren cuti" />}
+        </SectionCard>
+
+        <SectionCard title="Tren Lembur" subtitle="Jam lembur disetujui per bulan — biaya tersembunyi">
+          {hr.overtime_trend
+            ? <MonthlyTrendChart rows={hr.overtime_trend.months} format={(v) => `${angka(v)} jam`} series={[
+                { key: 'overtime_hours', label: 'Jam Lembur', color: SERIES.hpp.color },
+              ]} />
+            : <TidakTersedia sistem="tren lembur" />}
+        </SectionCard>
+
+        <SectionCard title="Turnover Karyawan" subtitle={hr.turnover ? `Tingkat turnover 6 bulan: ${persen(hr.turnover.turnover_rate_6m)}` : undefined} className="lg:col-span-2">
+          {hr.turnover
+            ? <MonthlyTrendChart rows={hr.turnover.months} format={angka} series={[
+                { key: 'hires', label: 'Masuk', color: STATUS.good.color },
+                { key: 'exits', label: 'Keluar', color: STATUS.critical.color },
+              ]} />
+            : <TidakTersedia sistem="turnover" />}
+        </SectionCard>
+      </div>
+
+      {/* ===== Marketing & Penjualan (CRM) ===== */}
+      <h2 className="text-lg font-black text-slate-900 pt-2">Marketing &amp; Penjualan</h2>
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
+        <SectionCard title="Leads &amp; Konversi" subtitle="Leads baru vs. terkonversi per bulan">
+          {crm.leads
+            ? <MonthlyTrendChart rows={crm.leads.months} format={angka} series={[
+                { key: 'new_leads', label: 'Leads Baru', color: SERIES.hpp.color },
+                { key: 'converted', label: 'Terkonversi', color: STATUS.good.color },
+              ]} />
+            : <TidakTersedia sistem="leads" />}
+        </SectionCard>
+
+        <SectionCard title="Nilai Pipeline per Tahap" subtitle={crm.pipeline ? `Closed Won: ${money(crm.pipeline.closed_won_total_value)}` : undefined}>
+          {crm.pipeline
+            ? <BarList rows={crm.pipeline.stages.map((s) => ({ label: s.stage, value: s.total_value }))} format={money} />
+            : <TidakTersedia sistem="pipeline" />}
+        </SectionCard>
+
+        <SectionCard title="Performa Campaign" className="lg:col-span-2">
+          {crm.campaigns ? (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Campaign Aktif</p>
+                <p className="mt-1 text-2xl font-black text-slate-900">{angka(crm.campaigns.active_campaign_count)}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Rata-rata Response Rate</p>
+                <p className="mt-1 text-2xl font-black text-slate-900">{persen(crm.campaigns.average_response_rate)}</p>
+              </div>
+            </div>
+          ) : <TidakTersedia sistem="campaign" />}
+        </SectionCard>
       </div>
     </div>
   );

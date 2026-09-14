@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom';
 
 const TABS = [
   { to: '/dashboard-eksekutif', label: 'Ringkasan' },
+  { to: '/dashboard-eksekutif/operasional', label: 'Operasional' },
   { to: '/dashboard-eksekutif/ai-analyst', label: 'AI Business Analyst' },
 ];
 

@@ -276,4 +276,134 @@ export function StokBar({ stok }) {
   );
 }
 
+/**
+ * Bar horizontal generik, satu warna untuk semua bar — dipakai untuk
+ * daftar berlabel+angka apa pun (headcount per departemen, nilai
+ * pipeline per tahap, dst). BarTerlaris di atas SENGAJA tidak diperluas
+ * untuk ini — field-nya (nama/qty) spesifik ke bentuk produk POS.
+ */
+export function BarList({ rows, format = ringkas, color = SERIES.hpp.color, satuan = '' }) {
+  const [hover, setHover] = useState(null);
+  if (!rows.length) {
+    return <p className="py-10 text-center text-sm text-slate-500">Belum ada data.</p>;
+  }
+  const maks = Math.max(...rows.map((r) => r.value), 1);
+
+  return (
+    <div className="relative space-y-3">
+      <Tooltip isi={hover} />
+      {rows.map((row, i) => (
+        <div key={row.label}
+          tabIndex={0}
+          className="group cursor-default rounded outline-none focus:ring-2 focus:ring-blue-300"
+          onMouseEnter={() => setHover({ i, x: 50, judul: row.label, baris: [
+            { label: satuan || 'Nilai', nilai: `${format(row.value)}${satuan}`, color },
+          ] })}
+          onFocus={() => setHover({ i, x: 50, judul: row.label, baris: [
+            { label: satuan || 'Nilai', nilai: `${format(row.value)}${satuan}`, color },
+          ] })}
+          onMouseLeave={() => setHover(null)}
+          onBlur={() => setHover(null)}
+        >
+          <div className="mb-1 flex justify-between text-xs">
+            <span className="truncate pr-2 font-semibold text-slate-700">{row.label}</span>
+            <span className="shrink-0 font-bold text-slate-900">{format(row.value)}{satuan}</span>
+          </div>
+          <div className="h-3 w-full overflow-hidden rounded-sm bg-slate-100">
+            <div className="h-full rounded-r-[4px] transition-opacity group-hover:opacity-100"
+              style={{ width: `${(row.value / maks) * 100}%`, background: color, opacity: 0.92 }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Tren bulanan generik, bar berkelompok (BUKAN bertumpuk — beberapa
+ * seri di sini bukan komposisi satu total, mis. leads-baru vs
+ * terkonversi, atau hires vs exits yang bisa net negatif; menumpuknya
+ * akan menyesatkan seperti komposisi padahal bukan).
+ */
+export function MonthlyTrendChart({ rows, series, format = ringkas }) {
+  const [hover, setHover] = useState(null);
+  if (!rows.length) {
+    return <p className="py-12 text-center text-sm text-slate-500">Belum ada data pada periode ini.</p>;
+  }
+
+  const W = 760;
+  const H = 260;
+  const M = { atas: 20, kanan: 12, bawah: 34, kiri: 56 };
+  const plotW = W - M.kiri - M.kanan;
+  const plotH = H - M.atas - M.bawah;
+
+  const semuaNilai = rows.flatMap((r) => series.map((s) => Number(r[s.key]) || 0));
+  const maks = Math.max(...semuaNilai, 1);
+  const skalaTicks = ticks(maks);
+  const atas = skalaTicks[skalaTicks.length - 1];
+  const y = (v) => M.atas + plotH - (v / atas) * plotH;
+  const bandW = plotW / rows.length;
+  const grupWMaks = Math.min(28, 10 * series.length + 4);
+  const grupW = Math.min(grupWMaks, bandW * 0.7);
+  const barW = grupW / series.length;
+
+  return (
+    <div className="relative">
+      <Tooltip isi={hover} />
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label="Tren bulanan">
+        {skalaTicks.map((t) => (
+          <g key={t}>
+            <line x1={M.kiri} x2={W - M.kanan} y1={y(t)} y2={y(t)} stroke={GRID} strokeWidth="1" />
+            <text x={M.kiri - 10} y={y(t) + 4} textAnchor="end" fontSize="11" fill="#6b7280">
+              {t === 0 ? '0' : format(t)}
+            </text>
+          </g>
+        ))}
+
+        {rows.map((row, i) => {
+          const groupX = M.kiri + bandW * i + (bandW - grupW) / 2;
+          const aktif = hover?.i === i;
+          return (
+            <g key={row.month}>
+              {series.map((s, si) => {
+                const v = Number(row[s.key]) || 0;
+                const h = Math.max(0, (v / atas) * plotH);
+                const x = groupX + barW * si;
+                return (
+                  <rect key={s.key} x={x + 1} y={y(v)} width={Math.max(1, barW - 2)} height={h}
+                    rx="3" fill={s.color} opacity={aktif ? 1 : 0.92} />
+                );
+              })}
+              <text x={M.kiri + bandW * i + bandW / 2} y={H - 12} textAnchor="middle" fontSize="11" fill="#6b7280">
+                {row.month}
+              </text>
+              <rect x={M.kiri + bandW * i} y={M.atas} width={bandW} height={plotH}
+                fill="transparent" tabIndex={0} style={{ outline: 'none' }}
+                onMouseEnter={() => setHover({
+                  i, x: ((M.kiri + bandW * i + bandW / 2) / W) * 100, judul: row.month,
+                  baris: series.map((s) => ({ label: s.label, nilai: format(row[s.key]), color: s.color })),
+                })}
+                onFocus={() => setHover({
+                  i, x: ((M.kiri + bandW * i + bandW / 2) / W) * 100, judul: row.month,
+                  baris: series.map((s) => ({ label: s.label, nilai: format(row[s.key]), color: s.color })),
+                })}
+                onMouseLeave={() => setHover(null)}
+                onBlur={() => setHover(null)} />
+            </g>
+          );
+        })}
+        <line x1={M.kiri} x2={W - M.kanan} y1={M.atas + plotH} y2={M.atas + plotH} stroke="#cbd5e1" strokeWidth="1" />
+      </svg>
+      <div className="mt-2 flex flex-wrap items-center gap-4">
+        {series.map((s) => (
+          <span key={s.key} className="flex items-center gap-1.5 text-xs text-slate-600">
+            <span style={{ background: s.color, width: 12, height: 12, borderRadius: 3 }} />
+            {s.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export { rupiah, STATUS };

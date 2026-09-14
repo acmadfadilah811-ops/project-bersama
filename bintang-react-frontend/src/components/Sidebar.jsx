@@ -53,9 +53,11 @@ const PENGATURAN_GROUP = {
 };
 
 const groupedMenuOwnerManager = [
-  { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, isGroup: false },
-  // Hanya di menu owner/manager — endpoint-nya juga dibatasi IsOwnerOrManager.
-  { path: '/dashboard-eksekutif', label: 'Dashboard Eksekutif', icon: LineChart, isGroup: false },
+  // Dulu 2 entri terpisah (operasional + eksekutif) -- sekarang satu
+  // halaman dengan tab (Ringkasan/Operasional/AI Business Analyst), lihat
+  // ExecutiveDashboard.jsx + ExecutiveNav.jsx. Endpoint-nya dibatasi
+  // IsOwnerOrManager, makanya cuma ada di menu owner/manager.
+  { path: '/dashboard-eksekutif', label: 'Dashboard', icon: LineChart, isGroup: false },
   {
     id: 'produk_inventori',
     label: 'Produk & Inventori',

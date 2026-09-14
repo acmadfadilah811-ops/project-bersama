@@ -12,6 +12,7 @@ import AdminDashboard from './features/dashboard/pages/AdminDashboard';
 import StaffDashboard from './features/dashboard/pages/StaffDashboard';
 import RingkasanTim from './features/dashboard/pages/RingkasanTim';
 import ExecutiveDashboard from './features/dashboard/pages/ExecutiveDashboard';
+import ExecutiveNav from './features/dashboard/components/ExecutiveNav';
 import AiBusinessAnalyst from './features/dashboard/pages/AiBusinessAnalyst';
 import Orders from './features/orders/pages/Orders';
 import SettingsApp from './features/settings/pages/SettingsApp';
@@ -43,7 +44,10 @@ function HomeRedirect() {
   if (role === 'staff') return <Navigate to="/staff-dashboard" replace />;
   if (role === 'kasir') return <Navigate to="/kasir" replace />;
   if (role === 'spv' || role === 'kordiv') return <Navigate to="/ringkasan-tim" replace />;
-  return <Navigate to="/dashboard" replace />;
+  if (role === 'admin') return <Navigate to="/dashboard" replace />;
+  // Owner & manager: dulu ada 2 dashboard terpisah (operasional + eksekutif) --
+  // sekarang satu halaman, Ringkasan jadi landing default.
+  return <Navigate to="/dashboard-eksekutif" replace />;
 }
 
 // WA Live dipindah ke Kasir — pertahankan query string (mis. ?number=...)
@@ -59,7 +63,10 @@ function DashboardRouter() {
   const role = user?.role?.toLowerCase();
   if (role === 'kasir') return <Navigate to="/kasir/dashboard" replace />;
   if (role === 'admin') return <AdminDashboard />;
-  return <Dashboard />;
+  // Owner & manager: /dashboard dipertahankan sebagai redirect (tautan/
+  // bookmark lama) -- kontennya sendiri sekarang di tab Operasional milik
+  // /dashboard-eksekutif, bukan di sini lagi.
+  return <Navigate to="/dashboard-eksekutif/operasional" replace />;
 }
 
 function App() {
@@ -136,6 +143,10 @@ function App() {
                 <Route path="/ringkasan-tim" element={<RingkasanTim />} />
                 {/* Backend membatasi ke owner/manager; route ini hanya jalur masuknya. */}
                 <Route path="/dashboard-eksekutif" element={<ExecutiveDashboard />} />
+                <Route
+                  path="/dashboard-eksekutif/operasional"
+                  element={<><ExecutiveNav /><Dashboard /></>}
+                />
                 <Route path="/dashboard-eksekutif/ai-analyst" element={<AiBusinessAnalyst />} />
 
                 {/* Operasional */}
