@@ -315,6 +315,10 @@ REST_FRAMEWORK = {
         # ganti tanggal = fetch ulang). 30/jam terlalu ketat dan memunculkan
         # "Gagal memuat data laporan". Dinaikkan ke batas yang tetap melindungi.
         'report': '600/hour',
+        # Tiap panggilan memanggil KoboiLLM (biaya per token) -- dibatasi
+        # lebih ketat dari user rate umum supaya klik berulang/bug frontend
+        # tidak menguras kuota API.
+        'ai_chat': '20/minute',
     },
 }
 

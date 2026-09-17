@@ -114,6 +114,7 @@ urlpatterns = [
     path('insights/combined/', CombinedInsightsView.as_view(), name='insights-combined'),
     # AI Business Analyst — dashboard analisis lintas modul, dibatasi owner/manager (sama dengan di atas).
     path('ai-business-analyst/', ai_business_analyst_views.AiBusinessAnalystView.as_view(), name='ai-business-analyst'),
+    path('ai-business-analyst/chat/', ai_business_analyst_views.AiBusinessAnalystChatView.as_view(), name='ai-business-analyst-chat'),
     path('auth/create-user/', CreateUserView.as_view(), name='create_user'),
     path('orders/<str:order_id>/invoice-whatsapp/', views.OrderInvoiceWhatsAppView.as_view(), name='order-invoice-whatsapp'),
     path('orders/<str:order_id>/assign/', AssignOrderView.as_view(), name='assign_order'),

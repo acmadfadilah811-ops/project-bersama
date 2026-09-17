@@ -7,6 +7,7 @@ boleh mengakses (sama seperti Dashboard Eksekutif).
 
 from datetime import timedelta
 from decimal import Decimal
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -16,6 +17,7 @@ from .pos_models import POSSale, POSSaleItem
 from .product_models import Product, ProductCategory, ProductStockMovement
 
 URL = '/api/ai-business-analyst/'
+URL_CHAT = '/api/ai-business-analyst/chat/'
 
 
 class AiBusinessAnalystTest(APITestCase):
@@ -96,3 +98,107 @@ class AiBusinessAnalystTest(APITestCase):
         for kunci in ('pelanggan', 'keuangan', 'produksi', 'anomali', 'resep_bom', 'varian', 'tingkatan_harga'):
             self.assertFalse(data['modul'][kunci]['tersedia'])
             self.assertTrue(data['modul'][kunci]['alasan'])
+
+
+def _respons_ai_palsu(teks='Jawaban AI palsu.'):
+    """Bikin objek mirip response openai.chat.completions.create()."""
+    choice = mock.Mock()
+    choice.message.content = teks
+    respons = mock.Mock()
+    respons.choices = [choice]
+    return respons
+
+
+class AiBusinessAnalystChatTest(APITestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.owner = User.objects.create_user(username='owner-chat', password='x', role='owner')
+        self.kasir = User.objects.create_user(username='kasir-chat', password='x', role='kasir')
+
+    def test_anonim_ditolak_401(self):
+        self.assertEqual(self.client.post(URL_CHAT, {'messages': []}, format='json').status_code, 401)
+
+    def test_kasir_tidak_boleh_chat(self):
+        self.client.force_authenticate(self.kasir)
+        res = self.client.post(URL_CHAT, {'messages': [{'role': 'user', 'content': 'halo'}]}, format='json')
+        self.assertEqual(res.status_code, 403)
+
+    def test_messages_kosong_ditolak_400(self):
+        self.client.force_authenticate(self.owner)
+        res = self.client.post(URL_CHAT, {'messages': []}, format='json')
+        self.assertEqual(res.status_code, 400)
+
+    def test_pesan_terakhir_harus_dari_user_400(self):
+        self.client.force_authenticate(self.owner)
+        res = self.client.post(
+            URL_CHAT,
+            {'messages': [{'role': 'assistant', 'content': 'halo'}]},
+            format='json',
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_role_tidak_dikenal_ditolak_400(self):
+        self.client.force_authenticate(self.owner)
+        res = self.client.post(
+            URL_CHAT,
+            {'messages': [{'role': 'system', 'content': 'halo'}]},
+            format='json',
+        )
+        self.assertEqual(res.status_code, 400)
+
+    @mock.patch('api.ai_business_analyst_views.get_ai_client')
+    def test_ai_belum_dikonfigurasi_503(self, mock_get_client):
+        mock_get_client.return_value = None
+        self.client.force_authenticate(self.owner)
+        res = self.client.post(
+            URL_CHAT,
+            {'messages': [{'role': 'user', 'content': 'Gimana penjualan bulan ini?'}]},
+            format='json',
+        )
+        self.assertEqual(res.status_code, 503)
+
+    @mock.patch('api.ai_business_analyst_views.build_combined_insights')
+    @mock.patch('api.ai_business_analyst_views.get_ai_client')
+    def test_jawaban_ai_sukses_dan_konteks_data_disertakan(self, mock_get_client, mock_build_insights):
+        mock_build_insights.return_value = {
+            'bintang': {'pendapatan': 1000000},
+            'hr': None,
+            'crm': None,
+        }
+        client_palsu = mock.Mock()
+        client_palsu.chat.completions.create.return_value = _respons_ai_palsu('Penjualan naik 10%.')
+        mock_get_client.return_value = client_palsu
+
+        self.client.force_authenticate(self.owner)
+        res = self.client.post(
+            URL_CHAT,
+            {'messages': [{'role': 'user', 'content': 'Gimana penjualan bulan ini?'}]},
+            format='json',
+        )
+
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()['reply'], 'Penjualan naik 10%.')
+
+        # Konteks data snapshot harus masuk ke system prompt, bukan cuma dibuang.
+        kwargs = client_palsu.chat.completions.create.call_args.kwargs
+        system_msg = kwargs['messages'][0]
+        self.assertEqual(system_msg['role'], 'system')
+        self.assertIn('1000000', system_msg['content'])
+        self.assertEqual(kwargs['messages'][-1], {'role': 'user', 'content': 'Gimana penjualan bulan ini?'})
+
+    @mock.patch('api.ai_business_analyst_views.build_combined_insights')
+    @mock.patch('api.ai_business_analyst_views.get_ai_client')
+    def test_ai_gagal_total_balas_502(self, mock_get_client, mock_build_insights):
+        mock_build_insights.return_value = {'bintang': {}, 'hr': None, 'crm': None}
+        client_palsu = mock.Mock()
+        client_palsu.chat.completions.create.side_effect = RuntimeError('koneksi putus')
+        mock_get_client.return_value = client_palsu
+
+        self.client.force_authenticate(self.owner)
+        with mock.patch('api.ai_business_analyst_views.time.sleep'):
+            res = self.client.post(
+                URL_CHAT,
+                {'messages': [{'role': 'user', 'content': 'halo'}]},
+                format='json',
+            )
+        self.assertEqual(res.status_code, 502)
