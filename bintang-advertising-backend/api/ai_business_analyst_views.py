@@ -160,7 +160,6 @@ class AiBusinessAnalystChatView(APIView):
                     model=model_name,
                     messages=full_messages,
                     max_tokens=1536,
-                    temperature=0.3,
                     timeout=20.0,
                 )
                 break
