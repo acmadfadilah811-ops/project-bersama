@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Bot, MessageSquare, Plus, Send, Trash2, User, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import apiClient from '../../../api/apiClient';
 
-// Backend AI (KoboiLLM + fallback 9router) belum dibangun -- ini baru
-// tampilan percakapan. Riwayat disimpan lokal per-browser (localStorage),
-// BUKAN di server, jadi belum sinkron lintas perangkat -- akan diganti
-// begitu Fase 3 (pemanggilan AI sungguhan) mulai dikerjakan.
+// Riwayat percakapan disimpan lokal per-browser (localStorage), BUKAN di
+// server -- jadi belum sinkron lintas perangkat. Jawaban AI-nya sendiri
+// sudah dari backend sungguhan (KoboiLLM, lihat AiBusinessAnalystChatView),
+// cuma histori percakapannya yang masih client-only.
 const STORAGE_KEY = 'bintang_ai_chat_conversations_v1';
 
 function loadConversations() {
@@ -150,13 +151,12 @@ function IndikatorMengetik() {
   );
 }
 
-const JAWABAN_BELUM_TERHUBUNG = [
-  'Backend AI (KoboiLLM) untuk fitur ini masih dalam pengembangan --',
-  'jawaban di atas belum berasal dari analisis data sungguhan.',
-  '',
-  'Setelah backend selesai dibangun, pertanyaan seperti ini akan dijawab',
-  'berdasarkan data Bintang, HR, dan CRM yang sebenarnya.',
-].join('\n');
+function pesanErrorAI(error) {
+  const detail = error?.response?.data?.error;
+  if (detail) return `Maaf, AI gagal menjawab: ${detail}`;
+  if (error?.code === 'ECONNABORTED') return 'Maaf, AI butuh waktu terlalu lama menjawab. Coba lagi.';
+  return 'Maaf, terjadi kesalahan saat menghubungi AI. Coba lagi sebentar lagi.';
+}
 
 /** Panel tanya-jawab AI -- ditanam sebagai salah satu tab di halaman AI Business Analyst. */
 export default function AiChatPanel() {
@@ -218,6 +218,8 @@ export default function AiChatPanel() {
     if (!isi || isThinking) return;
 
     const pesanUser = { role: 'user', content: isi, ts: Date.now() };
+    const riwayatUntukAI = [...active.messages, pesanUser].map(({ role, content }) => ({ role, content }));
+
     setConversations((prev) => prev.map((c) => {
       if (c.id !== active.id) return c;
       const isPercakapanBaru = c.messages.length === 0;
@@ -231,14 +233,22 @@ export default function AiChatPanel() {
     setDraft('');
     setIsThinking(true);
 
-    // Simulasi jeda jawaban -- akan diganti panggilan API AI sungguhan di Fase 3.
-    setTimeout(() => {
-      const pesanAssistant = { role: 'assistant', content: JAWABAN_BELUM_TERHUBUNG, ts: Date.now() };
-      setConversations((prev) => prev.map((c) => (
-        c.id === active.id ? { ...c, messages: [...c.messages, pesanAssistant], updatedAt: Date.now() } : c
-      )));
-      setIsThinking(false);
-    }, 700);
+    const activeId = active.id;
+    apiClient
+      .post('/ai-business-analyst/chat/', { messages: riwayatUntukAI })
+      .then((res) => {
+        const pesanAssistant = { role: 'assistant', content: res.data.reply, ts: Date.now() };
+        setConversations((prev) => prev.map((c) => (
+          c.id === activeId ? { ...c, messages: [...c.messages, pesanAssistant], updatedAt: Date.now() } : c
+        )));
+      })
+      .catch((error) => {
+        const pesanAssistant = { role: 'assistant', content: pesanErrorAI(error), ts: Date.now() };
+        setConversations((prev) => prev.map((c) => (
+          c.id === activeId ? { ...c, messages: [...c.messages, pesanAssistant], updatedAt: Date.now() } : c
+        )));
+      })
+      .finally(() => setIsThinking(false));
   }, [active, isThinking]);
 
   const handleKeyDown = (e) => {
