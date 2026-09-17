@@ -51,6 +51,11 @@ class POSSale(models.Model):
     whatsapp_resi_number = models.CharField(max_length=20, blank=True, default='')
     whatsapp_resi_sent_at = models.DateTimeField(null=True, blank=True)
     whatsapp_resi_error = models.CharField(max_length=255, blank=True, default='')
+    # Diisi setelah berhasil dikirim ke jembatan Bintang->CRM (lihat
+    # api/services/crm_bridge.py) -- null berarti belum pernah sinkron
+    # (atau terakhir gagal), dipakai untuk mencegah duplikasi Opportunity
+    # di CRM saat retry.
+    synced_to_crm_at = models.DateTimeField(null=True, blank=True)
     # Audit pembatalan disimpan pada transaksi sumber. Jangan gunakan
     # ``created_at`` sebagai waktu void karena keduanya adalah peristiwa berbeda.
     voided_at = models.DateTimeField(null=True, blank=True, db_index=True)

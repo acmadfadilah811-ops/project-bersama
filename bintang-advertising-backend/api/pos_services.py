@@ -668,6 +668,8 @@ def create_sale(*, user, data):
             post_pos_sale_journal(sale, actor=user)
             from .services.pos_receipt_whatsapp import jadwalkan_resi_pos_otomatis
             jadwalkan_resi_pos_otomatis(sale.id)
+            from .services.crm_bridge import sync_possale_ke_crm
+            transaction.on_commit(lambda: sync_possale_ke_crm(sale.id))
 
         return sale
 
