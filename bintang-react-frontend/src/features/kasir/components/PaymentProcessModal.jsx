@@ -24,30 +24,8 @@ export default function PaymentProcessModal({
     }
   }, [isOpen, totalAmount]);
 
-  if (!isOpen) return null;
-
   const currentPayAmount = parseFloat(payAmountStr) || 0;
   const changeAmount = Math.max(0, currentPayAmount - totalAmount);
-
-  // Quick amount chips calculation based on totalAmount
-  const generateQuickChips = () => {
-    const total = Math.round(totalAmount);
-    const chips = [total];
-    
-    // Nearest roundups
-    const next10k = Math.ceil((total + 1) / 10000) * 10000;
-    if (next10k > total && !chips.includes(next10k)) chips.push(next10k);
-
-    const next50k = Math.ceil((total + 1) / 50000) * 50000;
-    if (next50k > total && !chips.includes(next50k)) chips.push(next50k);
-
-    const next100k = Math.ceil((total + 1) / 100000) * 100000;
-    if (next100k > total && !chips.includes(next100k)) chips.push(next100k);
-
-    return chips.slice(0, 3);
-  };
-
-  const quickChips = generateQuickChips();
 
   // Numpad key handlers
   const handleNumpadClick = (val) => {
@@ -70,12 +48,43 @@ export default function PaymentProcessModal({
     }
   };
 
+  const handlePaySubmit = () => {
+    if (paymentType === 'lunas' && currentPayAmount < totalAmount) {
+      alert(`Nominal pembayaran (Rp ${currentPayAmount.toLocaleString('id-ID')}) kurang dari total tagihan (Rp ${totalAmount.toLocaleString('id-ID')}).`);
+      return;
+    }
+    if (paymentType === 'dp' && (currentPayAmount <= 0 || currentPayAmount >= totalAmount)) {
+      alert('Nominal DP harus lebih dari Rp0 dan lebih kecil dari total tagihan. Untuk pembayaran penuh, pilih Lunas.');
+      return;
+    }
+    if (paymentType === 'dp' && !dueDate) {
+      alert('Jatuh tempo wajib diisi untuk transaksi DP/Uang Muka.');
+      return;
+    }
+    onConfirmPayment({
+      method: selectedMethod,
+      paymentType,
+      payAmount: currentPayAmount,
+      changeAmount,
+      dueDate: paymentType === 'dp' ? dueDate : null,
+    });
+  };
+
   // Nominal pembayaran cuma bisa diisi lewat klik numpad di layar -- tidak
   // ada elemen <input> sungguhan di panel ini, jadi keyboard fisik/eksternal
   // sama sekali tidak berfungsi untuk mengisi nominal. Dengarkan keydown di
   // level window selama modal terbuka supaya angka, Backspace, Enter (bayar)
   // dan Escape (tutup) bisa dipakai juga -- dilewati kalau fokus sedang di
   // input lain di dalam modal ini (mis. field Jatuh Tempo untuk DP).
+  //
+  // HARUS di atas early return `if (!isOpen) return null` di bawah --
+  // hook TIDAK BOLEH dipanggil kondisional/setelah return (Rules of Hooks).
+  // Sebelumnya efek ini ada SETELAH return itu, jadi jumlah hook yang
+  // terpanggil beda antara render isOpen=false (5 hook) vs isOpen=true (6
+  // hook) -- React lempar error #310 ("Rendered more hooks than during
+  // the previous render") begitu modal ini pertama kali dibuka, meng-
+  // crash SELURUH POS Terminal lewat error boundary (bug ditemukan lewat
+  // laporan kasir: klik tombol Bayar -> "Terjadi Kesalahan Sistem").
   useEffect(() => {
     if (!isOpen) return undefined;
 
@@ -103,27 +112,27 @@ export default function PaymentProcessModal({
     return () => window.removeEventListener('keydown', onKeyDown);
   });
 
-  const handlePaySubmit = () => {
-    if (paymentType === 'lunas' && currentPayAmount < totalAmount) {
-      alert(`Nominal pembayaran (Rp ${currentPayAmount.toLocaleString('id-ID')}) kurang dari total tagihan (Rp ${totalAmount.toLocaleString('id-ID')}).`);
-      return;
-    }
-    if (paymentType === 'dp' && (currentPayAmount <= 0 || currentPayAmount >= totalAmount)) {
-      alert('Nominal DP harus lebih dari Rp0 dan lebih kecil dari total tagihan. Untuk pembayaran penuh, pilih Lunas.');
-      return;
-    }
-    if (paymentType === 'dp' && !dueDate) {
-      alert('Jatuh tempo wajib diisi untuk transaksi DP/Uang Muka.');
-      return;
-    }
-    onConfirmPayment({
-      method: selectedMethod,
-      paymentType,
-      payAmount: currentPayAmount,
-      changeAmount,
-      dueDate: paymentType === 'dp' ? dueDate : null,
-    });
+  if (!isOpen) return null;
+
+  // Quick amount chips calculation based on totalAmount
+  const generateQuickChips = () => {
+    const total = Math.round(totalAmount);
+    const chips = [total];
+
+    // Nearest roundups
+    const next10k = Math.ceil((total + 1) / 10000) * 10000;
+    if (next10k > total && !chips.includes(next10k)) chips.push(next10k);
+
+    const next50k = Math.ceil((total + 1) / 50000) * 50000;
+    if (next50k > total && !chips.includes(next50k)) chips.push(next50k);
+
+    const next100k = Math.ceil((total + 1) / 100000) * 100000;
+    if (next100k > total && !chips.includes(next100k)) chips.push(next100k);
+
+    return chips.slice(0, 3);
   };
+
+  const quickChips = generateQuickChips();
 
   const paymentMethods = [
     { id: 'CASH', label: 'CASH', icon: <Banknote size={20} />, active: true },
