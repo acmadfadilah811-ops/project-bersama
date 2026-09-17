@@ -10,6 +10,7 @@ from .marketing_views import PromoPreviewView
 from . import customer_views
 from .views.external_bot import ExternalBotToolView, ExternalBotBuatOrderView
 from .views.hr_bridge import HRBridgeCreateAccountView
+from .views.chatbotx_bridge import ChatbotXToolCallView, ChatbotXToolSchemasView
 from . import finance_views
 from .report_views import ReportDataView, ReportExportView
 from .views.purchase_workflow import PurchaseWorkflowView
@@ -168,6 +169,10 @@ urlpatterns = [
     # Jembatan HR (Horilla) -> Bintang: auto-provision akun karyawan saat HR
     # buat karyawan baru/approve rekrutmen (lihat api/views/hr_bridge.py).
     path('bridge/hr-employee/', HRBridgeCreateAccountView.as_view(), name='hr-bridge-create-account'),
+    # Jembatan ChatbotX -> Bintang: bungkus 9 tool AI WA bot yang sudah ada
+    # (lihat api/views/chatbotx_bridge.py + services/wa_ai_tools.py).
+    path('bridge/chatbotx-tool/', ChatbotXToolCallView.as_view(), name='chatbotx-bridge-tool-call'),
+    path('bridge/chatbotx-tool-schemas/', ChatbotXToolSchemasView.as_view(), name='chatbotx-bridge-tool-schemas'),
 
     # Business Settings (mirip OrgSettings di Django CRM)
     path('business-settings/', BusinessSettingsView.as_view(), name='business-settings'),
