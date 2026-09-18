@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { BarChart3, Bot, HelpCircle, MessageSquare, Tag, Wrench } from 'lucide-react';
+import { BarChart3, Bot, HelpCircle, MessageSquare, Tag, Wrench, Zap } from 'lucide-react';
 import WaBotStatsPanel from '../components/WaBotStatsPanel';
 import WhatsAppGatewayPanel from '../components/WhatsAppGatewayPanel';
+import WaBotAiCredentialsPanel from '../components/WaBotAiCredentialsPanel';
 import WaBotPromptPanel from '../components/WaBotPromptPanel';
 import WaBotToolsPanel from '../components/WaBotToolsPanel';
 import WaBotFaqPanel from '../components/WaBotFaqPanel';
@@ -10,6 +11,7 @@ import PricelistWaBotPanel from '../components/PricelistWaBotPanel';
 const TABS = [
   { id: 'statistik', label: 'Statistik', icon: BarChart3 },
   { id: 'gateway', label: 'WhatsApp Gateway', icon: MessageSquare },
+  { id: 'ai-koneksi', label: 'Koneksi AI', icon: Zap },
   { id: 'prompt', label: 'Prompt AI', icon: Bot },
   { id: 'tools', label: 'Tools', icon: Wrench },
   { id: 'faq', label: 'FAQ', icon: HelpCircle },
@@ -65,6 +67,7 @@ export default function PengaturanWaBotPage() {
         <div className="p-6">
           {activeTab === 'statistik' && <WaBotStatsPanel />}
           {activeTab === 'gateway' && <WhatsAppGatewayPanel />}
+          {activeTab === 'ai-koneksi' && <WaBotAiCredentialsPanel />}
           {activeTab === 'prompt' && <WaBotPromptPanel />}
           {activeTab === 'tools' && <WaBotToolsPanel />}
           {activeTab === 'faq' && <WaBotFaqPanel />}
