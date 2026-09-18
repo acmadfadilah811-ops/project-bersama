@@ -187,8 +187,13 @@ class OrderStatusActionsTestCase(APITestCase):
         self.assertEqual(list_res.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(len(list_res.data["results"] if "results" in list_res.data else list_res.data), 1)
 
+        # Konfirmasi retur (2026-09-18) butuh OTP owner kalau aktornya kasir
+        # (lihat api/services/order_return_otp.py, tests_order_return_otp.py)
+        # -- test ini fokus ke bentuk API/metadata, bukan lapisan izin, jadi
+        # pakai owner (bypass OTP) untuk PATCH Dikonfirmasi ini.
+        self.client.force_authenticate(user=self.owner_user)
         patch_res = self.client.patch(f"/api/pengembalian/{retur.id}/", {"status": "Dikonfirmasi", "catatan": "Disetujui refund"})
-        self.assertEqual(patch_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(patch_res.status_code, status.HTTP_200_OK, patch_res.data)
         retur.refresh_from_db()
         self.assertEqual(retur.status, "Dikonfirmasi")
         self.assertEqual(retur.catatan, "Disetujui refund")

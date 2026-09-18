@@ -17,6 +17,9 @@ class OrderPaymentAndReturnStockTests(APITestCase):
         self.kasir = User.objects.create_user(
             username='kasir_payment_stock', password='secret', role='kasir',
         )
+        self.owner = User.objects.create_user(
+            username='owner_payment_stock', password='secret', role='owner',
+        )
         self.client.force_authenticate(self.kasir)
         self.order = Order.objects.create(
             id='ORD-PAYMENT-STOCK-1', nomor_wa='08123456789', nama='Pelanggan',
@@ -51,6 +54,12 @@ class OrderPaymentAndReturnStockTests(APITestCase):
             dibuat_oleh=self.kasir,
         )
 
+        # Konfirmasi retur (2026-09-18) butuh OTP owner kalau aktornya kasir
+        # (lihat api/services/order_return_otp.py) -- test ini murni menguji
+        # mekanika pemulihan stok, bukan lapisan izin, jadi pakai owner
+        # (bypass OTP) supaya tetap fokus & tidak perlu simulasikan alur OTP
+        # lengkap di sini (sudah dicakup tests_order_return_otp.py).
+        self.client.force_authenticate(self.owner)
         confirmed = self.client.patch(
             f'/api/pengembalian/{retur.id}/', {'status': 'Dikonfirmasi'}, format='json',
         )

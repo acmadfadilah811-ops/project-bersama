@@ -687,6 +687,51 @@ class OrderVoidRequest(models.Model):
         return f'VoidRequest#{self.pk} order={self.order_id} status={self.status}'
 
 
+class OrderReturnRequest(models.Model):
+    """Permintaan kasir untuk MENGKONFIRMASI retur/pengembalian Order --
+    butuh persetujuan OTP owner. Padanan persis OrderVoidRequest, tapi
+    untuk aksi retur (2026-09-18).
+
+    Membuat PengembalianOrder berstatus 'Tunda' TETAP bebas dilakukan kasir
+    (POST /orders/{id}/retur/, tanpa efek samping apa pun -- cuma catatan
+    pengajuan). Yang butuh OTP HANYA transisi ke 'Dikonfirmasi' -- itu yang
+    memicu pemulihan stok + posting jurnal pembalik akuntansi (lihat
+    api/services/order_return_otp.py). Owner/manager/admin tetap bisa
+    langsung konfirmasi tanpa alur ini (mereka sendiri approver-nya).
+    """
+    STATUS_CHOICES = (
+        ('pending', 'Menunggu Persetujuan'),
+        ('disetujui', 'Disetujui'),
+        ('ditolak', 'Ditolak'),
+        ('digunakan', 'Sudah Digunakan'),
+    )
+
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='return_requests')
+    diminta_oleh = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, related_name='return_requests_diminta',
+    )
+    alasan = models.TextField()
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default='pending', db_index=True)
+    otp_code = models.CharField(max_length=6, blank=True, default='')
+    disetujui_oleh = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='return_requests_disetujui',
+    )
+    alasan_tolak = models.TextField(blank=True, default='')
+    dibuat_pada = models.DateTimeField(auto_now_add=True)
+    disetujui_pada = models.DateTimeField(null=True, blank=True)
+    kadaluarsa_pada = models.DateTimeField(null=True, blank=True)
+    digunakan_pada = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-dibuat_pada']
+        indexes = [
+            models.Index(fields=['order', 'status'], name='idx_orr_order_status'),
+        ]
+
+    def __str__(self):
+        return f'ReturnRequest#{self.pk} order={self.order_id} status={self.status}'
+
+
 # ---------------------------------------------------------
 # 6. DETAIL ITEM PESANAN (MENDUKUNG 1 ID NOTA BANYAK ITEM)
 # ---------------------------------------------------------

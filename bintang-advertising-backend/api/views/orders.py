@@ -1131,6 +1131,37 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         return Response(OrderSerializer(order, context={'request': request}).data, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'], url_path='minta-otp-retur')
+    def minta_otp_retur(self, request, pk=None):
+        """
+        POST /api/orders/{id}/minta-otp-retur/
+        Kasir mengajukan permintaan KONFIRMASI retur -- perlu persetujuan
+        OTP owner (lihat api/services/order_return_otp.py) sebelum /retur/
+        bisa dipanggil dengan status='Dikonfirmasi'. Mengajukan retur
+        berstatus 'Tunda' TIDAK butuh endpoint ini sama sekali. Owner/
+        manager/admin tidak perlu endpoint ini, mereka bisa langsung
+        konfirmasi.
+        """
+        self._ensure_write_role()
+        try:
+            order = Order.objects.get(pk=pk)
+        except Order.DoesNotExist:
+            return Response({'error': 'Pesanan tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
+
+        alasan = str(request.data.get('alasan') or '').strip()
+
+        from ..services.order_return_otp import ajukan_permintaan_return, ReturnOtpError
+        try:
+            return_request = ajukan_permintaan_return(order=order, kasir=request.user, alasan=alasan)
+        except ReturnOtpError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        from ..serializers import OrderReturnRequestSerializer
+        return Response(
+            OrderReturnRequestSerializer(return_request, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
     @action(detail=True, methods=['post'], url_path='retur')
     @transaction.atomic
     def retur(self, request, pk=None):
@@ -1165,6 +1196,24 @@ class OrderViewSet(viewsets.ModelViewSet):
         items_json = str(request.data.get('items_json') or '')
         tambahan_json = str(request.data.get('tambahan_json') or '')
         status_retur = request.data.get('status', 'Tunda')
+
+        # Mengajukan retur berstatus 'Tunda' TETAP bebas (tidak ada efek
+        # samping apa pun). Yang butuh OTP owner HANYA kalau LANGSUNG minta
+        # 'Dikonfirmasi' di sini -- itu memicu pemulihan stok + jurnal
+        # pembalik seketika (lihat blok status_retur == 'Dikonfirmasi' di
+        # bawah). Sebelum 2026-09-18 kasir bisa melakukan ini sendirian
+        # tanpa persetujuan apa pun -- gap yang sama kelasnya dengan void
+        # sebelum 2026-08-14 (lihat api/services/order_return_otp.py).
+        from ..services.order_return_otp import ROLE_BYPASS_OTP, ReturnOtpError, verifikasi_dan_gunakan_otp
+        if status_retur == 'Dikonfirmasi' and request.user.role not in ROLE_BYPASS_OTP:
+            try:
+                verifikasi_dan_gunakan_otp(
+                    order=order, kasir=request.user,
+                    return_request_id=request.data.get('return_request_id'),
+                    otp_code=request.data.get('otp_code'),
+                )
+            except ReturnOtpError as e:
+                return Response({'error': str(e)}, status=status.HTTP_403_FORBIDDEN)
 
         retur_obj = PengembalianOrder.objects.create(
             order=order,
@@ -1908,6 +1957,26 @@ class PengembalianOrderViewSet(viewsets.ModelViewSet):
                 raise ValidationError('Return yang sudah Dikonfirmasi/Batal terkunci dan tidak dapat diubah.')
         old_status = instance.status
         target_status = serializer.validated_data.get('status', old_status)
+
+        # Sama gerbang OTP dengan OrderViewSet.retur() (2026-09-18) --
+        # jalur PATCH ini dipakai halaman Retur Penjualan (Transaksi >
+        # Akuntansi) untuk tombol "Post", TAPI endpointnya sendiri tidak
+        # dibatasi role di backend (frontend accounting-internal memang
+        # cuma untuk owner/manager/admin, tapi API1: sembunyikan menu di
+        # frontend bukan keamanan -- kasir tetap bisa panggil langsung).
+        if old_status != 'Dikonfirmasi' and target_status == 'Dikonfirmasi':
+            from ..services.order_return_otp import ROLE_BYPASS_OTP, ReturnOtpError, verifikasi_dan_gunakan_otp
+            if self.request.user.role not in ROLE_BYPASS_OTP:
+                try:
+                    verifikasi_dan_gunakan_otp(
+                        order=instance.order, kasir=self.request.user,
+                        return_request_id=self.request.data.get('return_request_id'),
+                        otp_code=self.request.data.get('otp_code'),
+                    )
+                except ReturnOtpError as e:
+                    from rest_framework.exceptions import PermissionDenied
+                    raise PermissionDenied(str(e))
+
         if old_status == 'Dikonfirmasi' and target_status == 'Tunda':
             from ..services.order_return_inventory import reverse_stock_for_unconfirmed_return
             reverse_stock_for_unconfirmed_return(retur=instance, actor=self.request.user)

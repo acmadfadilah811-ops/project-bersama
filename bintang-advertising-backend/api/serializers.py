@@ -9,7 +9,7 @@ from .models import (
     OrderActivityLog, KomplainOrder, KomplainLog, CustomerActivity,
     BillOfMaterials, BoMItem, ShiftTiming, POSAntrianDevice, SaldoKasHarian,
     RingkasanShift, POSPaymentMethod, PengembalianOrder, OrderPayment,
-    OrderVoidRequest
+    OrderVoidRequest, OrderReturnRequest
 )
 from .product_serializers import SaleItemAddonSerializer
 from .protected_media import protected_media_url
@@ -561,6 +561,50 @@ class OrderVoidRequestSerializer(serializers.ModelSerializer):
         if obj.diminta_oleh_id == getattr(user, 'id', None):
             return obj.otp_code
         return ''
+
+
+class OrderReturnRequestSerializer(serializers.ModelSerializer):
+    diminta_oleh_nama = serializers.SerializerMethodField()
+    disetujui_oleh_nama = serializers.SerializerMethodField()
+    order_nama = serializers.ReadOnlyField(source='order.nama')
+    otp_code = serializers.SerializerMethodField()
+    kadaluarsa = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OrderReturnRequest
+        fields = [
+            'id', 'order', 'order_nama', 'diminta_oleh', 'diminta_oleh_nama',
+            'alasan', 'status', 'otp_code', 'disetujui_oleh', 'disetujui_oleh_nama',
+            'alasan_tolak', 'dibuat_pada', 'disetujui_pada', 'kadaluarsa_pada',
+            'digunakan_pada', 'kadaluarsa',
+        ]
+        read_only_fields = fields
+
+    def get_diminta_oleh_nama(self, obj):
+        return obj.diminta_oleh.username if obj.diminta_oleh else None
+
+    def get_disetujui_oleh_nama(self, obj):
+        return obj.disetujui_oleh.username if obj.disetujui_oleh else None
+
+    def get_kadaluarsa(self, obj):
+        from django.utils import timezone as _tz
+        return bool(obj.kadaluarsa_pada and _tz.now() > obj.kadaluarsa_pada)
+
+    def get_otp_code(self, obj):
+        # Sama pola dengan OrderVoidRequestSerializer -- kode cuma boleh
+        # terlihat owner/manager (approver) ATAU kasir yang mengajukan
+        # permintaan ini sendiri, dan hanya saat statusnya 'disetujui' &
+        # belum kadaluarsa.
+        request = self.context.get('request')
+        user = getattr(request, 'user', None) if request else None
+        if not user or obj.status != 'disetujui' or self.get_kadaluarsa(obj):
+            return ''
+        if getattr(user, 'role', '') in ('owner', 'manager'):
+            return obj.otp_code
+        if obj.diminta_oleh_id == getattr(user, 'id', None):
+            return obj.otp_code
+        return ''
+
 
 # --- 5. Order Serializer (Induk Nota) ---
 class OrderSerializer(serializers.ModelSerializer):

@@ -18,6 +18,7 @@ from .orders import (
     OrderViewSet, AssignOrderView, OrderItemViewSet, ForwardJobView, PengembalianOrderViewSet
 )
 from .order_void_requests import OrderVoidRequestViewSet
+from .order_return_requests import OrderReturnRequestViewSet
 from .pos_void_requests import POSVoidRequestViewSet
 from .jobs import (
     JobBoardViewSet, JobMaterialDeductView, deduct_job_materials_if_needed,

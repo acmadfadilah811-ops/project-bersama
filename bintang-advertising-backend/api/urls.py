@@ -28,6 +28,7 @@ router.register(r'contacts', views.ContactViewSet)
 router.register(r'orders',      views.OrderViewSet,    basename='order')
 router.register(r'order-items', views.OrderItemViewSet)
 router.register(r'order-void-requests', views.OrderVoidRequestViewSet, basename='order-void-request')
+router.register(r'order-return-requests', views.OrderReturnRequestViewSet, basename='order-return-request')
 router.register(r'pengembalian', views.PengembalianOrderViewSet, basename='pengembalian')
 router.register(r'jobs',        views.JobBoardViewSet, basename='job')
 
