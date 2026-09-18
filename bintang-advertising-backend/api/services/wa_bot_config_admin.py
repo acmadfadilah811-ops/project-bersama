@@ -43,6 +43,90 @@ def get_prompt():
         return default_system_prompt()
 
 
+# ── Kredensial AI (api key/base url/model) -- SystemConfig dgn env var
+# sbg fallback, sama pola dgn prompt. Lihat wa_logic.get_ai_config_value().
+_AI_CFG_KEYS = {
+    'api_key': ('ai_koboi_api_key', 'KOBOI_API_KEY', None),
+    'base_url': ('ai_koboi_base_url', 'KOBOI_BASE_URL', 'https://api.koboillm.com/v1'),
+    'model': ('ai_koboi_model', 'KOBOI_MODEL', 'gemini-2.5-pro'),
+}
+
+
+def _mask_api_key(nilai):
+    if not nilai:
+        return None
+    if len(nilai) <= 8:
+        return '•' * len(nilai)
+    return f"{'•' * (len(nilai) - 4)}{nilai[-4:]}"
+
+
+def get_ai_credentials():
+    from ..wa_logic import get_ai_config_value
+    api_key = get_ai_config_value(*_AI_CFG_KEYS['api_key'])
+    base_url = get_ai_config_value(*_AI_CFG_KEYS['base_url'])
+    model = get_ai_config_value(*_AI_CFG_KEYS['model'])
+    api_key_dari_db = SystemConfig.objects.filter(key='ai_koboi_api_key').exclude(value='').exists()
+    return {
+        'api_key_terisi': bool(api_key),
+        'api_key_masked': _mask_api_key(api_key),
+        'api_key_sumber': 'database' if api_key_dari_db else ('env' if api_key else 'kosong'),
+        'base_url': base_url,
+        'model': model,
+    }
+
+
+def update_ai_credentials(api_key=None, base_url=None, model=None):
+    """Cuma update field yang dikirim TIDAK KOSONG -- kirim api_key kosong/
+    tidak dikirim = pertahankan key yang sudah tersimpan (form frontend
+    tidak pernah menampilkan key asli, cuma versi masked, jadi tidak boleh
+    menimpa dgn string kosong kalau admin cuma ganti base_url/model)."""
+    if api_key:
+        SystemConfig.objects.update_or_create(key='ai_koboi_api_key', defaults={'value': api_key.strip()})
+    if base_url:
+        SystemConfig.objects.update_or_create(key='ai_koboi_base_url', defaults={'value': base_url.strip()})
+    if model:
+        SystemConfig.objects.update_or_create(key='ai_koboi_model', defaults={'value': model.strip()})
+    return get_ai_credentials()
+
+
+def test_ai_connection(api_key=None, base_url=None, model=None):
+    """Tes koneksi NYATA (bukan cuma cek field terisi) -- panggilan chat
+    completion minimal, dgn nilai dari FORM (belum tentu sudah disimpan)
+    kalau dikasih, fallback ke yang sudah tersimpan/env kalau tidak.
+    Dipakai tombol "Tes Koneksi" sebelum admin klik Simpan, supaya kredensial
+    salah ketahuan sebelum menimpa yang lama."""
+    import time
+
+    from openai import OpenAI
+
+    from ..wa_logic import get_ai_config_value
+
+    api_key = (api_key or '').strip() or get_ai_config_value(*_AI_CFG_KEYS['api_key'])
+    base_url = (base_url or '').strip() or get_ai_config_value(*_AI_CFG_KEYS['base_url'])
+    model = (model or '').strip() or get_ai_config_value(*_AI_CFG_KEYS['model'])
+
+    if not api_key:
+        return {'ok': False, 'detail': 'API key belum diisi.', 'latency_ms': None}
+
+    if "koboillm" in (base_url or '').lower() and not api_key.startswith("sk-"):
+        api_key = f"sk-{api_key}"
+
+    mulai = time.monotonic()
+    try:
+        client = OpenAI(api_key=api_key, base_url=base_url, timeout=15.0)
+        client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": "test"}],
+            max_tokens=5,
+            timeout=15.0,
+        )
+        latency_ms = round((time.monotonic() - mulai) * 1000)
+        return {'ok': True, 'detail': f"Berhasil terhubung ke model '{model}'.", 'latency_ms': latency_ms}
+    except Exception as e:
+        latency_ms = round((time.monotonic() - mulai) * 1000)
+        return {'ok': False, 'detail': str(e), 'latency_ms': latency_ms}
+
+
 def update_prompt(value):
     value = (value or '').strip()
     if not value:

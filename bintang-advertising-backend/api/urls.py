@@ -19,7 +19,10 @@ from .views.qz import QZCertificateView, QZSignView
 from .views.wa_pricelist import (
     WaPricelistListView, WaPricelistDetailView, WaPricelistTemplateView, WaPricelistImportView,
 )
-from .views.wa_bot_config import WaBotPromptView, WaBotToolsListView, WaBotToolDetailView
+from .views.wa_bot_config import (
+    WaBotPromptView, WaBotToolsListView, WaBotToolDetailView,
+    WaBotAiCredentialsView, WaBotAiTestConnectionView,
+)
 from .views.wa_bot_stats import WaBotStatsView
 from .protected_media import serve_protected_media
 
@@ -195,6 +198,8 @@ urlpatterns = [
     path('wa-bot-config/tools/', WaBotToolsListView.as_view(), name='wa-bot-config-tools'),
     path('wa-bot-config/tools/<str:nama>/', WaBotToolDetailView.as_view(), name='wa-bot-config-tool-detail'),
     path('wa-bot-config/stats/', WaBotStatsView.as_view(), name='wa-bot-config-stats'),
+    path('wa-bot-config/ai-credentials/', WaBotAiCredentialsView.as_view(), name='wa-bot-config-ai-credentials'),
+    path('wa-bot-config/ai-credentials/test/', WaBotAiTestConnectionView.as_view(), name='wa-bot-config-ai-test'),
     path('integrations/qz/certificate/', QZCertificateView.as_view(), name='qz-certificate'),
     path('integrations/qz/sign/', QZSignView.as_view(), name='qz-sign'),
     # WhatsApp Chat Integration

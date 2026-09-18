@@ -45,12 +45,31 @@ def get_business_name():
 
 
 # ── AI Client (KoboiLLM — OpenAI-compatible) ──────────────────────────
+def get_ai_config_value(system_config_key, env_var_name, default=None):
+    """Kredensial/config AI (api key, base url, model) sekarang bisa diatur
+    lewat halaman Pengaturan WA Bot (SystemConfig), env var jadi fallback
+    kalau belum pernah diisi admin lewat UI (2026-09-18, sama pola dengan
+    get_system_prompt()) -- supaya tidak perlu SSH+restart cuma utk ganti
+    API key/base URL/model."""
+    from .models import SystemConfig
+    try:
+        val = SystemConfig.objects.get(key=system_config_key).value
+        if val:
+            return val
+    except SystemConfig.DoesNotExist:
+        pass
+    return os.getenv(env_var_name, default)
+
+
 def get_ai_client():
     from openai import OpenAI
-    api_key = os.getenv("KOBOI_API_KEY") or os.getenv("OPENAI_API_KEY") or ""
+    api_key = (
+        get_ai_config_value('ai_koboi_api_key', 'KOBOI_API_KEY')
+        or os.getenv("OPENAI_API_KEY") or ""
+    )
     if not api_key:
         return None
-    base_url = os.getenv("KOBOI_BASE_URL", "https://api.koboillm.com/v1")
+    base_url = get_ai_config_value('ai_koboi_base_url', 'KOBOI_BASE_URL', 'https://api.koboillm.com/v1')
     if "koboillm" in base_url.lower() and not api_key.startswith("sk-"):
         api_key = f"sk-{api_key}"
     return OpenAI(
@@ -878,7 +897,7 @@ def proses_dengan_ai_agent(nomor, nama_pelanggan="", pesan_asli=""):
     if client is None:
         return _fallback_keras(nomor, nama_pelanggan, pesan_asli, alasan="KOBOI_API_KEY tidak dikonfigurasi")
 
-    model_name = os.getenv("KOBOI_MODEL", "gemini-2.5-pro")
+    model_name = get_ai_config_value('ai_koboi_model', 'KOBOI_MODEL', 'gemini-2.5-pro')
     konteks_tool = {"nomor": nomor, "nama_pelanggan": nama_pelanggan, "pesan_asli": pesan_asli}
     messages = list(get_memori_percakapan(nomor, nama_pelanggan))
     # Tools aktif & deskripsinya bisa diubah admin lewat halaman Kasir >

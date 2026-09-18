@@ -2,6 +2,7 @@
 + api/views/wa_bot_config.py) -- halaman Kasir > Pengaturan WA Bot
 (permintaan user 2026-09-18)."""
 import json
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from rest_framework import status
@@ -102,3 +103,67 @@ class WaBotConfigViewTests(APITestCase):
         self.client.force_authenticate(self.owner)
         response = self.client.patch('/api/wa-bot-config/tools/tidak_ada/', {'aktif': False}, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_get_ai_credentials_kasir_forbidden(self):
+        self.client.force_authenticate(self.kasir)
+        response = self.client.get('/api/wa-bot-config/ai-credentials/')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_get_ai_credentials_owner_ok(self):
+        self.client.force_authenticate(self.owner)
+        response = self.client.get('/api/wa-bot-config/ai-credentials/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('api_key_masked', response.data)
+        self.assertIn('base_url', response.data)
+        self.assertIn('model', response.data)
+
+    def test_patch_ai_credentials_hanya_field_terisi_yang_diupdate(self):
+        self.client.force_authenticate(self.owner)
+        r1 = self.client.patch('/api/wa-bot-config/ai-credentials/', {
+            'api_key': 'sk-rahasia123456', 'model': 'gpt-4o-mini',
+        }, format='json')
+        self.assertEqual(r1.status_code, status.HTTP_200_OK, r1.data)
+        self.assertEqual(r1.data['api_key_sumber'], 'database')
+        self.assertTrue(r1.data['api_key_masked'].endswith('3456'))
+        self.assertEqual(r1.data['model'], 'gpt-4o-mini')
+
+        # PATCH kedua tanpa api_key -- key lama TIDAK boleh hilang/tertimpa kosong.
+        r2 = self.client.patch('/api/wa-bot-config/ai-credentials/', {
+            'base_url': 'https://api.contoh.com/v1',
+        }, format='json')
+        self.assertEqual(r2.status_code, status.HTTP_200_OK)
+        self.assertTrue(r2.data['api_key_masked'].endswith('3456'))
+        self.assertEqual(r2.data['base_url'], 'https://api.contoh.com/v1')
+
+
+class WaBotAiTestConnectionViewTests(APITestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(username='owner_aitest', password='secret', role='owner')
+
+    def test_tanpa_api_key_gagal_dgn_baik(self):
+        self.client.force_authenticate(self.owner)
+        with patch.dict('os.environ', {'KOBOI_API_KEY': ''}, clear=False):
+            response = self.client.post('/api/wa-bot-config/ai-credentials/test/', {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data['ok'])
+
+    def test_koneksi_sukses_dgn_mock(self):
+        self.client.force_authenticate(self.owner)
+        with patch('openai.OpenAI') as MockOpenAI:
+            MockOpenAI.return_value.chat.completions.create.return_value = object()
+            response = self.client.post('/api/wa-bot-config/ai-credentials/test/', {
+                'api_key': 'sk-test123', 'base_url': 'https://api.contoh.com/v1', 'model': 'gpt-4o-mini',
+            }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['ok'], response.data)
+
+    def test_koneksi_gagal_dgn_mock(self):
+        self.client.force_authenticate(self.owner)
+        with patch('openai.OpenAI') as MockOpenAI:
+            MockOpenAI.return_value.chat.completions.create.side_effect = Exception('Unauthorized')
+            response = self.client.post('/api/wa-bot-config/ai-credentials/test/', {
+                'api_key': 'sk-salah', 'base_url': 'https://api.contoh.com/v1', 'model': 'gpt-4o-mini',
+            }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data['ok'])
+        self.assertIn('Unauthorized', response.data['detail'])
