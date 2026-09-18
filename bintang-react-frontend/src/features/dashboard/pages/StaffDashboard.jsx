@@ -270,12 +270,12 @@ export default function StaffDashboard() {
           <div className="flex justify-between items-start border-b border-slate-100 pb-2 mb-2">
             <div>
               <p className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
-                <CalendarClock size={12} /> Status Kehadiran
+                <CalendarClock size={12} /> Status Sesi Kerja
               </p>
               <h3
                 className={`text-lg font-extrabold mt-0.5 uppercase ${!isClockedIn ? 'text-amber-600' : isClockedOut ? 'text-slate-600' : 'text-emerald-600'} flex items-center gap-1.5`}
               >
-                <span>{!isClockedIn ? 'Belum Masuk' : absensi_hari_ini?.status}</span>
+                <span>{!isClockedIn ? 'Belum Mulai Kerja' : absensi_hari_ini?.status}</span>
                 {absensi_hari_ini?.workspace_unlocked && (
                   <span className="text-[9px] bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold px-1.5 py-0.5 rounded-full normal-case tracking-normal">
                     Papan Kerja Dibuka
@@ -300,7 +300,7 @@ export default function StaffDashboard() {
               className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5
                 ${isClockedIn ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-600 text-white'}`}
             >
-              {isClockedIn ? 'Sudah Masuk' : 'Clock In Sekarang'}
+              {isClockedIn ? 'Sedang Bekerja' : 'Mulai Kerja'}
             </button>
             <button
               onClick={() => setShowClockOutModal(true)}
@@ -308,7 +308,7 @@ export default function StaffDashboard() {
               className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5
                 ${!isClockedIn || isClockedOut ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600 text-white cursor-pointer'}`}
             >
-              {isClockedOut ? 'Sudah Pulang' : 'Clock Out'}
+              {isClockedOut ? 'Sudah Selesai' : 'Selesai Kerja'}
             </button>
           </div>
         </div>
@@ -590,10 +590,10 @@ export default function StaffDashboard() {
                 <CalendarClock size={32} className="text-white" />
               </div>
               <h3 className="font-extrabold text-lg tracking-wide uppercase">
-                Konfirmasi Keluar Jam Kerja
+                Konfirmasi Selesai Kerja
               </h3>
               <p className="text-xs text-rose-100 mt-1">
-                Sistem Absensi &amp; Kepegawaian StarPhoto & Advertising
+                Sistem Sesi Kerja &amp; Kepegawaian StarPhoto & Advertising
               </p>
             </div>
 
@@ -605,15 +605,15 @@ export default function StaffDashboard() {
                   <span className="font-extrabold block text-amber-900 mb-1">
                     ⚠️ PERINGATAN PENTING:
                   </span>
-                  Setelah menekan tombol Clock-Out, akses Anda ke{' '}
+                  Setelah menekan tombol Selesai Kerja, akses Anda ke{' '}
                   <strong>Papan Produksi (Kanban Kerja) akan otomatis TERKUNCI</strong> untuk hari
                   ini.
                 </div>
               </div>
 
               <div className="text-xs text-slate-500 leading-relaxed text-center">
-                Apakah Anda yakin telah menyelesaikan semua pekerjaan hari ini dan ingin melakukan
-                Clock-Out?
+                Apakah Anda yakin telah menyelesaikan semua pekerjaan hari ini dan ingin
+                Selesai Kerja?
               </div>
             </div>
 
@@ -629,7 +629,7 @@ export default function StaffDashboard() {
                 ) : (
                   <>
                     <CheckCircle2 size={16} />
-                    <span>Ya, Clock-Out Sekarang</span>
+                    <span>Ya, Selesai Kerja Sekarang</span>
                   </>
                 )}
               </button>

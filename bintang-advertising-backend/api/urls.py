@@ -9,7 +9,7 @@ from . import marketing_views
 from .marketing_views import PromoPreviewView
 from . import customer_views
 from .views.external_bot import ExternalBotToolView, ExternalBotBuatOrderView
-from .views.hr_bridge import HRBridgeCreateAccountView
+from .views.hr_bridge import HRBridgeCreateAccountView, AbsensiStatusView
 from .views.chatbotx_bridge import ChatbotXToolCallView, ChatbotXToolSchemasView
 from . import finance_views
 from .report_views import ReportDataView, ReportExportView
@@ -173,6 +173,7 @@ urlpatterns = [
     # Jembatan HR (Horilla) -> Bintang: auto-provision akun karyawan saat HR
     # buat karyawan baru/approve rekrutmen (lihat api/views/hr_bridge.py).
     path('bridge/hr-employee/', HRBridgeCreateAccountView.as_view(), name='hr-bridge-create-account'),
+    path('bridge/absensi-status/', AbsensiStatusView.as_view(), name='hr-bridge-absensi-status'),
     # Jembatan ChatbotX -> Bintang: bungkus 9 tool AI WA bot yang sudah ada
     # (lihat api/views/chatbotx_bridge.py + services/wa_ai_tools.py).
     path('bridge/chatbotx-tool/', ChatbotXToolCallView.as_view(), name='chatbotx-bridge-tool-call'),

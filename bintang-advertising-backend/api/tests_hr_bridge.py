@@ -224,3 +224,78 @@ class HRBridgeRoleMappingFinanceTests(APITestCase):
         response = self._post("Kordiv A3", 504)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
         self.assertEqual(response.data["role"], "kordiv")
+
+
+class AbsensiStatusViewTests(APITestCase):
+    """GET /api/bridge/absensi-status/ -- dipanggil HR mobile saat karyawan
+    mau logout, buat cek apakah sesi kerja Bintang-nya hari ini masih
+    terbuka (belum Selesai Kerja)."""
+    URL = "/api/bridge/absensi-status/"
+
+    def setUp(self):
+        self.env_patch = mock.patch.dict(os.environ, {"HR_BRIDGE_API_KEY": "kunci-uji"})
+        self.env_patch.start()
+        self.addCleanup(self.env_patch.stop)
+
+    def _get(self, hr_employee_id):
+        return self.client.get(
+            self.URL, {"hr_employee_id": hr_employee_id},
+            HTTP_X_API_KEY="kunci-uji", HTTP_X_FORWARDED_PROTO="https",
+        )
+
+    def test_tanpa_api_key_ditolak(self):
+        response = self.client.get(self.URL, {"hr_employee_id": 1}, HTTP_X_FORWARDED_PROTO="https")
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_hr_employee_id_kosong_ditolak_400(self):
+        response = self.client.get(self.URL, HTTP_X_API_KEY="kunci-uji", HTTP_X_FORWARDED_PROTO="https")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_karyawan_belum_ter_bridge_applicable_false(self):
+        response = self._get(999999)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data["applicable"])
+
+    def test_role_kasir_applicable_false(self):
+        CustomUser.objects.create_user(
+            username="kasir_absensi_status", password="pw", role="kasir", hr_employee_id=601,
+        )
+        response = self._get(601)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data["applicable"])
+
+    def test_staff_belum_clock_in_hari_ini_no_open_session(self):
+        CustomUser.objects.create_user(
+            username="staff_absensi_status_1", password="pw", role="staff", hr_employee_id=602,
+        )
+        response = self._get(602)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["applicable"])
+        self.assertFalse(response.data["has_open_session"])
+
+    def test_staff_sudah_clock_in_belum_clock_out_has_open_session(self):
+        from django.utils import timezone
+        from hr.models import Absensi
+
+        user = CustomUser.objects.create_user(
+            username="staff_absensi_status_2", password="pw", role="staff", hr_employee_id=603,
+        )
+        Absensi.objects.create(staff=user, tanggal=timezone.localdate(), jam_masuk=timezone.now())
+        response = self._get(603)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["has_open_session"])
+
+    def test_staff_sudah_clock_out_no_open_session(self):
+        from django.utils import timezone
+        from hr.models import Absensi
+
+        user = CustomUser.objects.create_user(
+            username="staff_absensi_status_3", password="pw", role="staff", hr_employee_id=604,
+        )
+        Absensi.objects.create(
+            staff=user, tanggal=timezone.localdate(),
+            jam_masuk=timezone.now(), jam_keluar=timezone.now(),
+        )
+        response = self._get(604)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data["has_open_session"])

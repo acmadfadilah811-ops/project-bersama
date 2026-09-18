@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate, Link } from 'react-router-dom';
+import { handleKasirLogout } from '../utils/kasirLogout';
 import {
   LogOut,
   UserCheck,
@@ -150,8 +151,7 @@ export default function KasirHeader() {
               <button
                 onClick={() => {
                   setShowProfile(false);
-                  logout();
-                  navigate('/login');
+                  handleKasirLogout({ shiftAktif, logout, navigate });
                 }}
                 className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-rose-600 hover:bg-rose-50 hover:text-rose-700 transition-colors text-left border-t border-slate-100 cursor-pointer"
               >

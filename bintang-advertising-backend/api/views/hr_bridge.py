@@ -87,6 +87,22 @@ class HRBridgeThrottle(AnonRateThrottle):
     rate = '30/min'
 
 
+def _cek_hr_bridge_api_key(request):
+    """Return None kalau valid, atau Response 401/500 kalau tidak. Fail-
+    closed: key WAJIB dikonfigurasi di server, bukan opsional. Dipakai
+    bersama oleh semua view di bridge HR<->Bintang ini (create-account,
+    status absensi, dst) -- satu pintu auth, bukan diduplikasi per view."""
+    expected = os.getenv("HR_BRIDGE_API_KEY")
+    if not expected:
+        logger.error("HR_BRIDGE_API_KEY belum dikonfigurasi. Endpoint HR bridge ditutup.")
+        return Response({'error': 'HR bridge API belum dikonfigurasi di server.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    diberikan = request.headers.get('X-Api-Key', '') or ''
+    if not diberikan or not constant_time_compare(diberikan, expected):
+        logger.warning("HR bridge API: X-Api-Key tidak valid.")
+        return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+    return None
+
+
 class HRBridgeCreateAccountView(APIView):
     """POST /api/bridge/hr-employee/
 
@@ -99,22 +115,9 @@ class HRBridgeCreateAccountView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [HRBridgeThrottle]
 
-    def _cek_api_key(self, request):
-        """Return None kalau valid, atau Response 401/500 kalau tidak.
-        Fail-closed: key WAJIB dikonfigurasi di server, bukan opsional."""
-        expected = os.getenv("HR_BRIDGE_API_KEY")
-        if not expected:
-            logger.error("HR_BRIDGE_API_KEY belum dikonfigurasi. Endpoint HR bridge ditutup.")
-            return Response({'error': 'HR bridge API belum dikonfigurasi di server.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        diberikan = request.headers.get('X-Api-Key', '') or ''
-        if not diberikan or not constant_time_compare(diberikan, expected):
-            logger.warning("HR bridge API: X-Api-Key tidak valid.")
-            return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
-        return None
-
     @transaction.atomic
     def post(self, request, *args, **kwargs):
-        auth_error = self._cek_api_key(request)
+        auth_error = _cek_hr_bridge_api_key(request)
         if auth_error:
             return auth_error
 
@@ -190,3 +193,56 @@ class HRBridgeCreateAccountView(APIView):
             'hr_employee_id': user.hr_employee_id, 'created': True,
             'temp_password': password_sementara,
         }, status=status.HTTP_201_CREATED)
+
+
+class AbsensiStatusView(APIView):
+    """GET /api/bridge/absensi-status/?hr_employee_id=42
+
+    Dipanggil HR mobile (server-ke-server, sama pola auth dengan
+    HRBridgeCreateAccountView) saat karyawan menekan Logout di HR --
+    supaya bisa tampilkan pengingat kalau sesi kerja Bintang-nya hari ini
+    masih terbuka (belum "Selesai Kerja"), sebelum benar-benar logout dari
+    HR. Read-only, tidak pernah mengubah data absensi.
+
+    Cuma berlaku untuk role staff/manager -- role lain (kasir pakai
+    SaldoKasHarian/shift, bukan Absensi; owner/admin/spv/kordiv/finance
+    tidak punya konsep 'sesi kerja' harian sama sekali) dijawab
+    applicable=false, BUKAN error, supaya HR mobile tahu tidak perlu
+    tampilkan pengingat untuk karyawan itu.
+    """
+    permission_classes = [AllowAny]
+    throttle_classes = [HRBridgeThrottle]
+
+    def get(self, request, *args, **kwargs):
+        auth_error = _cek_hr_bridge_api_key(request)
+        if auth_error:
+            return auth_error
+
+        hr_employee_id = request.query_params.get('hr_employee_id')
+        if not hr_employee_id:
+            return Response({'error': "Parameter 'hr_employee_id' wajib diisi."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = CustomUser.objects.filter(hr_employee_id=hr_employee_id).first()
+        if not user:
+            # Karyawan ini belum pernah ter-bridge ke Bintang sama sekali
+            # (mis. departemennya di luar Bintang) -- bukan error, cuma
+            # tidak relevan untuk pengingat ini.
+            return Response({'applicable': False, 'reason': 'Belum punya akun Bintang.'})
+
+        if user.role not in ('staff', 'manager'):
+            return Response({'applicable': False, 'reason': f"Role '{user.role}' tidak memakai sesi kerja harian."})
+
+        from django.utils import timezone
+        from hr.models import Absensi
+
+        absensi_hari_ini = Absensi.objects.filter(staff=user, tanggal=timezone.localdate()).first()
+        has_open_session = bool(
+            absensi_hari_ini and absensi_hari_ini.jam_masuk and not absensi_hari_ini.jam_keluar
+        )
+
+        return Response({
+            'applicable': True,
+            'has_open_session': has_open_session,
+            'jam_masuk': absensi_hari_ini.jam_masuk if absensi_hari_ini else None,
+            'status': absensi_hari_ini.status if absensi_hari_ini else None,
+        })

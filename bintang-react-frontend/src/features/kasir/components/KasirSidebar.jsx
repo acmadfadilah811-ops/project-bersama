@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { handleKasirLogout } from '../utils/kasirLogout';
 import {
   LayoutDashboard,
   CreditCard,
@@ -212,15 +213,7 @@ export default function KasirSidebar({ isCollapsed, setIsCollapsed }) {
             SaldoKasHarianViewSet.create() menolak shift kedua yang masih
             terbuka), baru operator berikutnya login dengan akunnya sendiri. */}
         <button
-          onClick={() => {
-            if (shiftAktif) {
-              alert('Tutup shift Anda terlebih dahulu sebelum ganti operator.');
-              navigate('/kasir/shift');
-              return;
-            }
-            logout();
-            navigate('/login');
-          }}
+          onClick={() => handleKasirLogout({ shiftAktif, logout, navigate })}
           title={isCollapsed ? 'Ganti Operator' : undefined}
           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800/80 transition-all cursor-pointer border border-slate-800"
         >
@@ -266,10 +259,7 @@ export default function KasirSidebar({ isCollapsed, setIsCollapsed }) {
 
           {!isCollapsed && (
             <button
-              onClick={() => {
-                logout();
-                navigate('/login');
-              }}
+              onClick={() => handleKasirLogout({ shiftAktif, logout, navigate })}
               title="Keluar / Logout"
               className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer shrink-0"
             >
