@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown, Eye, EyeOff, Info, X } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
+import NumericInput from '../../../components/NumericInput';
 
 const emptyForm = {
   nama: '',
@@ -267,7 +268,13 @@ export default function AddCustomerModal({ onClose, onSaved, groups = [], custom
                 <input value={form.kode_pelanggan} onChange={set('kode_pelanggan')} placeholder="Opsional, harus unik" className={inputCls} />
               </Field>
               <Field label="Batas Kredit/Hutang">
-                <input type="number" min="0" value={form.batas_kredit} onChange={set('batas_kredit')} placeholder="Rp 0,00" className={inputCls} />
+                <NumericInput
+                  min={0}
+                  value={form.batas_kredit}
+                  onChange={(v) => setForm((f) => ({ ...f, batas_kredit: v }))}
+                  placeholder="Rp 0"
+                  className={inputCls}
+                />
               </Field>
               <Field label="Nama Perusahaan">
                 <input value={form.nama_perusahaan} onChange={set('nama_perusahaan')} className={inputCls} />
@@ -295,7 +302,12 @@ export default function AddCustomerModal({ onClose, onSaved, groups = [], custom
               <input type="date" value={form.tanggal_berakhir} onChange={set('tanggal_berakhir')} className={inputCls} />
             </Field>
             <Field label="Catatan">
-              <textarea value={form.catatan} onChange={set('catatan')} rows={3} className={`${inputCls} h-auto py-2 resize-none`} />
+              <textarea
+                value={form.catatan}
+                onChange={set('catatan')}
+                rows={3}
+                className={`${inputCls} h-auto py-2 resize-y min-h-[72px]`}
+              />
             </Field>
           </Section>
 

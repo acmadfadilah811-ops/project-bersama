@@ -19,7 +19,6 @@ import {
   User,
   Sparkles,
   ExternalLink,
-  RefreshCw,
   Printer,
   Users,
 } from 'lucide-react';
@@ -206,20 +205,17 @@ export default function KasirSidebar({ isCollapsed, setIsCollapsed }) {
         </nav>
       </div>
 
-      {/* ── Bottom Section: Ganti Operator, Switch App & User Profile ── */}
+      {/* ── Bottom Section: Switch App & User Profile ── */}
       <div className="p-3 border-t border-slate-800/80 bg-slate-900/60 space-y-2">
-        {/* Ganti Operator: kasir di sini bergantian pakai satu mesin kasir,
-            bukan paralel. Tutup shift dulu (server juga menegakkan ini —
-            SaldoKasHarianViewSet.create() menolak shift kedua yang masih
-            terbuka), baru operator berikutnya login dengan akunnya sendiri. */}
-        <button
-          onClick={() => handleKasirLogout({ shiftAktif, logout, navigate })}
-          title={isCollapsed ? 'Ganti Operator' : undefined}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800/80 transition-all cursor-pointer border border-slate-800"
-        >
-          <RefreshCw size={16} className="text-amber-400 shrink-0" />
-          {!isCollapsed && <span className="truncate">Ganti Operator</span>}
-        </button>
+        {/* "Ganti Operator" terpisah DIHAPUS (2026-09-18, instruksi user) --
+            sebelumnya jadi tombol kedua yang perilakunya SAMA PERSIS dengan
+            "Keluar" di bawah (sama-sama panggil handleKasirLogout, sama-sama
+            cek shift dulu) sejak logout kasir diselaraskan. Dua tombol untuk
+            aksi yang identik cuma bikin bingung & berisiko data personal
+            kasir sebelumnya nyangkut kalau operator berikutnya login lewat
+            jalur yang "terasa beda" -- cukup satu tombol Keluar di kartu
+            user di bawah, operator berikutnya login dengan akunnya sendiri
+            dari layar login setelahnya. */}
 
         {/* Switch to Main App (For Admin / Owner) */}
         {isOwnerOrAdmin && (
@@ -257,15 +253,13 @@ export default function KasirSidebar({ isCollapsed, setIsCollapsed }) {
             )}
           </div>
 
-          {!isCollapsed && (
-            <button
-              onClick={() => handleKasirLogout({ shiftAktif, logout, navigate })}
-              title="Keluar / Logout"
-              className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer shrink-0"
-            >
-              <LogOut size={16} />
-            </button>
-          )}
+          <button
+            onClick={() => handleKasirLogout({ shiftAktif, logout, navigate })}
+            title="Keluar / Logout"
+            className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer shrink-0"
+          >
+            <LogOut size={16} />
+          </button>
         </div>
       </div>
     </aside>
