@@ -11,6 +11,7 @@ import {
   Search,
   Users,
   RefreshCw,
+  Building2,
 } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 
@@ -435,6 +436,50 @@ export default function KordivSpvTeamBoard({ role }) {
           </div>
         </div>
       </div>
+
+      {/* Perbandingan Antar Divisi -- khusus SPV (mengawasi lintas Kordiv/
+          divisi sekaligus), tidak relevan untuk Kordiv yang cuma 1 divisi. */}
+      {role === 'spv' && (
+        <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-3 space-y-3">
+          <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+            <Building2 size={14} className="text-indigo-700" />
+            <h2 className="text-xs font-bold text-slate-900">Perbandingan Antar Divisi</h2>
+          </div>
+          {(ringkasan?.beban_divisi || []).length === 0 ? (
+            <p className="text-[11px] text-slate-400 text-center py-4">Belum ada job di divisi bawahan Anda.</p>
+          ) : (
+            <div className="space-y-2">
+              {(() => {
+                const maxAktif = Math.max(...ringkasan.beban_divisi.map((d) => d.job_aktif), 1);
+                return ringkasan.beban_divisi.map((d) => (
+                  <div key={d.divisi_id} className="flex items-center gap-3">
+                    <div className="w-40 shrink-0 text-[11px] font-semibold text-slate-800 truncate" title={d.nama}>
+                      {d.nama}
+                    </div>
+                    <div className="flex-1 h-5 bg-slate-100 rounded overflow-hidden relative">
+                      <div
+                        className={`h-full rounded ${d.kendala > 0 ? 'bg-amber-500' : 'bg-indigo-600'}`}
+                        style={{ width: `${(d.job_aktif / maxAktif) * 100}%` }}
+                      />
+                    </div>
+                    <div className="w-40 shrink-0 text-[10px] text-slate-500 text-right">
+                      <span className="font-bold text-slate-800">{d.job_aktif}</span> aktif
+                      {' · '}
+                      <span className="font-bold text-emerald-600">{d.selesai_hari_ini}</span> selesai hari ini
+                      {d.kendala > 0 && (
+                        <>
+                          {' · '}
+                          <span className="font-bold text-amber-700">{d.kendala}</span> kendala
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Beban Kerja Staff */}
       <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-3 space-y-3">

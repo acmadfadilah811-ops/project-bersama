@@ -280,3 +280,49 @@ class RingkasanTimKordivTests(APITestCase):
         beban = {b['staff_id']: b for b in res.data['beban_staff']}
         self.assertIn(self.staff.id, beban)
         self.assertEqual(beban[self.staff.id]['job_aktif'], 1)
+
+
+class RingkasanTimBebanDivisiSpvTests(APITestCase):
+    """ringkasan_tim() -- beban_divisi dipakai SPV untuk bandingkan kinerja
+    antar divisi bawahannya (2+ Kordiv/divisi berbeda), bukan sekadar per
+    staff datar seperti kebutuhan Kordiv (cuma 1 divisi)."""
+
+    def setUp(self):
+        self.divisi_a = Divisi.objects.create(nama='Divisi Cetak Outdoor')
+        self.divisi_b = Divisi.objects.create(nama='Divisi Digital Print')
+        self.tahap_a = TahapProses.objects.create(nama='Tahap A', divisi=self.divisi_a, urutan=1)
+        self.tahap_b = TahapProses.objects.create(nama='Tahap B', divisi=self.divisi_b, urutan=1)
+
+        self.spv = User.objects.create_user(username='spv_beban_divisi', password='pw12345', role='spv')
+        self.kordiv_a = User.objects.create_user(
+            username='kordiv_a_beban_divisi', password='pw12345', role='kordiv',
+            divisi=self.divisi_a, atasan=self.spv,
+        )
+        self.staff_a = User.objects.create_user(
+            username='staff_a_beban_divisi', password='pw12345', role='staff', atasan=self.kordiv_a,
+        )
+        self.staff_b = User.objects.create_user(
+            username='staff_b_beban_divisi', password='pw12345', role='staff', atasan=self.spv,
+        )
+        Absensi.objects.create(staff=self.spv, tanggal=timezone.localdate(), jam_masuk=timezone.now())
+
+        order = Order.objects.create(id='ORD-BEBAN-DIVISI-1', nomor_wa='08199999993', nama='Pelanggan Beban Divisi')
+        item_a1 = OrderItem.objects.create(order=order, jenis_produk='Item A1', qty=1, harga_jual=10000)
+        JobBoard.objects.create(order_item=item_a1, tahap=self.tahap_a, pic_staff=self.staff_a, status_pekerjaan='dikerjakan')
+        item_a2 = OrderItem.objects.create(order=order, jenis_produk='Item A2', qty=1, harga_jual=10000)
+        JobBoard.objects.create(order_item=item_a2, tahap=self.tahap_a, pic_staff=self.staff_a, status_pekerjaan='kendala')
+        item_b1 = OrderItem.objects.create(order=order, jenis_produk='Item B1', qty=1, harga_jual=10000)
+        JobBoard.objects.create(order_item=item_b1, tahap=self.tahap_b, pic_staff=self.staff_b, status_pekerjaan='antrean')
+
+        self.client.force_authenticate(self.spv)
+
+    def test_beban_divisi_dikelompokkan_per_divisi_lintas_kordiv(self):
+        res = self.client.get('/api/jobs/ringkasan-tim/')
+        self.assertEqual(res.status_code, 200, res.content)
+        beban = {b['nama']: b for b in res.data['beban_divisi']}
+        self.assertIn('Divisi Cetak Outdoor', beban)
+        self.assertIn('Divisi Digital Print', beban)
+        self.assertEqual(beban['Divisi Cetak Outdoor']['job_aktif'], 2)
+        self.assertEqual(beban['Divisi Cetak Outdoor']['kendala'], 1)
+        self.assertEqual(beban['Divisi Digital Print']['job_aktif'], 1)
+        self.assertEqual(beban['Divisi Digital Print']['kendala'], 0)

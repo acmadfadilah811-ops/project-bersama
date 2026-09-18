@@ -586,6 +586,37 @@ class JobBoardViewSet(viewsets.ModelViewSet):
             })
         beban_staff.sort(key=lambda b: b['job_aktif'], reverse=True)
 
+        # Perbandingan antar divisi -- khusus dipakai SPV (mengawasi lintas
+        # Kordiv/divisi sekaligus, tidak seperti Kordiv yang cuma 1 divisi
+        # sendiri) supaya cepat lihat divisi mana yang keteteran. Dikelompokkan
+        # dari `tahap__divisi` (divisi produksi tempat job berjalan), BUKAN
+        # `pic_staff__divisi` -- keduanya biasanya sama tapi tahap yang
+        # menentukan "divisi ini yang sedang keteteran", bukan afiliasi staff.
+        # Selalu dihitung (murah, 1 query agregat) -- frontend yang memilih
+        # menampilkan cuma untuk role spv.
+        beban_divisi = list(
+            JobBoard.objects.filter(pic_staff_id__in=subordinate_ids, tahap__divisi__isnull=False)
+            .values('tahap__divisi_id', 'tahap__divisi__nama')
+            .annotate(
+                job_aktif=Count('id', filter=Q(status_pekerjaan__in=('antrean', 'dikerjakan', 'kendala'))),
+                selesai_hari_ini=Count('id', filter=Q(
+                    status_pekerjaan='selesai', waktu_selesai__date=timezone.localdate(),
+                )),
+                kendala=Count('id', filter=Q(status_pekerjaan='kendala')),
+            )
+            .order_by('-job_aktif')
+        )
+        beban_divisi = [
+            {
+                'divisi_id': row['tahap__divisi_id'],
+                'nama': row['tahap__divisi__nama'],
+                'job_aktif': row['job_aktif'],
+                'selesai_hari_ini': row['selesai_hari_ini'],
+                'kendala': row['kendala'],
+            }
+            for row in beban_divisi
+        ]
+
         pemakaian_mesin = list(
             PenggunaanMesin.objects.filter(operator_id__in=subordinate_ids)
             .values('mesin__nama')
@@ -603,6 +634,7 @@ class JobBoardViewSet(viewsets.ModelViewSet):
             'selesai_hari_ini': selesai_hari_ini,
             'job_belum_dialokasikan': job_belum_dialokasikan,
             'beban_staff': beban_staff,
+            'beban_divisi': beban_divisi,
             'pemakaian_mesin': pemakaian_mesin,
         })
 
