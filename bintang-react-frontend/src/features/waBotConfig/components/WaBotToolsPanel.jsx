@@ -106,13 +106,13 @@ export default function WaBotToolsPanel() {
                   type="button"
                   onClick={() => toggleAktif(t)}
                   disabled={isSaving}
-                  className={`relative w-10 h-5.5 rounded-full transition-colors shrink-0 cursor-pointer disabled:opacity-50
+                  className={`relative w-10 h-6 rounded-full transition-colors shrink-0 cursor-pointer disabled:opacity-50
                     ${t.aktif ? 'bg-emerald-500' : 'bg-slate-300'}`}
                   title={t.aktif ? 'Aktif -- klik utk nonaktifkan' : 'Nonaktif -- klik utk aktifkan'}
                 >
                   <span
-                    className={`absolute top-0.5 w-4.5 h-4.5 bg-white rounded-full shadow transition-transform
-                      ${t.aktif ? 'translate-x-[19px]' : 'translate-x-0.5'}`}
+                    className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform
+                      ${t.aktif ? 'translate-x-4' : 'translate-x-0'}`}
                   />
                 </button>
                 <div className="flex-1 min-w-0">
