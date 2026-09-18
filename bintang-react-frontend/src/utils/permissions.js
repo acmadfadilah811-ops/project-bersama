@@ -19,6 +19,7 @@ export const MENU_FEATURES = [
   { id: 'settings', label: 'Pengaturan (Settings)', path: '/settings' },
   { id: 'divisi', label: 'Divisi & Tahap Proses', path: '/divisi' },
   { id: 'accounting-internal', label: 'Akuntansi Internal', path: '/accounting-internal' },
+  { id: 'finance-dashboard', label: 'Dashboard Finance', path: '/finance-dashboard' },
 ];
 
 export const DEFAULT_PERMISSIONS = {
@@ -78,6 +79,8 @@ export const DEFAULT_PERMISSIONS = {
   kasir: ['kasir-pos'],
   spv: ['staff-dashboard', 'jobs'],
   kordiv: ['staff-dashboard', 'jobs'],
+  admin_finance: ['finance-dashboard'],
+  spv_finance: ['finance-dashboard'],
 };
 
 
@@ -89,6 +92,8 @@ const LOCKED_PERMISSIONS = {
   kasir: ['kasir-pos'],
   spv: ['staff-dashboard'],
   kordiv: ['staff-dashboard'],
+  admin_finance: ['finance-dashboard'],
+  spv_finance: ['finance-dashboard'],
 };
 
 // Mendapatkan hak akses saat ini, dengan jaminan LOCKED_PERMISSIONS selalu ada
@@ -174,6 +179,7 @@ export function hasMenuAccess(role, featureId) {
 export function getFeatureIdByPath(path) {
   if (path === '/' || path.startsWith('/dashboard')) return 'dashboard';
   if (path.startsWith('/staff-dashboard')) return 'staff-dashboard';
+  if (path.startsWith('/finance-dashboard')) return 'finance-dashboard';
   if (path.startsWith('/papan-kerja') || path.startsWith('/produksi') || path.startsWith('/jobs')) return 'jobs';
   if (path.startsWith('/product-inventory')) return 'product-inventory';
   if (path.startsWith('/transaksi')) return 'buku-besar';

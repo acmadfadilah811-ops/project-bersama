@@ -12,6 +12,7 @@ import {
   Users,
   RefreshCw,
   Building2,
+  Printer,
 } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 
@@ -515,6 +516,42 @@ export default function KordivSpvTeamBoard({ role }) {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+      </div>
+
+      {/* Pemakaian Mesin -- dipindah dari RingkasanTim.jsx lama (halaman
+          landing SPV/Kordiv) supaya tidak hilang saat halaman itu diganti
+          memakai komponen ini. */}
+      <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-3 space-y-3">
+        <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+          <Printer size={14} className="text-indigo-700" />
+          <h2 className="text-xs font-bold text-slate-900">Pemakaian Mesin oleh Tim</h2>
+        </div>
+        {(ringkasan?.pemakaian_mesin || []).length === 0 ? (
+          <p className="text-[11px] text-slate-400 text-center py-4">Belum ada catatan pemakaian mesin dari tim Anda.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50/75 text-[10px] font-semibold text-slate-500 uppercase">
+                  <th className="py-2 px-2.5">Mesin</th>
+                  <th className="py-2 px-2.5 text-center">Jumlah Pemakaian</th>
+                  <th className="py-2 px-2.5 text-center">Total Lembar Color</th>
+                  <th className="py-2 px-2.5 text-center">Total Lembar Mono</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {ringkasan.pemakaian_mesin.map((row) => (
+                  <tr key={row.mesin__nama || 'tanpa-mesin'}>
+                    <td className="py-2 px-2.5 font-medium text-slate-700">{row.mesin__nama || '(Tanpa nama mesin)'}</td>
+                    <td className="py-2 px-2.5 text-center text-slate-600">{row.jumlah_pemakaian}</td>
+                    <td className="py-2 px-2.5 text-center text-slate-600">{row.total_lembar_color ?? 0}</td>
+                    <td className="py-2 px-2.5 text-center text-slate-600">{row.total_lembar_mono ?? 0}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

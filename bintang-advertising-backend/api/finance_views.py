@@ -8,7 +8,10 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.permissions import IsAuthenticated
-from .permissions import IsStrictOwnerOrManager, IsOwnerManagerAdminOrKasir
+from .permissions import (
+    IsStrictOwnerOrManager, IsOwnerManagerAdminOrKasir,
+    CanAccessFinanceVerification, IsAdminFinanceOrOwnerManager,
+)
 from rest_framework.response import Response
 
 from .finance_models import CashTransactionType, CashTransaction, CashTransactionAttachment
@@ -160,8 +163,16 @@ class CashTransactionViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ('post_journal', 'cancel_journal'):
+            # TIDAK diubah -- posting/pembatalan jurnal akuntansi tetap
+            # eksklusif Owner/Manager (Aturan Engineering M2), Admin Finance
+            # TIDAK dapat akses ini meski dia yang verifikasi.
             return [IsStrictOwnerOrManager()]
-        return [IsOwnerManagerAdminOrKasir()]
+        if self.action == 'verifikasi_admin_finance':
+            return [IsAdminFinanceOrOwnerManager()]
+        # IsOwnerManagerAdminOrKasir (perilaku lama) DITAMBAH admin_finance/
+        # spv_finance lewat CanAccessFinanceVerification -- class baru
+        # terpisah, tidak mengubah god node IsOwnerManagerAdminOrKasir (R2).
+        return [CanAccessFinanceVerification()]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -170,7 +181,30 @@ class CashTransactionViewSet(viewsets.ModelViewSet):
         arah = self.request.query_params.get('arah')
         if arah in ('pendapatan', 'pengeluaran'):
             qs = qs.filter(arah=arah)
+        diverifikasi = self.request.query_params.get('diverifikasi_admin_finance')
+        if diverifikasi in ('1', 'true', 'True'):
+            qs = qs.filter(diverifikasi_admin_finance_oleh__isnull=False)
+        elif diverifikasi in ('0', 'false', 'False'):
+            qs = qs.filter(diverifikasi_admin_finance_oleh__isnull=True)
         return qs
+
+    @action(detail=True, methods=['post'], url_path='verifikasi-admin-finance')
+    def verifikasi_admin_finance(self, request, pk=None):
+        """POST /api/cash-transactions/{id}/verifikasi-admin-finance/ --
+        Admin Finance (atau Owner/Manager) menandai transaksi kas masuk/
+        keluar ini sudah dicek. TIDAK memposting jurnal apa pun -- posting
+        tetap eksklusif lewat post_journal() (Owner/Manager, M2). Boleh
+        dipanggil pada transaksi berstatus apa pun (draft/selesai/batal),
+        sekadar catatan "sudah ditinjau Admin Finance"."""
+        tx = self.get_object()
+        catatan = str(request.data.get('catatan') or '').strip()
+        tx.diverifikasi_admin_finance_oleh = request.user
+        tx.diverifikasi_admin_finance_pada = timezone.now()
+        tx.catatan_admin_finance = catatan
+        tx.save(update_fields=[
+            'diverifikasi_admin_finance_oleh', 'diverifikasi_admin_finance_pada', 'catatan_admin_finance',
+        ])
+        return Response(CashTransactionSerializer(tx, context={'request': request}).data)
 
     def perform_create(self, serializer):
         tipe = serializer.validated_data.get('tipe_transaksi')

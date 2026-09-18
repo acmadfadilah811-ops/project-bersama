@@ -13,7 +13,10 @@ from ..serializers import (
     POSAntrianDeviceSerializer, SaldoKasHarianSerializer, RingkasanShiftSerializer,
     POSPaymentMethodSerializer,
 )
-from ..permissions import IsOwnerManagerAdminOrReadOnly, IsOwnerManagerAdminOrKasir
+from ..permissions import (
+    IsOwnerManagerAdminOrReadOnly, IsOwnerManagerAdminOrKasir,
+    CanAccessFinanceVerification, IsAdminFinanceOrOwnerManager,
+)
 from ..services.shift_summary import calculate_shift_cash_summary
 from accounting.services.shift_posting import post_shift_cash_variance_journal
 
@@ -142,21 +145,24 @@ class SaldoKasHarianViewSet(viewsets.ModelViewSet):
 class RingkasanShiftViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = RingkasanShift.objects.all().order_by('-tanggal', '-mulai')
     serializer_class = RingkasanShiftSerializer
-    permission_classes = [IsAuthenticated, IsOwnerManagerAdminOrKasir]
+    # IsOwnerManagerAdminOrKasir (perilaku lama) DITAMBAH admin_finance/
+    # spv_finance lewat CanAccessFinanceVerification -- class baru terpisah,
+    # tidak mengubah god node IsOwnerManagerAdminOrKasir (R2).
+    permission_classes = [IsAuthenticated, CanAccessFinanceVerification]
 
     def get_queryset(self):
         queryset = super().get_queryset()
         if self.request.user.role == 'kasir':
             queryset = queryset.filter(kasir=self.request.user)
-        
+
         tanggal_mulai = self.request.query_params.get('tanggal_mulai')
         tanggal_akhir = self.request.query_params.get('tanggal_akhir')
-        
+
         if tanggal_mulai:
             queryset = queryset.filter(tanggal__gte=tanggal_mulai)
         if tanggal_akhir:
             queryset = queryset.filter(tanggal__lte=tanggal_akhir)
-            
+
         query = self.request.query_params.get('query')
         if query:
             queryset = queryset.filter(
@@ -164,4 +170,47 @@ class RingkasanShiftViewSet(viewsets.ReadOnlyModelViewSet):
                 Q(kasir__first_name__icontains=query) |
                 Q(kasir__last_name__icontains=query)
             )
+
+        status_verifikasi = self.request.query_params.get('status_verifikasi')
+        if status_verifikasi:
+            queryset = queryset.filter(status_verifikasi=status_verifikasi)
         return queryset
+
+    @action(detail=True, methods=['post'], url_path='verifikasi', permission_classes=[IsAuthenticated, IsAdminFinanceOrOwnerManager])
+    def verifikasi(self, request, pk=None):
+        """POST /api/ringkasan-shift/{id}/verifikasi/ -- Admin Finance (atau
+        Owner/Manager) menandai satu snapshot shift sudah dicek kesesuaian
+        fisik vs sistemnya. TIDAK memicu posting jurnal apa pun (lihat
+        catatan di RingkasanShift model) -- murni penanda operasional."""
+        ringkasan = self.get_object()
+        catatan = str(request.data.get('catatan') or '').strip()
+        ringkasan.status_verifikasi = 'diverifikasi'
+        ringkasan.diverifikasi_oleh = request.user
+        ringkasan.diverifikasi_pada = timezone.now()
+        ringkasan.catatan_verifikasi = catatan
+        ringkasan.save(update_fields=[
+            'status_verifikasi', 'diverifikasi_oleh', 'diverifikasi_pada', 'catatan_verifikasi',
+        ])
+        return Response(RingkasanShiftSerializer(ringkasan).data)
+
+    @action(detail=True, methods=['post'], url_path='pertanyakan', permission_classes=[IsAuthenticated, IsAdminFinanceOrOwnerManager])
+    def pertanyakan(self, request, pk=None):
+        """POST /api/ringkasan-shift/{id}/pertanyakan/ -- Admin Finance
+        menandai shift ini janggal (mis. selisih kas besar tanpa penjelasan
+        cukup di catatan kasir) untuk ditindaklanjuti SPV Finance/Owner.
+        Catatan WAJIB diisi -- beda dari verifikasi yang catatannya opsional."""
+        ringkasan = self.get_object()
+        catatan = str(request.data.get('catatan') or '').strip()
+        if not catatan:
+            return Response(
+                {'error': 'Catatan wajib diisi saat mempertanyakan sebuah shift.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        ringkasan.status_verifikasi = 'dipertanyakan'
+        ringkasan.diverifikasi_oleh = request.user
+        ringkasan.diverifikasi_pada = timezone.now()
+        ringkasan.catatan_verifikasi = catatan
+        ringkasan.save(update_fields=[
+            'status_verifikasi', 'diverifikasi_oleh', 'diverifikasi_pada', 'catatan_verifikasi',
+        ])
+        return Response(RingkasanShiftSerializer(ringkasan).data)

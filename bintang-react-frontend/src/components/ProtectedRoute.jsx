@@ -47,13 +47,15 @@ export default function ProtectedRoute() {
   const fid = getFeatureIdByPath(location.pathname);
 
   // Cek otorisasi menu — pengecualian untuk halaman profil & dashboard dasar
-  const isBasicRoute = location.pathname === '/profile' || location.pathname === '/dashboard' || location.pathname === '/staff-dashboard' || location.pathname === '/ringkasan-tim' || location.pathname === '/';
+  const isBasicRoute = location.pathname === '/profile' || location.pathname === '/dashboard' || location.pathname === '/staff-dashboard' || location.pathname === '/ringkasan-tim' || location.pathname === '/finance-dashboard' || location.pathname === '/';
   if (!isBasicRoute && fid && !hasMenuAccess(userRole, fid)) {
     const redirectPath =
       userRole === 'staff'
         ? '/staff-dashboard'
         : userRole === 'spv' || userRole === 'kordiv'
         ? '/ringkasan-tim'
+        : userRole === 'admin_finance' || userRole === 'spv_finance'
+        ? '/finance-dashboard'
         : '/dashboard';
     return <Navigate to={redirectPath} replace />;
   }

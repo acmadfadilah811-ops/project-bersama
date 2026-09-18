@@ -73,6 +73,20 @@ class CashTransaction(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # Verifikasi Admin Finance (2026-09-18) -- lapisan terpisah dari
+    # `status` (draft/selesai/batal) & dari post_journal()/cancel_journal()
+    # yang TETAP eksklusif Owner/Manager lewat create_journal_entry()
+    # (Aturan Engineering M2/L2, tidak diubah sama sekali di sini).
+    # Verifikasi ini murni gerbang "sudah dicek Admin Finance, layak
+    # dilaporkan ke SPV Finance" -- tidak memengaruhi apakah transaksi
+    # boleh diposting ke jurnal akuntansi atau tidak.
+    diverifikasi_admin_finance_oleh = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='cash_transactions_diverifikasi',
+    )
+    diverifikasi_admin_finance_pada = models.DateTimeField(null=True, blank=True)
+    catatan_admin_finance = models.TextField(blank=True, default='')
+
     class Meta:
         ordering = ['-waktu', '-created_at']
         indexes = [

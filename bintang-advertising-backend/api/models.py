@@ -62,6 +62,14 @@ class CustomUser(AbstractUser):
         ('kordiv', 'Koordinator Divisi'),
         ('staff', 'Staff Produksi'),
         ('kasir', 'Kasir'),
+        # Verifikasi laporan kas kasir & pengeluaran (2026-09-18) -- TIDAK
+        # punya wewenang posting jurnal akuntansi (itu tetap eksklusif
+        # owner/manager lewat create_journal_entry(), lihat
+        # accounting/services/journal.py). Peran ini murni lapisan
+        # verifikasi/rekonsiliasi operasional sebelum data naik ke SPV
+        # Finance, sesuai Aturan Engineering M2/L2 (jurnal cuma 1 pintu).
+        ('admin_finance', 'Admin Finance'),
+        ('spv_finance', 'SPV Finance'),
     )
 
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='staff', db_index=True)

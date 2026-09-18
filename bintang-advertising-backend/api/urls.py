@@ -93,6 +93,7 @@ router.register(r'suppliers', customer_views.SupplierViewSet, basename='supplier
 from . import ai_business_analyst_views
 from . import executive_dashboard_views
 from .views.insights import CombinedInsightsView
+from .views import finance_dashboard as finance_dashboard_views
 from . import pos_views
 router.register(r'pos/sales', pos_views.POSSaleViewSet, basename='pos-sale')
 router.register(r'pos-void-requests', views.POSVoidRequestViewSet, basename='pos-void-request')
@@ -112,6 +113,8 @@ urlpatterns = [
     path('executive-dashboard/', executive_dashboard_views.ExecutiveDashboardView.as_view(), name='executive-dashboard'),
     path('executive-dashboard/export/', executive_dashboard_views.ExecutiveDashboardExportView.as_view(), name='executive-dashboard-export'),
     path('insights/combined/', CombinedInsightsView.as_view(), name='insights-combined'),
+    path('finance/dashboard-admin-finance/', finance_dashboard_views.AdminFinanceDashboardView.as_view(), name='finance-dashboard-admin'),
+    path('finance/dashboard-spv-finance/', finance_dashboard_views.SpvFinanceDashboardView.as_view(), name='finance-dashboard-spv'),
     # AI Business Analyst — dashboard analisis lintas modul, dibatasi owner/manager (sama dengan di atas).
     path('ai-business-analyst/', ai_business_analyst_views.AiBusinessAnalystView.as_view(), name='ai-business-analyst'),
     path('ai-business-analyst/chat/', ai_business_analyst_views.AiBusinessAnalystChatView.as_view(), name='ai-business-analyst-chat'),

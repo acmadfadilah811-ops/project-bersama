@@ -30,6 +30,7 @@ class POSPaymentMethodSerializer(serializers.ModelSerializer):
 
 class RingkasanShiftSerializer(serializers.ModelSerializer):
     kasir_nama = serializers.SerializerMethodField()
+    diverifikasi_oleh_nama = serializers.SerializerMethodField()
 
     class Meta:
         model = RingkasanShift
@@ -38,7 +39,11 @@ class RingkasanShiftSerializer(serializers.ModelSerializer):
             'tanggal', 'kasir', 'mulai', 'berakhir', 'expected', 'aktual', 'selisih',
             'rincian_tersedia', 'kas_awal', 'penjualan_tunai', 'kas_masuk', 'kas_keluar',
             'rincian_metode', 'keterangan',
+            'status_verifikasi', 'diverifikasi_oleh', 'diverifikasi_pada', 'catatan_verifikasi',
         ]
+
+    def get_diverifikasi_oleh_nama(self, obj):
+        return obj.diverifikasi_oleh.get_full_name() or obj.diverifikasi_oleh.username if obj.diverifikasi_oleh else ''
 
     def get_kasir_nama(self, obj):
         return obj.kasir.get_full_name() or obj.kasir.username if obj.kasir else ''

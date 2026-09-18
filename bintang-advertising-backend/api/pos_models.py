@@ -219,6 +219,28 @@ class RingkasanShift(models.Model):
     # diperbaiki 2026-08-13).
     keterangan = models.TextField(blank=True, default='')
 
+    # Verifikasi Admin Finance (2026-09-18) -- MURNI penanda rekonsiliasi
+    # operasional ("sudah dicek kesesuaian fisik vs sistem"), BUKAN posting
+    # akuntansi. Jurnal selisih kas (kalau ada) SUDAH otomatis diposting
+    # saat shift ditutup (RingkasanShiftCloseView, post_shift_cash_variance_
+    # journal() dipanggil bersamaan create() ringkasan -- M5) -- verifikasi
+    # ini terjadi BELAKANGAN, murni tinjauan ulang, tidak pernah memicu
+    # posting jurnal baru/berbeda. Aman ditambah tanpa menyentuh Aturan
+    # Engineering M2/L2 (jurnal 1 pintu, create_journal_entry()).
+    STATUS_VERIFIKASI_CHOICES = (
+        ('menunggu', 'Menunggu Verifikasi'),
+        ('diverifikasi', 'Diverifikasi'),
+        ('dipertanyakan', 'Dipertanyakan'),
+    )
+    status_verifikasi = models.CharField(
+        max_length=15, choices=STATUS_VERIFIKASI_CHOICES, default='menunggu', db_index=True,
+    )
+    diverifikasi_oleh = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='ringkasan_shift_diverifikasi',
+    )
+    diverifikasi_pada = models.DateTimeField(null=True, blank=True)
+    catatan_verifikasi = models.TextField(blank=True, default='')
+
     def save(self, *args, **kwargs):
         self.selisih = self.aktual - self.expected
         super().save(*args, **kwargs)

@@ -102,6 +102,49 @@ class IsOwnerManagerAdminOrKasir(BasePermission):
             getattr(request.user, 'role', '') in ['owner', 'manager', 'admin', 'kasir']
         )
 
+class CanAccessFinanceVerification(BasePermission):
+    """Owner/Manager/Admin/Kasir (perilaku lama RingkasanShiftViewSet &
+    CashTransactionViewSet tetap sama) DITAMBAH Admin Finance & SPV Finance
+    (2026-09-18) -- dibuat class BARU, sengaja TIDAK mengubah
+    IsOwnerManagerAdminOrKasir (god node dipakai 85-163 titik lain, R2)."""
+    def has_permission(self, request, view):
+        return bool(
+            request.user and
+            request.user.is_authenticated and
+            getattr(request.user, 'role', '') in (
+                'owner', 'manager', 'admin', 'kasir', 'admin_finance', 'spv_finance',
+            )
+        )
+
+
+class IsAdminFinanceOrOwnerManager(BasePermission):
+    """Khusus aksi verifikasi laporan kasir (RingkasanShift/CashTransaction)
+    & Papan Kerja Admin Finance -- Admin Finance adalah pelaksana utamanya,
+    Owner/Manager tetap bisa override langsung. SPV Finance TIDAK termasuk
+    di sini -- perannya membaca hasil agregat yang sudah diverifikasi lewat
+    IsSpvFinanceOrOwnerManager, bukan verifikasi individual."""
+    def has_permission(self, request, view):
+        return bool(
+            request.user and
+            request.user.is_authenticated and
+            getattr(request.user, 'role', '') in ('owner', 'manager', 'admin_finance')
+        )
+
+
+class IsSpvFinanceOrOwnerManager(BasePermission):
+    """Khusus Papan Kerja SPV Finance (agregat kas/pengeluaran/piutang yang
+    sudah diverifikasi Admin Finance) -- Owner/Manager tetap bisa akses
+    langsung. Admin Finance TIDAK termasuk -- dashboard-nya sendiri
+    (IsAdminFinanceOrOwnerManager) berbeda fokus (antrean verifikasi,
+    bukan agregat hasil)."""
+    def has_permission(self, request, view):
+        return bool(
+            request.user and
+            request.user.is_authenticated and
+            getattr(request.user, 'role', '') in ('owner', 'manager', 'spv_finance')
+        )
+
+
 class IsOwnerManagerAdminOrReadOnly(BasePermission):
     """
     Owner, Manager, Admin memiliki akses penuh (write/read).

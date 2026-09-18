@@ -11,6 +11,7 @@ import Dashboard from './features/dashboard/pages/Dashboard';
 import AdminDashboard from './features/dashboard/pages/AdminDashboard';
 import StaffDashboard from './features/dashboard/pages/StaffDashboard';
 import RingkasanTim from './features/dashboard/pages/RingkasanTim';
+import FinanceDashboard from './features/dashboard/pages/FinanceDashboard';
 import ExecutiveDashboard from './features/dashboard/pages/ExecutiveDashboard';
 import ExecutiveNav from './features/dashboard/components/ExecutiveNav';
 import AiBusinessAnalyst from './features/dashboard/pages/AiBusinessAnalyst';
@@ -44,6 +45,7 @@ function HomeRedirect() {
   if (role === 'staff') return <Navigate to="/staff-dashboard" replace />;
   if (role === 'kasir') return <Navigate to="/kasir" replace />;
   if (role === 'spv' || role === 'kordiv') return <Navigate to="/ringkasan-tim" replace />;
+  if (role === 'admin_finance' || role === 'spv_finance') return <Navigate to="/finance-dashboard" replace />;
   if (role === 'admin') return <Navigate to="/dashboard" replace />;
   // Owner & manager: dulu ada 2 dashboard terpisah (operasional + eksekutif) --
   // sekarang satu halaman, Ringkasan jadi landing default.
@@ -141,6 +143,7 @@ function App() {
                 <Route path="/dashboard" element={<DashboardRouter />} />
                 <Route path="/staff-dashboard" element={<StaffDashboard />} />
                 <Route path="/ringkasan-tim" element={<RingkasanTim />} />
+                <Route path="/finance-dashboard" element={<FinanceDashboard />} />
                 {/* Backend membatasi ke owner/manager; route ini hanya jalur masuknya. */}
                 <Route path="/dashboard-eksekutif" element={<ExecutiveDashboard />} />
                 <Route

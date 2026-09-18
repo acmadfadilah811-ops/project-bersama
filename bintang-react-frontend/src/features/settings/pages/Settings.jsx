@@ -1606,6 +1606,8 @@ export default function Settings() {
                   <option value="kasir">Kasir</option>
                   <option value="kordiv">Koordinator Divisi (Kordiv)</option>
                   <option value="spv">SPV / Supervisor</option>
+                  <option value="admin_finance">Admin Finance</option>
+                  <option value="spv_finance">SPV Finance</option>
                   <option value="admin">Admin</option>
                   <option value="manager">Manager</option>
                   {user?.role?.toLowerCase() === 'owner' && <option value="owner">Owner</option>}

@@ -149,6 +149,11 @@ const menuSpvKordiv = [
   { path: '/profile', label: 'Profil', icon: User, isGroup: false },
 ];
 
+const menuFinance = [
+  { path: '/finance-dashboard', label: 'Dashboard', icon: Wallet, isGroup: false },
+  { path: '/profile', label: 'Profil', icon: User, isGroup: false },
+];
+
 const menuKasir = [
   { path: '/kasir/dashboard', label: 'Dashboard', icon: LayoutDashboard, isGroup: false },
   { path: '/kasir/terminal', label: 'Kasir (POS)', icon: CreditCard, isGroup: false },
@@ -219,6 +224,7 @@ export default function Sidebar() {
   const getFeatureIdByPath = (path) => {
     if (path === '/dashboard' || path === '/') return 'dashboard';
     if (path === '/staff-dashboard') return 'staff-dashboard';
+    if (path === '/finance-dashboard') return 'finance-dashboard';
     if (path === '/orders') return 'orders';
     if (path.startsWith('/kasir')) return 'kasir-pos';
     if (path === '/jobs' || path === '/produksi') return 'jobs';
@@ -244,6 +250,8 @@ export default function Sidebar() {
       ? menuAdmin
       : userRole === 'spv' || userRole === 'kordiv'
       ? menuSpvKordiv
+      : userRole === 'admin_finance' || userRole === 'spv_finance'
+      ? menuFinance
       : groupedMenuOwnerManager;
 
   // Filter menu berdasarkan perizinan hak akses dinamis
