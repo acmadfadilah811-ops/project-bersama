@@ -20,6 +20,7 @@ export const MENU_FEATURES = [
   { id: 'divisi', label: 'Divisi & Tahap Proses', path: '/divisi' },
   { id: 'accounting-internal', label: 'Akuntansi Internal', path: '/accounting-internal' },
   { id: 'finance-dashboard', label: 'Dashboard Finance', path: '/finance-dashboard' },
+  { id: 'wa-bot-config', label: 'Pengaturan WA Bot', path: '/pengaturan-wa-bot' },
 ];
 
 export const DEFAULT_PERMISSIONS = {
@@ -60,6 +61,7 @@ export const DEFAULT_PERMISSIONS = {
     'divisi',
     'settings',
     'accounting-internal',
+    'wa-bot-config',
   ],
   admin: [
     'dashboard',

@@ -21,7 +21,6 @@ import {
   ExternalLink,
   Printer,
   Users,
-  Bot,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useKasir } from '../context/KasirContext';
@@ -78,10 +77,6 @@ export default function KasirSidebar({ isCollapsed, setIsCollapsed }) {
     { path: '/kasir/riwayat', label: 'Riwayat Transaksi', icon: History },
     { path: '/kasir/shift', label: 'Shift', icon: Clock },
     { path: '/kasir/pengaturan-cetak', label: 'Printer & Cetak', icon: Printer },
-    // Prompt/tools/FAQ/pricelist AI mengubah perilaku bot ke SEMUA
-    // pelanggan -- owner/manager only, kredensial/koneksi WA tetap di
-    // Settings > WhatsApp Gateway (instruksi user 2026-09-18).
-    ...(isOwnerOrAdmin ? [{ path: '/kasir/pengaturan-wa', label: 'Pengaturan WA Bot', icon: Bot }] : []),
   ];
 
   return (

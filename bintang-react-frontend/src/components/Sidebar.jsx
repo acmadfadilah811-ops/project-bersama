@@ -36,6 +36,7 @@ import {
   Banknote,
   Store,
   Gift,
+  Bot,
 } from 'lucide-react';
 
 
@@ -130,6 +131,7 @@ const groupedMenuOwnerManager = [
       { path: '/reports', label: 'Laporan Kerja', icon: BarChart3 },
     ],
   },
+  { path: '/pengaturan-wa-bot', label: 'Pengaturan WA Bot', icon: Bot, isGroup: false },
   { path: '/profile', label: 'Profil', icon: User, isGroup: false },
   PENGATURAN_GROUP,
 ];
