@@ -15,6 +15,7 @@ import PesananPage from './PesananPage';
 import KasirPelangganSupplier from './KasirPelangganSupplier';
 import PrinterSettings from '../../printing/pages/PrinterSettings';
 import WhatsAppChat from '../../whatsapp/pages/WhatsAppChat';
+import PengaturanWaBotPage from './PengaturanWaBotPage';
 import { X } from 'lucide-react';
 
 export default function KasirApp() {
@@ -77,7 +78,7 @@ export default function KasirApp() {
               <Route path="shift" element={<PosShift onToggleSidebar={handleToggleSidebar} />} />
               <Route path="ringkasan-shift-v2" element={<PosRekapHarian onToggleSidebar={handleToggleSidebar} />} />
               <Route path="pengaturan-cetak" element={<PrinterSettings />} />
-              <Route path="pengaturan-wa" element={<Navigate to="/kasir/dashboard" replace />} />
+              <Route path="pengaturan-wa" element={<PengaturanWaBotPage onToggleSidebar={handleToggleSidebar} />} />
               <Route path="*" element={<Navigate to="dashboard" replace />} />
             </Routes>
           </main>

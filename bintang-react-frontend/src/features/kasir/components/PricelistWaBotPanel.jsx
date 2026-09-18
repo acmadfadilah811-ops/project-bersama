@@ -13,12 +13,10 @@ function labelTierHarga(tiers, index) {
 }
 
 /**
- * Sub-tab "Pricelist WA Bot" di Pengaturan > Pengaturan Bisnis -- form
- * terstruktur (nama bahan + harga per tier qty) utk 4 kategori kalkulator
- * (banner/stiker/kertas_a3/kartu_nama) + teks tampilan bebas utk semua
- * kategori, plus unduh template & impor CSV per kategori terstruktur.
- * Sengaja DI LUAR <form> "Pengaturan Bisnis" (beda siklus simpan per
- * kategori + ada file upload) -- lihat Settings.jsx.
+ * Tab "Pricelist" di Kasir > Pengaturan WA Bot -- form terstruktur (nama
+ * bahan + harga per tier qty) utk 4 kategori kalkulator (banner/stiker/
+ * kertas_a3/kartu_nama) + teks tampilan bebas utk semua kategori, plus
+ * unduh template & impor CSV per kategori terstruktur.
  */
 export default function PricelistWaBotPanel() {
   const [kategoriList, setKategoriList] = useState([]);
