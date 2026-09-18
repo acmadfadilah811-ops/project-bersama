@@ -294,6 +294,18 @@ class JobBoardViewSet(viewsets.ModelViewSet):
     serializer_class = JobBoardSerializer
     permission_classes = [IsAuthenticated, IsClockedIn]
 
+    def get_permissions(self):
+        # SPV/Kordiv TIDAK PERNAH jadi pic_staff (lihat get_queryset() di
+        # bawah) -- mereka cuma mengawasi/assign, tidak pernah "mengerjakan"
+        # job sendiri, jadi status clock-in mereka sendiri tidak relevan sama
+        # sekali utk endpoint ini (beda dgn staff, yang memang harus clock-in
+        # sebelum mulai kerja di papan kerjanya). Tanpa pengecualian ini,
+        # SPV/Kordiv yang belum clock-in hari itu ke-403 di halaman landing
+        # mereka sendiri (Papan Kerja Tim) -- bug ditemukan 2026-09-18.
+        if getattr(self.request.user, 'role', None) in ('spv', 'kordiv'):
+            return [IsAuthenticated()]
+        return super().get_permissions()
+
     @transaction.atomic
     def perform_update(self, serializer):
         # Ambil status sebelum update
@@ -509,7 +521,7 @@ class JobBoardViewSet(viewsets.ModelViewSet):
 
         return scoped_qs
 
-    @action(detail=False, methods=['get'], url_path='ringkasan-tim', permission_classes=[IsAuthenticated, IsClockedIn])
+    @action(detail=False, methods=['get'], url_path='ringkasan-tim', permission_classes=[IsAuthenticated])
     def ringkasan_tim(self, request):
         """
         Ringkasan kinerja tim untuk SPV/Koordinator Divisi: jumlah job per
@@ -522,6 +534,14 @@ class JobBoardViewSet(viewsets.ModelViewSet):
         Khusus role spv/kordiv -- role lain pakai jalur yang sudah ada:
         staff lihat job miliknya sendiri lewat /api/jobs/ biasa, owner/
         manager/admin sudah lihat semua job company-wide di sana juga.
+
+        SENGAJA tidak pakai IsClockedIn (beda dgn permission_classes default
+        ViewSet ini) -- ini halaman LANDING SPV/Kordiv setelah login
+        (RingkasanTim.jsx), read-only, jadi status clock-in SI PENONTON
+        tidak relevan sama sekali utk bisa melihat ringkasan timnya sendiri
+        (bug ditemukan 2026-09-18: SPV/Kordiv yang belum clock-in hari itu
+        ke-403 & landing page-nya sendiri gagal dimuat, "Gagal memuat data
+        tim").
         """
         user = request.user
         if user.role not in ('spv', 'kordiv'):

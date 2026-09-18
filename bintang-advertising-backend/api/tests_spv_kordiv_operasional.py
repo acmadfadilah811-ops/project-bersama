@@ -282,6 +282,44 @@ class RingkasanTimKordivTests(APITestCase):
         self.assertEqual(beban[self.staff.id]['job_aktif'], 1)
 
 
+class KordivBelumClockInBisaLihatPapanKerjaTests(APITestCase):
+    """Regresi bug 2026-09-18: SPV/Kordiv yang BELUM clock-in hari itu
+    ke-403 (IsClockedIn) di 2 dari 3 panggilan landing page mereka sendiri
+    (Papan Kerja Tim/RingkasanTim.jsx), muncul sbg "Gagal memuat data tim"
+    di frontend. Kordiv/SPV tidak pernah jadi pic_staff (cuma
+    mengawasi/assign), jadi status clock-in mereka sendiri tidak relevan
+    sama sekali -- SENGAJA TIDAK bikin Absensi record di sini (beda dgn
+    test lain di file ini yang emang butuh clock-in utk skenario lain)."""
+
+    def setUp(self):
+        self.divisi = Divisi.objects.create(nama='Divisi Belum ClockIn Test')
+        self.kordiv = User.objects.create_user(
+            username='kordiv_belum_clockin', password='pw12345', role='kordiv', divisi=self.divisi,
+        )
+        self.spv = User.objects.create_user(username='spv_belum_clockin', password='pw12345', role='spv')
+        # TIDAK ADA Absensi.objects.create(...) -- ini intinya.
+
+    def test_kordiv_ringkasan_tim_tanpa_clockin_tetap_200(self):
+        self.client.force_authenticate(self.kordiv)
+        res = self.client.get('/api/jobs/ringkasan-tim/')
+        self.assertEqual(res.status_code, 200, res.content)
+
+    def test_kordiv_list_job_tanpa_clockin_tetap_200(self):
+        self.client.force_authenticate(self.kordiv)
+        res = self.client.get('/api/jobs/', {'status_pekerjaan': 'antrean,dikerjakan,kendala,selesai'})
+        self.assertEqual(res.status_code, 200, res.content)
+
+    def test_spv_ringkasan_tim_tanpa_clockin_tetap_200(self):
+        self.client.force_authenticate(self.spv)
+        res = self.client.get('/api/jobs/ringkasan-tim/')
+        self.assertEqual(res.status_code, 200, res.content)
+
+    def test_spv_list_job_tanpa_clockin_tetap_200(self):
+        self.client.force_authenticate(self.spv)
+        res = self.client.get('/api/jobs/', {'status_pekerjaan': 'antrean,dikerjakan,kendala,selesai'})
+        self.assertEqual(res.status_code, 200, res.content)
+
+
 class RingkasanTimBebanDivisiSpvTests(APITestCase):
     """ringkasan_tim() -- beban_divisi dipakai SPV untuk bandingkan kinerja
     antar divisi bawahannya (2+ Kordiv/divisi berbeda), bukan sekadar per
