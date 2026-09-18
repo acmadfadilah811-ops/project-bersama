@@ -242,6 +242,32 @@ class AiAgentToolLoopTest(TestCase):
         self.assertIn("sistem kami sedang sibuk", jawaban)
         mock_eskalasi.assert_called_once()
 
+    def test_model_reasoning_tolak_temperature_retry_tanpa_temperature_berhasil(self):
+        """gpt-5.5 (KoboiLLM, ditemukan produksi 2026-09-18) menolak TOTAL
+        parameter temperature custom -- begitu error ini kedetek, kode harus
+        retry SEKARANG tanpa temperature (bukan nunggu backoff/exhaust semua
+        retry), dan tetap berhasil kasih jawaban final."""
+        error_temperature = Exception(
+            "litellm.UnsupportedParamsError: gpt-5.5 doesn't support temperature=0.3 "
+            "while reasoning is active. Only temperature=1 is supported..."
+        )
+        resp_final = _mock_response(content="Halo Kak! Ada yang bisa kami bantu? 😊")
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.side_effect = [error_temperature, resp_final]
+
+        with patch("api.wa_logic.get_ai_client", return_value=mock_client), \
+             patch("time.sleep", return_value=None) as mock_sleep:
+            jawaban = proses_dengan_ai_agent("6281111111", "Budi", pesan_asli="halo")
+
+        self.assertEqual(jawaban, "Halo Kak! Ada yang bisa kami bantu? 😊")
+        self.assertEqual(mock_client.chat.completions.create.call_count, 2)
+        # Retry lgs (bukan error transient), tidak boleh nunggu backoff.
+        mock_sleep.assert_not_called()
+        kwargs_gagal = mock_client.chat.completions.create.call_args_list[0].kwargs
+        kwargs_berhasil = mock_client.chat.completions.create.call_args_list[1].kwargs
+        self.assertIn("temperature", kwargs_gagal)
+        self.assertNotIn("temperature", kwargs_berhasil)
+
     def test_fallback_keras_setelah_lolos_maks_putaran_tanpa_jawaban_final(self):
         tc = _mock_tool_call("call_x", "cek_faq", {"pertanyaan": "apa saja"})
         resp_tool = _mock_response(content=None, tool_calls=[tc])

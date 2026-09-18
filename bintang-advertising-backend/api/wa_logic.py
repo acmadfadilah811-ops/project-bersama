@@ -906,6 +906,16 @@ def proses_dengan_ai_agent(nomor, nama_pelanggan="", pesan_asli=""):
     # restart, sama seperti get_system_prompt() di get_memori_percakapan().
     tool_schemas_aktif = get_active_tool_schemas()
 
+    # Sebagian model "reasoning" (mis. gpt-5.5 via KoboiLLM, ditemukan
+    # 2026-09-18 setelah admin ganti model lewat Pengaturan WA Bot > Koneksi
+    # AI) MENOLAK TOTAL parameter temperature custom (400
+    # litellm.UnsupportedParamsError, "Only temperature=1 is supported...").
+    # Karena model sekarang bisa diganti admin kapan saja lewat UI, tidak
+    # bisa di-hardcode per-model -- begitu error ini kedetek, matikan
+    # temperature utk SISA proses (semua putaran/attempt berikutnya), lalu
+    # retry SEKARANG (bukan error transient, jadi tidak perlu nunggu backoff).
+    pakai_temperature = True
+
     for putaran in range(MAKS_PUTARAN_TOOL):
         max_retries = 3
         backoff = 1.0
@@ -913,14 +923,21 @@ def proses_dengan_ai_agent(nomor, nama_pelanggan="", pesan_asli=""):
         terakhir = None
         for attempt in range(max_retries):
             try:
-                response = client.chat.completions.create(
+                call_kwargs = dict(
                     model=model_name, messages=messages, tools=tool_schemas_aktif,
-                    tool_choice="auto", max_tokens=2048, temperature=0.3, timeout=15.0,
+                    tool_choice="auto", max_tokens=2048, timeout=15.0,
                 )
+                if pakai_temperature:
+                    call_kwargs["temperature"] = 0.3
+                response = client.chat.completions.create(**call_kwargs)
                 break
             except Exception as e:
                 logger.warning(f"AI completion attempt {attempt + 1} (putaran {putaran}) gagal: {e}")
                 terakhir = e
+                pesan_error = str(e).lower()
+                if pakai_temperature and 'unsupportedparamserror' in pesan_error.replace(' ', '') and 'temperature' in pesan_error:
+                    pakai_temperature = False
+                    continue
                 if attempt < max_retries - 1:
                     time.sleep(backoff)
                     backoff *= 2.0
