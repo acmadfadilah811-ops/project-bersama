@@ -16,6 +16,9 @@ from .report_views import ReportDataView, ReportExportView
 from .views.purchase_workflow import PurchaseWorkflowView
 from .views.purchase_reports import PurchaseReportView
 from .views.qz import QZCertificateView, QZSignView
+from .views.wa_pricelist import (
+    WaPricelistListView, WaPricelistDetailView, WaPricelistTemplateView, WaPricelistImportView,
+)
 from .protected_media import serve_protected_media
 
 router = DefaultRouter()
@@ -182,6 +185,10 @@ urlpatterns = [
 
     # Business Settings (mirip OrgSettings di Django CRM)
     path('business-settings/', BusinessSettingsView.as_view(), name='business-settings'),
+    path('wa-pricelist/', WaPricelistListView.as_view(), name='wa-pricelist-list'),
+    path('wa-pricelist/<str:slug>/', WaPricelistDetailView.as_view(), name='wa-pricelist-detail'),
+    path('wa-pricelist/<str:slug>/template/', WaPricelistTemplateView.as_view(), name='wa-pricelist-template'),
+    path('wa-pricelist/<str:slug>/import/', WaPricelistImportView.as_view(), name='wa-pricelist-import'),
     path('integrations/qz/certificate/', QZCertificateView.as_view(), name='qz-certificate'),
     path('integrations/qz/sign/', QZSignView.as_view(), name='qz-sign'),
     # WhatsApp Chat Integration
