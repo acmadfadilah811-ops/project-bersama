@@ -158,16 +158,16 @@ def ekstrak_nama_dari_pesan(pesan):
 # SYSTEM PROMPT & MEMORI
 # ════════════════════════════════════════════════════════════════
 
-def get_system_prompt(nama_pelanggan=""):
-    from .models import SystemConfig
-
-    try:
-        conf = SystemConfig.objects.get(pk="system_prompt")
-        template_ai = conf.value
-    except SystemConfig.DoesNotExist:
-        biz_name = get_business_name()
-        template_ai = (
-            f"Kamu adalah asisten virtual {biz_name} yang sangat ramah, sopan, dan profesional.\n"
+def default_system_prompt(nama_pelanggan=""):
+    """Template prompt default (dipakai kalau SystemConfig['system_prompt']
+    belum diisi admin) -- diekstrak jadi fungsi sendiri (2026-09-18) supaya
+    halaman admin Pengaturan WA Bot bisa menampilkan prompt yang BENAR-BENAR
+    sedang efektif dipakai bot, bukan kotak kosong (sebelumnya endpoint admin
+    cuma baca SystemConfig mentah, jadi kelihatan kosong padahal bot tetap
+    jalan pakai template ini sebagai fallback)."""
+    biz_name = get_business_name()
+    return (
+        f"Kamu adalah asisten virtual {biz_name} yang sangat ramah, sopan, dan profesional.\n"
             f"Saat ini kamu sedang melayani pelanggan bernama {nama_pelanggan or 'Kakak'}.\n\n"
             "=== INFORMASI BISNIS ===\n"
             f"- Nama Bisnis: {biz_name}\n"
@@ -189,7 +189,17 @@ def get_system_prompt(nama_pelanggan=""):
             "3. INFORMASI TOTAL BIAYA: Setiap kali kamu memberikan estimasi total biaya atau total harga pesanan kepada pelanggan, kamu WAJIB menyertakan keterangan/catatan kaki berikut di bawah nominal harga:\n"
             "'*untuk harga tersebut belum termasuk biaya desain dan finishing ya kak, untuk rincian totalnya nanti akan di konfirmasi kembali dengan mengirimkan nota invoicenya kak😊'\n\n"
             "4. INFORMASI WAKTU PENGERJAAN & HARI INI: Jika pelanggan bertanya apakah pesanan \"bisa jadi hari ini\" atau menanyakan tentang penyelesaian cepat (express), jawablah dengan ramah dan sopan bahwa estimasi pengerjaan standar adalah 1-3 hari kerja. Jelaskan bahwa untuk pengerjaan kilat/hari ini perlu dikonfirmasi terlebih dahulu ke tim produksi kami. Minta mereka menunggu sebentar karena staff/admin manusia kami akan segera memeriksa antrean mesin dan memberikan konfirmasi langsung apakah bisa diselesaikan hari ini."
-        )
+    )
+
+
+def get_system_prompt(nama_pelanggan=""):
+    from .models import SystemConfig
+
+    try:
+        conf = SystemConfig.objects.get(pk="system_prompt")
+        template_ai = conf.value
+    except SystemConfig.DoesNotExist:
+        template_ai = default_system_prompt(nama_pelanggan)
 
     petunjuk_data = (
         "\n\n=== KAMU PUNYA TOOLS, WAJIB DIPAKAI (SANGAT KRUSIAL) ===\n"

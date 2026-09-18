@@ -31,10 +31,16 @@ class WaBotConfigError(Exception):
 
 
 def get_prompt():
+    """Prompt yang BENAR-BENAR efektif dipakai bot sekarang -- kalau admin
+    belum pernah menyimpan override, kembalikan template default yang
+    sama persis dgn fallback wa_logic.get_system_prompt() (bukan string
+    kosong), supaya halaman admin tidak kelihatan kosong padahal bot
+    tetap jalan pakai template itu."""
     try:
         return SystemConfig.objects.get(key='system_prompt').value
     except SystemConfig.DoesNotExist:
-        return ''
+        from ..wa_logic import default_system_prompt
+        return default_system_prompt()
 
 
 def update_prompt(value):

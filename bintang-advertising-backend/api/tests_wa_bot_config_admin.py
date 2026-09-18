@@ -15,8 +15,10 @@ User = get_user_model()
 
 
 class WaBotConfigServiceTests(APITestCase):
-    def test_get_prompt_kosong_default(self):
-        self.assertEqual(svc.get_prompt(), '')
+    def test_get_prompt_belum_diset_kembalikan_template_default(self):
+        from api.wa_logic import default_system_prompt
+        self.assertEqual(svc.get_prompt(), default_system_prompt())
+        self.assertNotEqual(svc.get_prompt(), '')
 
     def test_update_dan_get_prompt(self):
         svc.update_prompt('Kamu adalah asisten baru.')
