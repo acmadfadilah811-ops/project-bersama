@@ -37,7 +37,9 @@ import {
   WifiOff,
   RefreshCw,
   Pencil,
+  Tag,
 } from 'lucide-react';
+import PricelistWaBotPanel from '../components/PricelistWaBotPanel';
 
 // ─── Helper ───────────────────────────────────────────────
 function formatWaktu(dateStr) {
@@ -791,7 +793,7 @@ export default function Settings() {
                 <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
               </div>
             ) : (
-              <form onSubmit={handleSaveBisnis} className="flex flex-col md:flex-row min-h-[500px]">
+              <div className="flex flex-col md:flex-row min-h-[500px]">
                 {/* Sidebar Sub-Tabs */}
                 <div className="w-full md:w-64 border-r border-slate-100 bg-slate-50/50 p-4 space-y-1 shrink-0">
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-2">Sub Setelan</p>
@@ -799,6 +801,7 @@ export default function Settings() {
                     { id: 'umum', label: 'Umum & Lokalisasi', icon: Building2 },
                     { id: 'keuangan', label: 'Keuangan & Invoice', icon: FileText },
                     { id: 'karyawan', label: 'Kebijakan Karyawan', icon: Users },
+                    { id: 'pricelist-wa-bot', label: 'Pricelist WA Bot', icon: Tag },
                   ].map((sub) => {
                     const SubIcon = sub.icon;
                     const isSubActive = subTab === sub.id;
@@ -819,6 +822,9 @@ export default function Settings() {
 
                 {/* Right Form Panel */}
                 <div className="flex-1 p-6 space-y-6">
+                  {subTab === 'pricelist-wa-bot' && <PricelistWaBotPanel />}
+                  {subTab !== 'pricelist-wa-bot' && (
+                  <form onSubmit={handleSaveBisnis} className="space-y-6">
                   <MsgBox msg={bisnisMsg} />
 
                   {/* SUB-TAB: UMUM */}
@@ -1084,8 +1090,10 @@ export default function Settings() {
                       Simpan Pengaturan Bisnis
                     </button>
                   </div>
+                  </form>
+                  )}
                 </div>
-              </form>
+              </div>
             )}
           </div>
         </div>
