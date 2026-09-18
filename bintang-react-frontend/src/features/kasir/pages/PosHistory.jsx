@@ -9,6 +9,7 @@ import SpkPublishModal from '../components/SpkPublishModal';
 import ReceiptPrint from '../components/ReceiptPrint';
 import VoidOrderModal from '../components/VoidOrderModal';
 import VoidOrderOtpModal from '../components/VoidOrderOtpModal';
+import ReturOrderOtpModal from '../components/ReturOrderOtpModal';
 import { getPrintErrorMessage, printReceipt } from '../../printing/services/printService';
 import { todayISO } from '../../../utils/date';
 
@@ -87,6 +88,13 @@ export default function PosHistory({ onToggleSidebar }) {
   const [returTanggal, setReturTanggal] = useState('');
   const [returLangsungKonfirmasi, setReturLangsungKonfirmasi] = useState(false);
   const [processingRetur, setProcessingRetur] = useState(false);
+  // Konfirmasi retur (2026-09-18) butuh OTP owner kalau aktornya bukan
+  // owner/manager/admin -- lihat api/services/order_return_otp.py &
+  // ReturOrderOtpModal.jsx. Mengajukan status Tunda TETAP bebas tanpa OTP.
+  const [showReturOtpModal, setShowReturOtpModal] = useState(false);
+  const [pendingReturId, setPendingReturId] = useState(null);
+  const ROLE_BYPASS_RETUR_OTP = ['owner', 'manager', 'admin'];
+  const isReturOtpBypass = ROLE_BYPASS_RETUR_OTP.includes(user?.role);
 
   // Volume transaksi advertising bisa ~100/hari -- filter tanggal (default
   // hari ini) supaya jumlah baris yang ditarik dari server tetap terbatas
@@ -293,18 +301,38 @@ export default function PosHistory({ onToggleSidebar }) {
     if (!selectedSale || processingRetur) return;
     setProcessingRetur(true);
     try {
-      await apiClient.post(`/orders/${selectedSale.id}/retur/`, {
+      // Owner/manager/admin (bypass OTP, lihat api/services/order_return_
+      // otp.py) boleh langsung minta 'Dikonfirmasi' dalam satu panggilan
+      // seperti sebelumnya. Role lain (kasir) SELALU dibuat 'Tunda' dulu --
+      // kalau minta langsung konfirmasi, lanjut ke alur OTP terpisah
+      // (ReturOrderOtpModal) setelah retur-nya tercatat.
+      const statusDiminta = returLangsungKonfirmasi ? 'Dikonfirmasi' : 'Tunda';
+      const res = await apiClient.post(`/orders/${selectedSale.id}/retur/`, {
         catatan: returCatatan,
         tanggal_pengembalian: returTanggal,
         nominal_refund: Number(returNominal) || 0,
-        // 'Dikonfirmasi' langsung memicu pengembalian stok (lihat retur() di
-        // backend) — 'Tunda' cuma mencatat pengajuan, stok baru kembali kalau
-        // dikonfirmasi belakangan (mis. lewat Transaksi > Penjualan).
-        status: returLangsungKonfirmasi ? 'Dikonfirmasi' : 'Tunda',
+        status: isReturOtpBypass ? statusDiminta : 'Tunda',
       });
+
+      // pengembalian_aktif = daftar_pengembalian.exclude(status='Batal').first(),
+      // dan PengembalianOrder di-ordering '-dibuat_pada' (terbaru duluan) --
+      // jadi ini selalu retur yang baru saja dibuat di atas, bukan yang lama.
+      const returBaru = res.data?.pengembalian_aktif || res.data?.daftar_pengembalian?.[0];
+
+      if (returLangsungKonfirmasi && !isReturOtpBypass && returBaru?.id) {
+        // Kasir minta langsung konfirmasi -- retur sudah tercatat 'Tunda',
+        // lanjut ke alur OTP untuk konfirmasinya.
+        notifySuccess('Diajukan', `Retur ${selectedSale.nomor} tercatat (Tunda). Lanjutkan konfirmasi lewat persetujuan OTP owner.`);
+        setShowReturModal(false);
+        setPendingReturId(returBaru.id);
+        setShowReturOtpModal(true);
+        fetchSales();
+        return;
+      }
+
       notifySuccess(
         'Berhasil',
-        returLangsungKonfirmasi
+        returLangsungKonfirmasi && isReturOtpBypass
           ? `Retur ${selectedSale.nomor} dikonfirmasi — stok sudah otomatis ditambahkan kembali.`
           : `Pengembalian pesanan ${selectedSale.nomor} berhasil diajukan (status Tunda) — stok belum berubah sampai dikonfirmasi.`
       );
@@ -907,6 +935,27 @@ export default function PosHistory({ onToggleSidebar }) {
             </form>
           </div>
         </div>
+      )}
+
+      {/* POPUP MODAL UI: Konfirmasi Retur perlu OTP owner (kasir non-bypass) */}
+      {showReturOtpModal && selectedSale && pendingReturId && (
+        <ReturOrderOtpModal
+          isOpen={showReturOtpModal}
+          onClose={() => {
+            setShowReturOtpModal(false);
+            setPendingReturId(null);
+          }}
+          order={selectedSale}
+          returId={pendingReturId}
+          onConfirmed={() => {
+            notifySuccess(
+              'Berhasil',
+              `Retur ${selectedSale.nomor} dikonfirmasi — stok sudah otomatis ditambahkan kembali.`
+            );
+            setPendingReturId(null);
+            fetchSales();
+          }}
+        />
       )}
 
       {/* POPUP MODAL UI: Kirim Resi via Email */}
