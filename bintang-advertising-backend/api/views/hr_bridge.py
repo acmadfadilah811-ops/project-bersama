@@ -46,11 +46,22 @@ def _map_job_position_ke_role(job_position: str) -> str:
     """Peta nama Job Position dari HR ke role Bintang. "CEO" sengaja
     dipetakan ke 'manager', BUKAN 'owner' -- role Owner (akses tertinggi)
     tidak pernah dibuat otomatis oleh sistem lain, harus dinaikkan manual
-    oleh Owner yang sudah ada."""
+    oleh Owner yang sudah ada.
+
+    "Admin Finance"/"SPV Finance" dicek match PERSIS SEBELUM cek prefix
+    'spv'/'kordiv' -- "spv finance" juga startswith('spv'), jadi kalau
+    urutannya kebalik bakal salah kepetakan ke role 'spv' biasa (bug
+    ditemukan 2026-09-18 saat role admin_finance/spv_finance ditambahkan;
+    sebelumnya 'admin finance' malah dipetakan ke 'kordiv', jamannya
+    "Admin Finance" cuma posisi bebas teks di atas role kordiv)."""
     label = (job_position or '').strip().lower()
+    if label == 'admin finance':
+        return 'admin_finance'
+    if label == 'spv finance':
+        return 'spv_finance'
     if label.startswith('spv'):
         return 'spv'
-    if label.startswith('kordiv') or label == 'admin finance':
+    if label.startswith('kordiv'):
         return 'kordiv'
     if label in ('manager', 'ceo'):
         return 'manager'
