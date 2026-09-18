@@ -448,8 +448,21 @@ class JobBoardViewSet(viewsets.ModelViewSet):
         # sendiri saja, tidak pernah divisi/cabang SPV lain. Mereka sendiri
         # tidak pernah jadi pic_staff (JobBoard.pic_staff dibatasi
         # role='staff'), jadi tidak perlu klausa "job miliknya sendiri".
+        # DITAMBAH: job yang BELUM ditugaskan (pic_staff kosong) di divisi
+        # mereka sendiri -- tanpa ini, `pic_staff_id__in=[...]` tidak pernah
+        # cocok dengan NULL, jadi Kordiv tidak pernah bisa lihat/assign job
+        # unassigned sama sekali (gap ditemukan saat membangun fitur "Assign
+        # Staff" Papan Kerja Kordiv, sama seperti aturan unassigned staff di
+        # bawah). SPV umumnya tidak py divisi tunggal (mengawasi beberapa
+        # Kordiv/divisi) -- kalau `user.divisi` kosong, cukup lingkup bawahan
+        # seperti sebelumnya, fail-open ke perilaku lama, bukan error.
         elif user.role in ('spv', 'kordiv'):
             scoped_qs = base_qs.filter(pic_staff_id__in=get_subordinate_user_ids(user))
+            if user.divisi_id:
+                scoped_qs = base_qs.filter(
+                    Q(pic_staff_id__in=get_subordinate_user_ids(user)) |
+                    Q(pic_staff__isnull=True, tahap__divisi=user.divisi)
+                )
         # Staff: bisa lihat job miliknya ATAU job unassigned di divisinya
         elif user.divisi:
             scoped_qs = base_qs.filter(
@@ -526,6 +539,53 @@ class JobBoardViewSet(viewsets.ModelViewSet):
             .values_list('status_pekerjaan', 'jumlah')
         )
 
+        # Job selesai HARI INI (bukan sepanjang masa seperti job_per_status
+        # di atas) & job belum dialokasikan di divisi Kordiv sendiri -- dua
+        # angka ini dipakai kartu ringkasan Papan Kerja Kordiv ("Selesai
+        # Hari Ini" & "N SPK belum dialokasikan"). Unassigned cuma dihitung
+        # kalau user punya divisi (SPV lintas-divisi tidak, konsisten
+        # dengan get_queryset() di atas).
+        selesai_hari_ini = JobBoard.objects.filter(
+            pic_staff_id__in=subordinate_ids, status_pekerjaan='selesai',
+            waktu_selesai__date=timezone.localdate(),
+        ).count()
+        job_belum_dialokasikan = 0
+        if user.divisi_id:
+            job_belum_dialokasikan = JobBoard.objects.filter(
+                pic_staff__isnull=True, tahap__divisi=user.divisi,
+            ).count()
+
+        # Beban kerja per staff bawahan -- job aktif saat ini (snapshot) +
+        # proporsi selesai/total job yang TERSENTUH (mulai atau selesai)
+        # dalam 7 hari terakhir, dipakai grid "Beban Kerja Staff" di Papan
+        # Kerja Kordiv. Staff tanpa job tersentuh minggu ini tetap muncul
+        # (persen_selesai_minggu_ini = None, bukan dibagi nol).
+        tujuh_hari_lalu = timezone.now() - timezone.timedelta(days=7)
+        beban_staff = []
+        staff_bawahan = CustomUser.objects.filter(
+            id__in=subordinate_ids, role='staff',
+        ).exclude(id=user.id)
+        for staff in staff_bawahan:
+            job_aktif = JobBoard.objects.filter(
+                pic_staff=staff, status_pekerjaan__in=('antrean', 'dikerjakan', 'kendala'),
+            ).count()
+            minggu_ini_qs = JobBoard.objects.filter(pic_staff=staff).filter(
+                Q(waktu_mulai__gte=tujuh_hari_lalu) | Q(waktu_selesai__gte=tujuh_hari_lalu)
+            )
+            total_minggu_ini = minggu_ini_qs.count()
+            selesai_minggu_ini = minggu_ini_qs.filter(status_pekerjaan='selesai').count()
+            beban_staff.append({
+                'staff_id': staff.id,
+                'nama': staff.get_full_name() or staff.username,
+                'job_aktif': job_aktif,
+                'selesai_minggu_ini': selesai_minggu_ini,
+                'total_minggu_ini': total_minggu_ini,
+                'persen_selesai_minggu_ini': (
+                    round(selesai_minggu_ini / total_minggu_ini * 100) if total_minggu_ini else None
+                ),
+            })
+        beban_staff.sort(key=lambda b: b['job_aktif'], reverse=True)
+
         pemakaian_mesin = list(
             PenggunaanMesin.objects.filter(operator_id__in=subordinate_ids)
             .values('mesin__nama')
@@ -540,8 +600,61 @@ class JobBoardViewSet(viewsets.ModelViewSet):
         return Response({
             'jumlah_anggota_tim': len(subordinate_ids) - 1,  # tidak menghitung diri sendiri
             'job_per_status': status_counts,
+            'selesai_hari_ini': selesai_hari_ini,
+            'job_belum_dialokasikan': job_belum_dialokasikan,
+            'beban_staff': beban_staff,
             'pemakaian_mesin': pemakaian_mesin,
         })
+
+    @action(detail=True, methods=['post'], url_path='assign-staff', permission_classes=[IsAuthenticated, IsClockedIn])
+    def assign_staff(self, request, pk=None):
+        """POST /api/jobs/{id}/assign-staff/ — SPV/Kordiv menugaskan job yang
+        BELUM ditugaskan (pic_staff kosong) ke salah satu staff bawahannya.
+
+        Padanan spk.resolve_staff() (dipakai /orders/{id}/assign/ untuk
+        menerbitkan SPK baru) tapi untuk JobBoard yang SUDAH ada -- dibuat
+        endpoint action terpisah, BUKAN lewat PATCH /api/jobs/{id}/ biasa,
+        karena JobBoardSerializer.get_fields() sengaja mengunci field
+        `pic_staff` jadi read-only untuk role selain owner/manager/admin
+        (bersama insentif/biaya_desain/deadline, field sensitif lain) --
+        mengubah itu untuk SPV/Kordiv akan ikut membuka field lain yang
+        memang tidak boleh mereka ubah.
+        """
+        user = request.user
+        if user.role not in ('spv', 'kordiv'):
+            return Response(
+                {'error': 'Hanya SPV/Koordinator Divisi yang dapat menugaskan job ke staff.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        job = self.get_object()  # get_queryset() sudah scope -- di luar cakupan otomatis 404
+        if job.pic_staff_id:
+            return Response({'error': 'Job ini sudah ditugaskan ke staff lain.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        staff_id = request.data.get('staff_id') or request.data.get('pic_staff')
+        try:
+            staff = CustomUser.objects.get(pk=staff_id, role='staff')
+        except (CustomUser.DoesNotExist, ValueError, TypeError):
+            return Response({'error': 'Staff tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
+        if staff.pk not in get_subordinate_user_ids(user):
+            return Response(
+                {'error': 'Anda hanya dapat menugaskan job ke staff bawahan Anda sendiri.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        job.pic_staff = staff
+        job.status_pekerjaan = 'antrean'
+        job.save(update_fields=['pic_staff', 'status_pekerjaan'])
+
+        tahap_nama = job.tahap.nama if job.tahap else "Tahap Awal"
+        _catat_aktivitas_order(
+            job, user, "ASSIGN_JOB",
+            f"'{user.username}' menugaskan item '{job.nama_produk}' pada tahap '{tahap_nama}' ke staff '{staff.username}'"
+        )
+
+        return Response({
+            'message': f'Job berhasil ditugaskan ke {staff.username}.',
+            'job': JobBoardSerializer(job, context={'request': request}).data,
+        }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsClockedIn])
     def claim(self, request, pk=None):

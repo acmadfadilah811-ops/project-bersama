@@ -169,3 +169,114 @@ class JobBoardQuerysetSpvKordivTests(APITestCase):
         ids = {r['id'] for r in rows}
         self.assertIn(self.job_a.id, ids)
         self.assertNotIn(self.job_b.id, ids)
+
+
+class JobBoardUnassignedKordivTests(APITestCase):
+    """JobBoardViewSet.get_queryset() -- Kordiv HARUS bisa lihat job yang
+    BELUM ditugaskan (pic_staff kosong) di divisinya sendiri, supaya fitur
+    Assign Staff di Papan Kerja Kordiv bisa jalan. Sebelum perbaikan, klausa
+    `pic_staff_id__in=[...]` tidak pernah cocok dengan NULL sehingga job
+    unassigned tidak pernah muncul sama sekali untuk Kordiv/SPV."""
+
+    def setUp(self):
+        self.divisi = Divisi.objects.create(nama='Divisi Unassigned Test')
+        self.divisi_lain = Divisi.objects.create(nama='Divisi Unassigned Lain')
+        self.tahap = TahapProses.objects.create(nama='Tahap Unassigned Test', divisi=self.divisi, urutan=1)
+        self.tahap_lain = TahapProses.objects.create(nama='Tahap Unassigned Lain', divisi=self.divisi_lain, urutan=1)
+        self.kordiv = User.objects.create_user(
+            username='kordiv_unassigned_test', password='pw12345', role='kordiv', divisi=self.divisi,
+        )
+        self.staff_bawahan = User.objects.create_user(
+            username='staff_bawahan_unassigned', password='pw12345', role='staff', atasan=self.kordiv,
+        )
+        Absensi.objects.create(staff=self.kordiv, tanggal=timezone.localdate(), jam_masuk=timezone.now())
+
+        order = Order.objects.create(id='ORD-UNASSIGNED-1', nomor_wa='08199999991', nama='Pelanggan Unassigned Test')
+        item = OrderItem.objects.create(order=order, jenis_produk='Item Unassigned', qty=1, harga_jual=10000)
+        self.job_unassigned_divisi_sendiri = JobBoard.objects.create(
+            order_item=item, tahap=self.tahap, pic_staff=None, status_pekerjaan='antrean',
+        )
+        item2 = OrderItem.objects.create(order=order, jenis_produk='Item Unassigned Lain', qty=1, harga_jual=10000)
+        self.job_unassigned_divisi_lain = JobBoard.objects.create(
+            order_item=item2, tahap=self.tahap_lain, pic_staff=None, status_pekerjaan='antrean',
+        )
+        self.client.force_authenticate(self.kordiv)
+
+    def test_kordiv_lihat_job_unassigned_divisi_sendiri_saja(self):
+        res = self.client.get('/api/jobs/')
+        self.assertEqual(res.status_code, 200, res.content)
+        rows = res.data['results'] if isinstance(res.data, dict) else res.data
+        ids = {r['id'] for r in rows}
+        self.assertIn(self.job_unassigned_divisi_sendiri.id, ids)
+        self.assertNotIn(self.job_unassigned_divisi_lain.id, ids)
+
+    def test_kordiv_assign_job_unassigned_ke_bawahan_berhasil(self):
+        res = self.client.post(
+            f'/api/jobs/{self.job_unassigned_divisi_sendiri.id}/assign-staff/',
+            {'staff_id': self.staff_bawahan.id}, format='json',
+        )
+        self.assertEqual(res.status_code, 200, res.content)
+        self.job_unassigned_divisi_sendiri.refresh_from_db()
+        self.assertEqual(self.job_unassigned_divisi_sendiri.pic_staff_id, self.staff_bawahan.id)
+
+    def test_kordiv_assign_job_ke_bukan_bawahan_ditolak(self):
+        staff_lain = User.objects.create_user(username='staff_lain_unassigned', password='pw12345', role='staff')
+        res = self.client.post(
+            f'/api/jobs/{self.job_unassigned_divisi_sendiri.id}/assign-staff/',
+            {'staff_id': staff_lain.id}, format='json',
+        )
+        self.assertEqual(res.status_code, 403, res.content)
+        self.job_unassigned_divisi_sendiri.refresh_from_db()
+        self.assertIsNone(self.job_unassigned_divisi_sendiri.pic_staff_id)
+
+    def test_kordiv_assign_job_sudah_ditugaskan_ditolak(self):
+        self.job_unassigned_divisi_sendiri.pic_staff = self.staff_bawahan
+        self.job_unassigned_divisi_sendiri.save(update_fields=['pic_staff'])
+        staff_lain = User.objects.create_user(
+            username='staff_lain_assign_ulang', password='pw12345', role='staff', atasan=self.kordiv,
+        )
+        res = self.client.post(
+            f'/api/jobs/{self.job_unassigned_divisi_sendiri.id}/assign-staff/',
+            {'staff_id': staff_lain.id}, format='json',
+        )
+        self.assertEqual(res.status_code, 400, res.content)
+
+
+class RingkasanTimKordivTests(APITestCase):
+    """JobBoardViewSet.ringkasan_tim() -- angka tambahan untuk kartu Papan
+    Kerja Kordiv: selesai hari ini, job belum dialokasikan, beban per staff."""
+
+    def setUp(self):
+        self.divisi = Divisi.objects.create(nama='Divisi Ringkasan Test')
+        self.tahap = TahapProses.objects.create(nama='Tahap Ringkasan Test', divisi=self.divisi, urutan=1)
+        self.kordiv = User.objects.create_user(
+            username='kordiv_ringkasan_test', password='pw12345', role='kordiv', divisi=self.divisi,
+        )
+        self.staff = User.objects.create_user(
+            username='staff_ringkasan_test', password='pw12345', role='staff', atasan=self.kordiv,
+        )
+        Absensi.objects.create(staff=self.kordiv, tanggal=timezone.localdate(), jam_masuk=timezone.now())
+
+        order = Order.objects.create(id='ORD-RINGKASAN-1', nomor_wa='08199999992', nama='Pelanggan Ringkasan Test')
+        item_selesai = OrderItem.objects.create(order=order, jenis_produk='Item Selesai', qty=1, harga_jual=10000)
+        JobBoard.objects.create(
+            order_item=item_selesai, tahap=self.tahap, pic_staff=self.staff,
+            status_pekerjaan='selesai', waktu_selesai=timezone.now(),
+        )
+        item_aktif = OrderItem.objects.create(order=order, jenis_produk='Item Aktif', qty=1, harga_jual=10000)
+        JobBoard.objects.create(
+            order_item=item_aktif, tahap=self.tahap, pic_staff=self.staff, status_pekerjaan='dikerjakan',
+        )
+        item_unassigned = OrderItem.objects.create(order=order, jenis_produk='Item Belum Ditugaskan', qty=1, harga_jual=10000)
+        JobBoard.objects.create(order_item=item_unassigned, tahap=self.tahap, pic_staff=None, status_pekerjaan='antrean')
+
+        self.client.force_authenticate(self.kordiv)
+
+    def test_ringkasan_tim_berisi_selesai_hari_ini_dan_belum_dialokasikan(self):
+        res = self.client.get('/api/jobs/ringkasan-tim/')
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(res.data['selesai_hari_ini'], 1)
+        self.assertEqual(res.data['job_belum_dialokasikan'], 1)
+        beban = {b['staff_id']: b for b in res.data['beban_staff']}
+        self.assertIn(self.staff.id, beban)
+        self.assertEqual(beban[self.staff.id]['job_aktif'], 1)

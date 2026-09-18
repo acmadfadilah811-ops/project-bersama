@@ -43,6 +43,7 @@ class POSSaleSerializer(serializers.ModelSerializer):
 class POSVoidRequestSerializer(serializers.ModelSerializer):
     diminta_oleh_nama = serializers.SerializerMethodField()
     disetujui_oleh_nama = serializers.SerializerMethodField()
+    disetujui_kordiv_oleh_nama = serializers.SerializerMethodField()
     sale_nomor = serializers.ReadOnlyField(source='sale.nomor')
     otp_code = serializers.SerializerMethodField()
     kadaluarsa = serializers.SerializerMethodField()
@@ -51,7 +52,9 @@ class POSVoidRequestSerializer(serializers.ModelSerializer):
         model = POSVoidRequest
         fields = [
             'id', 'sale', 'sale_nomor', 'diminta_oleh', 'diminta_oleh_nama',
-            'alasan', 'status', 'otp_code', 'disetujui_oleh', 'disetujui_oleh_nama',
+            'alasan', 'status', 'otp_code',
+            'disetujui_kordiv_oleh', 'disetujui_kordiv_oleh_nama', 'disetujui_kordiv_pada',
+            'disetujui_oleh', 'disetujui_oleh_nama',
             'alasan_tolak', 'dibuat_pada', 'disetujui_pada', 'kadaluarsa_pada',
             'digunakan_pada', 'kadaluarsa',
         ]
@@ -63,19 +66,24 @@ class POSVoidRequestSerializer(serializers.ModelSerializer):
     def get_disetujui_oleh_nama(self, obj):
         return obj.disetujui_oleh.username if obj.disetujui_oleh else None
 
+    def get_disetujui_kordiv_oleh_nama(self, obj):
+        return obj.disetujui_kordiv_oleh.username if obj.disetujui_kordiv_oleh else None
+
     def get_kadaluarsa(self, obj):
         from django.utils import timezone as _tz
         return bool(obj.kadaluarsa_pada and _tz.now() > obj.kadaluarsa_pada)
 
     def get_otp_code(self, obj):
         # Sama seperti OrderVoidRequestSerializer: kode cuma boleh terlihat
-        # owner/manager (approver) ATAU kasir yang mengajukan permintaan ini
-        # sendiri, dan hanya saat statusnya 'disetujui' & belum kadaluarsa.
+        # owner/manager/spv (approver final) ATAU kasir yang mengajukan
+        # permintaan ini sendiri, dan hanya saat statusnya 'disetujui' &
+        # belum kadaluarsa. Kordiv TIDAK termasuk -- mereka cuma approver
+        # tahap 1 (tidak pernah lihat/pegang OTP, itu wewenang tahap final).
         request = self.context.get('request')
         user = getattr(request, 'user', None) if request else None
         if not user or obj.status != 'disetujui' or self.get_kadaluarsa(obj):
             return ''
-        if getattr(user, 'role', '') in ('owner', 'manager'):
+        if getattr(user, 'role', '') in ('owner', 'manager', 'spv'):
             return obj.otp_code
         if obj.diminta_oleh_id == getattr(user, 'id', None):
             return obj.otp_code

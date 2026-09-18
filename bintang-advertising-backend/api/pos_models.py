@@ -147,7 +147,12 @@ class POSVoidRequest(models.Model):
     Pesanan & Pelunasan) — instruksi user 2026-08-14.
     """
     STATUS_CHOICES = (
-        ('pending', 'Menunggu Persetujuan'),
+        ('pending', 'Menunggu Persetujuan Kordiv'),
+        # Kordiv sudah menyetujui tahap 1, menunggu approval final SPV/
+        # owner/manager (tahap 2) -- lihat api/services/pos_void_otp.py.
+        # Owner/manager tetap bisa langsung setujui/tolak dari status
+        # 'pending' juga (shortcut, tidak wajib lewat Kordiv).
+        ('menunggu_spv', 'Disetujui Kordiv, Menunggu SPV'),
         ('disetujui', 'Disetujui'),
         ('ditolak', 'Ditolak'),
         ('digunakan', 'Sudah Digunakan'),
@@ -160,6 +165,13 @@ class POSVoidRequest(models.Model):
     alasan = models.TextField()
     status = models.CharField(max_length=12, choices=STATUS_CHOICES, default='pending', db_index=True)
     otp_code = models.CharField(max_length=6, blank=True, default='')
+    # Persetujuan tahap 1 (Kordiv) -- terpisah dari `disetujui_oleh` yang
+    # dipakai approval final tahap 2 (SPV/owner/manager), supaya jejak
+    # audit dua tahap ini tidak saling menimpa.
+    disetujui_kordiv_oleh = models.ForeignKey(
+        CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='pos_void_requests_kordiv',
+    )
+    disetujui_kordiv_pada = models.DateTimeField(null=True, blank=True)
     disetujui_oleh = models.ForeignKey(
         CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='pos_void_requests_disetujui',
     )

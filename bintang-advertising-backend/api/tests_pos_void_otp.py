@@ -227,3 +227,91 @@ class PosVoidOtpTests(APITestCase):
         hasil = response.data['results'] if isinstance(response.data, dict) else response.data
         self.assertEqual(len(hasil), 1)
         self.assertEqual(hasil[0]['otp_code'], '123456')
+
+
+class PosVoidOtpKordivStageTests(APITestCase):
+    """Alur 2 tahap (2026-09-18): Kordiv menyetujui/menolak dulu (tahap 1,
+    pending -> menunggu_spv), baru SPV/owner/manager memberi approval final
+    ber-OTP (tahap 2). Owner/manager/SPV tetap boleh lewati Kordiv sama
+    sekali langsung dari 'pending' (shortcut, hak override yang sudah ada
+    sebelumnya, tidak dihapus)."""
+
+    def setUp(self):
+        self.owner = User.objects.create_user(username='owner_void_kordiv', password='secret', role='owner')
+        self.spv = User.objects.create_user(username='spv_void_kordiv', password='secret', role='spv')
+        self.kordiv = User.objects.create_user(username='kordiv_void_kordiv', password='secret', role='kordiv')
+        self.kasir = User.objects.create_user(username='kasir_void_kordiv', password='secret', role='kasir')
+        self.sale = POSSale.objects.create(nomor='POS-VOID-KORDIV-0001', kasir=self.kasir, status='paid')
+        self.void_request = POSVoidRequest.objects.create(
+            sale=self.sale, diminta_oleh=self.kasir, alasan='salah input produk',
+        )
+
+    def test_kordiv_setujui_pindah_ke_menunggu_spv_tanpa_otp(self):
+        self.client.force_authenticate(self.kordiv)
+        response = self.client.post(f'/api/pos-void-requests/{self.void_request.id}/setujui-kordiv/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['status'], 'menunggu_spv')
+        self.assertEqual(response.data['otp_code'], '')  # belum ada OTP -- itu wewenang tahap final
+        self.void_request.refresh_from_db()
+        self.assertEqual(self.void_request.disetujui_kordiv_oleh_id, self.kordiv.id)
+
+    def test_kordiv_tolak_wajib_alasan(self):
+        self.client.force_authenticate(self.kordiv)
+        response = self.client.post(f'/api/pos-void-requests/{self.void_request.id}/tolak-kordiv/', {})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.void_request.refresh_from_db()
+        self.assertEqual(self.void_request.status, 'pending')
+
+    def test_kordiv_tolak_langsung_terminal(self):
+        self.client.force_authenticate(self.kordiv)
+        response = self.client.post(
+            f'/api/pos-void-requests/{self.void_request.id}/tolak-kordiv/',
+            {'alasan_tolak': 'tidak sesuai kebijakan divisi'},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['status'], 'ditolak')
+
+    def test_spv_tidak_bisa_panggil_aksi_tahap_kordiv(self):
+        self.client.force_authenticate(self.spv)
+        response = self.client.post(f'/api/pos-void-requests/{self.void_request.id}/setujui-kordiv/')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_kordiv_tidak_bisa_panggil_aksi_final(self):
+        self.client.force_authenticate(self.kordiv)
+        response = self.client.post(f'/api/pos-void-requests/{self.void_request.id}/setujui/')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_final_ditolak_kalau_masih_pending_belum_lewat_kordiv_untuk_kasir(self):
+        # Kasir jelas tidak boleh -- dipakai sekadar memastikan endpoint
+        # final masih menolak role yang tidak berwenang sama sekali.
+        self.client.force_authenticate(self.kasir)
+        response = self.client.post(f'/api/pos-void-requests/{self.void_request.id}/setujui/')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_alur_lengkap_kordiv_lalu_spv_menghasilkan_otp(self):
+        self.client.force_authenticate(self.kordiv)
+        r1 = self.client.post(f'/api/pos-void-requests/{self.void_request.id}/setujui-kordiv/')
+        self.assertEqual(r1.data['status'], 'menunggu_spv')
+
+        self.client.force_authenticate(self.spv)
+        r2 = self.client.post(f'/api/pos-void-requests/{self.void_request.id}/setujui/')
+        self.assertEqual(r2.status_code, status.HTTP_200_OK, r2.data)
+        self.assertEqual(r2.data['status'], 'disetujui')
+        self.assertEqual(len(r2.data['otp_code']), 6)
+
+    def test_owner_boleh_lewati_kordiv_langsung_dari_pending(self):
+        self.client.force_authenticate(self.owner)
+        response = self.client.post(f'/api/pos-void-requests/{self.void_request.id}/setujui/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data['status'], 'disetujui')
+
+    def test_kordiv_dan_spv_melihat_semua_permintaan_bukan_hanya_miliknya(self):
+        self.client.force_authenticate(self.kordiv)
+        res_kordiv = self.client.get('/api/pos-void-requests/')
+        hasil_kordiv = res_kordiv.data['results'] if isinstance(res_kordiv.data, dict) else res_kordiv.data
+        self.assertEqual(len(hasil_kordiv), 1)
+
+        self.client.force_authenticate(self.spv)
+        res_spv = self.client.get('/api/pos-void-requests/')
+        hasil_spv = res_spv.data['results'] if isinstance(res_spv.data, dict) else res_spv.data
+        self.assertEqual(len(hasil_spv), 1)

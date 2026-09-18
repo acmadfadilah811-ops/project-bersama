@@ -183,16 +183,27 @@ export default function Dashboard() {
   const fetchVoidRequests = useCallback(async () => {
     if (!isPrivileged) return;
     try {
-      const [resOrder, resPos] = await Promise.all([
+      // POS void request sekarang 2 tahap (Kordiv dulu, baru Owner/Manager/
+      // SPV final -- 2026-09-18): 'pending' (belum disentuh Kordiv sama
+      // sekali, atau memang belum ada Kordiv) DAN 'menunggu_spv' (sudah
+      // disetujui Kordiv) sama-sama masih butuh tindakan Owner di sini --
+      // endpoint cuma terima 1 nilai status per panggilan, jadi 2 request
+      // terpisah lalu digabung. order-void-requests TIDAK ikut berubah
+      // (masih 1 tahap, tetap 'pending' saja).
+      const [resOrder, resPosPending, resPosMenungguSpv] = await Promise.all([
         apiClient.get('/order-void-requests/', { params: { status: 'pending' } }),
         apiClient.get('/pos-void-requests/', { params: { status: 'pending' } }),
+        apiClient.get('/pos-void-requests/', { params: { status: 'menunggu_spv' } }),
       ]);
       const orderList = (Array.isArray(resOrder.data) ? resOrder.data : resOrder.data?.results || [])
         .map((r) => ({ ...r, _tipe: 'order' }));
-      const posList = (Array.isArray(resPos.data) ? resPos.data : resPos.data?.results || [])
+      const posListPending = (Array.isArray(resPosPending.data) ? resPosPending.data : resPosPending.data?.results || [])
+        .map((r) => ({ ...r, _tipe: 'pos' }));
+      const posListMenungguSpv = (Array.isArray(resPosMenungguSpv.data) ? resPosMenungguSpv.data : resPosMenungguSpv.data?.results || [])
         .map((r) => ({ ...r, _tipe: 'pos' }));
       setVoidRequests(
-        [...orderList, ...posList].sort((a, b) => new Date(b.dibuat_pada) - new Date(a.dibuat_pada))
+        [...orderList, ...posListPending, ...posListMenungguSpv]
+          .sort((a, b) => new Date(b.dibuat_pada) - new Date(a.dibuat_pada))
       );
     } catch (err) {
       console.error('Gagal mengambil permintaan void:', err);
@@ -218,7 +229,7 @@ export default function Dashboard() {
         .map((r) => ({ ...r, _tipe: 'pos' }));
       setVoidHistory(
         [...orderList, ...posList]
-          .filter((r) => r.status !== 'pending')
+          .filter((r) => r.status !== 'pending' && r.status !== 'menunggu_spv')
           .sort((a, b) => new Date(b.dibuat_pada) - new Date(a.dibuat_pada))
           .slice(0, 100)
       );
@@ -1542,6 +1553,11 @@ export default function Dashboard() {
                         <span className="text-[9px] font-black text-rose-600 bg-rose-100 px-1.5 py-0.5 rounded uppercase">
                           Kasir: {req.diminta_oleh_nama || '-'}
                         </span>
+                        {req._tipe === 'pos' && req.status === 'menunggu_spv' && (
+                          <span className="text-[9px] font-black text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded uppercase">
+                            Sudah disetujui Kordiv: {req.disetujui_kordiv_oleh_nama || '-'}
+                          </span>
+                        )}
                       </div>
                       <p className="text-[11px] text-slate-600 italic mt-1 truncate">"{req.alasan}"</p>
                     </div>

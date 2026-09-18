@@ -25,6 +25,7 @@ import {
   FileText,
 } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
+import KordivSpvTeamBoard from '../components/KordivSpvTeamBoard';
 
 export default function StaffDashboard() {
   const { user, updateUser } = useAuth();
@@ -369,6 +370,14 @@ export default function StaffDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Papan Kerja Tim -- khusus SPV & Kordiv, tidak pernah tampil untuk
+          staff biasa. Job pribadi (job_aktif di bawah) tetap ditampilkan
+          untuk mereka juga, meski hampir selalu kosong (SPV/Kordiv tidak
+          pernah jadi pic_staff), supaya layout tidak perlu bercabang. */}
+      {(user?.role === 'kordiv' || user?.role === 'spv') && (
+        <KordivSpvTeamBoard role={user.role} />
+      )}
 
       {/* Grid Bawah */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
