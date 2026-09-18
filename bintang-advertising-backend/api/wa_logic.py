@@ -861,7 +861,8 @@ def proses_dengan_ai_agent(nomor, nama_pelanggan="", pesan_asli=""):
     import json
     import time
 
-    from .services.wa_ai_tools import TOOL_SCHEMAS, jalankan_tool
+    from .services.wa_ai_tools import jalankan_tool
+    from .services.wa_bot_config_admin import get_active_tool_schemas
 
     client = get_ai_client()
     if client is None:
@@ -870,6 +871,11 @@ def proses_dengan_ai_agent(nomor, nama_pelanggan="", pesan_asli=""):
     model_name = os.getenv("KOBOI_MODEL", "gemini-2.5-pro")
     konteks_tool = {"nomor": nomor, "nama_pelanggan": nama_pelanggan, "pesan_asli": pesan_asli}
     messages = list(get_memori_percakapan(nomor, nama_pelanggan))
+    # Tools aktif & deskripsinya bisa diubah admin lewat halaman Kasir >
+    # Pengaturan WA Bot (2026-09-18) -- baca ULANG tiap giliran (bukan
+    # sekali di awal fungsi) supaya perubahan langsung berlaku tanpa
+    # restart, sama seperti get_system_prompt() di get_memori_percakapan().
+    tool_schemas_aktif = get_active_tool_schemas()
 
     for putaran in range(MAKS_PUTARAN_TOOL):
         max_retries = 3
@@ -879,7 +885,7 @@ def proses_dengan_ai_agent(nomor, nama_pelanggan="", pesan_asli=""):
         for attempt in range(max_retries):
             try:
                 response = client.chat.completions.create(
-                    model=model_name, messages=messages, tools=TOOL_SCHEMAS,
+                    model=model_name, messages=messages, tools=tool_schemas_aktif,
                     tool_choice="auto", max_tokens=2048, temperature=0.3, timeout=15.0,
                 )
                 break

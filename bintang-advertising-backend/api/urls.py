@@ -19,6 +19,7 @@ from .views.qz import QZCertificateView, QZSignView
 from .views.wa_pricelist import (
     WaPricelistListView, WaPricelistDetailView, WaPricelistTemplateView, WaPricelistImportView,
 )
+from .views.wa_bot_config import WaBotPromptView, WaBotToolsListView, WaBotToolDetailView
 from .protected_media import serve_protected_media
 
 router = DefaultRouter()
@@ -189,6 +190,9 @@ urlpatterns = [
     path('wa-pricelist/<str:slug>/', WaPricelistDetailView.as_view(), name='wa-pricelist-detail'),
     path('wa-pricelist/<str:slug>/template/', WaPricelistTemplateView.as_view(), name='wa-pricelist-template'),
     path('wa-pricelist/<str:slug>/import/', WaPricelistImportView.as_view(), name='wa-pricelist-import'),
+    path('wa-bot-config/prompt/', WaBotPromptView.as_view(), name='wa-bot-config-prompt'),
+    path('wa-bot-config/tools/', WaBotToolsListView.as_view(), name='wa-bot-config-tools'),
+    path('wa-bot-config/tools/<str:nama>/', WaBotToolDetailView.as_view(), name='wa-bot-config-tool-detail'),
     path('integrations/qz/certificate/', QZCertificateView.as_view(), name='qz-certificate'),
     path('integrations/qz/sign/', QZSignView.as_view(), name='qz-sign'),
     # WhatsApp Chat Integration
