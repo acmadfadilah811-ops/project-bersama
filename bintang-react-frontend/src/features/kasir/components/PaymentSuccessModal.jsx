@@ -5,10 +5,12 @@ import apiClient from '../../../api/apiClient';
 import { notifyApiError, notifyError, notifySuccess } from '../../../utils/notify';
 import { useAuth } from '../../../context/AuthContext';
 import ReceiptPrint from './ReceiptPrint';
+import CustomPrintDocument from './CustomPrintDocument';
 import {
   getPrintErrorMessage,
   printReceipt,
   printReceiptAfterRender,
+  requestBrowserPrintAfterRender,
   shouldAutoPrintPosReceipt,
 } from '../../printing/services/printService';
 
@@ -47,6 +49,11 @@ export default function PaymentSuccessModal({
   const [waResi, setWaResi] = useState('');
   const [sendingWa, setSendingWa] = useState(false);
   const [showCustomPrintDropdown, setShowCustomPrintDropdown] = useState(false);
+  // 'invoice' | 'spk' | 'surat_jalan' | null -- dokumen A4 yang sedang dicetak
+  // lewat menu Cetak Custom. Selama terisi, ReceiptPrint TIDAK dirender supaya
+  // resi thermal tidak ikut tercetak bersama dokumen A4 (keduanya sama-sama
+  // "visible" di CSS print).
+  const [customDoc, setCustomDoc] = useState(null);
   const autoPrintedSaleId = useRef(null);
   const receipt = React.useMemo(() => toReceipt(transactionData), [transactionData]);
 
@@ -65,6 +72,14 @@ export default function PaymentSuccessModal({
       notifyError('Cetak resi otomatis gagal', getPrintErrorMessage(error));
     });
   }, [businessSettings, isOpen, receipt, transactionData]);
+
+  React.useEffect(() => {
+    if (!customDoc) return undefined;
+    const selesai = () => setCustomDoc(null);
+    window.addEventListener('afterprint', selesai, { once: true });
+    requestBrowserPrintAfterRender();
+    return () => window.removeEventListener('afterprint', selesai);
+  }, [customDoc]);
 
   if (!isOpen) return null;
 
@@ -115,7 +130,7 @@ export default function PaymentSuccessModal({
 
   const handleCustomPrint = (type) => {
     setShowCustomPrintDropdown(false);
-    notifyError('Dokumen belum tersedia', `Template cetak ${type} belum tersedia untuk transaksi POS ini. Gunakan Cetak Resi.`);
+    setCustomDoc(type);
   };
 
   return (
@@ -222,7 +237,7 @@ export default function PaymentSuccessModal({
               <div className="absolute bottom-full mb-2 left-0 w-52 bg-white rounded-xl shadow-2xl border border-slate-200 py-1 z-50 text-slate-800 text-xs font-bold animate-fade-in">
                 <button
                   type="button"
-                  onClick={() => handleCustomPrint('Invoice')}
+                  onClick={() => handleCustomPrint('invoice')}
                   className="w-full px-4 py-2.5 hover:bg-slate-100 text-left flex items-center gap-2 border-b border-slate-100 cursor-pointer"
                 >
                   <FileText size={15} className="text-blue-600" />
@@ -230,7 +245,7 @@ export default function PaymentSuccessModal({
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleCustomPrint('SPK (Surat Perintah Kerja)')}
+                  onClick={() => handleCustomPrint('spk')}
                   className="w-full px-4 py-2.5 hover:bg-slate-100 text-left flex items-center gap-2 border-b border-slate-100 cursor-pointer"
                 >
                   <FileText size={15} className="text-indigo-600" />
@@ -238,7 +253,7 @@ export default function PaymentSuccessModal({
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleCustomPrint('Delivery Order (Surat Jalan)')}
+                  onClick={() => handleCustomPrint('surat_jalan')}
                   className="w-full px-4 py-2.5 hover:bg-slate-100 text-left flex items-center gap-2 cursor-pointer"
                 >
                   <FileText size={15} className="text-teal-600" />
@@ -280,7 +295,9 @@ export default function PaymentSuccessModal({
         </div>
 
       </div>
-      <ReceiptPrint receipt={receipt} settings={businessSettings} />
+      {customDoc
+        ? <CustomPrintDocument type={customDoc} data={receipt} settings={businessSettings} />
+        : <ReceiptPrint receipt={receipt} settings={businessSettings} />}
     </div>
   );
 }
