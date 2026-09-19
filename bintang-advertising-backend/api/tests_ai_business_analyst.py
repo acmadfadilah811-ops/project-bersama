@@ -185,6 +185,30 @@ class AiBusinessAnalystChatTest(APITestCase):
         self.assertEqual(system_msg['role'], 'system')
         self.assertIn('1000000', system_msg['content'])
         self.assertEqual(kwargs['messages'][-1], {'role': 'user', 'content': 'Gimana penjualan bulan ini?'})
+        # Tanpa batas token (model reasoning bisa habis token utk berpikir -> jawaban kosong).
+        self.assertNotIn('max_tokens', kwargs)
+        # Prompt minta jawaban to the point.
+        self.assertIn('TO THE POINT', system_msg['content'])
+
+    @mock.patch('api.ai_business_analyst_views.build_combined_insights')
+    @mock.patch('api.ai_business_analyst_views.get_ai_client')
+    def test_timeout_tidak_di_retry(self, mock_get_client, mock_build_insights):
+        from openai import APITimeoutError
+        import httpx
+
+        mock_build_insights.return_value = {'bintang': {}, 'hr': None, 'crm': None}
+        client_palsu = mock.Mock()
+        client_palsu.chat.completions.create.side_effect = APITimeoutError(
+            request=httpx.Request('POST', 'https://x.test')
+        )
+        mock_get_client.return_value = client_palsu
+
+        self.client.force_authenticate(self.owner)
+        res = self.client.post(
+            URL_CHAT, {'messages': [{'role': 'user', 'content': 'halo'}]}, format='json',
+        )
+        self.assertEqual(res.status_code, 502)
+        self.assertEqual(client_palsu.chat.completions.create.call_count, 1)
 
     @mock.patch('api.ai_business_analyst_views.build_combined_insights')
     @mock.patch('api.ai_business_analyst_views.get_ai_client')

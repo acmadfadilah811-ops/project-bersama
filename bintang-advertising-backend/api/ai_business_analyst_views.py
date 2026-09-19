@@ -5,6 +5,7 @@ import logging
 import os
 import time
 
+from openai import APITimeoutError
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -39,8 +40,11 @@ tidak bisa diakses), katakan secara eksplisit bahwa data itu tidak tersedia \
 saat ini -- jangan menebak atau berasumsi datanya nol, dan jangan kasih \
 rekomendasi yang bergantung pada data yang hilang itu.
 
-Jawab dalam Bahasa Indonesia, ringkas dan actionable, gunakan format markdown \
-(heading/list/table) kalau membantu keterbacaan.
+Jawab dalam Bahasa Indonesia, TO THE POINT: mulai langsung dari jawaban/inti \
+temuan di kalimat pertama, tanpa basa-basi pembuka, tanpa mengulang pertanyaan, \
+dan tanpa penutup. Maksimal beberapa poin singkat berisi angka kunci dan \
+rekomendasi -- panjangkan hanya kalau diminta secara eksplisit. Gunakan markdown \
+(list/table) hanya kalau benar-benar memperjelas.
 
 Data snapshot (periode: {period}):
 ```json
@@ -156,16 +160,22 @@ class AiBusinessAnalystChatView(APIView):
         terakhir = None
         for attempt in range(max_retries):
             try:
+                # Tanpa max_tokens (permintaan owner: tidak dibatasi). Model
+                # reasoning memakai token utk "berpikir"; batas kecil (dulu
+                # 1536) bikin jawaban kosong. Timeout dinaikkan supaya jawaban
+                # panjang tidak terpotong; masih di bawah batas ~100 dtk
+                # Cloudflare, dan timeout tidak di-retry (lihat bawah).
                 response = client.chat.completions.create(
                     model=model_name,
                     messages=full_messages,
-                    max_tokens=1536,
-                    timeout=20.0,
+                    timeout=90.0,
                 )
                 break
             except Exception as e:
                 logger.warning('AI Business Analyst chat completion attempt %s gagal: %s', attempt + 1, e)
                 terakhir = e
+                if isinstance(e, APITimeoutError):
+                    break  # 2x timeout 90 dtk melewati batas Cloudflare; gagal cepat.
                 if attempt < max_retries - 1:
                     time.sleep(backoff)
                     backoff *= 2.0
