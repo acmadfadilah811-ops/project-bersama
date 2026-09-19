@@ -123,7 +123,7 @@ export default function AdminDashboard() {
       await apiClient.post('/hr/absensi/clock-in/', { catatan: '' });
       await fetchPersonalAttendance();
     } catch (err) {
-      alert(err.response?.data?.detail || 'Gagal Clock-In');
+      alert(err.response?.data?.detail || 'Gagal Mulai Kerja');
     } finally {
       setActionLoading(false);
     }
@@ -135,7 +135,7 @@ export default function AdminDashboard() {
       await apiClient.post('/hr/absensi/clock-out/', { catatan: '' });
       await fetchPersonalAttendance();
     } catch (err) {
-      alert(err.response?.data?.detail || 'Gagal Clock-Out');
+      alert(err.response?.data?.detail || 'Gagal Selesai Kerja');
     } finally {
       setActionLoading(false);
       setShowClockOutModal(false);
@@ -255,7 +255,7 @@ export default function AdminDashboard() {
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 pb-px">
         {[
           { id: 'spk', label: 'Papan Kerja (SPK)', icon: ClipboardList },
-          { id: 'presensi', label: 'Kehadiran Saya & Sesi', icon: CalendarClock },
+          { id: 'presensi', label: 'Sesi Kerja Saya', icon: CalendarClock },
           { id: 'komplain', label: 'Komplain & Garansi', icon: AlertCircle },
         ].map((tab) => {
           const TabIcon = tab.icon;
@@ -404,7 +404,7 @@ export default function AdminDashboard() {
                 <div className="flex justify-between items-start border-b border-slate-100 pb-3 mb-3">
                   <div>
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                      <CalendarClock size={12} className="text-indigo-500" /> Kehadiran Saya
+                      <CalendarClock size={12} className="text-indigo-500" /> Status Sesi Kerja
                     </p>
                     <h3 className={`text-lg font-black mt-1 uppercase ${
                       !sudahClockIn
@@ -413,14 +413,14 @@ export default function AdminDashboard() {
                           ? 'text-slate-500'
                           : 'text-emerald-600'
                     }`}>
-                      {!sudahClockIn ? 'Belum Masuk' : absensiHariIni?.status}
+                      {!sudahClockIn ? 'Belum Mulai Kerja' : absensiHariIni?.status}
                     </h3>
                   </div>
                 </div>
                 <p className="text-xs text-slate-500 leading-relaxed mb-4">
                   {absensiHariIni?.jam_masuk
-                    ? `Masuk pukul ${new Date(absensiHariIni.jam_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}.${sudahClockOut ? ` Keluar pukul ${new Date(absensiHariIni.jam_keluar).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}.` : ''}`
-                    : 'Lakukan Clock In sebelum mulai bekerja hari ini.'}
+                    ? `Mulai kerja pukul ${new Date(absensiHariIni.jam_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}.${sudahClockOut ? ` Selesai pukul ${new Date(absensiHariIni.jam_keluar).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}.` : ''}`
+                    : 'Tekan Mulai Kerja sebelum mulai bekerja hari ini.'}
                 </p>
               </div>
               <div className="flex gap-2">
@@ -433,7 +433,7 @@ export default function AdminDashboard() {
                       : 'bg-emerald-500 hover:bg-emerald-600 text-white'
                   }`}
                 >
-                  Clock In
+                  Mulai Kerja
                 </button>
                 <button
                   onClick={() => setShowClockOutModal(true)}
@@ -444,7 +444,7 @@ export default function AdminDashboard() {
                       : 'bg-rose-500 hover:bg-rose-600 text-white'
                   }`}
                 >
-                  Clock Out
+                  Selesai Kerja
                 </button>
               </div>
             </div>
@@ -534,10 +534,10 @@ export default function AdminDashboard() {
                 <CalendarClock size={32} className="text-white" />
               </div>
               <h3 className="font-extrabold text-lg tracking-wide uppercase">
-                Konfirmasi Keluar Jam Kerja
+                Konfirmasi Selesai Kerja
               </h3>
               <p className="text-xs text-rose-100 mt-1">
-                Sistem Absensi &amp; Kepegawaian StarPhoto & Advertising
+                Sistem Sesi Kerja &amp; Kepegawaian StarPhoto & Advertising
               </p>
             </div>
 
@@ -548,15 +548,15 @@ export default function AdminDashboard() {
                   <span className="font-extrabold block text-amber-900 mb-1">
                     PERINGATAN PENTING:
                   </span>
-                  Setelah menekan tombol Clock-Out, akses Anda ke{' '}
+                  Setelah menekan tombol Selesai Kerja, akses Anda ke{' '}
                   <strong>Papan Produksi (Kanban Kerja) akan otomatis TERKUNCI</strong> untuk hari
                   ini.
                 </div>
               </div>
 
               <div className="text-xs text-slate-500 leading-relaxed text-center">
-                Apakah Anda yakin telah menyelesaikan semua tugas admin hari ini dan ingin melakukan
-                Clock-Out?
+                Apakah Anda yakin telah menyelesaikan semua tugas admin hari ini dan ingin
+                Selesai Kerja?
               </div>
             </div>
 
@@ -571,7 +571,7 @@ export default function AdminDashboard() {
                 ) : (
                   <>
                     <CheckCircle2 size={16} />
-                    <span>Ya, Clock-Out Sekarang</span>
+                    <span>Ya, Selesai Kerja Sekarang</span>
                   </>
                 )}
               </button>

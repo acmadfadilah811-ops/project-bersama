@@ -571,9 +571,9 @@ export default function ProductionApp() {
               PERHATIAN SYSTEM
             </p>
             <p className="text-[12px] text-slate-600 leading-relaxed font-semibold">
-              Akses ke Papan Produksi dinonaktifkan secara otomatis. Anda dideteksi belum melakukan{' '}
-              <strong>Absen Masuk (Clock-In)</strong> atau sudah melakukan{' '}
-              <strong>Absen Pulang (Clock-Out)</strong> untuk hari ini.
+              Akses ke Papan Produksi dinonaktifkan secara otomatis. Anda dideteksi belum menekan{' '}
+              <strong>Mulai Kerja</strong> atau sudah menekan{' '}
+              <strong>Selesai Kerja</strong> untuk hari ini.
             </p>
           </div>
 
@@ -601,7 +601,7 @@ export default function ProductionApp() {
                 ✓
               </span>
               <span>
-                <strong>Clock-In Aktif:</strong> Papan produksi dan pengerjaan tugas otomatis
+                <strong>Sesi Kerja Aktif:</strong> Papan produksi dan pengerjaan tugas otomatis
                 terbuka.
               </span>
             </div>
@@ -610,7 +610,7 @@ export default function ProductionApp() {
                 ✕
               </span>
               <span>
-                <strong>Clock-Out Selesai:</strong> Papan produksi terkunci kembali demi keamanan
+                <strong>Selesai Kerja:</strong> Papan produksi terkunci kembali demi keamanan
                 data dan integritas waktu kerja.
               </span>
             </div>

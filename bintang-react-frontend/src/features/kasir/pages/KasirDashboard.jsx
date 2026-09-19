@@ -73,7 +73,7 @@ export default function KasirDashboard({ onToggleSidebar }) {
       await apiClient.post('/hr/absensi/clock-in/', { catatan: '' });
       await fetchPersonalAttendance();
     } catch (err) {
-      alert(err.response?.data?.detail || 'Gagal Clock-In');
+      alert(err.response?.data?.detail || 'Gagal Mulai Kerja');
     } finally {
       setActionLoading(false);
     }
@@ -85,7 +85,7 @@ export default function KasirDashboard({ onToggleSidebar }) {
       await apiClient.post('/hr/absensi/clock-out/', { catatan: '' });
       await fetchPersonalAttendance();
     } catch (err) {
-      alert(err.response?.data?.detail || 'Gagal Clock-Out');
+      alert(err.response?.data?.detail || 'Gagal Selesai Kerja');
     } finally {
       setActionLoading(false);
       setShowClockOutModal(false);
@@ -117,12 +117,12 @@ export default function KasirDashboard({ onToggleSidebar }) {
       label: 'Status Shift',
       value: isShiftAndAbsenAktif ? 'Aktif' : 'Belum Aktif',
       sub: isShiftAndAbsenAktif
-        ? `Kas awal ${formatCurrency(shiftAktif?.kas_awal)} · Absen Masuk`
+        ? `Kas awal ${formatCurrency(shiftAktif?.kas_awal)} · Sesi Kerja Aktif`
         : shiftAktif && !sudahClockIn
-        ? 'Shift dibuka, silakan lakukan Clock-In absensi'
+        ? 'Shift dibuka, silakan tekan Mulai Kerja'
         : !shiftAktif && sudahClockIn
-        ? 'Absen masuk dicatat, silakan buka shift kasir'
-        : 'Buka shift kasir & lakukan absensi untuk mulai bekerja',
+        ? 'Sesi kerja sudah dimulai, silakan buka shift kasir'
+        : 'Buka shift kasir & tekan Mulai Kerja untuk mulai bekerja',
       icon: Wallet,
       tone: isShiftAndAbsenAktif ? 'emerald' : 'amber',
     },
@@ -186,7 +186,7 @@ export default function KasirDashboard({ onToggleSidebar }) {
             <div className="flex justify-between items-start border-b border-slate-100 pb-2 mb-2">
               <div>
                 <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                  <CalendarClock size={14} className="text-indigo-600" /> Presensi Staff Kasir
+                  <CalendarClock size={14} className="text-indigo-600" /> Sesi Kerja Kasir
                 </p>
                 <h3
                   className={`text-base font-black mt-0.5 uppercase ${
@@ -197,24 +197,24 @@ export default function KasirDashboard({ onToggleSidebar }) {
                       : 'text-emerald-600'
                   }`}
                 >
-                  {!sudahClockIn ? 'Belum Clock-In' : absensiHariIni?.status}
+                  {!sudahClockIn ? 'Belum Mulai Kerja' : absensiHariIni?.status}
                 </h3>
               </div>
             </div>
             <p className="text-xs text-slate-500 leading-relaxed mb-3">
               {absensiHariIni?.jam_masuk
-                ? `Clock-In: ${new Date(absensiHariIni.jam_masuk).toLocaleTimeString('id-ID', {
+                ? `Mulai Kerja: ${new Date(absensiHariIni.jam_masuk).toLocaleTimeString('id-ID', {
                     hour: '2-digit',
                     minute: '2-digit',
                   })}.${
                     sudahClockOut
-                      ? ` Clock-Out: ${new Date(absensiHariIni.jam_keluar).toLocaleTimeString('id-ID', {
+                      ? ` Selesai Kerja: ${new Date(absensiHariIni.jam_keluar).toLocaleTimeString('id-ID', {
                           hour: '2-digit',
                           minute: '2-digit',
                         })}.`
                       : ''
                   }`
-                : 'Silakan lakukan Clock-In sebelum memulai jam kerja kasir.'}
+                : 'Silakan tekan Mulai Kerja sebelum memulai jam kerja kasir.'}
             </p>
           </div>
 
@@ -228,7 +228,7 @@ export default function KasirDashboard({ onToggleSidebar }) {
                   : 'bg-emerald-600 hover:bg-emerald-700 text-white'
               }`}
             >
-              Clock In
+              Mulai Kerja
             </button>
             <button
               onClick={() => setShowClockOutModal(true)}
@@ -239,7 +239,7 @@ export default function KasirDashboard({ onToggleSidebar }) {
                   : 'bg-rose-600 hover:bg-rose-700 text-white'
               }`}
             >
-              Clock Out
+              Selesai Kerja
             </button>
           </div>
         </div>
@@ -267,12 +267,12 @@ export default function KasirDashboard({ onToggleSidebar }) {
                 </h4>
                 <p className="text-xs text-slate-500 font-semibold mt-0.5">
                   {isShiftAndAbsenAktif
-                    ? `Kas Awal: ${formatCurrency(shiftAktif?.kas_awal)} · Absensi Berhasil`
+                    ? `Kas Awal: ${formatCurrency(shiftAktif?.kas_awal)} · Sesi Kerja Aktif`
                     : shiftAktif && !sudahClockIn
-                    ? 'Shift sudah dibuka, silakan lakukan Clock-In absensi untuk mengaktifkan status.'
+                    ? 'Shift sudah dibuka, silakan tekan Mulai Kerja untuk mengaktifkan status.'
                     : !shiftAktif && sudahClockIn
-                    ? 'Absensi Clock-In dicatat, silakan buka shift kasir untuk mulai transaksi.'
-                    : 'Buka shift kasir & lakukan Clock-In absensi untuk mulai mencatat transaksi.'}
+                    ? 'Sesi kerja sudah dimulai, silakan buka shift kasir untuk mulai transaksi.'
+                    : 'Buka shift kasir & tekan Mulai Kerja untuk mulai mencatat transaksi.'}
                 </p>
               </div>
             </div>
@@ -298,7 +298,7 @@ export default function KasirDashboard({ onToggleSidebar }) {
                 ? 'Kelola Shift & Kas'
                 : !shiftAktif
                 ? 'Buka Shift Sekarang'
-                : 'Clock-In Absensi'}
+                : 'Mulai Kerja'}
             </button>
           </div>
         </div>
@@ -373,10 +373,10 @@ export default function KasirDashboard({ onToggleSidebar }) {
                 <CalendarClock size={28} className="text-white" />
               </div>
               <h3 className="font-extrabold text-base tracking-wide uppercase">
-                Konfirmasi Clock-Out
+                Konfirmasi Selesai Kerja
               </h3>
               <p className="text-xs text-rose-100 mt-0.5">
-                Sistem Absensi Kasir StarPhoto & Advertising
+                Sistem Sesi Kerja Kasir StarPhoto & Advertising
               </p>
             </div>
 
@@ -387,12 +387,12 @@ export default function KasirDashboard({ onToggleSidebar }) {
                   <span className="font-extrabold block text-amber-900 mb-0.5">
                     PERINGATAN:
                   </span>
-                  Pastikan shift kasir Anda telah ditutup sebelum melakukan Clock-Out jam kerja.
+                  Pastikan shift kasir Anda telah ditutup sebelum menekan Selesai Kerja.
                 </div>
               </div>
 
               <p className="text-xs text-slate-500 text-center leading-relaxed">
-                Apakah Anda yakin ingin menyelesaikan absensi jam kerja dan Clock-Out sekarang?
+                Apakah Anda yakin ingin menyelesaikan sesi kerja (Selesai Kerja) sekarang?
               </p>
             </div>
 
@@ -407,7 +407,7 @@ export default function KasirDashboard({ onToggleSidebar }) {
                 ) : (
                   <>
                     <CheckCircle2 size={16} />
-                    <span>Ya, Clock-Out Sekarang</span>
+                    <span>Ya, Selesai Kerja Sekarang</span>
                   </>
                 )}
               </button>

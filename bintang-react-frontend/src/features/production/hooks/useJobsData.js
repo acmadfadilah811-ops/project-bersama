@@ -42,7 +42,7 @@ export function useJobsData() {
         console.error('Gagal memuat data jobs:', jobsRes.reason);
         if (jobsRes.reason?.response?.status === 403) {
           setError(
-            'Akses ditolak. Anda harus absen (Clock-In) terlebih dahulu untuk membuka Pekerjaan.'
+            'Akses ditolak. Anda harus menekan Mulai Kerja terlebih dahulu untuk membuka Pekerjaan.'
           );
         }
       }

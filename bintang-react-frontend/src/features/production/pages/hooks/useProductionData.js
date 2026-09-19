@@ -41,7 +41,7 @@ export default function useProductionData() {
     console.error('Failed to fetch jobs:', err);
     if (err.response?.status === 403) {
       setError(
-        'Akses ditolak. Anda harus absen masuk (Clock-In) terlebih dahulu untuk membuka papan produksi.'
+        'Akses ditolak. Anda harus menekan Mulai Kerja terlebih dahulu untuk membuka papan produksi.'
       );
     } else if (!isSilent) {
       setError('Gagal memuat data papan produksi.');

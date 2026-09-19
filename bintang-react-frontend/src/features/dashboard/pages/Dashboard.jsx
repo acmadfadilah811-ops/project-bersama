@@ -98,7 +98,7 @@ export default function Dashboard() {
       playNotificationSound('checkin.mp3');
       await fetchPersonalAttendance();
     } catch (err) {
-      alert(err.response?.data?.detail || 'Gagal melakukan Clock-In');
+      alert(err.response?.data?.detail || 'Gagal Mulai Kerja');
       // Status terkunci di Layout.jsx cuma dicek sekali saat halaman dimuat.
       // Kalau batas waktu baru lewat setelah halaman ini terbuka, reload
       // supaya Layout.jsx cek ulang dan tampilkan layar "Ajukan Izin".
@@ -118,7 +118,7 @@ export default function Dashboard() {
       playNotificationSound('selesai.mp3');
       await fetchPersonalAttendance();
     } catch (err) {
-      alert(err.response?.data?.detail || 'Gagal melakukan Clock-Out');
+      alert(err.response?.data?.detail || 'Gagal Selesai Kerja');
     } finally {
       setActionLoading(false);
     }
@@ -348,7 +348,7 @@ export default function Dashboard() {
           <div>
             <h2 className="text-xl font-black">Halo, {user?.username || 'Staff'}!</h2>
             <p className="text-xs text-indigo-100 mt-1">
-              Selamat bekerja! Harap lakukan Clock In sebelum memulai tugas harian Anda.
+              Selamat bekerja! Harap tekan Mulai Kerja sebelum memulai tugas harian Anda.
             </p>
           </div>
           <div className="bg-white/10 px-4 py-2 rounded-xl backdrop-blur-sm text-right shrink-0">
@@ -373,7 +373,7 @@ export default function Dashboard() {
               <div className="flex justify-between items-start border-b border-slate-100 pb-3 mb-3">
                 <div>
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                    <CalendarClock size={12} className="text-indigo-500" /> Status Absensi
+                    <CalendarClock size={12} className="text-indigo-500" /> Status Sesi Kerja
                   </p>
                   <h3
                     className={`text-lg font-black mt-1 uppercase ${
@@ -384,7 +384,7 @@ export default function Dashboard() {
                           : 'text-emerald-600'
                     }`}
                   >
-                    {!sudahAbsen ? 'Belum Masuk' : absensi.status}
+                    {!sudahAbsen ? 'Belum Mulai Kerja' : absensi.status}
                   </h3>
                 </div>
                 {absensi?.jam_masuk && (
@@ -399,7 +399,7 @@ export default function Dashboard() {
               <p className="text-xs text-slate-550 leading-relaxed mb-4">
                 {absensi?.jam_masuk
                   ? `Sesi kerja Anda hari ini dimulai pukul ${new Date(absensi.jam_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}.`
-                  : 'Silakan klik tombol di bawah untuk Clock In dan mulai mencatat jam kerja Anda hari ini.'}
+                  : 'Silakan klik tombol di bawah untuk Mulai Kerja dan mulai mencatat jam kerja Anda hari ini.'}
               </p>
             </div>
 
@@ -410,7 +410,7 @@ export default function Dashboard() {
                 className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer
                   ${sudahAbsen ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-600 text-white'}`}
               >
-                Clock In
+                Mulai Kerja
               </button>
               <button
                 onClick={handleClockOut}
@@ -418,7 +418,7 @@ export default function Dashboard() {
                 className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer
                   ${!sudahAbsen || absensi?.jam_keluar ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-rose-500 hover:bg-rose-600 text-white'}`}
               >
-                Clock Out
+                Selesai Kerja
               </button>
             </div>
           </div>
@@ -1233,7 +1233,7 @@ export default function Dashboard() {
                     <Activity size={14} className="text-indigo-500" /> Kehadiran Staff Hari Ini
                   </h2>
                   <p className="text-[10px] text-slate-400 mt-0.5">
-                    Timeline check-in dan online status staff saat ini.
+                    Timeline mulai kerja dan online status staff saat ini.
                   </p>
                 </div>
 
@@ -1269,7 +1269,7 @@ export default function Dashboard() {
                                 <Clock size={10} className="text-slate-400" />
                                 {sudahAbsen && absensi.jam_masuk
                                   ? `Masuk: ${new Date(absensi.jam_masuk).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`
-                                  : 'Belum Clock In'}
+                                  : 'Belum Mulai Kerja'}
                               </span>
                               <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border uppercase flex items-center gap-1 ${
                                 isOnline ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-50 text-slate-400 border-slate-200'

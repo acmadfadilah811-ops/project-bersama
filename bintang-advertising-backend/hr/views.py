@@ -164,7 +164,7 @@ class ClockInView(APIView):
         if existing and existing.jam_masuk:
             return Response(
                 {
-                    "detail": "Anda sudah clock-in hari ini.",
+                    "detail": "Anda sudah memulai kerja hari ini.",
                     "jam_masuk": existing.jam_masuk,
                     "sudah_clock_out": existing.sudah_clock_out,
                 },
@@ -196,7 +196,7 @@ class ClockInView(APIView):
             )
         return Response(
             {
-                "detail": f"Clock-in berhasil pukul {now.strftime('%H:%M')}.",
+                "detail": f"Mulai kerja berhasil pukul {now.strftime('%H:%M')}.",
                 "absensi": AbsensiSerializer(absensi).data,
             },
             status=status.HTTP_201_CREATED,
@@ -220,7 +220,7 @@ class ClockOutView(APIView):
 
         if not absensi or not absensi.jam_masuk:
             return Response(
-                {"detail": "Belum ada clock-in hari ini, atau sudah clock-out."},
+                {"detail": "Belum ada sesi kerja hari ini, atau sudah selesai kerja."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -231,7 +231,7 @@ class ClockOutView(APIView):
 
         return Response(
             {
-                "detail": f"Clock-out berhasil pukul {now.strftime('%H:%M')}.",
+                "detail": f"Selesai kerja berhasil pukul {now.strftime('%H:%M')}.",
                 "durasi_kerja_jam": absensi.durasi_kerja_jam,
                 "absensi": AbsensiSerializer(absensi).data,
             }

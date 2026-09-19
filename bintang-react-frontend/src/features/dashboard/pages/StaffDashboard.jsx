@@ -146,7 +146,7 @@ export default function StaffDashboard() {
       playNotificationSound('checkin.mp3');
       await fetchDashboardData();
     } catch (err) {
-      alert(err.response?.data?.detail || 'Gagal melakukan Clock-In');
+      alert(err.response?.data?.detail || 'Gagal Mulai Kerja');
       // Status terkunci di Layout.jsx cuma dicek sekali saat halaman dimuat.
       // Kalau batas waktu baru lewat setelah halaman ini terbuka, reload
       // supaya Layout.jsx cek ulang dan tampilkan layar "Ajukan Izin".
@@ -168,7 +168,7 @@ export default function StaffDashboard() {
       playNotificationSound('selesai.mp3');
       await fetchDashboardData();
     } catch (err) {
-      alert(err.response?.data?.detail || 'Gagal melakukan Clock-Out');
+      alert(err.response?.data?.detail || 'Gagal Selesai Kerja');
     } finally {
       setActionLoading(false);
       setShowClockOutModal(false);
