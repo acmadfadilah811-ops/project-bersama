@@ -246,3 +246,36 @@ class AbsensiStatusView(APIView):
             'jam_masuk': absensi_hari_ini.jam_masuk if absensi_hari_ini else None,
             'status': absensi_hari_ini.status if absensi_hari_ini else None,
         })
+
+
+class KinerjaStaffView(APIView):
+    """GET /api/bridge/kinerja-staff/?tahun=2026&bulan=9
+
+    Dipanggil backend HR (server-ke-server, auth sama dgn bridge lain) utk
+    halaman "Insentif Produksi" di modul Payroll HR: rekap kinerja per staff
+    (job selesai/gagal, durasi rata-rata, jam sesi kerja, total insentif)
+    sbg bahan analisa & patokan slip gaji. Read-only. Definisi angka &
+    penanganan akun tanpa hr_employee_id: lihat services/kinerja_staff_hr.py.
+    """
+    permission_classes = [AllowAny]
+    throttle_classes = [HRBridgeThrottle]
+
+    def get(self, request, *args, **kwargs):
+        auth_error = _cek_hr_bridge_api_key(request)
+        if auth_error:
+            return auth_error
+
+        from django.utils import timezone
+
+        from ..services.kinerja_staff_hr import hitung_kinerja_bulanan
+
+        hari_ini = timezone.localdate()
+        try:
+            tahun = int(request.query_params.get('tahun', hari_ini.year))
+            bulan = int(request.query_params.get('bulan', hari_ini.month))
+        except (TypeError, ValueError):
+            return Response({'error': "Parameter 'tahun' dan 'bulan' harus angka."}, status=status.HTTP_400_BAD_REQUEST)
+        if not (2000 <= tahun <= 2100 and 1 <= bulan <= 12):
+            return Response({'error': "Rentang 'tahun' (2000-2100) atau 'bulan' (1-12) tidak valid."}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(hitung_kinerja_bulanan(tahun, bulan))
