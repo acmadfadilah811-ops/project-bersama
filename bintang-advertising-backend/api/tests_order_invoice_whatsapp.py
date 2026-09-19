@@ -1,4 +1,5 @@
 from datetime import timedelta
+from pathlib import Path
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -164,6 +165,18 @@ class InvoiceDpWhatsAppTests(APITestCase):
 
         self.assertTrue(pdf_bytes)
         self.assertTrue(pdf_bytes.startswith(b'%PDF'))
+
+    def test_susun_invoice_pdf_menyertakan_logo(self):
+        pdf_bytes = susun_invoice_dp_pdf(self.order)
+
+        self.assertIn(b'/Subtype /Image', pdf_bytes)
+
+    def test_susun_invoice_pdf_tetap_jadi_walau_logo_hilang(self):
+        with patch('api.services.order_invoice_whatsapp.LOGO_INVOICE_PATH', Path('/tidak/ada/logo.png')):
+            pdf_bytes = susun_invoice_dp_pdf(self.order)
+
+        self.assertTrue(pdf_bytes.startswith(b'%PDF'))
+        self.assertNotIn(b'/Subtype /Image', pdf_bytes)
 
     @patch(
         'api.services.order_invoice_whatsapp.whatsapp_client.send_media_message',

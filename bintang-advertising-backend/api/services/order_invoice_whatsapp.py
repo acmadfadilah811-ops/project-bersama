@@ -3,6 +3,7 @@
 import base64
 import io
 import logging
+from pathlib import Path
 
 from django.db import transaction
 
@@ -139,6 +140,28 @@ def _info_bisnis():
     }
 
 
+LOGO_INVOICE_PATH = Path(__file__).resolve().parent.parent / 'assets' / 'logo-starfoto.png'
+
+
+def _logo_invoice(tinggi):
+    """Logo StarPhoto & Advertising (api/assets/logo-starfoto.png) sbg
+    flowable reportlab dgn tinggi tetap, lebar mengikuti rasio asli.
+
+    Kegagalan memuat logo TIDAK boleh menggagalkan pengiriman invoice ke
+    pelanggan -- lebih baik terkirim tanpa logo daripada tidak terkirim."""
+    from reportlab.lib.utils import ImageReader
+    from reportlab.platypus import Image
+
+    try:
+        lebar_asli, tinggi_asli = ImageReader(str(LOGO_INVOICE_PATH)).getSize()
+        logo = Image(str(LOGO_INVOICE_PATH), width=tinggi * lebar_asli / tinggi_asli, height=tinggi)
+        logo.hAlign = 'LEFT'
+        return logo
+    except Exception:
+        logger.warning('Logo invoice tidak bisa dimuat dari %s', LOGO_INVOICE_PATH, exc_info=True)
+        return None
+
+
 def susun_invoice_dp_pdf(order):
     """Bangun PDF invoice A4 dari nilai Order yang sudah dipersist.
 
@@ -200,8 +223,11 @@ def susun_invoice_dp_pdf(order):
 
     elements = []
 
-    # --- Header: judul besar kiri, identitas bisnis kanan ---
+    # --- Header: logo + judul besar kiri, identitas bisnis kanan ---
     header_left = [Paragraph('INVOICE', title_big), Paragraph(f'#{order.id}', id_small)]
+    logo = _logo_invoice(tinggi=18 * mm)
+    if logo is not None:
+        header_left = [logo, Spacer(1, 3 * mm)] + header_left
     header_right = [
         Paragraph(f'INVOICE - {order.nama.upper()} - #{order.id}', right_title),
         Paragraph(biz['nama'], right_sub_bold),

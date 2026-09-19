@@ -2,6 +2,7 @@ import apiClient from '../../../api/apiClient';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
+import logoStarfoto from '../../../assets/logo-starfoto.png';
 import {
   Download,
   Plus,
@@ -1832,6 +1833,7 @@ export default function Orders() {
               {/* INVOICE HEADER — 1 baris, tidak duplikasi */}
               <div className="flex justify-between items-start border-b-2 border-slate-800 pb-4 mb-6">
                 <div>
+                  <img src={logoStarfoto} alt="StarPhoto & Advertising" className="h-16 w-auto mb-3" />
                   <h1 className="text-2xl font-black tracking-widest uppercase text-slate-900">INVOICE</h1>
                   <p className="text-slate-500 font-mono text-[11px] mt-1">#{printInvoiceOrder.id}</p>
                   <p className="text-slate-400 text-[10px] mt-0.5">

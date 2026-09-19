@@ -13,6 +13,7 @@ import {
   FileCheck,
 } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
+import logoStarfoto from '../../../../assets/logo-starfoto.png';
 import OrderInputForm from '../../../orders/components/OrderInputForm';
 import { useAuth } from '../../../../context/AuthContext';
 import VoidOrderModal from '../../../kasir/components/VoidOrderModal';
@@ -849,6 +850,7 @@ export default function GlobalListPanel() {
             <div className="p-8 print-area bg-white text-slate-805 text-slate-800 text-[12px]">
               <div className="flex justify-between items-start border-b-2 border-slate-800 pb-4 mb-6">
                 <div>
+                  <img src={logoStarfoto} alt="StarPhoto & Advertising" className="h-16 w-auto mb-3" />
                   <h1 className="text-2xl font-black tracking-widest uppercase text-slate-900">
                     INVOICE
                   </h1>

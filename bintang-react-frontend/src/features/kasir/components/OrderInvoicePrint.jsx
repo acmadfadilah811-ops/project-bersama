@@ -1,4 +1,5 @@
 import React from 'react';
+import logoStarfoto from '../../../assets/logo-starfoto.png';
 
 /**
  * Faktur untuk pesanan (Order), bukan nota POS.
@@ -41,13 +42,16 @@ export default function OrderInvoicePrint({ order, dibayarSekarang, metode, sett
   return (
     <div className="print-area hidden print:block bg-white p-8 text-black font-sans text-xs min-h-screen">
       <div className="flex justify-between items-start border-b-2 border-slate-900 pb-4 mb-6">
-        <div>
-          <h1 className="text-xl font-black uppercase tracking-wide">
-            {settings?.nama_bisnis || 'BINTANG ADVERTISING'}
-          </h1>
-          <p className="text-[10px] text-slate-500 font-semibold mt-1">
-            Solusi Cetak &amp; Promosi Terpercaya
-          </p>
+        <div className="flex items-center gap-4">
+          <img src={logoStarfoto} alt="StarPhoto & Advertising" className="h-16 w-auto" />
+          <div>
+            <h1 className="text-xl font-black uppercase tracking-wide">
+              {settings?.nama_bisnis || 'StarPhoto & Advertising'}
+            </h1>
+            <p className="text-[10px] text-slate-500 font-semibold mt-1">
+              Solusi Cetak &amp; Promosi Terpercaya
+            </p>
+          </div>
         </div>
         <div className="text-right">
           <h2 className="text-lg font-extrabold uppercase tracking-wide text-slate-700">
