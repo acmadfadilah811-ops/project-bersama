@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from ..pos_models import POSSale
 from ..whatsapp_client import whatsapp_client
+from .logo_dokumen import logo_flowable
 
 
 logger = logging.getLogger(__name__)
@@ -135,7 +136,9 @@ def susun_resi_pdf(sale):
     cell_style = ParagraphStyle('ResiCell', parent=styles['Normal'], fontSize=8, leading=10)
     cell_style_bold = ParagraphStyle('ResiCellBold', parent=cell_style, fontName='Helvetica-Bold')
 
-    elements = [
+    logo = logo_flowable(tinggi=14 * mm, align='CENTER')
+    elements = [logo, Spacer(1, 3 * mm)] if logo is not None else []
+    elements += [
         Paragraph(f'RESI - {sale.nomor}', title_style),
         Paragraph(biz['nama'], small_center),
         Paragraph(biz['alamat'], biz_style),

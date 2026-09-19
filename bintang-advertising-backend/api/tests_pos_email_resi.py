@@ -212,6 +212,17 @@ class ResiSiapDiambilTests(APITestCase):
         self.assertTrue(pdf_bytes)
         self.assertTrue(pdf_bytes.startswith(b'%PDF'))
 
+    def test_susun_resi_pdf_menyertakan_logo(self):
+        self.assertIn(b'/Subtype /Image', susun_resi_pdf(self.sale))
+
+    def test_susun_resi_pdf_tetap_jadi_walau_logo_hilang(self):
+        from pathlib import Path
+        with patch('api.services.logo_dokumen.LOGO_PATH', Path('/tidak/ada/logo.png')):
+            pdf_bytes = susun_resi_pdf(self.sale)
+
+        self.assertTrue(pdf_bytes.startswith(b'%PDF'))
+        self.assertNotIn(b'/Subtype /Image', pdf_bytes)
+
     @patch('api.services.pos_receipt_whatsapp.whatsapp_client.send_media_message', return_value={'key': {'id': 'wa-siap'}})
     def test_caption_wa_menyertakan_keterangan_siap_diambil(self, send_media_message):
         JobBoard.objects.create(pos_sale_item=self.item, status_pekerjaan='selesai')

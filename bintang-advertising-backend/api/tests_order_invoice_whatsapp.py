@@ -172,7 +172,7 @@ class InvoiceDpWhatsAppTests(APITestCase):
         self.assertIn(b'/Subtype /Image', pdf_bytes)
 
     def test_susun_invoice_pdf_tetap_jadi_walau_logo_hilang(self):
-        with patch('api.services.order_invoice_whatsapp.LOGO_INVOICE_PATH', Path('/tidak/ada/logo.png')):
+        with patch('api.services.logo_dokumen.LOGO_PATH', Path('/tidak/ada/logo.png')):
             pdf_bytes = susun_invoice_dp_pdf(self.order)
 
         self.assertTrue(pdf_bytes.startswith(b'%PDF'))

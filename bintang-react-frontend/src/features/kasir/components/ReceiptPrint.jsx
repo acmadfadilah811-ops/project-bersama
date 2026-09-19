@@ -1,4 +1,5 @@
 import React from 'react';
+import logoStarfoto from '../../../assets/logo-starfoto.png';
 import { getLocalPrinterSettings } from '../../printing/services/printService';
 
 export default function ReceiptPrint({ receipt, settings }) {
@@ -62,9 +63,12 @@ export default function ReceiptPrint({ receipt, settings }) {
       <div className="print-area hidden print:block bg-white p-8 text-black font-sans text-xs min-h-screen">
         {/* Header */}
         <div className="flex justify-between items-start border-b-2 border-slate-900 pb-4 mb-6">
-          <div>
-            <h1 className="text-xl font-black uppercase tracking-wide">{settings?.nama_bisnis || 'BINTANG ADVERTISING'}</h1>
-            <p className="text-[10px] text-slate-500 font-semibold mt-1">Solusi Cetak & Promosi Terpercaya</p>
+          <div className="flex items-center gap-4">
+            <img src={logoStarfoto} alt="StarPhoto & Advertising" className="h-16 w-auto" />
+            <div>
+              <h1 className="text-xl font-black uppercase tracking-wide">{settings?.nama_bisnis || 'StarPhoto & Advertising'}</h1>
+              <p className="text-[10px] text-slate-500 font-semibold mt-1">Solusi Cetak & Promosi Terpercaya</p>
+            </div>
           </div>
           <div className="text-right">
             <h2 className="text-lg font-extrabold uppercase tracking-wide text-slate-700">{receipt.documentTitle || 'Faktur Penjualan (POS)'}</h2>
@@ -227,7 +231,15 @@ export default function ReceiptPrint({ receipt, settings }) {
     >
       {/* Business Name & Title */}
       <div className="text-center space-y-1 mb-3">
-        <h2 className="text-xs font-black uppercase tracking-wider">{settings?.nama_bisnis || 'BINTANG ADVERTISING'}</h2>
+        {/* Printer thermal monokrom: grayscale+kontras supaya logo (perisai biru)
+            tidak jadi bercak abu-abu kabur saat di-dither. */}
+        <img
+          src={logoStarfoto}
+          alt="StarPhoto & Advertising"
+          className="mx-auto block"
+          style={{ width: '80%', height: 'auto', filter: 'grayscale(1) contrast(1.4)' }}
+        />
+        <h2 className="text-xs font-black uppercase tracking-wider">{settings?.nama_bisnis || 'StarPhoto & Advertising'}</h2>
         <h3 className="text-[10px] font-bold uppercase">{documentTitle}</h3>
         <p className="text-[9px] text-slate-650">Tanggal: {formatReceiptDateTime(receipt.created_at)}</p>
       </div>
