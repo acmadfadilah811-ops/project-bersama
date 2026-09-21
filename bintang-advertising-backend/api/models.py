@@ -28,6 +28,13 @@ class UnitBisnis(models.Model):
 class Divisi(models.Model):
     nama = models.CharField(max_length=100, unique=True) # Misal: Desain, Cetak, Finishing, Pemasangan
     keterangan = models.TextField(null=True, blank=True)
+    # Unit bisnis pemilik divisi ini. Dipakai supaya kasir hanya bisa menerbitkan
+    # SPK ke divisi unit bisnisnya sendiri (dropdown & server). Kosong = divisi
+    # umum yang boleh dipilih semua unit (fail-open, konsisten dgn
+    # scoped_by_unit_bisnis).
+    unit_bisnis = models.ForeignKey(
+        'UnitBisnis', on_delete=models.SET_NULL, null=True, blank=True, related_name='divisi',
+    )
 
     def __str__(self):
         return self.nama

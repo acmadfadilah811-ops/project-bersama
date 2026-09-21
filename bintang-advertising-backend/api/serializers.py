@@ -80,6 +80,8 @@ class UnitBisnisSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class DivisiSerializer(serializers.ModelSerializer):
+    unit_bisnis_nama = serializers.ReadOnlyField(source='unit_bisnis.nama')
+
     class Meta:
         model = Divisi
         fields = '__all__'

@@ -546,6 +546,7 @@ class POSSaleViewSet(viewsets.ModelViewSet):
                     tahap_id=request.data.get('tahap_id'),
                     divisi_id=request.data.get('divisi_id'),
                     staff=staff,
+                    pemohon=request.user,
                 )
                 jobs = spk.terbitkan(
                     items, field='pos_sale_item', tahap=tahap, staff=staff,

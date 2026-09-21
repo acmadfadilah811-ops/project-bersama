@@ -80,10 +80,31 @@ def resolve_staff(staff_id, pemohon=None):
     return staff
 
 
-def resolve_tahap(tahap_id=None, divisi_id=None, staff=None):
+def pastikan_tahap_sesuai_unit(pemohon, tahap):
+    """Kasir yang punya unit bisnis hanya boleh menerbitkan SPK ke divisi unitnya
+    sendiri (atau divisi umum tanpa unit). Ditegakkan di server -- dropdown yang
+    tersaring saja bukan keamanan (API1). Role lain & kasir tanpa unit: tidak dibatasi."""
+    if tahap is None or getattr(pemohon, 'role', None) != 'kasir':
+        return
+    unit_id = getattr(pemohon, 'unit_bisnis_id', None)
+    if not unit_id:
+        return
+    unit_divisi = tahap.divisi.unit_bisnis_id
+    if unit_divisi is not None and unit_divisi != unit_id:
+        raise SpkError(
+            f"Divisi '{tahap.divisi.nama}' bukan milik unit bisnis Anda. "
+            'Pilih divisi dari unit bisnis Anda sendiri.',
+            403,
+        )
+
+
+def resolve_tahap(tahap_id=None, divisi_id=None, staff=None, pemohon=None):
     """Tentukan tahap produksi, dengan urutan fallback yang sama seperti
     penerbitan SPK dari antrean WA: tahap eksplisit -> tahap pertama divisi ->
     tahap pertama divisi milik staff.
+
+    `pemohon` (opsional): user penerbit SPK, dipakai untuk membatasi kasir ke
+    divisi unit bisnisnya (lihat pastikan_tahap_sesuai_unit).
     """
     tahap = None
 
@@ -116,6 +137,7 @@ def resolve_tahap(tahap_id=None, divisi_id=None, staff=None):
             )
             logger.info("Otomatis membuat TahapProses '%s' untuk Divisi staff", staff.divisi.nama)
 
+    pastikan_tahap_sesuai_unit(pemohon, tahap)
     return tahap
 
 

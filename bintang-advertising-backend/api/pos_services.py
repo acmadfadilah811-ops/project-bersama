@@ -617,6 +617,7 @@ def create_sale(*, user, data):
                     tahap_id=spk_payload.get('tahap_id'),
                     divisi_id=spk_payload.get('divisi_id'),
                     staff=staff,
+                    pemohon=user,
                 )
                 spk_service.terbitkan(
                     sale.items.all(), field='pos_sale_item', tahap=tahap, staff=staff,

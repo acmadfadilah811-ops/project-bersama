@@ -11,7 +11,7 @@ from django.utils import timezone
 
 from ..models import CustomUser, Divisi, UnitBisnis, ShiftTiming, JobBoard
 from ..serializers import CustomUserSerializer, DivisiSerializer, UnitBisnisSerializer, ShiftTimingSerializer
-from ..permissions import IsOwnerManagerOrAdmin, IsOwnerOrManager, IsOwnerManagerAdminOrReadOnly
+from ..permissions import IsOwnerManagerOrAdmin, IsOwnerOrManager, IsOwnerManagerAdminOrReadOnly, scoped_by_unit_bisnis
 from users.models import SecurityAuditLog
 
 class CustomUserViewSet(viewsets.ModelViewSet):
@@ -198,9 +198,18 @@ class CreateUserView(APIView):
 
 
 class DivisiViewSet(viewsets.ModelViewSet):
-    queryset = Divisi.objects.all()
+    queryset = Divisi.objects.select_related('unit_bisnis').all()
     serializer_class = DivisiSerializer
     permission_classes = [IsOwnerManagerAdminOrReadOnly]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # Kasir yang punya unit bisnis hanya melihat divisi unitnya (+ divisi umum
+        # tanpa unit) -- dropdown Terbitkan SPK jadi sesuai, dan penegakannya
+        # yang sebenarnya ada di spk.resolve_tahap(). Role lain tidak berubah.
+        if getattr(self.request.user, 'role', None) == 'kasir':
+            qs = scoped_by_unit_bisnis(qs, self.request.user, field='unit_bisnis')
+        return qs
 
 
 class UnitBisnisViewSet(viewsets.ModelViewSet):

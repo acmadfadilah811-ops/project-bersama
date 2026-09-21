@@ -16,7 +16,7 @@ from ..models import (
     PenggunaanMesin,
 )
 from ..serializers import JobBoardSerializer, TahapProsesSerializer
-from ..permissions import IsClockedIn, IsOwnerManagerAdminOrReadOnly, get_subordinate_user_ids
+from ..permissions import IsClockedIn, IsOwnerManagerAdminOrReadOnly, get_subordinate_user_ids, scoped_by_unit_bisnis
 
 from .inventory import record_material_consumption_to_general_ledger
 
@@ -833,6 +833,13 @@ class JobBoardViewSet(viewsets.ModelViewSet):
 
 
 class TahapProsesViewSet(viewsets.ModelViewSet):
-    queryset = TahapProses.objects.all()
+    queryset = TahapProses.objects.select_related('divisi').all()
     serializer_class = TahapProsesSerializer
     permission_classes = [IsOwnerManagerAdminOrReadOnly]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # Sama dgn DivisiViewSet: kasir hanya melihat tahap milik divisi unit bisnisnya.
+        if getattr(self.request.user, 'role', None) == 'kasir':
+            qs = scoped_by_unit_bisnis(qs, self.request.user, field='divisi__unit_bisnis')
+        return qs

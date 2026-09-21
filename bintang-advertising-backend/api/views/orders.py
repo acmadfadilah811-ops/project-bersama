@@ -634,6 +634,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 tahap_id=spk_payload.get('tahap_id'),
                 divisi_id=spk_payload.get('divisi_id'),
                 staff=staff,
+                pemohon=request.user,
             )
             jobs = spk.terbitkan(order.items.all(), field='order_item', tahap=tahap, staff=staff, deadline=deadline)
         except spk.SpkError as exc:
@@ -1520,7 +1521,7 @@ class AssignOrderView(APIView):
         try:
             staff = spk.resolve_staff(staff_id, pemohon=request.user)
             deadline = spk.resolve_deadline(request.data.get('deadline'))
-            tahap = spk.resolve_tahap(tahap_id=tahap_id, divisi_id=divisi_id, staff=staff)
+            tahap = spk.resolve_tahap(tahap_id=tahap_id, divisi_id=divisi_id, staff=staff, pemohon=request.user)
         except spk.SpkError as exc:
             return Response({'error': exc.pesan}, status=exc.status_code)
 

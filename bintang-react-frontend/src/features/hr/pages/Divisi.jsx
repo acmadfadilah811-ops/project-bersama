@@ -20,6 +20,7 @@ export default function Divisi() {
 
   const [divisiList, setDivisiList] = useState([]);
   const [tahapList, setTahapList] = useState([]);
+  const [unitList, setUnitList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedDivisi, setExpandedDivisi] = useState({});
 
@@ -29,18 +30,20 @@ export default function Divisi() {
   const [formLoading, setFormLoading] = useState(false);
 
   // Form state
-  const [divisiForm, setDivisiForm] = useState({ nama: '', keterangan: '' });
+  const [divisiForm, setDivisiForm] = useState({ nama: '', keterangan: '', unit_bisnis: '' });
   const [tahapForm, setTahapForm] = useState({ nama: '', divisi: '', urutan: 1 });
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [resDivisi, resTahap] = await Promise.all([
+      const [resDivisi, resTahap, resUnit] = await Promise.all([
         apiClient.get('/divisi/'),
         apiClient.get('/tahap-proses/'),
+        apiClient.get('/unit-bisnis/'),
       ]);
       setDivisiList(resDivisi.data);
       setTahapList(resTahap.data);
+      setUnitList(resUnit.data.results || resUnit.data);
       // Expand semua divisi secara default
       const expanded = {};
       resDivisi.data.forEach((d) => (expanded[d.id] = true));
@@ -59,9 +62,13 @@ export default function Divisi() {
   // ── DIVISI CRUD ──────────────────────────────────────────
   const openDivisiModal = (divisi = null) => {
     if (divisi) {
-      setDivisiForm({ nama: divisi.nama, keterangan: divisi.keterangan || '' });
+      setDivisiForm({
+        nama: divisi.nama,
+        keterangan: divisi.keterangan || '',
+        unit_bisnis: divisi.unit_bisnis ?? '',
+      });
     } else {
-      setDivisiForm({ nama: '', keterangan: '' });
+      setDivisiForm({ nama: '', keterangan: '', unit_bisnis: '' });
     }
     setModalDivisi(divisi || {});
   };
@@ -72,10 +79,12 @@ export default function Divisi() {
     if (!divisiForm.nama.trim()) return alert('Nama divisi wajib diisi!');
     try {
       setFormLoading(true);
+      // Unit bisnis kosong = divisi umum (boleh dipilih semua unit) -> kirim null.
+      const payload = { ...divisiForm, unit_bisnis: divisiForm.unit_bisnis === '' ? null : Number(divisiForm.unit_bisnis) };
       if (modalDivisi?.id) {
-        await apiClient.patch(`/divisi/${modalDivisi.id}/`, divisiForm);
+        await apiClient.patch(`/divisi/${modalDivisi.id}/`, payload);
       } else {
-        await apiClient.post('/divisi/', divisiForm);
+        await apiClient.post('/divisi/', payload);
       }
       setModalDivisi(null);
       fetchData();
@@ -242,6 +251,15 @@ export default function Divisi() {
                     <span className="text-[10px] font-bold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full border border-indigo-100">
                       {tahapDivisi.length} tahap
                     </span>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                        divisi.unit_bisnis_nama
+                          ? 'bg-amber-50 text-amber-700 border-amber-200'
+                          : 'bg-slate-50 text-slate-500 border-slate-200'
+                      }`}
+                    >
+                      {divisi.unit_bisnis_nama || 'Semua unit'}
+                    </span>
                   </div>
                   {isManager && (
                     <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
@@ -348,6 +366,24 @@ export default function Divisi() {
                   placeholder="Misal: Desain, Cetak, Finishing"
                   className="w-full border border-slate-200 rounded-xl p-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all bg-slate-50 focus:bg-white"
                 />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">
+                  Unit Bisnis
+                </label>
+                <select
+                  value={divisiForm.unit_bisnis}
+                  onChange={(e) => setDivisiForm((p) => ({ ...p, unit_bisnis: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl p-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all bg-slate-50 focus:bg-white"
+                >
+                  <option value="">Semua unit (divisi umum)</option>
+                  {unitList.map((u) => (
+                    <option key={u.id} value={u.id}>{u.nama}</option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-slate-400">
+                  Kasir hanya bisa menerbitkan SPK ke divisi unit bisnisnya sendiri. Kosongkan bila divisi ini dipakai semua unit.
+                </p>
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">
