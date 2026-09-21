@@ -5,9 +5,7 @@ import uuid
 
 from django.conf import settings
 from django.core.cache import cache
-from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.mail import send_mail
-from django.contrib.auth.password_validation import validate_password
 
 from django.contrib.auth import get_user_model
 from django.utils import timezone
@@ -24,6 +22,7 @@ from api.permissions import IsOwnerOrManager, IsStrictOwnerOrManager
 from api.throttles import LoginRateThrottle, PasswordResetRequestThrottle, PasswordResetVerifyThrottle
 
 from .models import Profile, SecurityAuditLog, SessionToken
+from .password_rules import cek_sandi_baru
 from .serializers import (
     SecurityAuditLogSerializer,
     SessionTokenSerializer,
@@ -591,13 +590,10 @@ class ChangePasswordView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        from django.contrib.auth.password_validation import validate_password
-        from django.core.exceptions import ValidationError as DjangoValidationError
-        try:
-            validate_password(new_password, user=user)
-        except DjangoValidationError as e:
+        kurang = cek_sandi_baru(new_password, user)
+        if kurang:
             return Response(
-                {"detail": ", ".join(e.messages)},
+                {"detail": " ".join(kurang), "errors": kurang},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -711,16 +707,7 @@ class ForgotPasswordVerifyView(APIView):
                 keterangan="OTP reset salah", berhasil=False,
             )
             return Response({"detail": "Kode OTP salah atau kedaluwarsa."}, status=400)
-        new_password = str(new_password)
-        kurang = []
-        if not any(c.isalpha() for c in new_password):
-            kurang.append("Kata sandi harus mengandung huruf.")
-        if not any(c.isdigit() for c in new_password):
-            kurang.append("Kata sandi harus mengandung angka.")
-        try:
-            validate_password(new_password, user=user)
-        except DjangoValidationError as exc:
-            kurang.extend(exc.messages)
+        kurang = cek_sandi_baru(new_password, user)
         if kurang:
             # OTP belum dipakai: pengguna boleh memperbaiki sandi dan mencoba lagi.
             return Response({"detail": " ".join(kurang), "errors": kurang}, status=400)

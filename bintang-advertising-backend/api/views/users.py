@@ -3,8 +3,6 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
-from django.contrib.auth.password_validation import validate_password
-from django.core.exceptions import ValidationError as DjangoValidationError
 
 import calendar
 from django.utils import timezone
@@ -13,6 +11,7 @@ from ..models import CustomUser, Divisi, UnitBisnis, ShiftTiming, JobBoard
 from ..serializers import CustomUserSerializer, DivisiSerializer, UnitBisnisSerializer, ShiftTimingSerializer
 from ..permissions import IsOwnerManagerOrAdmin, IsOwnerOrManager, IsOwnerManagerAdminOrReadOnly, scoped_by_unit_bisnis
 from users.models import SecurityAuditLog
+from users.password_rules import cek_sandi_baru
 
 class CustomUserViewSet(viewsets.ModelViewSet):
     queryset = CustomUser.objects.all()
@@ -111,10 +110,9 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         if not new_password:
             return Response({'error': 'Password baru wajib diisi.'}, status=status.HTTP_400_BAD_REQUEST)
             
-        try:
-            validate_password(new_password, user=user_to_reset)
-        except DjangoValidationError as e:
-            return Response({'error': ", ".join(e.messages)}, status=status.HTTP_400_BAD_REQUEST)
+        kurang = cek_sandi_baru(new_password, user_to_reset)
+        if kurang:
+            return Response({'error': " ".join(kurang)}, status=status.HTTP_400_BAD_REQUEST)
             
         user_to_reset.set_password(new_password)
         user_to_reset.save()

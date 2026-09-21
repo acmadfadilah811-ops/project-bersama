@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import apiClient from '../../../api/apiClient';
+import SandiChecklist from '../../auth/components/SandiChecklist';
+import { semuaKriteriaTerpenuhi } from '../../auth/utils/kriteriaSandi';
 import { useTransaksiCrumb } from '../../transaksi/components/TransaksiContext';
 import {
   MENU_FEATURES,
@@ -383,6 +385,10 @@ export default function Settings() {
       setPwMsg({ type: 'error', text: 'Password baru dan konfirmasi tidak cocok.' });
       return;
     }
+    if (!semuaKriteriaTerpenuhi(pwForm.baru, user?.username)) {
+      setPwMsg({ type: 'error', text: 'Password baru belum memenuhi semua kriteria.' });
+      return;
+    }
     setPwSaving(true);
     setPwMsg(null);
     try {
@@ -406,8 +412,8 @@ export default function Settings() {
       setResetPwError('Konfirmasi password tidak cocok.');
       return;
     }
-    if (resetPwForm.password.length < 8) {
-      setResetPwError('Password minimal harus 8 karakter.');
+    if (!semuaKriteriaTerpenuhi(resetPwForm.password, resetTarget?.username)) {
+      setResetPwError('Password baru belum memenuhi semua kriteria.');
       return;
     }
     setResetPwLoading(true);
@@ -722,13 +728,21 @@ export default function Settings() {
                       {showPw[key] ? <EyeOff size={15} /> : <Eye size={15} />}
                     </button>
                   </div>
+                  {key === 'baru' && (
+                    <SandiChecklist sandi={pwForm.baru} konfirmasi={pwForm.ulang} username={user?.username} />
+                  )}
                 </div>
               ))}
               <div className="flex justify-end pt-2">
                 <button
                   type="submit"
-                  disabled={pwSaving}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-rose-600 text-white text-sm font-semibold rounded-lg hover:bg-rose-700 transition-all disabled:opacity-60 cursor-pointer"
+                  disabled={
+                    pwSaving ||
+                    !pwForm.lama ||
+                    !semuaKriteriaTerpenuhi(pwForm.baru, user?.username) ||
+                    pwForm.baru !== pwForm.ulang
+                  }
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-rose-600 text-white text-sm font-semibold rounded-lg hover:bg-rose-700 transition-all disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
                 >
                   {pwSaving ? (
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -1717,8 +1731,13 @@ export default function Settings() {
                   required
                   value={resetPwForm.password}
                   onChange={(e) => setResetPwForm({ ...resetPwForm, password: e.target.value })}
-                  placeholder="Min. 8 karakter"
+                  placeholder="Password baru"
                   className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none transition-all"
+                />
+                <SandiChecklist
+                  sandi={resetPwForm.password}
+                  konfirmasi={resetPwForm.confirm}
+                  username={resetTarget.username}
                 />
               </div>
 
@@ -1749,8 +1768,12 @@ export default function Settings() {
                 </button>
                 <button
                   type="submit"
-                  disabled={resetPwLoading}
-                  className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-all disabled:opacity-60 min-w-[120px] justify-center cursor-pointer"
+                  disabled={
+                    resetPwLoading ||
+                    !semuaKriteriaTerpenuhi(resetPwForm.password, resetTarget.username) ||
+                    resetPwForm.password !== resetPwForm.confirm
+                  }
+                  className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-all disabled:opacity-60 disabled:cursor-not-allowed min-w-[120px] justify-center cursor-pointer"
                 >
                   {resetPwLoading ? (
                     <>

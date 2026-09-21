@@ -90,3 +90,38 @@ class LupaPasswordTests(APITestCase):
         r = self.minta()
         self.verifikasi(r.json()['reset_token'], self.ambil_otp(), 'SandiBaru2026x')
         self.assertEqual(self.minta().status_code, 200)
+
+
+class AturanSandiGantiDanResetTests(APITestCase):
+    """Ganti Password (mandiri) & Reset Password (owner/manager) memakai aturan yang sama."""
+
+    def setUp(self):
+        U = get_user_model()
+        self.owner = U.objects.create_user(username='own_pw', password='OwnerLama1x', role='owner')
+        self.manager = U.objects.create_user(username='mgr_pw', password='ManagerLama1x', role='manager')
+        self.staff = U.objects.create_user(username='stf_pw', password='StaffLama1x', role='staff')
+
+    def ganti(self, baru, lama='StaffLama1x'):
+        self.client.force_authenticate(self.staff)
+        return self.client.post('/api/auth/change-password/', {'old_password': lama, 'new_password': baru}, format='json')
+
+    def reset(self, pengubah, target, baru):
+        self.client.force_authenticate(pengubah)
+        return self.client.post(f'/api/users/{target.id}/reset-password/', {'new_password': baru}, format='json')
+
+    def test_ganti_password_menolak_tanpa_huruf_atau_angka(self):
+        self.assertEqual(self.ganti('12345678901').status_code, 400)
+        self.assertIn('huruf', self.ganti('12345678901').json()['detail'])
+        self.assertIn('angka', self.ganti('HurufSajaYa').json()['detail'])
+        self.assertEqual(self.ganti('SandiBaru2026x').status_code, 200)
+
+    def test_reset_password_owner_menolak_sandi_lemah_dan_menerima_yang_benar(self):
+        r = self.reset(self.owner, self.staff, 'HurufSajaYa')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('angka', r.json()['error'])
+        self.assertEqual(self.reset(self.owner, self.staff, 'SandiBaru2026x').status_code, 200)
+        self.staff.refresh_from_db()
+        self.assertTrue(self.staff.check_password('SandiBaru2026x'))
+
+    def test_reset_password_tetap_menolak_sandi_mirip_username(self):
+        self.assertEqual(self.reset(self.manager, self.staff, 'stf_pw12345').status_code, 400)
