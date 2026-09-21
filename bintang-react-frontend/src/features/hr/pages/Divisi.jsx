@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import apiClient from '../../../api/apiClient';
 import { useAuth } from '../../../context/AuthContext';
 import {
@@ -12,6 +13,8 @@ import {
   ChevronRight,
   ListOrdered,
   Tag,
+  ArrowLeft,
+  Building2,
 } from 'lucide-react';
 
 export default function Divisi() {
@@ -23,6 +26,11 @@ export default function Divisi() {
   const [unitList, setUnitList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedDivisi, setExpandedDivisi] = useState({});
+
+  // Layar awal = pilihan unit bisnis; ?unit=<id|umum> membuka isi satu unit
+  // (tombol Back browser kembali ke pilihan unit).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const unitParam = searchParams.get('unit');
 
   // Modal state
   const [modalDivisi, setModalDivisi] = useState(null); // null = tutup, {} = baru, {id,...} = edit
@@ -68,7 +76,11 @@ export default function Divisi() {
         unit_bisnis: divisi.unit_bisnis ?? '',
       });
     } else {
-      setDivisiForm({ nama: '', keterangan: '', unit_bisnis: '' });
+      setDivisiForm({
+        nama: '',
+        keterangan: '',
+        unit_bisnis: unitAktif && unitAktif.id !== 'umum' ? unitAktif.id : '',
+      });
     }
     setModalDivisi(divisi || {});
   };
@@ -158,6 +170,21 @@ export default function Divisi() {
   const getTahapByDivisi = (divisiId) =>
     tahapList.filter((t) => t.divisi === divisiId).sort((a, b) => a.urutan - b.urutan);
 
+  // Unit yang sedang dibuka. 'umum' = divisi tanpa unit bisnis (dipakai semua unit).
+  const unitAktif =
+    unitParam === 'umum'
+      ? { id: 'umum', nama: 'Divisi Umum (semua unit)' }
+      : unitList.find((u) => String(u.id) === unitParam) || null;
+  const divisiDiUnit = (unitId) =>
+    divisiList.filter((d) => (unitId === 'umum' ? !d.unit_bisnis : d.unit_bisnis === unitId));
+  const jumlahTahapDiUnit = (unitId) => {
+    const ids = new Set(divisiDiUnit(unitId).map((d) => d.id));
+    return tahapList.filter((t) => ids.has(t.divisi)).length;
+  };
+  const divisiTampil = unitAktif ? divisiDiUnit(unitAktif.id) : [];
+  const bukaUnit = (id) => setSearchParams({ unit: String(id) });
+  const kembaliKePilihanUnit = () => setSearchParams({});
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -166,17 +193,108 @@ export default function Divisi() {
     );
   }
 
-  return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-12">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+  // ── LAYAR 1: pilih unit bisnis ───────────────────────────
+  if (!unitAktif) {
+    const punyaUmum = divisiDiUnit('umum').length > 0;
+    // Non-manager hanya melihat unit yang punya divisi (data kasir sudah dibatasi server).
+    const kartuUnit = unitList
+      .filter((u) => isManager || divisiDiUnit(u.id).length > 0)
+      .map((u) => ({ id: u.id, nama: u.nama }));
+    if (punyaUmum) kartuUnit.push({ id: 'umum', nama: 'Divisi Umum (semua unit)', umum: true });
+    // Kelas Tailwind harus ditulis utuh (tidak boleh disusun dari string) agar ikut dibuat.
+    const warna = [
+      'bg-indigo-50 text-indigo-600',
+      'bg-amber-50 text-amber-600',
+      'bg-emerald-50 text-emerald-600',
+      'bg-rose-50 text-rose-600',
+    ];
+    return (
+      <div className="max-w-4xl mx-auto space-y-6 pb-12">
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2">
             <Layers className="text-indigo-600" size={24} />
             Divisi & Tahap Proses
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Atur struktur organisasi produksi dan alur kerja job board.
+            Pilih unit bisnis untuk melihat dan mengatur divisi serta tahap prosesnya.
+          </p>
+        </div>
+        {kartuUnit.length === 0 ? (
+          <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center">
+            <Building2 size={48} className="text-slate-200 mx-auto mb-3" />
+            <h3 className="font-bold text-slate-700">Belum ada unit bisnis</h3>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {kartuUnit.map((u, i) => {
+              const daftar = divisiDiUnit(u.id);
+              const w = u.umum ? 'bg-slate-100 text-slate-500' : warna[i % warna.length];
+              return (
+                <button
+                  key={u.id}
+                  onClick={() => bukaUnit(u.id)}
+                  className="text-left bg-white border border-slate-200 hover:border-indigo-300 hover:shadow-md rounded-2xl p-5 transition-all cursor-pointer group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-12 h-12 rounded-xl ${w} flex items-center justify-center`}>
+                      <Building2 size={22} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-extrabold text-slate-800 truncate">{u.nama}</h3>
+                      <p className="text-xs text-slate-500">
+                        {daftar.length} divisi · {jumlahTahapDiUnit(u.id)} tahap proses
+                      </p>
+                    </div>
+                    <ChevronRight size={18} className="text-slate-300 group-hover:text-indigo-500" />
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mt-4 min-h-[22px]">
+                    {daftar.length === 0 ? (
+                      <span className="text-[11px] italic text-slate-400">Belum ada divisi</span>
+                    ) : (
+                      <>
+                        {daftar.slice(0, 5).map((d) => (
+                          <span
+                            key={d.id}
+                            className="text-[10px] font-bold bg-slate-50 text-slate-600 px-2 py-0.5 rounded-full border border-slate-200"
+                          >
+                            {d.nama}
+                          </span>
+                        ))}
+                        {daftar.length > 5 && (
+                          <span className="text-[10px] font-bold text-slate-400">+{daftar.length - 5}</span>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── LAYAR 2: isi satu unit bisnis ────────────────────────
+  const tahapUnit = jumlahTahapDiUnit(unitAktif.id);
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6 pb-12">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <button
+            onClick={kembaliKePilihanUnit}
+            className="flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-indigo-600 mb-2 cursor-pointer"
+          >
+            <ArrowLeft size={14} /> Semua unit bisnis
+          </button>
+          <h1 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2">
+            <Building2 className="text-indigo-600" size={24} />
+            {unitAktif.nama}
+          </h1>
+          <p className="text-xs text-slate-500 mt-1">
+            Divisi dan tahap proses milik unit ini.
           </p>
         </div>
         {isManager && (
@@ -197,7 +315,7 @@ export default function Divisi() {
           </div>
           <div>
             <p className="text-xs text-slate-500 font-medium">Total Divisi</p>
-            <p className="text-2xl font-extrabold text-slate-900">{divisiList.length}</p>
+            <p className="text-2xl font-extrabold text-slate-900">{divisiTampil.length}</p>
           </div>
         </div>
         <div className="bg-white border border-slate-200 rounded-2xl p-4 flex items-center gap-3">
@@ -206,23 +324,23 @@ export default function Divisi() {
           </div>
           <div>
             <p className="text-xs text-slate-500 font-medium">Total Tahap Proses</p>
-            <p className="text-2xl font-extrabold text-slate-900">{tahapList.length}</p>
+            <p className="text-2xl font-extrabold text-slate-900">{tahapUnit}</p>
           </div>
         </div>
       </div>
 
       {/* Divisi List */}
-      {divisiList.length === 0 ? (
+      {divisiTampil.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center">
           <Layers size={48} className="text-slate-200 mx-auto mb-3" />
-          <h3 className="font-bold text-slate-700">Belum ada divisi</h3>
+          <h3 className="font-bold text-slate-700">Belum ada divisi di {unitAktif.nama}</h3>
           <p className="text-sm text-slate-400 mt-1">
             {isManager ? 'Klik "Tambah Divisi" untuk memulai.' : 'Belum ada divisi yang dibuat.'}
           </p>
         </div>
       ) : (
         <div className="space-y-3">
-          {divisiList.map((divisi) => {
+          {divisiTampil.map((divisi) => {
             const tahapDivisi = getTahapByDivisi(divisi.id);
             const isExpanded = expandedDivisi[divisi.id];
 
@@ -251,15 +369,11 @@ export default function Divisi() {
                     <span className="text-[10px] font-bold bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full border border-indigo-100">
                       {tahapDivisi.length} tahap
                     </span>
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                        divisi.unit_bisnis_nama
-                          ? 'bg-amber-50 text-amber-700 border-amber-200'
-                          : 'bg-slate-50 text-slate-500 border-slate-200'
-                      }`}
-                    >
-                      {divisi.unit_bisnis_nama || 'Semua unit'}
-                    </span>
+                    {!divisi.unit_bisnis && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-slate-50 text-slate-500 border-slate-200">
+                        Semua unit
+                      </span>
+                    )}
                   </div>
                   {isManager && (
                     <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
@@ -461,7 +575,7 @@ export default function Divisi() {
                     className="w-full border border-slate-200 rounded-xl p-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all bg-slate-50 focus:bg-white cursor-pointer"
                   >
                     <option value="">-- Pilih --</option>
-                    {divisiList.map((d) => (
+                    {divisiTampil.map((d) => (
                       <option key={d.id} value={d.id}>
                         {d.nama}
                       </option>
