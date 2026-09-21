@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import loginDashboardBg from '../../../assets/login_dashboard_bg.jpg';
 import { semuaKriteriaTerpenuhi, formatSisaWaktu } from '../utils/kriteriaSandi';
+import { pesanLoginGagal } from '../utils/pesanLogin';
 import SandiChecklist from '../components/SandiChecklist';
 
 // Sesi lupa-password disimpan sementara agar tidak hilang saat halaman dimuat ulang
@@ -190,7 +191,7 @@ export default function Login() {
         navigate('/dashboard');
       }
     } catch (err) {
-      setError(err.response?.data?.detail || 'Username atau password salah.');
+      setError(pesanLoginGagal(err));
     } finally {
       setLoading(false);
     }

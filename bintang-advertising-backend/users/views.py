@@ -10,6 +10,7 @@ from django.core.mail import send_mail
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework import status
+from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -79,6 +80,34 @@ def _parse_device(user_agent: str) -> str:
 # Custom Login View — extend TokenObtainPairView
 # ---------------------------------------------------------------------------
 
+# Penguncian akun sementara (AKS-03): MAKS_GAGAL_LOGIN gagal berturut-turut dalam
+# DURASI_KUNCI_LOGIN detik -> login ditolak selama sisa masa kunci. Kunci per username
+# (bukan per IP) agar tebakan dari banyak IP tetap terhitung.
+MAKS_GAGAL_LOGIN = 5
+DURASI_KUNCI_LOGIN = 15 * 60
+
+
+def kunci_login_key(username):
+    return f"login_fail:{str(username).strip().lower()}"
+
+
+def sisa_waktu_kunci_login(username):
+    """Detik tersisa masa kunci (0 bila tidak terkunci)."""
+    waktu_kunci = cache.get(f"{kunci_login_key(username)}:locked")
+    if waktu_kunci is None:
+        return 0
+    try:
+        return max(1, int(DURASI_KUNCI_LOGIN - (timezone.now().timestamp() - float(waktu_kunci))))
+    except (TypeError, ValueError):
+        return DURASI_KUNCI_LOGIN
+
+
+def buka_kunci_login(username):
+    key = kunci_login_key(username)
+    cache.delete(key)
+    cache.delete(f"{key}:locked")
+
+
 class CustomLoginView(TokenObtainPairView):
     """
     POST /api/auth/login/
@@ -97,34 +126,54 @@ class CustomLoginView(TokenObtainPairView):
         ua = request.META.get("HTTP_USER_AGENT", "")
         username_input = request.data.get("username", "")
 
-        failure_key = f"login_fail:{username_input.strip().lower()}"
-        if cache.get(f"{failure_key}:locked"):
-            return Response({"detail": "Terlalu banyak percobaan. Coba lagi 15 menit."}, status=429)
+        username_input = str(username_input or "")
+        failure_key = kunci_login_key(username_input)
+        sisa_kunci = sisa_waktu_kunci_login(username_input)
+        if sisa_kunci:
+            return Response({
+                "detail": "Akun dikunci sementara karena terlalu banyak percobaan login yang gagal.",
+                "retry_after": sisa_kunci,
+            }, status=429, headers={"Retry-After": str(sisa_kunci)})
         try:
             serializer.is_valid(raise_exception=True)
-        except (InvalidToken, TokenError) as e:
+        except (AuthenticationFailed, InvalidToken, TokenError):
+            # Kegagalan kredensial di SimpleJWT berupa AuthenticationFailed (bukan
+            # InvalidToken/TokenError): dulu tidak tertangkap sehingga hitungan gagal
+            # tidak pernah naik dan akun tidak pernah terkunci (AKS-03, 2026-09-22).
+            # Berlaku sama untuk username yang tidak ada (anti-enumerasi).
             attempts = int(cache.get(failure_key, 0) or 0) + 1
-            cache.set(failure_key, attempts, 900)
-            if attempts >= 5:
-                cache.set(f"{failure_key}:locked", True, 900)
+            cache.set(failure_key, attempts, DURASI_KUNCI_LOGIN)
+            terkunci_sekarang = attempts >= MAKS_GAGAL_LOGIN
+            if terkunci_sekarang:
+                cache.set(f"{failure_key}:locked", timezone.now().timestamp(), DURASI_KUNCI_LOGIN)
             # --- Login GAGAL ---
             SecurityAuditLog.objects.create(
-                user=None,
+                user=CustomUser.objects.filter(username=username_input.strip()).first(),
                 username_input=username_input,
                 event="LOGIN_FAILED",
                 ip_address=ip,
                 user_agent=ua,
-                keterangan=str(e),
+                keterangan=(
+                    f"Gagal login ke-{attempts}"
+                    + (f"; akun dikunci {DURASI_KUNCI_LOGIN // 60} menit" if terkunci_sekarang else "")
+                ),
                 berhasil=False,
             )
+            if terkunci_sekarang:
+                return Response({
+                    "detail": "Akun dikunci sementara karena terlalu banyak percobaan login yang gagal.",
+                    "retry_after": DURASI_KUNCI_LOGIN,
+                }, status=429, headers={"Retry-After": str(DURASI_KUNCI_LOGIN)})
             return Response(
-                {"detail": "Username atau password salah."},
+                {
+                    "detail": "Username atau password salah.",
+                    "sisa_percobaan": MAKS_GAGAL_LOGIN - attempts,
+                },
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
         # --- Login BERHASIL (Kredensial Valid) ---
-        cache.delete(failure_key)
-        cache.delete(f"{failure_key}:locked")
+        buka_kunci_login(username_input)
         user = serializer.user
 
         # Deteksi Perubahan IP jika User memiliki Email terdaftar (bisa dibypass via env)

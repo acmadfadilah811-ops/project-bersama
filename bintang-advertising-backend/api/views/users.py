@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 
 import calendar
+import logging
 from django.utils import timezone
 
 from ..models import CustomUser, Divisi, UnitBisnis, ShiftTiming, JobBoard
@@ -12,6 +13,10 @@ from ..serializers import CustomUserSerializer, DivisiSerializer, UnitBisnisSeri
 from ..permissions import IsOwnerManagerOrAdmin, IsOwnerOrManager, IsOwnerManagerAdminOrReadOnly, scoped_by_unit_bisnis
 from users.models import SecurityAuditLog
 from users.password_rules import cek_sandi_baru
+from users.views import buka_kunci_login
+
+logger = logging.getLogger(__name__)
+
 
 class CustomUserViewSet(viewsets.ModelViewSet):
     queryset = CustomUser.objects.all()
@@ -93,6 +98,18 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                 serializer.save()
                 return Response(serializer.data)
             return Response(serializer.errors, status=400)
+
+    @action(detail=True, methods=['post'], url_path='buka-kunci')
+    def buka_kunci(self, request, pk=None):
+        """Membuka lebih awal kunci login sementara (akibat terlalu banyak gagal login)."""
+        if request.user.role not in ['owner', 'manager']:
+            return Response({'error': 'Hanya Owner atau Manager yang dapat membuka kunci akun.'}, status=status.HTTP_403_FORBIDDEN)
+        target = self.get_object()
+        if request.user.role == 'manager' and target.role in ['owner', 'manager']:
+            return Response({'error': 'Manager tidak boleh membuka kunci akun Owner atau Manager.'}, status=status.HTTP_403_FORBIDDEN)
+        buka_kunci_login(target.username)
+        logger.warning('Kunci login %s dibuka oleh %s', target.username, request.user.username)
+        return Response({'message': f'Kunci login untuk {target.username} dibuka.'})
 
     @action(detail=True, methods=['post'], url_path='reset-password')
     def reset_password(self, request, pk=None):
