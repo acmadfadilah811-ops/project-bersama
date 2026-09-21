@@ -37,7 +37,7 @@ export default function KasirSidebar({ isCollapsed, setIsCollapsed }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout, businessSettings } = useAuth();
-  const { shiftAktif } = useKasir();
+  const { shiftAktif, siapDiambilCount } = useKasir();
 
   const [waOrderCount, setWaOrderCount] = useState(0);
 
@@ -70,7 +70,7 @@ export default function KasirSidebar({ isCollapsed, setIsCollapsed }) {
     { path: '/kasir/dashboard', label: 'Dashboard Kasir', icon: LayoutDashboard },
     { path: '/kasir/terminal', label: 'Terminal POS', icon: CreditCard, highlight: true },
     { path: '/kasir/produk', label: 'Katalog Produk', icon: Package },
-    { path: '/kasir/pesanan', label: 'Pesanan & Pelunasan', icon: PackageCheck },
+    { path: '/kasir/pesanan', label: 'Pesanan & Pelunasan', icon: PackageCheck, badge: siapDiambilCount },
     { path: '/kasir/antrean-wa', label: 'Antrean Online & Offline', icon: MessageCircle, badge: waOrderCount },
     { path: '/kasir/wa-live', label: 'WA Live', icon: MessageSquare },
     { path: '/kasir/pelanggan-supplier', label: 'Pelanggan', icon: Users },

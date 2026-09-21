@@ -1,11 +1,15 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import apiClient from '../../../api/apiClient';
 import { useAuth } from '../../../context/AuthContext';
+import { useNotifikasiSiapDiambil } from '../hooks/useNotifikasiSiapDiambil';
 
 const KasirContext = createContext(null);
 
 export function KasirProvider({ children }) {
   const { user } = useAuth();
+  // Notifikasi "Proses selesai -> Kasir": badge menu Pesanan + toast saat ada
+  // pesanan baru siap diambil, aktif di semua halaman kasir.
+  const { jumlahSiap, muatUlangSiapDiambil } = useNotifikasiSiapDiambil();
   const [shiftAktif, setShiftAktif] = useState(null);
   const [loadingShift, setLoadingShift] = useState(true);
   const [cart, setCart] = useState([]);
@@ -440,6 +444,8 @@ export function KasirProvider({ children }) {
         getTotal,
         cartNotes,
         setCartNotes,
+        siapDiambilCount: jumlahSiap,
+        muatUlangSiapDiambil,
       }}
     >
       {children}
