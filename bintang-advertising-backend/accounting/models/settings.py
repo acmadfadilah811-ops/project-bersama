@@ -207,6 +207,20 @@ class AccountingSettings(models.Model):
         Account, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
         help_text="Akun Uang Muka Pembelian untuk DP sebelum barang diterima.",
     )
+    # Pemetaan akun Penggajian (Posting Gaji dari HR/Horilla, lihat
+    # services/payroll_posting.py). Kosong = Posting Gaji ditolak (fail-closed).
+    payroll_expense_account = models.ForeignKey(
+        Account, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+        help_text="Akun Biaya gaji yang didebit saat gaji diakui.",
+    )
+    payroll_payable_account = models.ForeignKey(
+        Account, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+        help_text="Akun Hutang gaji yang dikredit saat gaji diakui dan didebit saat dibayar.",
+    )
+    payroll_employer_contribution_expense_account = models.ForeignKey(
+        Account, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+        help_text="Akun Beban iuran perusahaan (mis. BPJS) -- hanya wajib bila ada iuran perusahaan.",
+    )
     shift_cash_variance_auto_post_enabled = models.BooleanField(
         default=False,
         help_text="Posting otomatis selisih kas kasir (kas fisik vs sistem) ke jurnal saat shift "

@@ -47,6 +47,7 @@ export default function AccountingSecondarySidebar({ activeSubMenu, onSelectMenu
       subItems: [
         { id: 'jurnal-umum', label: 'Jurnal Umum' },
         { id: 'buku-besar', label: 'Buku Besar' },
+        { id: 'posting-gaji', label: 'Posting Gaji' },
       ],
     },
     {

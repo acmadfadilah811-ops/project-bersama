@@ -64,6 +64,8 @@ ACCOUNTS = [
     ("14000", "Akumulasi penyusutan aset tetap", "Akumulasi penyusutan aset tetap", AccountType.ASSET, True, ""),
     ("15000", "Akumulasi penyusutan aset tak berwujud", "Akumulasi penyusutan aset tak berwujud", AccountType.ASSET, True, ""),
     ("21000", "Hutang dagang", "Kewajiban Jangka Pendek", AccountType.LIABILITY, False, ""),
+    ("21100", "Hutang gaji", "Kewajiban Jangka Pendek", AccountType.LIABILITY, False, ""),
+    ("21200", "Hutang BPJS", "Kewajiban Jangka Pendek", AccountType.LIABILITY, False, ""),
     ("22000", "Hutang bank", "Kewajiban Jangka Panjang", AccountType.LIABILITY, False, ""),
     ("23000", "Pendapatan di terima dimuka", "Kewajiban lain", AccountType.LIABILITY, False, ""),
     ("23500", "PPN Keluaran", "Kewajiban lain", AccountType.LIABILITY, False, ""),
@@ -89,6 +91,7 @@ ACCOUNTS = [
     ("60300", "Biaya perlengkapan", "Pengeluaran", AccountType.EXPENSE, False, ""),
     ("60400", "Biaya penyusutan", "Pengeluaran", AccountType.EXPENSE, False, ""),
     ("60500", "Biaya transfer", "Pengeluaran", AccountType.EXPENSE, False, ""),
+    ("60600", "Beban BPJS perusahaan", "Pengeluaran", AccountType.EXPENSE, False, ""),
     ("70000", "Pendapatan lain lain", "Pendapatan Lain", AccountType.REVENUE, False, ""),
     ("70001", "Pembulatan", "Pendapatan Lain", AccountType.REVENUE, False, ""),
     ("70002", "Code Uniq Penjualan", "Pendapatan Lain", AccountType.REVENUE, False, ""),
@@ -156,6 +159,9 @@ class Command(BaseCommand):
                 "order_sales_revenue_account": Account.objects.filter(code="40000", is_active=True).first(),
                 "order_receivable_account": Account.objects.filter(code="11300", is_active=True).first(),
                 "order_customer_deposit_account": Account.objects.filter(code="23000", is_active=True).first(),
+                "payroll_expense_account": Account.objects.filter(code="60100", is_active=True).first(),
+                "payroll_payable_account": Account.objects.filter(code="21100", is_active=True).first(),
+                "payroll_employer_contribution_expense_account": Account.objects.filter(code="60600", is_active=True).first(),
             }
             update_fields = []
             for field, account in mapping_defaults.items():

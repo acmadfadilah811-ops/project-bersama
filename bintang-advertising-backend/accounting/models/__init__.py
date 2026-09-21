@@ -6,6 +6,7 @@ from .journal import JournalEntry, JournalEntryLine, JournalAuditLog
 from .cashbank import CashBankAccount, PaymentMethod, PaymentMethodAuditLog
 from .bank_statement import BankStatementLine
 from .assets import FixedAsset
+from .payroll import PayrollComponentMapping, PayrollPosting
 
 __all__ = [
     "AccountingSettings",
@@ -26,4 +27,6 @@ __all__ = [
     "PaymentMethodAuditLog",
     "BankStatementLine",
     "FixedAsset",
+    "PayrollComponentMapping",
+    "PayrollPosting",
 ]

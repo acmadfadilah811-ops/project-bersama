@@ -13,6 +13,7 @@ import CaraPembayaran from './CaraPembayaran';
 import BankStatement from './BankStatement';
 import RekonsiliasiBank from './RekonsiliasiBank';
 import KonfirmasiSettlement from './KonfirmasiSettlement';
+import PostingGaji from './PostingGaji';
 import TransferModal from './TransferModal';
 import PosTransactions from './PosTransactions';
 import PenjualanDiToko from './PenjualanDiToko';
@@ -170,6 +171,8 @@ export default function AccountingInternalApp() {
               <JurnalUmum onToggleSidebar={setHideSidebar} />
             ) : activeSubMenu === 'buku-besar' ? (
               <BukuBesar onToggleSidebar={setHideSidebar} />
+            ) : activeSubMenu === 'posting-gaji' ? (
+              <PostingGaji />
             ) : activeSubMenu === 'kas-bank-list' ? (
               <ListKasBank onToggleSidebar={setHideSidebar} initialViewState="list" />
             ) : activeSubMenu === 'cara-pembayaran' ? (

@@ -1196,51 +1196,13 @@ class SlipGajiViewSet(viewsets.ModelViewSet):
     def pay_payroll(self, request, pk=None):
         """
         POST /api/hr/slip-gaji/{id}/pay/
-        Membayar slip gaji, menandai status paid, dan memposting jurnal otomatis ke Buku Besar.
+        DINONAKTIFKAN (2026-09-21): HR (Horilla) adalah acuan penggajian; gaji dicatat ke
+        akuntansi lewat Posting Gaji (accounting/services/payroll_posting.py). Jalur ini
+        mem-posting ke akun 52100/11100 yang tidak ada di COA (selalu gagal) dan jika
+        dibiarkan hidup menjadi implementasi paralel yang bisa mencatat gaji ganda.
         """
-        if request.user.role not in ("owner", "manager"):
-            return Response({"detail": "Hanya Owner/Manager yang dapat menyetujui pembayaran gaji."}, status=status.HTTP_403_FORBIDDEN)
-
-        with transaction.atomic():
-            # Kunci baris slip sampai jurnal berhasil dibuat. Tanpa lock, dua
-            # request pay yang datang bersamaan dapat sama-sama melihat status
-            # draft dan menghasilkan pembayaran/jurnal ganda.
-            slip = self.get_queryset().select_for_update().get(pk=pk)
-            if slip.status == "paid":
-                return Response({"detail": "Slip gaji ini sudah dibayar sebelumnya."}, status=status.HTTP_400_BAD_REQUEST)
-
-            # Update status slip
-            slip.status = "paid"
-            slip.waktu_dibayar = timezone.now()
-            slip.dibayar_oleh = request.user
-            slip.save()
-
-            ref_no = f"SG-{slip.id}"
-            ket_tx = f"Pembayaran Gaji {slip.staff.username} Periode {slip.bulan}/{slip.tahun}"
-            
-            # Forward to Official Double-Entry Ledger (accounting.JournalEntry)
-            try:
-                from accounting.models import Account, JournalEntry
-                from accounting.services.journal import create_journal_entry
-                from decimal import Decimal
-
-                acc_gaji = Account.objects.filter(code="52100").first()
-                acc_kas = Account.objects.filter(code="11100").first()
-                if not acc_gaji or not acc_kas:
-                    raise RuntimeError("COA payroll 52100 dan kas 11100 wajib tersedia.")
-                create_journal_entry(
-                    date=timezone.localdate(),
-                    lines=[
-                        {"account": acc_gaji, "debit": Decimal(str(slip.total_gaji_bersih)), "kredit": 0, "description": ket_tx, "external_document_no": ref_no},
-                        {"account": acc_kas, "debit": 0, "kredit": Decimal(str(slip.total_gaji_bersih)), "description": ket_tx, "external_document_no": ref_no},
-                    ],
-                    description=ket_tx,
-                    source_type=JournalEntry.SourceType.PAYROLL,
-                    source_id=slip.id,
-                    created_by=request.user,
-                )
-            except Exception as e:
-                logger.error(f"Gagal mencatat JournalEntry gaji: {e}")
-                raise
-
-        return Response(SlipGajiSerializer(slip).data, status=status.HTTP_200_OK)
+        return Response(
+            {"detail": "Pembayaran gaji lewat modul ini dinonaktifkan. Gaji dicatat dari HR (Horilla) "
+                       "lewat menu Posting Gaji di Akuntansi."},
+            status=status.HTTP_410_GONE,
+        )

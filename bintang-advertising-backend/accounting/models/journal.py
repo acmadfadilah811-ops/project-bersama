@@ -30,6 +30,7 @@ class JournalEntry(models.Model):
         STOCK_OPNAME = "stock_opname", "Opname Stok"
         PRODUCTION = "production", "Produksi"
         PAYROLL = "payroll", "Penggajian"
+        PAYROLL_PAYMENT = "payroll_payment", "Pembayaran Gaji"
         CASH_TRANSACTION = "cash_transaction", "Transaksi Kas"
         CASH_TRANSFER = "cash_transfer", "Transfer Kas"
         CAPITAL_TRANSFER = "capital_transfer", "Transfer Modal"
