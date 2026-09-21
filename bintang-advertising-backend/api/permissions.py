@@ -195,5 +195,16 @@ class IsClockedIn(BasePermission):
         # If they clocked out, they cannot access unless the workspace was explicitly unlocked by management
         if absensi.jam_keluar is not None and not absensi.workspace_unlocked:
             return False
-            
+
         return True
+
+
+class CanUseMaterialRequisition(BasePermission):
+    """Permintaan Bahan: owner, manager, admin (gudang), spv, kordiv. Kasir/staff
+    tidak. Hak per aksi & scoping data ditegakkan di services/material_requisition.py."""
+
+    def has_permission(self, request, view):
+        return bool(
+            request.user and request.user.is_authenticated and
+            getattr(request.user, 'role', '') in ['owner', 'manager', 'admin', 'spv', 'kordiv']
+        )

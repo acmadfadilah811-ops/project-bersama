@@ -14,6 +14,7 @@ from .views.chatbotx_bridge import ChatbotXToolCallView, ChatbotXToolSchemasView
 from . import finance_views
 from .report_views import ReportDataView, ReportExportView
 from .views.purchase_workflow import PurchaseWorkflowView
+from .views.material_requisition import MaterialRequisitionViewSet
 from .views.purchase_reports import PurchaseReportView
 from .views.qz import QZCertificateView, QZSignView
 from .views.wa_pricelist import (
@@ -54,6 +55,7 @@ router.register(r'saldo-kas-harian', views.SaldoKasHarianViewSet, basename='sald
 router.register(r'ringkasan-shift', views.RingkasanShiftViewSet, basename='ringkasan-shift')
 router.register(r'pos-payment-methods', views.POSPaymentMethodViewSet, basename='pos-payment-method')
 router.register(r'mesin', views.MesinViewSet, basename='mesin')
+router.register(r'material-requisitions', MaterialRequisitionViewSet, basename='material-requisition')
 router.register(r'penggunaan-mesin', views.PenggunaanMesinViewSet, basename='penggunaan-mesin')
 router.register(r'maintenance-mesin', views.MaintenanceMesinViewSet, basename='maintenance-mesin')
 

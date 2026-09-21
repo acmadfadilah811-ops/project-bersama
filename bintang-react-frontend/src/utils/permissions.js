@@ -21,6 +21,7 @@ export const MENU_FEATURES = [
   { id: 'accounting-internal', label: 'Akuntansi Internal', path: '/accounting-internal' },
   { id: 'finance-dashboard', label: 'Dashboard Finance', path: '/finance-dashboard' },
   { id: 'wa-bot-config', label: 'Pengaturan WA Bot', path: '/pengaturan-wa-bot' },
+  { id: 'permintaan-bahan', label: 'Permintaan Bahan', path: '/permintaan-bahan' },
 ];
 
 export const DEFAULT_PERMISSIONS = {
@@ -79,8 +80,8 @@ export const DEFAULT_PERMISSIONS = {
   ],
   staff: ['staff-dashboard', 'jobs'],
   kasir: ['kasir-pos'],
-  spv: ['staff-dashboard', 'jobs'],
-  kordiv: ['staff-dashboard', 'jobs'],
+  spv: ['staff-dashboard', 'jobs', 'permintaan-bahan'],
+  kordiv: ['staff-dashboard', 'jobs', 'permintaan-bahan'],
   admin_finance: ['finance-dashboard'],
   spv_finance: ['finance-dashboard'],
 };
@@ -88,12 +89,12 @@ export const DEFAULT_PERMISSIONS = {
 
 // Perizinan yang WAJIB dimiliki dan tidak bisa dihapus per-role
 const LOCKED_PERMISSIONS = {
-  admin: ['dashboard', 'settings', 'jobs'],
-  manager: ['dashboard'],
+  admin: ['dashboard', 'settings', 'jobs', 'permintaan-bahan'],
+  manager: ['dashboard', 'permintaan-bahan'],
   staff: ['staff-dashboard'],
   kasir: ['kasir-pos'],
-  spv: ['staff-dashboard'],
-  kordiv: ['staff-dashboard'],
+  spv: ['staff-dashboard', 'permintaan-bahan'],
+  kordiv: ['staff-dashboard', 'permintaan-bahan'],
   admin_finance: ['finance-dashboard'],
   spv_finance: ['finance-dashboard'],
 };

@@ -36,6 +36,7 @@ import LaporanApp from './features/laporan/pages/LaporanApp';
 import MarketingApp from './features/marketing/pages/MarketingApp';
 import KasirApp from './features/kasir/pages/KasirApp';
 import PengaturanWaBotPage from './features/waBotConfig/pages/PengaturanWaBotPage';
+import PermintaanBahanPage from './features/requisition/pages/PermintaanBahanPage';
 import AccountingInternalApp from './features/accounting/pages/AccountingInternalApp';
 
 let globalAlertTrigger = null;
@@ -190,6 +191,7 @@ function App() {
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/settings/*" element={<SettingsApp />} />
                 <Route path="/pengaturan-wa-bot" element={<PengaturanWaBotPage />} />
+                <Route path="/permintaan-bahan" element={<PermintaanBahanPage />} />
 
                 {/* Kasir / POS Terminal */}
                 <Route path="/kasir/*" element={<KasirApp />} />

@@ -1431,3 +1431,7 @@ from .integration_models import *
 
 # Import model Penggunaan Mesin (Mesin, PenggunaanMesin, MaintenanceMesin)
 from .machine_models import *
+
+# Model Permintaan Bahan (Material Requisition) -- alur Kordiv/SPV -> gudang,
+# tidak mengubah stok/jurnal (lihat requisition_models.py).
+from .requisition_models import *

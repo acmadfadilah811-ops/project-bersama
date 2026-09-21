@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { hasMenuAccess } from '../utils/permissions';
+import { useRingkasanPermintaanBahan } from '../features/requisition/hooks/useRingkasanPermintaanBahan';
 import {
+  ClipboardList,
   LayoutDashboard,
   LineChart,
   ShoppingCart,
@@ -59,6 +61,7 @@ const groupedMenuOwnerManager = [
   // ExecutiveDashboard.jsx + ExecutiveNav.jsx. Endpoint-nya dibatasi
   // IsOwnerOrManager, makanya cuma ada di menu owner/manager.
   { path: '/dashboard-eksekutif', label: 'Dashboard', icon: LineChart, isGroup: false },
+  { path: '/permintaan-bahan', label: 'Permintaan Bahan', icon: ClipboardList, isGroup: false },
   {
     id: 'produk_inventori',
     label: 'Produk & Inventori',
@@ -147,6 +150,7 @@ const menuSpvKordiv = [
   { path: '/staff-dashboard', label: 'Dashboard', icon: LayoutDashboard, isGroup: false },
   { path: '/ringkasan-tim', label: 'Ringkasan Tim', icon: Users, isGroup: false },
   { path: '/produksi', label: 'Papan Kerja (SPK)', icon: Kanban, isGroup: false },
+  { path: '/permintaan-bahan', label: 'Permintaan Bahan', icon: ClipboardList, isGroup: false },
   { path: '/buat-order', label: 'Buat Order', icon: ShoppingCart, isGroup: false },
   { path: '/profile', label: 'Profil', icon: User, isGroup: false },
 ];
@@ -172,6 +176,7 @@ const menuAdmin = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, isGroup: false },
   { path: '/kasir/terminal', label: 'Kasir (POS)', icon: CreditCard, isGroup: false },
   { path: '/produksi', label: 'Papan Kerja (SPK)', icon: Kanban, isGroup: false },
+  { path: '/permintaan-bahan', label: 'Permintaan Bahan', icon: ClipboardList, isGroup: false },
   { path: '/accounting-internal', label: 'Akuntansi Internal', icon: BookOpen, isGroup: false },
   { path: '/profile', label: 'Profil', icon: User, isGroup: false },
   PENGATURAN_GROUP,
@@ -205,6 +210,8 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [logoError, setLogoError] = useState(false);
+  // Badge menu Permintaan Bahan: jumlah permintaan yang menunggu tindakan pengguna ini.
+  const { total: permintaanBahanMenunggu } = useRingkasanPermintaanBahan(user?.role?.toLowerCase());
 
   useEffect(() => {
     setLogoError(false);
@@ -230,6 +237,7 @@ export default function Sidebar() {
     if (path === '/orders') return 'orders';
     if (path.startsWith('/kasir')) return 'kasir-pos';
     if (path === '/jobs' || path === '/produksi') return 'jobs';
+    if (path === '/permintaan-bahan') return 'permintaan-bahan';
     if (path === '/attendance') return 'attendance';
     if (path === '/employees') return 'employees';
     if (path === '/payroll') return 'payroll';
@@ -353,6 +361,11 @@ export default function Sidebar() {
               >
                 <Icon size={isCollapsed ? 20 : 18} className="shrink-0" />
                 {!isCollapsed && <span className="whitespace-nowrap text-left">{item.label}</span>}
+                {!isCollapsed && item.path === '/permintaan-bahan' && permintaanBahanMenunggu > 0 && (
+                  <span className="ml-auto rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                    {permintaanBahanMenunggu}
+                  </span>
+                )}
               </button>
             );
           } else {
