@@ -122,37 +122,88 @@ class PenggunaanMesinViewSet(viewsets.ModelViewSet):
         Log Penggunaan di layar (get_queryset()), supaya hasil export selalu
         cocok dengan yang sedang ditampilkan (fitur 2026-09-09).
         """
-        queryset = self.get_queryset().order_by('-waktu')
+        return _respons_excel(self.get_queryset().order_by('-waktu'), 'log-penggunaan-mesin')
 
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = 'Log Penggunaan Mesin'
-        ws.append([
-            'Tanggal', 'Mesin', 'Staff', 'Job', 'Lembar Color', 'Lembar Mono',
-            'Panjang Bahan (m)', 'Jenis Bahan', 'Kondisi Hasil', 'Catatan Konfirmasi',
+    @action(detail=False, methods=['get'], url_path='export-saya', permission_classes=[IsAuthenticated])
+    def export_saya(self, request):
+        """GET /penggunaan-mesin/export-saya/?mesin=&tanggal_mulai=&tanggal_akhir=
+
+        Excel penggunaan mesin MILIK PEMINTA SENDIRI -- bahan laporan staff.
+        Operator DIKUNCI ke user yang login di server. Bila klien mengirim
+        `operator` orang lain, filternya bertemu kunci itu dan hasilnya file
+        KOSONG -- tidak pernah memuat catatan orang lain (API1: pembatasan di
+        tampilan saja bukan keamanan)."""
+        queryset = self.get_queryset().filter(operator=request.user).order_by('-waktu')
+        return _respons_excel(queryset, 'penggunaan-mesin-saya')
+
+
+HEADER_EXCEL = [
+    'Tanggal', 'Mesin', 'Staff', 'Job', 'Lembar Color', 'Lembar Mono',
+    'Ukuran Kertas', 'Jenis Kertas', 'Gramasi Kertas',
+    'Panjang Bahan (m)', 'Jenis Bahan', 'Kondisi Hasil', 'Catatan Konfirmasi',
+]
+HEADER_RINGKASAN = ['Mesin', 'Jumlah Entri', 'Total Lembar Color', 'Total Lembar Mono', 'Total Klik', 'Total Panjang Bahan (m)']
+
+
+def _tambah_baris(ws, nilai):
+    """Tulis satu baris. Teks bebas dari pengguna (catatan, jenis bahan) yang diawali
+    '=' dipaksa jadi TEKS -- openpyxl otherwise menyimpannya sebagai rumus Excel
+    (rumus dari data yang tidak tepercaya)."""
+    ws.append(nilai)
+    for sel in ws[ws.max_row]:
+        if isinstance(sel.value, str) and sel.value.startswith('='):
+            sel.data_type = 's'
+
+
+def _respons_excel(queryset, nama_dasar):
+    """Excel penggunaan mesin: sheet detail (+ baris TOTAL) dan sheet ringkasan per mesin."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Log Penggunaan Mesin'
+    _tambah_baris(ws, HEADER_EXCEL)
+
+    total_color = total_mono = 0
+    total_meter = 0.0
+    per_mesin = {}
+    for entry in queryset:
+        operator_nama = ''
+        if entry.operator:
+            operator_nama = entry.operator.get_full_name() or entry.operator.username
+        meter = float(entry.panjang_bahan_meter) if entry.panjang_bahan_meter is not None else None
+        _tambah_baris(ws, [
+            timezone.localtime(entry.waktu).strftime('%Y-%m-%d %H:%M'),
+            entry.mesin.nama if entry.mesin else '-',
+            operator_nama,
+            entry.job.nomor_sumber if entry.job else '-',
+            entry.lembar_color,
+            entry.lembar_mono,
+            entry.ukuran_kertas,
+            entry.jenis_kertas,
+            entry.gramasi_kertas,
+            meter if meter is not None else '',
+            entry.jenis_bahan,
+            'Ada Kendala' if entry.kondisi_hasil == 'kendala' else 'OK',
+            entry.catatan_konfirmasi,
         ])
-        for entry in queryset:
-            operator_nama = ''
-            if entry.operator:
-                operator_nama = entry.operator.get_full_name() or entry.operator.username
-            ws.append([
-                timezone.localtime(entry.waktu).strftime('%Y-%m-%d %H:%M'),
-                entry.mesin.nama if entry.mesin else '-',
-                operator_nama,
-                entry.job.nomor_sumber if entry.job else '-',
-                entry.lembar_color,
-                entry.lembar_mono,
-                float(entry.panjang_bahan_meter) if entry.panjang_bahan_meter is not None else '',
-                entry.jenis_bahan,
-                'Ada Kendala' if entry.kondisi_hasil == 'kendala' else 'OK',
-                entry.catatan_konfirmasi,
-            ])
+        total_color += entry.lembar_color
+        total_mono += entry.lembar_mono
+        total_meter += meter or 0
+        r = per_mesin.setdefault(entry.mesin.nama if entry.mesin else '-', [0, 0, 0, 0.0])
+        r[0] += 1
+        r[1] += entry.lembar_color
+        r[2] += entry.lembar_mono
+        r[3] += meter or 0
+    _tambah_baris(ws, ['TOTAL', '', '', '', total_color, total_mono, '', '', '', round(total_meter, 2), '', '', ''])
 
-        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        filename = f"log-penggunaan-mesin-{timezone.localdate():%Y%m%d}.xlsx"
-        response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        wb.save(response)
-        return response
+    ringkas = wb.create_sheet('Ringkasan per Mesin')
+    _tambah_baris(ringkas, HEADER_RINGKASAN)
+    for nama_mesin, (n, color, mono, meter) in sorted(per_mesin.items()):
+        _tambah_baris(ringkas, [nama_mesin, n, color, mono, color + mono, round(meter, 2)])
+
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = f'attachment; filename="{nama_dasar}-{timezone.localdate():%Y%m%d}.xlsx"'
+    wb.save(response)
+    return response
 
 
 class MaintenanceMesinViewSet(viewsets.ModelViewSet):

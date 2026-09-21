@@ -28,9 +28,11 @@ const PAGE_SIZE = 20;
  * mode='owner'  : Owner/Manager -- lihat log SEMUA staff, filter staff bebas,
  *                 ringkasan per staff, tombol Export Excel.
  * mode='staff'  : Staff -- log MILIK SENDIRI saja (operator dikunci ke user
- *                 login), tanpa ringkasan/export (endpoint itu Owner/Manager
- *                 saja) -- staff tetap butuh riwayat penggunaan mesinnya
- *                 sendiri untuk pertanggungjawaban (instruksi user 2026-09-09).
+ *                 login), tanpa ringkasan per staff -- staff tetap butuh riwayat
+ *                 penggunaan mesinnya sendiri untuk pertanggungjawaban
+ *                 (instruksi user 2026-09-09). Export Excel memakai endpoint
+ *                 khusus milik sendiri (/export-saya/) yang dikunci di server
+ *                 ke akun yang login -- bahan laporan staff.
  */
 export default function LogPenggunaanMesinPanel({ mode = 'owner', currentUser, staffList }) {
   const isOwnerMode = mode === 'owner';
@@ -112,7 +114,10 @@ export default function LogPenggunaanMesinPanel({ mode = 'owner', currentUser, s
     setExporting(true);
     try {
       const query = new URLSearchParams(buildParams()).toString();
-      await downloadFile(`/penggunaan-mesin/export/?${query}`, `log-penggunaan-mesin.xlsx`);
+      // Owner/Manager: semua staff. Staff: hanya milik sendiri (dikunci di server).
+      const path = isOwnerMode ? 'export' : 'export-saya';
+      const namaFile = isOwnerMode ? 'log-penggunaan-mesin.xlsx' : 'penggunaan-mesin-saya.xlsx';
+      await downloadFile(`/penggunaan-mesin/${path}/?${query}`, namaFile);
     } finally {
       setExporting(false);
     }
@@ -129,20 +134,18 @@ export default function LogPenggunaanMesinPanel({ mode = 'owner', currentUser, s
             <p className="text-[11px] text-slate-400 mt-0.5">
               {isOwnerMode
                 ? 'Riwayat pencatatan pemakaian mesin dari semua staff -- filter per mesin/staff untuk pertanggungjawaban.'
-                : 'Riwayat pencatatan pemakaian mesin yang sudah kamu input sendiri.'}
+                : 'Riwayat pencatatan pemakaian mesin yang sudah kamu input sendiri. Gunakan Export Excel untuk bahan laporan.'}
             </p>
           </div>
-          {isOwnerMode && (
-            <button
-              type="button"
-              onClick={handleExport}
-              disabled={exporting}
-              className="flex items-center gap-1.5 shrink-0 text-[11px] font-bold text-emerald-700 hover:bg-emerald-50 bg-white border border-emerald-200 px-3 py-1.5 rounded-lg disabled:opacity-50 cursor-pointer"
-            >
-              {exporting ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
-              Export Excel
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={exporting}
+            className="flex items-center gap-1.5 shrink-0 text-[11px] font-bold text-emerald-700 hover:bg-emerald-50 bg-white border border-emerald-200 px-3 py-1.5 rounded-lg disabled:opacity-50 cursor-pointer"
+          >
+            {exporting ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+            Export Excel
+          </button>
         </div>
 
         <div className={`grid grid-cols-2 ${isOwnerMode ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-2 mt-3`}>
