@@ -421,6 +421,15 @@ class MeView(APIView):
     def patch(self, request):
         # Staff tidak boleh ubah role/divisi diri sendiri
         protected = ["role", "divisi", "is_staff", "is_superuser"]
+        if request.user.role != "owner":
+            # Penempatan kerja & data kepegawaian hanya boleh diatur owner/HR lewat menu
+            # Karyawan. unit_bisnis menentukan cakupan data & divisi SPK kasir; atasan
+            # menentukan cakupan SPV/Kordiv (celah ditemukan 2026-09-21).
+            protected += [
+                "username", "email", "unit_bisnis", "atasan", "posisi", "nip",
+                "status_karyawan", "jenis_kontrak", "kontrak_mulai", "kontrak_selesai",
+                "no_kpj", "bpjs_kes", "file_pkwt",
+            ]
         data = {k: v for k, v in request.data.items() if k not in protected}
         serializer = UserMeSerializer(
             request.user, data=data, partial=True, context={"request": request}

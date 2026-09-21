@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import apiClient from '../../../api/apiClient';
+import { getApiErrorMessage } from '../../../utils/apiError';
 import {
   User,
   Briefcase,
@@ -21,6 +22,8 @@ dayjs.locale('id');
 
 export default function Employees() {
   const [employees, setEmployees] = useState([]);
+  const [divisiList, setDivisiList] = useState([]);
+  const [unitList, setUnitList] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // State untuk Modal
@@ -28,6 +31,8 @@ export default function Employees() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [pkwtFile, setPkwtFile] = useState(null);
   const [formData, setFormData] = useState({
+    divisi: '',
+    unit_bisnis: '',
     status_karyawan: 'aktif',
     jenis_kontrak: 'tetap',
     kontrak_mulai: '',
@@ -37,8 +42,14 @@ export default function Employees() {
   const fetchEmployees = async () => {
     try {
       setLoading(true);
-      const res = await apiClient.get('/users/');
+      const [res, resDivisi, resUnit] = await Promise.all([
+        apiClient.get('/users/'),
+        apiClient.get('/divisi/'),
+        apiClient.get('/unit-bisnis/'),
+      ]);
       setEmployees(res.data);
+      setDivisiList(resDivisi.data.results || resDivisi.data);
+      setUnitList(resUnit.data.results || resUnit.data);
     } catch (err) {
       console.error('Gagal memuat data karyawan:', err);
     } finally {
@@ -53,6 +64,8 @@ export default function Employees() {
   const openModal = (emp) => {
     setSelectedEmployee(emp);
     setFormData({
+      divisi: emp.divisi ?? '',
+      unit_bisnis: emp.unit_bisnis ?? '',
       status_karyawan: emp.status_karyawan || 'aktif',
       jenis_kontrak: emp.jenis_kontrak || 'tetap',
       kontrak_mulai: emp.kontrak_mulai || '',
@@ -67,7 +80,15 @@ export default function Employees() {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData((prev) => {
+      const next = { ...prev, [name]: value };
+      // Divisi milik satu unit bisnis -> unit akun ikut menyesuaikan (server menolak yang bentrok).
+      if (name === 'divisi' && value !== '') {
+        const dipilih = divisiList.find((d) => String(d.id) === String(value));
+        if (dipilih?.unit_bisnis) next.unit_bisnis = dipilih.unit_bisnis;
+      }
+      return next;
+    });
   };
 
   const handleUpdateEmployment = async () => {
@@ -75,6 +96,9 @@ export default function Employees() {
       setIsUpdating(true);
 
       const data = new FormData();
+      // Penempatan kerja: kosong dikirim '' (dibaca server sebagai tidak ada).
+      data.append('divisi', formData.divisi);
+      data.append('unit_bisnis', formData.unit_bisnis);
       data.append('status_karyawan', formData.status_karyawan);
       data.append('jenis_kontrak', formData.jenis_kontrak);
       data.append('kontrak_mulai', formData.kontrak_mulai);
@@ -95,10 +119,10 @@ export default function Employees() {
       setEmployees(employees.map((e) => (e.id === selectedEmployee.id ? updatedEmp : e)));
       setSelectedEmployee(updatedEmp);
 
-      alert('Status dan kontrak berhasil diperbarui!');
+      alert('Penempatan kerja, status, dan kontrak berhasil diperbarui!');
     } catch (err) {
       console.error('Gagal update data:', err);
-      alert('Gagal menyimpan perubahan. Pastikan backend menerima field ini.');
+      alert(getApiErrorMessage(err, 'Gagal menyimpan perubahan.'));
     } finally {
       setIsUpdating(false);
     }
@@ -185,6 +209,11 @@ export default function Employees() {
                 <Briefcase size={10} />
                 {emp.role} {emp.divisi_nama ? `— ${emp.divisi_nama}` : ''}
               </div>
+              {emp.role === 'staff' && !emp.divisi && (
+                <div className="mt-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                  Belum berdivisi
+                </div>
+              )}
             </div>
 
             {/* Footer / Login History */}
@@ -239,6 +268,7 @@ export default function Employees() {
                   <p className="text-sm text-slate-500 font-medium capitalize">
                     {selectedEmployee.role}{' '}
                     {selectedEmployee.divisi_nama ? `• ${selectedEmployee.divisi_nama}` : ''}
+                    {selectedEmployee.unit_bisnis_nama ? ` • ${selectedEmployee.unit_bisnis_nama}` : ''}
                   </p>
                 </div>
               </div>
@@ -324,6 +354,45 @@ export default function Employees() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {/* Penempatan Kerja: divisi menentukan SPK antrean yang terlihat oleh staff */}
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-semibold text-slate-700">Divisi</label>
+                    <select
+                      name="divisi"
+                      value={formData.divisi}
+                      onChange={handleInputChange}
+                      className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                    >
+                      <option value="">Belum berdivisi</option>
+                      {divisiList.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.nama}{d.unit_bisnis_nama ? ` (${d.unit_bisnis_nama})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[11px] text-slate-400">
+                      Staff hanya melihat SPK antrean dari divisinya. Tanpa divisi, staff hanya melihat SPK yang ditugaskan langsung kepadanya.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-semibold text-slate-700">Unit Bisnis</label>
+                    <select
+                      name="unit_bisnis"
+                      value={formData.unit_bisnis}
+                      onChange={handleInputChange}
+                      className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                    >
+                      <option value="">Tanpa unit bisnis</option>
+                      {unitList.map((u) => (
+                        <option key={u.id} value={u.id}>{u.nama}</option>
+                      ))}
+                    </select>
+                    <p className="text-[11px] text-slate-400">
+                      Otomatis mengikuti unit milik divisi yang dipilih. Divisi dan unit harus cocok.
+                    </p>
+                  </div>
+
                   {/* Status Karyawan */}
                   <div className="space-y-1.5">
                     <label className="text-sm font-semibold text-slate-700">Status Karyawan</label>

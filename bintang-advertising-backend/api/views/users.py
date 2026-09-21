@@ -76,9 +76,13 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                 data = dict(request.data)
 
             if request.user.role != 'owner':
+                # unit_bisnis/atasan/posisi WAJIB ikut dilindungi: unit_bisnis menentukan
+                # data & divisi yang boleh dilihat/diterbitkan SPK-nya (kasir bisa
+                # menghapus unitnya sendiri dan menembus pembatasan), atasan menentukan
+                # cakupan SPV/Kordiv. Ditemukan 2026-09-21: dulu hanya `divisi` yang dijaga.
                 hr_fields = [
-                    'username', 'email', 'role', 'divisi', 'status_karyawan', 
-                    'jenis_kontrak', 'kontrak_mulai', 'kontrak_selesai', 
+                    'username', 'email', 'role', 'divisi', 'unit_bisnis', 'atasan', 'posisi',
+                    'status_karyawan', 'jenis_kontrak', 'kontrak_mulai', 'kontrak_selesai',
                     'no_kpj', 'bpjs_kes', 'file_pkwt', 'nip'
                 ]
                 for field in hr_fields:

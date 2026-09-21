@@ -115,6 +115,21 @@ class CustomUserSerializer(serializers.ModelSerializer):
         rep['file_pkwt'] = protected_media_url(instance.file_pkwt, self.context.get('request'))
         return rep
 
+    def validate(self, attrs):
+        # Penempatan kerja harus konsisten: divisi milik satu unit bisnis tidak boleh
+        # dipasang ke akun unit bisnis lain. Hanya diperiksa saat divisi/unit_bisnis
+        # SEDANG diubah, supaya perubahan lain (kontrak, dsb.) pada akun lama yang
+        # datanya belum rapi tidak ikut terblokir.
+        if 'divisi' in attrs or 'unit_bisnis' in attrs:
+            divisi = attrs['divisi'] if 'divisi' in attrs else getattr(self.instance, 'divisi', None)
+            unit = attrs['unit_bisnis'] if 'unit_bisnis' in attrs else getattr(self.instance, 'unit_bisnis', None)
+            if divisi is not None and divisi.unit_bisnis_id and unit is not None and divisi.unit_bisnis_id != unit.id:
+                raise serializers.ValidationError({
+                    'divisi': f"Divisi '{divisi.nama}' milik unit bisnis '{divisi.unit_bisnis.nama}', "
+                              f"tidak cocok dengan unit bisnis akun ('{unit.nama}')."
+                })
+        return super().validate(attrs)
+
     def to_internal_value(self, data):
         # Buat salinan mutable jika data adalah QueryDict atau dict
         if hasattr(data, '_mutable'):
