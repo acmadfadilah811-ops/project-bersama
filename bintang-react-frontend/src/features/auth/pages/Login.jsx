@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import apiClient from '../../../api/apiClient';
@@ -9,9 +9,32 @@ import {
   ShieldAlert,
   ArrowLeft,
   CheckCircle2,
+  Circle,
   KeyRound,
 } from 'lucide-react';
 import loginDashboardBg from '../../../assets/login_dashboard_bg.jpg';
+import { kriteriaSandi, semuaKriteriaTerpenuhi, formatSisaWaktu } from '../utils/kriteriaSandi';
+
+// Sesi lupa-password disimpan sementara agar tidak hilang saat halaman dimuat ulang
+// (OTP berlaku 15 menit dan kirim ulang baru boleh setelah 15 menit).
+const KUNCI_SESI_LUPA = 'lupaSandiSesi';
+const bacaSesiLupa = () => {
+  try {
+    const s = JSON.parse(sessionStorage.getItem(KUNCI_SESI_LUPA) || 'null');
+    if (s && s.token && s.username && s.bolehKirimUlangPada > Date.now() - 1000) return s;
+  } catch {
+    /* sessionStorage tidak tersedia -> abaikan */
+  }
+  return null;
+};
+const simpanSesiLupa = (s) => {
+  try {
+    if (s) sessionStorage.setItem(KUNCI_SESI_LUPA, JSON.stringify(s));
+    else sessionStorage.removeItem(KUNCI_SESI_LUPA);
+  } catch {
+    /* abaikan */
+  }
+};
 
 export default function Login() {
   const [username, setUsername] = useState('');
@@ -32,30 +55,78 @@ export default function Login() {
   const [forgotOtp, setForgotPasswordOtp] = useState('');
   const [forgotNewPassword, setForgotPasswordNewPassword] = useState('');
   const [forgotConfirmPassword, setForgotPasswordConfirmPassword] = useState('');
-  const [forgotMaskedEmail, setForgotPasswordMaskedEmail] = useState('');
+  const [forgotResetToken, setForgotResetToken] = useState('');
+  const [bolehKirimUlangPada, setBolehKirimUlangPada] = useState(0); // epoch ms
+  const [sisaDetik, setSisaDetik] = useState(0);
   const [successMsg, setSuccessMsg] = useState('');
 
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleRequestForgotPassword = async (e) => {
-    e.preventDefault();
+  // Pulihkan sesi lupa-password yang masih berjalan (mis. setelah halaman dimuat ulang).
+  useEffect(() => {
+    const sesi = bacaSesiLupa();
+    if (sesi) {
+      setForgotPasswordUsername(sesi.username);
+      setForgotResetToken(sesi.token);
+      setBolehKirimUlangPada(sesi.bolehKirimUlangPada);
+      setForgotPasswordMode('verify');
+    }
+  }, []);
+
+  // Hitung mundur jeda kirim ulang OTP.
+  useEffect(() => {
+    const hitung = () =>
+      setSisaDetik(Math.max(0, Math.ceil((bolehKirimUlangPada - Date.now()) / 1000)));
+    hitung();
+    if (!bolehKirimUlangPada) return undefined;
+    const id = setInterval(hitung, 1000);
+    return () => clearInterval(id);
+  }, [bolehKirimUlangPada]);
+
+  // Dipakai untuk permintaan pertama maupun kirim ulang. Server menegakkan jeda 15 menit.
+  const kirimOtp = async ({ kirimUlang = false } = {}) => {
     setLoading(true);
     setError('');
     setSuccessMsg('');
     try {
       const res = await apiClient.post('/auth/forgot-password/request/', {
-        username: forgotUsername,
+        username: forgotUsername.trim(),
       });
-      setForgotPasswordMaskedEmail(res.data.email_masked);
+      const token = res.data.reset_token;
+      const bolehLagi = Date.now() + (res.data.resend_after || 900) * 1000;
+      setForgotResetToken(token);
+      setBolehKirimUlangPada(bolehLagi);
+      simpanSesiLupa({ username: forgotUsername.trim(), token, bolehKirimUlangPada: bolehLagi });
+      setForgotPasswordOtp('');
       setForgotPasswordMode('verify');
+      if (kirimUlang) {
+        setSuccessMsg('Kode OTP baru sudah dikirim. Kode sebelumnya tidak berlaku lagi.');
+      }
     } catch (err) {
-      setError(
-        err.response?.data?.detail || 'Username tidak ditemukan atau belum didaftarkan email.'
-      );
+      const data = err.response?.data;
+      if (err.response?.status === 429 && data?.retry_after) {
+        const bolehLagi = Date.now() + data.retry_after * 1000;
+        setBolehKirimUlangPada(bolehLagi);
+        const sesi = bacaSesiLupa();
+        if (sesi && sesi.username === forgotUsername.trim()) {
+          // OTP sebelumnya masih berlaku: lanjut ke layar verifikasi.
+          setForgotResetToken(sesi.token);
+          setForgotPasswordMode('verify');
+        } else {
+          setError(`${data.detail} Coba lagi dalam ${formatSisaWaktu(data.retry_after)} menit.`);
+        }
+      } else {
+        setError(data?.detail || 'Gagal mengirim kode OTP. Coba lagi nanti.');
+      }
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRequestForgotPassword = async (e) => {
+    e.preventDefault();
+    await kirimOtp();
   };
 
   const handleVerifyForgotPassword = async (e) => {
@@ -64,20 +135,29 @@ export default function Login() {
       setError('Password baru dan konfirmasi tidak cocok.');
       return;
     }
+    if (!semuaKriteriaTerpenuhi(forgotNewPassword, forgotUsername)) {
+      setError('Kata sandi baru belum memenuhi semua kriteria.');
+      return;
+    }
     setLoading(true);
     setError('');
+    setSuccessMsg('');
     try {
       const res = await apiClient.post('/auth/forgot-password/verify/', {
-        username: forgotUsername,
+        username: forgotUsername.trim(),
         otp: forgotOtp,
         new_password: forgotNewPassword,
+        reset_token: forgotResetToken,
       });
+      simpanSesiLupa(null);
       setSuccessMsg(res.data.detail || 'Password berhasil diubah. Silakan login.');
       setForgotPasswordMode('');
       setForgotPasswordUsername('');
       setForgotPasswordOtp('');
       setForgotPasswordNewPassword('');
       setForgotPasswordConfirmPassword('');
+      setForgotResetToken('');
+      setBolehKirimUlangPada(0);
     } catch (err) {
       setError(err.response?.data?.detail || 'Kode OTP salah atau sandi terlalu lemah.');
     } finally {
@@ -171,6 +251,12 @@ export default function Login() {
               <div className="bg-red-600 text-white text-sm p-3 rounded-lg flex items-center justify-center gap-2 shadow-lg">
                 <AlertTriangle size={18} />
                 <span>{error}</span>
+              </div>
+            )}
+            {successMsg && (
+              <div className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-sm p-3 rounded-lg flex items-center justify-center gap-2">
+                <CheckCircle2 size={18} />
+                <span>{successMsg}</span>
               </div>
             )}
 
@@ -289,9 +375,9 @@ export default function Login() {
               </div>
               <h2 className="text-xl font-bold text-slate-800 tracking-wide">Ubah Kata Sandi</h2>
               <p className="text-sm text-slate-500">
-                Kode OTP telah dikirim ke{' '}
-                <span className="text-indigo-500 font-semibold">{forgotMaskedEmail}</span>. Masukkan
-                OTP dan kata sandi baru Anda.
+                Jika akun <span className="text-indigo-500 font-semibold">{forgotUsername}</span>{' '}
+                memiliki email terdaftar, kode OTP sudah dikirim ke sana (berlaku 15 menit).
+                Masukkan OTP dan kata sandi baru Anda.
               </p>
             </div>
 
@@ -319,9 +405,7 @@ export default function Login() {
 
             {/* Password Baru */}
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-500">
-                Password Baru (Min. 8 Karakter)
-              </label>
+              <label className="text-xs font-semibold text-slate-500">Password Baru</label>
               <input
                 type="password"
                 value={forgotNewPassword}
@@ -330,6 +414,37 @@ export default function Login() {
                 placeholder="Password Baru"
                 required
               />
+              {/* Checklist kriteria: centang hijau saat terpenuhi */}
+              <ul className="pt-1 space-y-1" aria-label="Kriteria kata sandi">
+                {kriteriaSandi(forgotNewPassword, forgotUsername).map((k) => (
+                  <li
+                    key={k.id}
+                    className={`flex items-center gap-2 text-xs ${
+                      k.ok ? 'text-emerald-600 font-semibold' : 'text-slate-400'
+                    }`}
+                  >
+                    {k.ok ? <CheckCircle2 size={14} /> : <Circle size={14} />}
+                    <span>{k.label}</span>
+                  </li>
+                ))}
+                <li
+                  className={`flex items-center gap-2 text-xs ${
+                    forgotConfirmPassword && forgotNewPassword === forgotConfirmPassword
+                      ? 'text-emerald-600 font-semibold'
+                      : 'text-slate-400'
+                  }`}
+                >
+                  {forgotConfirmPassword && forgotNewPassword === forgotConfirmPassword ? (
+                    <CheckCircle2 size={14} />
+                  ) : (
+                    <Circle size={14} />
+                  )}
+                  <span>Sama dengan konfirmasi</span>
+                </li>
+                <li className="text-[11px] text-slate-400 pl-6">
+                  Hindari kata sandi yang umum (mis. 12345678, password); server akan menolaknya.
+                </li>
+              </ul>
             </div>
 
             {/* Konfirmasi Password */}
@@ -351,12 +466,29 @@ export default function Login() {
             <div className="grid mt-2">
               <button
                 type="submit"
-                disabled={loading}
-                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold h-[50px] transition-colors disabled:opacity-50 text-[16px] shadow-lg shadow-blue-950/20 rounded-lg cursor-pointer"
+                disabled={
+                  loading ||
+                  forgotOtp.length !== 6 ||
+                  !semuaKriteriaTerpenuhi(forgotNewPassword, forgotUsername) ||
+                  forgotNewPassword !== forgotConfirmPassword
+                }
+                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold h-[50px] transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-[16px] shadow-lg shadow-blue-950/20 rounded-lg cursor-pointer"
               >
                 {loading ? 'Mengubah Sandi...' : 'UBAH KATA SANDI'}
               </button>
             </div>
+
+            {/* Kirim ulang OTP: jeda 15 menit (ditegakkan juga di server) */}
+            <button
+              type="button"
+              onClick={() => kirimOtp({ kirimUlang: true })}
+              disabled={loading || sisaDetik > 0}
+              className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 disabled:text-slate-400 disabled:cursor-not-allowed cursor-pointer"
+            >
+              {sisaDetik > 0
+                ? `Kirim ulang OTP tersedia dalam ${formatSisaWaktu(sisaDetik)}`
+                : 'Kirim ulang kode OTP'}
+            </button>
 
             {/* Tombol Kembali ke Request */}
             <button
@@ -364,6 +496,7 @@ export default function Login() {
               onClick={() => {
                 setForgotPasswordMode('request');
                 setError('');
+                setSuccessMsg('');
               }}
               className="flex items-center justify-center gap-2 text-slate-400 hover:text-slate-700 text-sm transition-colors mt-2 cursor-pointer"
             >

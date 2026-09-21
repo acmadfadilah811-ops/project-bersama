@@ -618,8 +618,21 @@ class ChangePasswordView(APIView):
         return Response({"detail": "Password berhasil diubah."}, status=status.HTTP_200_OK)
 
 
+# OTP reset password berlaku selama jeda kirim ulang, supaya tidak ada rentang
+# "OTP sudah mati tetapi belum boleh minta lagi".
+RESET_OTP_TTL = 15 * 60
+RESET_RESEND_COOLDOWN = 15 * 60
+
+
+def _reset_cooldown_key(username):
+    return f"pw_reset_cd:{username.lower()}"
+
+
 class ForgotPasswordRequestView(APIView):
-    """Selalu memberi respons generik untuk mencegah enumerasi username."""
+    """Selalu memberi respons generik untuk mencegah enumerasi username.
+
+    Jeda kirim ulang OTP (15 menit) berlaku per username dan diterapkan sama untuk
+    username yang tidak ada, sehingga jeda tidak bisa dipakai menebak akun valid."""
     permission_classes = [AllowAny]
     throttle_classes = [PasswordResetRequestThrottle]
 
@@ -627,17 +640,25 @@ class ForgotPasswordRequestView(APIView):
         username = str(request.data.get("username") or "").strip()
         if not username:
             return Response({"detail": "Jika akun dan email valid, kode OTP akan dikirim."})
+        cd_key = _reset_cooldown_key(username)
+        waktu_kirim = cache.get(cd_key)
+        if waktu_kirim is not None:
+            sisa = max(1, int(RESET_RESEND_COOLDOWN - (timezone.now().timestamp() - float(waktu_kirim))))
+            return Response({
+                "detail": "Kode OTP sudah dikirim. Kirim ulang baru bisa dilakukan setelah jeda 15 menit.",
+                "retry_after": int(sisa),
+            }, status=429, headers={"Retry-After": str(int(sisa))})
         reset_token = uuid.uuid4().hex
         user = CustomUser.objects.filter(username=username).first()
         if user and user.email:
             otp = str(secrets.SystemRandom().randint(100000, 999999))
             cache.set(f"pw_reset:{reset_token}", {
                 "username": user.username, "otp": otp, "attempts": 0,
-            }, 300)
+            }, RESET_OTP_TTL)
             subject = "[StarPhoto & Advertising] Kode OTP Lupa Password"
             message = (
                 f"Halo {user.username},\n\nKode OTP reset password Anda: {otp}\n"
-                "Kode berlaku 5 menit. Abaikan bila Anda tidak meminta reset."
+                "Kode berlaku 15 menit. Abaikan bila Anda tidak meminta reset."
             )
             try:
                 send_mail(subject, message, None, [user.email], fail_silently=False)
@@ -649,10 +670,13 @@ class ForgotPasswordRequestView(APIView):
                 ip_address=_get_client_ip(request), user_agent=request.META.get("HTTP_USER_AGENT", ""),
                 keterangan="Permintaan OTP reset password", berhasil=True,
             )
+        # Jeda dicatat juga untuk akun tidak valid (respons identik, anti-enumerasi).
+        cache.set(cd_key, timezone.now().timestamp(), RESET_RESEND_COOLDOWN)
         # Token acak juga dikembalikan untuk akun tidak valid agar bentuk respons identik.
         return Response({
             "detail": "Jika akun dan email valid, kode OTP akan dikirim.",
             "reset_token": reset_token,
+            "resend_after": RESET_RESEND_COOLDOWN,
         })
 
 
@@ -680,20 +704,30 @@ class ForgotPasswordVerifyView(APIView):
             if state["attempts"] >= 5:
                 cache.delete(key)
             else:
-                cache.set(key, state, 300)
+                cache.set(key, state, RESET_OTP_TTL)
             SecurityAuditLog.objects.create(
                 user=user, username_input=username, event="PASSWORD_RESET_FAILED",
                 ip_address=_get_client_ip(request), user_agent=request.META.get("HTTP_USER_AGENT", ""),
                 keterangan="OTP reset salah", berhasil=False,
             )
             return Response({"detail": "Kode OTP salah atau kedaluwarsa."}, status=400)
+        new_password = str(new_password)
+        kurang = []
+        if not any(c.isalpha() for c in new_password):
+            kurang.append("Kata sandi harus mengandung huruf.")
+        if not any(c.isdigit() for c in new_password):
+            kurang.append("Kata sandi harus mengandung angka.")
         try:
             validate_password(new_password, user=user)
         except DjangoValidationError as exc:
-            return Response({"detail": ", ".join(exc.messages)}, status=400)
+            kurang.extend(exc.messages)
+        if kurang:
+            # OTP belum dipakai: pengguna boleh memperbaiki sandi dan mencoba lagi.
+            return Response({"detail": " ".join(kurang), "errors": kurang}, status=400)
         user.set_password(new_password)
         user.save(update_fields=["password"])
         cache.delete(key)
+        cache.delete(_reset_cooldown_key(username))
         SessionToken.objects.filter(user=user, is_active=True).update(is_active=False)
         SecurityAuditLog.objects.create(
             user=user, username_input=username, event="PASSWORD_RESET_SUCCEEDED",
