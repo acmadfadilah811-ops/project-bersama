@@ -69,6 +69,8 @@ class InsightsBridgeServiceTests(APITestCase):
         self.assertEqual(get_crm_leads(), {"months": []})
 
     @mock.patch.dict("os.environ", {"INSIGHTS_BRIDGE_API_KEY": "kunci-uji"})
+    @mock.patch("api.services.insights_bridge.get_hr_okr")
+    @mock.patch("api.services.insights_bridge.get_hr_projects")
     @mock.patch("api.services.insights_bridge.get_crm_campaigns")
     @mock.patch("api.services.insights_bridge.get_crm_pipeline")
     @mock.patch("api.services.insights_bridge.get_crm_leads")
@@ -89,6 +91,8 @@ class InsightsBridgeServiceTests(APITestCase):
         mock_leads,
         mock_pipeline,
         mock_campaigns,
+        mock_projects,
+        mock_okr,
     ):
         from api.services.insights_bridge import build_combined_insights
 
@@ -101,6 +105,8 @@ class InsightsBridgeServiceTests(APITestCase):
         mock_leads.return_value = {"months": []}
         mock_pipeline.return_value = None
         mock_campaigns.return_value = None
+        mock_projects.return_value = {"ringkasan": {"total_project": 2}}
+        mock_okr.return_value = None
 
         result = build_combined_insights("ytd")
         self.assertEqual(result["bintang"], {"kpi": []})
@@ -108,3 +114,7 @@ class InsightsBridgeServiceTests(APITestCase):
         self.assertIsNone(result["hr"]["attendance"])
         self.assertEqual(result["crm"]["leads"], {"months": []})
         self.assertIsNone(result["crm"]["pipeline"])
+        # Project & OKR ikut ke snapshot (bahan AI); yang gagal jadi None, bukan
+        # menjatuhkan seluruh dashboard.
+        self.assertEqual(result["hr"]["projects"], {"ringkasan": {"total_project": 2}})
+        self.assertIsNone(result["hr"]["okr"])

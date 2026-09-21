@@ -35,6 +35,8 @@ Setiap rekomendasi/kesimpulan WAJIB berpijak HANYA pada data snapshot di bawah \
 ini -- JANGAN mengarang angka yang tidak ada di data, dan JANGAN kasih saran \
 generik yang tidak nyambung ke data yang tersedia.
 
+Data HR di snapshot mencakup juga Project Management (`hr.projects`: project terlambat, progres tugas) dan KPI/OKR (`hr.okr`: progres & sebaran status per objektif/departemen) -- kaitkan dengan data penjualan/produksi kalau relevan.
+
 Kalau sebagian data bernilai null/tidak tersedia (mis. HR atau CRM sedang \
 tidak bisa diakses), katakan secara eksplisit bahwa data itu tidak tersedia \
 saat ini -- jangan menebak atau berasumsi datanya nol, dan jangan kasih \

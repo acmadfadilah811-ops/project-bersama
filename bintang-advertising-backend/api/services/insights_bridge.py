@@ -86,6 +86,14 @@ def get_hr_turnover():
     return _get("HR_INSIGHTS_URL", DEFAULT_HR_INSIGHTS_URL, "turnover/")
 
 
+def get_hr_projects():
+    return _get("HR_INSIGHTS_URL", DEFAULT_HR_INSIGHTS_URL, "projects/")
+
+
+def get_hr_okr():
+    return _get("HR_INSIGHTS_URL", DEFAULT_HR_INSIGHTS_URL, "okr/")
+
+
 def get_crm_leads():
     return _get("CRM_INSIGHTS_URL", DEFAULT_CRM_INSIGHTS_URL, "leads/")
 
@@ -113,6 +121,11 @@ def build_combined_insights(period="ytd"):
             "leave_trend": get_hr_leave_trend(),
             "overtime_trend": get_hr_overtime_trend(),
             "turnover": get_hr_turnover(),
+            # Project Management & KPI/OKR (modul HR project/pms) -- bahan
+            # analisis AI: "Kirim data hasil project untuk dianalisis" di
+            # diagram WORKFLOW SISTEM ERP.
+            "projects": get_hr_projects(),
+            "okr": get_hr_okr(),
         },
         "crm": {
             "leads": get_crm_leads(),
