@@ -9,11 +9,11 @@ import {
   ShieldAlert,
   ArrowLeft,
   CheckCircle2,
-  Circle,
   KeyRound,
 } from 'lucide-react';
 import loginDashboardBg from '../../../assets/login_dashboard_bg.jpg';
-import { kriteriaSandi, semuaKriteriaTerpenuhi, formatSisaWaktu } from '../utils/kriteriaSandi';
+import { semuaKriteriaTerpenuhi, formatSisaWaktu } from '../utils/kriteriaSandi';
+import SandiChecklist from '../components/SandiChecklist';
 
 // Sesi lupa-password disimpan sementara agar tidak hilang saat halaman dimuat ulang
 // (OTP berlaku 15 menit dan kirim ulang baru boleh setelah 15 menit).
@@ -414,37 +414,12 @@ export default function Login() {
                 placeholder="Password Baru"
                 required
               />
-              {/* Checklist kriteria: centang hijau saat terpenuhi */}
-              <ul className="pt-1 space-y-1" aria-label="Kriteria kata sandi">
-                {kriteriaSandi(forgotNewPassword, forgotUsername).map((k) => (
-                  <li
-                    key={k.id}
-                    className={`flex items-center gap-2 text-xs ${
-                      k.ok ? 'text-emerald-600 font-semibold' : 'text-slate-400'
-                    }`}
-                  >
-                    {k.ok ? <CheckCircle2 size={14} /> : <Circle size={14} />}
-                    <span>{k.label}</span>
-                  </li>
-                ))}
-                <li
-                  className={`flex items-center gap-2 text-xs ${
-                    forgotConfirmPassword && forgotNewPassword === forgotConfirmPassword
-                      ? 'text-emerald-600 font-semibold'
-                      : 'text-slate-400'
-                  }`}
-                >
-                  {forgotConfirmPassword && forgotNewPassword === forgotConfirmPassword ? (
-                    <CheckCircle2 size={14} />
-                  ) : (
-                    <Circle size={14} />
-                  )}
-                  <span>Sama dengan konfirmasi</span>
-                </li>
-                <li className="text-[11px] text-slate-400 pl-6">
-                  Hindari kata sandi yang umum (mis. 12345678, password); server akan menolaknya.
-                </li>
-              </ul>
+              {/* Checklist kriteria: centang hijau / silang merah */}
+              <SandiChecklist
+                sandi={forgotNewPassword}
+                konfirmasi={forgotConfirmPassword}
+                username={forgotUsername}
+              />
             </div>
 
             {/* Konfirmasi Password */}
