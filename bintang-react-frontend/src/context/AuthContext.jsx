@@ -61,6 +61,24 @@ export function AuthProvider({ children }) {
     setLoading(false);
   }, []);
 
+  // AKS-07: kalau tombol Back memulihkan halaman ini dari back-forward cache
+  // browser (bfcache) -- JS lama "dibekukan" lalu dilanjutkan lagi, BUKAN
+  // dijalankan ulang dari awal -- state React (termasuk `user`) bisa saja
+  // masih berisi data lama walau logout sudah membersihkan sessionStorage
+  // sebelum tab berpindah. nginx sudah kirim Cache-Control: no-store (lapis
+  // pertama), ini lapis kedua: baca storage langsung (bukan state React) dan
+  // paksa reload penuh kalau sudah tidak ada token, supaya seluruh state lama
+  // (termasuk data sensitif yang sempat ter-render) benar-benar hilang.
+  useEffect(() => {
+    const onPageShow = (event) => {
+      if (event.persisted && !authSession.getAccessToken()) {
+        window.location.replace('/login');
+      }
+    };
+    window.addEventListener('pageshow', onPageShow);
+    return () => window.removeEventListener('pageshow', onPageShow);
+  }, []);
+
   const login = (userData, accessToken, refreshToken) => {
     authSession.start(userData, accessToken, refreshToken);
     setUser(userData);

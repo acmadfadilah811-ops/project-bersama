@@ -13,6 +13,25 @@ server {
         error_page 404 =200 /index.html;
     }
 
+    # AKS-07: tombol Back setelah logout tidak boleh memulihkan halaman
+    # terautentikasi dari back-forward cache browser (bfcache) -- tanpa header
+    # ini, DOM lama + data sensitif sempat tampil sebelum React sadar sesi
+    # sudah habis. Dicakup terpisah dari `location /` di atas supaya HANYA
+    # index.html (shell SPA) yang dilarang cache -- bundle JS/CSS berhash
+    # (/assets/...) tetap boleh di-cache normal oleh browser.
+    location = /index.html {
+        root /usr/share/nginx/html;
+        # nginx TIDAK mewarisi add_header dari `server` di sini karena blok ini
+        # sudah punya add_header sendiri (Cache-Control) -- kalau tidak diulang,
+        # X-Frame-Options/CSP/dll di atas diam-diam hilang utk response ini.
+        add_header X-Frame-Options "DENY" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+        add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https: wss:; font-src 'self' data:; frame-ancestors 'none'" always;
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+    }
+
     error_page 500 502 503 504 /50x.html;
     location = /50x.html {
         root /usr/share/nginx/html;
