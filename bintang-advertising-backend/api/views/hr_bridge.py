@@ -195,6 +195,58 @@ class HRBridgeCreateAccountView(APIView):
         }, status=status.HTTP_201_CREATED)
 
 
+class HRBridgeSetStatusView(APIView):
+    """POST /api/bridge/hr-employee-status/
+
+    Dipanggil HR (server-ke-server, auth sama dgn HRBridgeCreateAccountView)
+    begitu karyawan diarsipkan/di-nonaktifkan atau diaktifkan kembali di HR
+    (employee_archive/employee_bulk_archive/replace_employee di
+    employee/views.py, HR) -- supaya akun login Bintang-nya ikut
+    dinonaktifkan/diaktifkan otomatis, tidak perlu admin ingat matikan manual
+    di 2 tempat (celah AKS-13 yang sebelumnya bikin karyawan resign masih
+    bisa login ke Bintang).
+
+    Body: {"hr_employee_id": 42, "is_active": false}
+
+    Kalau akun belum pernah ter-bridge ke Bintang (mis. departemennya di
+    luar Bintang), ini bukan error -- dijawab skipped=True, sama seperti
+    pola skip departemen di HRBridgeCreateAccountView.
+    """
+    permission_classes = [AllowAny]
+    throttle_classes = [HRBridgeThrottle]
+
+    @transaction.atomic
+    def post(self, request, *args, **kwargs):
+        auth_error = _cek_hr_bridge_api_key(request)
+        if auth_error:
+            return auth_error
+
+        hr_employee_id = request.data.get('hr_employee_id')
+        if not hr_employee_id:
+            return Response({'error': "Field 'hr_employee_id' wajib diisi."}, status=status.HTTP_400_BAD_REQUEST)
+        if 'is_active' not in request.data:
+            return Response({'error': "Field 'is_active' wajib diisi."}, status=status.HTTP_400_BAD_REQUEST)
+
+        is_active = bool(request.data.get('is_active'))
+
+        user = CustomUser.objects.filter(hr_employee_id=hr_employee_id).first()
+        if not user:
+            return Response({'skipped': True, 'reason': 'Belum punya akun Bintang.'}, status=status.HTTP_200_OK)
+
+        # Selaras dengan CustomUserSerializer.update(): status_karyawan
+        # adalah sumber kebenaran, is_active mengikutinya. Reaktivasi
+        # sengaja balik ke 'aktif' (bukan 'cuti') -- HR tidak punya konsep
+        # cuti terpisah dari aktif/nonaktif, jadi default paling aman.
+        user.status_karyawan = 'aktif' if is_active else 'nonaktif'
+        user.is_active = is_active
+        user.save(update_fields=['status_karyawan', 'is_active'])
+
+        return Response({
+            'id': user.id, 'hr_employee_id': user.hr_employee_id,
+            'is_active': user.is_active, 'status_karyawan': user.status_karyawan,
+        }, status=status.HTTP_200_OK)
+
+
 class AbsensiStatusView(APIView):
     """GET /api/bridge/absensi-status/?hr_employee_id=42
 
