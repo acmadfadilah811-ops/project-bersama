@@ -104,6 +104,13 @@ class POSSale(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # Jejak audit cetak ulang resi (UAT "Cetak ulang nota berfungsi dan
+    # ditandai sebagai salinan", 2026-09-22) -- diisi lewat action
+    # tandai_cetak_ulang(), dipanggil PosHistory.jsx tiap kali resi ini
+    # dicetak ULANG (bukan cetak pertama saat transaksi baru selesai).
+    jumlah_cetak_ulang = models.PositiveIntegerField(default=0)
+    terakhir_dicetak_ulang = models.DateTimeField(null=True, blank=True)
+
     # Kunci idempotensi checkout Lunas dari kasir (padanan Order.idempotency_key
     # utk alur DP, lihat views/orders.py) — retry jaringan (timeout di klien,
     # request sebenarnya sukses di server) tidak boleh membuat transaksi

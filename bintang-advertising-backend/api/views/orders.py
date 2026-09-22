@@ -13,7 +13,7 @@ from rest_framework.exceptions import ValidationError
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.db import transaction
-from django.db.models import Q, Count, Sum
+from django.db.models import F, Q, Count, Sum
 from django.http import HttpResponse
 
 
@@ -1059,6 +1059,24 @@ class OrderViewSet(viewsets.ModelViewSet):
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(OrderSerializer(order, context={'request': request}).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='tandai-cetak-ulang')
+    def tandai_cetak_ulang(self, request, pk=None):
+        """POST /api/orders/{id}/tandai-cetak-ulang/ — dipanggil frontend
+        (PosHistory.jsx/InvoiceModal.jsx) tiap kali faktur pesanan ini
+        dicetak ULANG (bukan cetak pertama saat pelunasan) -- jejak audit
+        UAT "Cetak ulang nota berfungsi dan ditandai sebagai salinan"
+        (2026-09-22)."""
+        order = self.get_object()
+        Order.objects.filter(pk=order.pk).update(
+            jumlah_cetak_ulang=F('jumlah_cetak_ulang') + 1,
+            terakhir_dicetak_ulang=timezone.now(),
+        )
+        order.refresh_from_db(fields=['jumlah_cetak_ulang', 'terakhir_dicetak_ulang'])
+        return Response({
+            'jumlah_cetak_ulang': order.jumlah_cetak_ulang,
+            'terakhir_dicetak_ulang': order.terakhir_dicetak_ulang,
+        })
 
     @action(detail=True, methods=['post'], url_path='minta-otp-void')
     def minta_otp_void(self, request, pk=None):

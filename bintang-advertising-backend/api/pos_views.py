@@ -4,7 +4,7 @@ from django.db import IntegrityError, transaction
 from django.core.cache import cache
 from django.utils import timezone
 from django.utils.dateparse import parse_date
-from django.db.models import Q
+from django.db.models import F, Q
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -432,6 +432,27 @@ class POSSaleViewSet(viewsets.ModelViewSet):
         sale.diambil_pada = timezone.now()
         sale.save(update_fields=['diambil_pada'])
         return Response(self.get_serializer(sale).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='tandai-cetak-ulang')
+    def tandai_cetak_ulang(self, request, pk=None):
+        """POST /api/pos/sales/{id}/tandai-cetak-ulang/ — dipanggil frontend
+        (PosHistory.jsx) tiap kali resi ini dicetak ULANG (bukan cetak
+        pertama saat transaksi baru selesai) — jejak audit UAT "Cetak ulang
+        nota berfungsi dan ditandai sebagai salinan" (2026-09-22): resi
+        cetak ulang ditandai "SALINAN" di kertas (ReceiptPrint.jsx/
+        qzReceiptHtml.js/qzTmU220Receipt.js), dan di sini dicatat berapa
+        kali & kapan terakhir supaya bisa ditelusuri kalau ada dispute nota
+        ganda."""
+        sale = self.get_object()
+        POSSale.objects.filter(pk=sale.pk).update(
+            jumlah_cetak_ulang=F('jumlah_cetak_ulang') + 1,
+            terakhir_dicetak_ulang=timezone.now(),
+        )
+        sale.refresh_from_db(fields=['jumlah_cetak_ulang', 'terakhir_dicetak_ulang'])
+        return Response({
+            'jumlah_cetak_ulang': sale.jumlah_cetak_ulang,
+            'terakhir_dicetak_ulang': sale.terakhir_dicetak_ulang,
+        })
 
     @action(detail=True, methods=['post'], url_path='email-resi',
             permission_classes=[IsOwnerManagerAdminOrKasir])

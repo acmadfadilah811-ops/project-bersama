@@ -307,6 +307,14 @@ class Order(models.Model):
     catatan_footer = models.TextField(null=True, blank=True, default="Terima kasih atas pesanan Anda", help_text="Catatan di bagian bawah cetakan invoice")
     referensi_pembayaran = models.CharField(max_length=255, blank=True, default="", help_text="Referensi pembayaran dari Paypal/Bank (opsional, diisi manual saat mencatat pembayaran)")
 
+    # Jejak audit cetak ulang faktur (UAT "Cetak ulang nota berfungsi dan
+    # ditandai sebagai salinan", 2026-09-22) -- diisi lewat action
+    # tandai_cetak_ulang(), dipanggil PosHistory.jsx/InvoiceModal.jsx tiap
+    # kali faktur pesanan ini dicetak ULANG (bukan cetak pertama saat
+    # pelunasan/transaksi baru selesai).
+    jumlah_cetak_ulang = models.PositiveIntegerField(default=0)
+    terakhir_dicetak_ulang = models.DateTimeField(null=True, blank=True)
+
     def _hitung_diskon_promo_pos(self, subtotal):
         """Diskon dari Promosi POS tipe DQ/DA (Discount Qty/Discount Amount)
         -- HANYA komponen nominal, tidak termasuk BX/FI (item gratis).
