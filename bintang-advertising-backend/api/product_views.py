@@ -143,6 +143,76 @@ def post_stock_adjustment_journal(document, actor, amount, *, direction, source_
         raise ValidationError(getattr(exc, 'messages', [str(exc)])) from exc
 
 
+def catat_saldo_awal_stok(product, variant, qty, harga_beli, tanggal, actor):
+    """Jejak akuntansi stok awal produk/varian BARU (dipanggil dari
+    ProductViewSet/ProductVariantViewSet.perform_create dan import_products
+    saat baris CSV membuat produk baru) -- BUKAN penyesuaian (itu lewat
+    post_stock_opname_document/post_stock_opname_journal, akun 81000
+    Penyesuaian Barang).
+
+    Secara akuntansi, stok awal produk baru adalah "Opening Stock" (istilah
+    Frappe/ERPNext), beda sifat dari "Stock Adjustment" (selisih ditemukan
+    saat opname produk yang SUDAH berjalan) -- dijurnal Debit
+    Persediaan(11400) / Kredit akun Saldo Awal (ekuitas,
+    AccountingSettings.opening_balance_equity_account, kode 34000), BUKAN
+    akun 81000, supaya tidak menggembungkan laba/rugi periode berjalan
+    (keputusan user 2026-09-22, dikonfirmasi setelah membandingkan pola
+    Frappe/ERPNext yang memisahkan dua skenario ini).
+
+    StockLayer FIFO SELALU dibuat (dibutuhkan supaya HPP produk ini bisa
+    dihitung saat nanti terjual -- M8) terlepas dari berhasil/tidaknya
+    posting jurnal. Jurnal SENGAJA gagal-lunak (tidak melempar exception ke
+    pemanggil) kalau modul akuntansi belum aktif/akun belum lengkap --
+    pembuatan produk tidak boleh gagal gara-gara pengaturan akuntansi."""
+    qty = Decimal(str(qty or 0))
+    if qty <= 0:
+        return None
+
+    movement = ProductStockMovement.objects.create(
+        product=product, variant=variant, user=actor, tipe='saldo_awal',
+        qty=qty, harga_beli=harga_beli, stok_awal=Decimal('0'), stok_akhir=qty,
+        tanggal=tanggal, catatan='Saldo awal stok saat produk dibuat.',
+    )
+    stock_fifo.create_layer(
+        product, variant, qty, harga_beli, tanggal,
+        sumber_tipe='saldo_awal', sumber_nomor=f'SA-{movement.id}',
+    )
+
+    nilai = (qty * Decimal(str(harga_beli or 0))).quantize(Decimal('1'))
+    if nilai <= 0:
+        return movement
+
+    from accounting.models import Account, AccountingSettings, JournalEntry
+    from accounting.services.journal import create_journal_entry
+
+    settings_row = AccountingSettings.objects.first()
+    inventory = Account.objects.filter(code='11400', is_active=True).first()
+    if not settings_row or not settings_row.opening_balance_equity_account_id or not inventory:
+        logger.warning(
+            "Saldo awal stok produk '%s' tidak dijurnal: akun Persediaan (11400) atau "
+            "akun penyeimbang Saldo Awal belum dikonfigurasi.", product.nama,
+        )
+        return movement
+
+    description = f"Saldo awal stok: {product.nama}" + (f" ({variant.nama_varian})" if variant else "")
+    try:
+        create_journal_entry(
+            date=tanggal,
+            lines=[
+                {'account': inventory, 'debit': nilai, 'kredit': 0, 'description': description},
+                {'account': settings_row.opening_balance_equity_account, 'debit': 0, 'kredit': nilai, 'description': description},
+            ],
+            description=description,
+            source_type=JournalEntry.SourceType.OPENING_BALANCE,
+            source_id=movement.id,
+            created_by=actor,
+        )
+    except (DjangoValidationError, ValidationError):
+        logger.warning("Gagal posting jurnal saldo awal stok utk produk '%s'.", product.nama, exc_info=True)
+
+    return movement
+
+
 def post_stock_opname_journal(document, actor, surplus_amount, defisit_amount):
     """Jurnal opname: surplus & defisit bisa terjadi bersamaan dalam satu
     dokumen (produk berbeda) — diposting sebagai satu entri gabungan supaya
@@ -496,6 +566,11 @@ class ProductViewSet(viewsets.ModelViewSet):
             aksi="Menambahkan produk",
             catatan=f"Produk '{product.nama}' berhasil dibuat."
         )
+        if not product.has_variant and product.qty_stok:
+            catat_saldo_awal_stok(
+                product, None, product.qty_stok, product.harga_beli,
+                timezone.now().date(), self.request.user,
+            )
 
     def perform_update(self, serializer):
         old_product = self.get_object()
@@ -923,7 +998,35 @@ class ProductViewSet(viewsets.ModelViewSet):
                     product_obj.barcode = None
                     
                 product_obj.save()
-                
+
+                # Jalur ini menyimpan langsung ke product_obj (bukan lewat
+                # ProductSerializer/perform_create), jadi TIDAK otomatis
+                # tercatat oleh ProductActivityLog seperti Tambah/Ubah Produk
+                # manual -- dicatat eksplisit di sini supaya produk hasil
+                # impor CSV juga punya jejak siapa & kapan (poin UAT: log
+                # produk harus mencatat pembuat + waktu, ditemukan user
+                # 2026-09-22 saat produk hasil impor tidak punya log sama
+                # sekali).
+                ProductActivityLog.objects.create(
+                    product=product_obj,
+                    user=request.user,
+                    aksi="Menambahkan produk" if is_new else "Memperbarui produk",
+                    catatan=f"Produk '{product_name}' {'dibuat' if is_new else 'diperbarui'} lewat impor CSV.",
+                )
+
+                # Stok awal produk BARU (bukan has_var -- kalau has_var,
+                # qty_stok tercatat per varian di bawah) perlu jejak
+                # akuntansi yang sama seperti Tambah Produk manual (M8 +
+                # "Opening Stock" vs "Stock Adjustment", lihat
+                # catat_saldo_awal_stok()) -- sebelumnya sama sekali tidak
+                # tercatat utk produk hasil impor CSV (ditemukan user
+                # 2026-09-22).
+                if is_new and not has_var:
+                    catat_saldo_awal_stok(
+                        product_obj, None, product_obj.qty_stok, product_obj.harga_beli,
+                        timezone.now().date(), request.user,
+                    )
+
                 if is_new:
                     created_count += 1
                 else:
@@ -936,9 +1039,10 @@ class ProductViewSet(viewsets.ModelViewSet):
                             continue
                             
                         variant_obj = ProductVariant.objects.filter(product=product_obj, nama_varian=v_name).first()
+                        variant_is_new = variant_obj is None
                         if not variant_obj:
                             variant_obj = ProductVariant(product=product_obj, nama_varian=v_name)
-                            
+
                         variant_obj.nama_alternatif = r.get('alternative_variant_name') or ""
                         variant_obj.sku = r.get('sku') or None
                         variant_obj.barcode = r.get('barcode') or None
@@ -972,7 +1076,13 @@ class ProductViewSet(viewsets.ModelViewSet):
                         variant_obj.berat = w_kg * 1000
                         
                         variant_obj.save()
-                        
+
+                        if variant_is_new:
+                            catat_saldo_awal_stok(
+                                product_obj, variant_obj, variant_obj.qty_stok, variant_obj.harga_beli,
+                                timezone.now().date(), request.user,
+                            )
+
         return Response({
             'success': True,
             'message': f'Produk berhasil diimpor. Baru: {created_count}, Diperbarui: {updated_count}'
@@ -1363,6 +1473,14 @@ class ProductVariantViewSet(viewsets.ModelViewSet):
     queryset = ProductVariant.objects.all().order_by('product__nama', 'nama_varian')
     serializer_class = ProductVariantSerializer
     permission_classes = [IsOwnerManagerAdminOrReadOnly]
+
+    def perform_create(self, serializer):
+        variant = serializer.save()
+        if variant.qty_stok:
+            catat_saldo_awal_stok(
+                variant.product, variant, variant.qty_stok, variant.harga_beli,
+                timezone.now().date(), self.request.user,
+            )
 
     def perform_update(self, serializer):
         old_variant = self.get_object()

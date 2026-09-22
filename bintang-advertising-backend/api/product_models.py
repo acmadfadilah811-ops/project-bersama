@@ -271,6 +271,7 @@ class ProductStockMovement(models.Model):
         ('produksi', 'Produksi Stok'),
         ('penjualan', 'Penjualan'),
         ('pengembalian', 'Pengembalian'),
+        ('saldo_awal', 'Saldo Awal'),
     ]
 
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='stock_movements')
