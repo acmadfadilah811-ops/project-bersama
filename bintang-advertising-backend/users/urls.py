@@ -3,6 +3,7 @@ from django.urls import path
 from .views import (
     AuditLogView,
     CustomLoginView,
+    LoginUnlockOtpRequestView,
     LogoutView,
     MeView,
     SessionListView,
@@ -24,6 +25,7 @@ urlpatterns = [
     path("auth/forgot-password/verify/", ForgotPasswordVerifyView.as_view(), name="forgot_password_verify"),
 
     # Profile
+    path("auth/login/unlock-otp/", LoginUnlockOtpRequestView.as_view(), name="login_unlock_otp_request"),
     path("users/me/", MeView.as_view(), name="user_me"),
     path("users/online/", StaffOnlineView.as_view(), name="staff_online"),
 

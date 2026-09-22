@@ -108,6 +108,93 @@ def buka_kunci_login(username):
     cache.delete(f"{key}:locked")
 
 
+# Kunci per-IP (spray/enumeration): satu IP yang gagal login ke MAKS_AKUN_BERBEDA_PER_IP
+# akun BERBEDA dalam masa DURASI_KUNCI_IP diblokir dari login akun manapun -- kunci
+# per-akun saja tidak menghentikan penyerang yang mencoba banyak akun sekali per akun
+# (di bawah ambang 3x per akun). OTP_UNLOCK_TTL adalah OTP terpisah (bukan reset
+# password) yang membuktikan pemohon menguasai email akun yang diserang, sehingga bisa
+# membuka kunci akunnya sendiri lebih cepat tanpa membuka kunci IP utk akun lain.
+MAKS_AKUN_BERBEDA_PER_IP = 3
+DURASI_KUNCI_IP = 10 * 60
+OTP_UNLOCK_TTL = 5 * 60
+
+
+def ip_fail_key(ip):
+    return f"login_ip_fail:{ip}"
+
+
+def catat_gagal_ip(ip, username):
+    """Mencatat username yang gagal dari IP ini. True bila IP baru saja terkunci."""
+    key = ip_fail_key(ip)
+    usernames = cache.get(key) or set()
+    usernames.add(str(username).strip().lower())
+    cache.set(key, usernames, DURASI_KUNCI_IP)
+    if len(usernames) >= MAKS_AKUN_BERBEDA_PER_IP:
+        cache.set(f"{key}:locked", timezone.now().timestamp(), DURASI_KUNCI_IP)
+        return True
+    return False
+
+
+def sisa_waktu_kunci_ip(ip):
+    waktu_kunci = cache.get(f"{ip_fail_key(ip)}:locked")
+    if waktu_kunci is None:
+        return 0
+    try:
+        return max(1, int(DURASI_KUNCI_IP - (timezone.now().timestamp() - float(waktu_kunci))))
+    except (TypeError, ValueError):
+        return DURASI_KUNCI_IP
+
+
+def unlock_otp_key(username):
+    return f"login_unlock_otp:{str(username).strip().lower()}"
+
+
+def verifikasi_unlock_otp(username, otp_input):
+    """OTP sekali pakai; benar -> dihapus & True. Salah -> dihitung, habis 5x -> dihapus."""
+    key = unlock_otp_key(username)
+    state = cache.get(key)
+    if not state:
+        return False
+    if not secrets.compare_digest(str(state.get("otp", "")), str(otp_input or "")):
+        state["attempts"] = int(state.get("attempts", 0)) + 1
+        if state["attempts"] >= 5:
+            cache.delete(key)
+        else:
+            cache.set(key, state, OTP_UNLOCK_TTL)
+        return False
+    cache.delete(key)
+    return True
+
+
+class LoginUnlockOtpRequestView(APIView):
+    """POST /api/auth/login/unlock-otp/ -- kirim OTP verifikasi ke email akun yang
+    terkunci (akun atau IP), supaya pemilik akun bisa login lebih cepat daripada
+    menunggu. Respons generik (anti-enumerasi), sama seperti alur lupa password."""
+
+    permission_classes = [AllowAny]
+    throttle_classes = [PasswordResetRequestThrottle]
+
+    def post(self, request):
+        username = str(request.data.get("username") or "").strip()
+        if username:
+            user = CustomUser.objects.filter(username=username).first()
+            if user and user.email:
+                otp = str(secrets.SystemRandom().randint(100000, 999999))
+                cache.set(unlock_otp_key(username), {"otp": otp, "attempts": 0}, OTP_UNLOCK_TTL)
+                subject = "[StarPhoto & Advertising] Kode OTP Verifikasi Login"
+                message = (
+                    f"Halo {user.username},\n\nAda percobaan login yang gagal beberapa kali ke akun "
+                    f"Anda (atau dari jaringan Anda). Untuk login sekarang tanpa menunggu, gunakan "
+                    f"kode OTP berikut:\nKODE: {otp}\n\nBerlaku 5 menit. Kalau ini bukan Anda, "
+                    "segera ganti password dan hubungi Owner."
+                )
+                try:
+                    send_mail(subject, message, None, [user.email], fail_silently=False)
+                except Exception:
+                    cache.delete(unlock_otp_key(username))
+        return Response({"detail": "Jika akun ada, kode OTP verifikasi login sudah dikirim ke email terdaftar."})
+
+
 class CustomLoginView(TokenObtainPairView):
     """
     POST /api/auth/login/
@@ -127,13 +214,32 @@ class CustomLoginView(TokenObtainPairView):
         username_input = request.data.get("username", "")
 
         username_input = str(username_input or "")
+        otp_input = str(request.data.get("otp", "") or "").strip()
         failure_key = kunci_login_key(username_input)
-        sisa_kunci = sisa_waktu_kunci_login(username_input)
-        if sisa_kunci:
-            return Response({
-                "detail": "Akun dikunci sementara karena terlalu banyak percobaan login yang gagal.",
-                "retry_after": sisa_kunci,
-            }, status=429, headers={"Retry-After": str(sisa_kunci)})
+
+        # OTP membuka kunci AKUN INI SAJA dari percobaan INI SAJA -- tidak mencabut
+        # kunci IP untuk username lain (satu email yang terbukti dikuasai tidak boleh
+        # dipakai membuka jalan bagi akun lain yang sedang diserang dari IP yang sama).
+        otp_verified = bool(otp_input) and verifikasi_unlock_otp(username_input, otp_input)
+        if otp_verified:
+            buka_kunci_login(username_input)
+        else:
+            sisa_ip = sisa_waktu_kunci_ip(ip)
+            if sisa_ip:
+                return Response({
+                    "detail": "IP ini diblokir sementara karena beberapa akun berbeda gagal login dari sini.",
+                    "retry_after": sisa_ip,
+                    "otp_diperlukan": True,
+                    "cakupan_kunci": "ip",
+                }, status=429, headers={"Retry-After": str(sisa_ip)})
+            sisa_kunci = sisa_waktu_kunci_login(username_input)
+            if sisa_kunci:
+                return Response({
+                    "detail": "Akun dikunci sementara karena terlalu banyak percobaan login yang gagal.",
+                    "retry_after": sisa_kunci,
+                    "otp_diperlukan": True,
+                    "cakupan_kunci": "akun",
+                }, status=429, headers={"Retry-After": str(sisa_kunci)})
         try:
             serializer.is_valid(raise_exception=True)
         except (AuthenticationFailed, InvalidToken, TokenError):
@@ -146,6 +252,7 @@ class CustomLoginView(TokenObtainPairView):
             terkunci_sekarang = attempts >= MAKS_GAGAL_LOGIN
             if terkunci_sekarang:
                 cache.set(f"{failure_key}:locked", timezone.now().timestamp(), DURASI_KUNCI_LOGIN)
+            ip_terkunci_sekarang = catat_gagal_ip(ip, username_input)
             # --- Login GAGAL ---
             SecurityAuditLog.objects.create(
                 user=CustomUser.objects.filter(username=username_input.strip()).first(),
@@ -156,13 +263,23 @@ class CustomLoginView(TokenObtainPairView):
                 keterangan=(
                     f"Gagal login ke-{attempts}"
                     + (f"; akun dikunci {DURASI_KUNCI_LOGIN // 60} menit" if terkunci_sekarang else "")
+                    + ("; IP dikunci (banyak akun berbeda)" if ip_terkunci_sekarang else "")
                 ),
                 berhasil=False,
             )
+            if ip_terkunci_sekarang:
+                return Response({
+                    "detail": "IP ini diblokir sementara karena beberapa akun berbeda gagal login dari sini.",
+                    "retry_after": DURASI_KUNCI_IP,
+                    "otp_diperlukan": True,
+                    "cakupan_kunci": "ip",
+                }, status=429, headers={"Retry-After": str(DURASI_KUNCI_IP)})
             if terkunci_sekarang:
                 return Response({
                     "detail": "Akun dikunci sementara karena terlalu banyak percobaan login yang gagal.",
                     "retry_after": DURASI_KUNCI_LOGIN,
+                    "otp_diperlukan": True,
+                    "cakupan_kunci": "akun",
                 }, status=429, headers={"Retry-After": str(DURASI_KUNCI_LOGIN)})
             return Response(
                 {

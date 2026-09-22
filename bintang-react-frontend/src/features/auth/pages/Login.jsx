@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import loginDashboardBg from '../../../assets/login_dashboard_bg.jpg';
 import { semuaKriteriaTerpenuhi, formatSisaWaktu } from '../utils/kriteriaSandi';
-import { pesanLoginGagal, detikKunciLogin } from '../utils/pesanLogin';
+import { pesanLoginGagal, detikKunciLogin, otpUnlockDitawarkan, cakupanKunci } from '../utils/pesanLogin';
 import SandiChecklist from '../components/SandiChecklist';
 
 // Sesi lupa-password disimpan sementara agar tidak hilang saat halaman dimuat ulang
@@ -62,6 +62,10 @@ export default function Login() {
   const [successMsg, setSuccessMsg] = useState('');
   const [kunciSampai, setKunciSampai] = useState(0); // epoch ms; 0 = tidak terkunci
   const [sisaKunci, setSisaKunci] = useState(0);
+  const [cakupanKunciNow, setCakupanKunciNow] = useState(null); // 'akun' | 'ip' | null
+  const [otpUnlock, setOtpUnlock] = useState(''); // kode OTP pembuka kunci (opsional)
+  const [otpUnlockDikirim, setOtpUnlockDikirim] = useState(false);
+  const [otpUnlockLoading, setOtpUnlockLoading] = useState(false);
 
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -181,12 +185,28 @@ export default function Login() {
     }
   };
 
+  const handleKirimOtpUnlock = async () => {
+    setOtpUnlockLoading(true);
+    try {
+      await apiClient.post('/auth/login/unlock-otp/', { username });
+      setOtpUnlockDikirim(true);
+    } finally {
+      setOtpUnlockLoading(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     try {
-      const res = await apiClient.post('/auth/login/', { username, password });
+      const payload = { username, password };
+      if (otpUnlock) payload.otp = otpUnlock;
+      const res = await apiClient.post('/auth/login/', payload);
+      setKunciSampai(0);
+      setCakupanKunciNow(null);
+      setOtpUnlock('');
+      setOtpUnlockDikirim(false);
 
       if (res.data?.detail === 'VERIFICATION_REQUIRED') {
         setVerificationRequired(true);
@@ -208,6 +228,7 @@ export default function Login() {
     } catch (err) {
       const detikKunci = detikKunciLogin(err);
       if (detikKunci) setKunciSampai(Date.now() + detikKunci * 1000);
+      setCakupanKunciNow(otpUnlockDitawarkan(err) ? cakupanKunci(err) : null);
       setError(pesanLoginGagal(err));
     } finally {
       setLoading(false);
@@ -554,6 +575,39 @@ export default function Login() {
                       Coba lagi dalam {formatSisaWaktu(sisaKunci)} menit.
                     </span>
                   )}
+                  {cakupanKunciNow && (
+                    <div className="mt-1 pt-2 border-t border-red-200 flex flex-col gap-1.5">
+                      {!otpUnlockDikirim ? (
+                        <>
+                          <span className="text-xs text-red-600">
+                            Tidak mau menunggu? Verifikasi lewat OTP yang dikirim ke email akun ini.
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleKirimOtpUnlock}
+                            disabled={otpUnlockLoading || !username}
+                            className="self-start text-xs font-bold text-indigo-600 hover:text-indigo-800 disabled:opacity-50 cursor-pointer"
+                          >
+                            {otpUnlockLoading ? 'Mengirim OTP...' : 'Kirim OTP verifikasi login'}
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-xs text-emerald-700">
+                            OTP terkirim (jika akun dan email cocok). Masukkan kodenya, lalu tekan Masuk lagi.
+                          </span>
+                          <input
+                            type="text"
+                            maxLength={6}
+                            value={otpUnlock}
+                            onChange={(e) => setOtpUnlock(e.target.value.replace(/\D/g, ''))}
+                            placeholder="Kode OTP 6 digit"
+                            className="w-full h-[40px] bg-white border border-red-200 outline-none text-slate-800 text-center text-lg font-bold tracking-[0.4em] rounded-lg focus:border-indigo-400"
+                          />
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -598,10 +652,16 @@ export default function Login() {
             <div className="grid mt-4">
               <button
                 type="submit"
-                disabled={loading || sisaKunci > 0}
+                disabled={loading || (sisaKunci > 0 && otpUnlock.length !== 6)}
                 className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold h-[52px] transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-[16px] shadow-lg shadow-blue-950/20 rounded-lg cursor-pointer"
               >
-                {loading ? 'Memuat...' : sisaKunci > 0 ? 'AKUN DIKUNCI SEMENTARA' : 'MASUK'}
+                {loading
+                  ? 'Memuat...'
+                  : sisaKunci > 0 && otpUnlock.length !== 6
+                    ? 'AKUN DIKUNCI SEMENTARA'
+                    : sisaKunci > 0
+                      ? 'VERIFIKASI & MASUK'
+                      : 'MASUK'}
               </button>
             </div>
           </form>
