@@ -1618,9 +1618,18 @@ class OrderItemViewSet(viewsets.ModelViewSet):
         # itu masih 'review' -- begitu kasir mulai memverifikasi/mengubah
         # statusnya, staff tidak boleh lagi ikut mengubah item (mencegah
         # race condition dengan verifikasi harga kasir). Order lain (WA/POS/
-        # manual/order staff lain) tetap tertutup total untuk staff.
+        # manual/order staff lain) tetap tertutup total untuk staff/spv/kordiv.
+        #
+        # role in (...) -- BUKAN cuma 'staff' -- harus sama persis dgn
+        # pengecualian di OrderViewSet.perform_create() (SPV & Kordiv juga
+        # punya menu "Buat Order", Sidebar.jsx menuSpvKordiv). Sebelumnya
+        # cuma 'staff' yang dikecualikan di sini: order header berhasil
+        # dibuat utk akun SPV/Kordiv (lewat perform_create yg sudah benar),
+        # tapi POST /order-items/ berikutnya SELALU ditolak 403 utk kedua
+        # role itu -- order jadi tidak pernah bisa selesai dibuat sama
+        # sekali dari UI. Bug dilaporkan user 2026-09-22 (uji akun kordiv).
         if (
-            role == 'staff' and order is not None
+            role in ('staff', 'spv', 'kordiv') and order is not None
             and order.sumber == 'staff'
             and order.dilayani_oleh_id == self.request.user.id
             and order.status_global == 'review'

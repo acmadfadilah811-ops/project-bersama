@@ -161,6 +161,29 @@ class OrderSpvKordivCreateGuardTests(APITestCase):
         row = next(r for r in res_list.data if r['id'] == order.id)
         self.assertEqual(row['dilayani_oleh_nama'], 'Sari Kordiv')
 
+    def test_spv_dan_kordiv_bisa_menambah_item_ke_order_offline_miliknya(self):
+        """Reproduksi bug user 2026-09-22: order header berhasil dibuat utk
+        SPV/Kordiv (perform_create sudah benar), tapi POST /order-items/
+        berikutnya (langkah wajib ke-2 di StaffCreateOrderPanel.jsx) SELALU
+        ditolak 403 utk kedua role itu -- OrderItemViewSet._ensure_write_role()
+        sebelumnya cuma mengecualikan role == 'staff' persis, bukan
+        role in ('staff', 'spv', 'kordiv'). Order jadi tidak pernah bisa
+        selesai dibuat lewat UI sama sekali utk akun SPV/Kordiv."""
+        for role, username in (('spv', 'spv_item_guard'), ('kordiv', 'kordiv_item_guard')):
+            user = User.objects.create_user(username=username, password='pw12345', role=role)
+            self.client.force_authenticate(user=user)
+
+            res_order = self.client.post('/api/orders/', {
+                'nomor_wa': '081234500099', 'nama': f'Pelanggan {role.upper()} Item',
+            })
+            self.assertEqual(res_order.status_code, 201, res_order.content)
+            order_id = res_order.data['id']
+
+            res_item = self.client.post('/api/order-items/', {
+                'order': order_id, 'jenis_produk': 'Banner Custom', 'qty': 1, 'harga_jual': 75000,
+            })
+            self.assertEqual(res_item.status_code, 201, f"role={role}: {res_item.content}")
+
 
 class OrderItemStaffWriteGuardTests(APITestCase):
     """OrderItemViewSet._ensure_write_role() sebelumnya memblokir role
