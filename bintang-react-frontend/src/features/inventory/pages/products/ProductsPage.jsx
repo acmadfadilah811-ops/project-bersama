@@ -278,6 +278,7 @@ export default function ProductsPage() {
   const [formNama, setFormNama] = useState('');
   const [formNamaAlt, setFormNamaAlt] = useState('');
   const [formKategori, setFormKategori] = useState('');
+  const [formUnitBisnis, setFormUnitBisnis] = useState('');
   const [formHargaToko, setFormHargaToko] = useState('');
   const [formDeskripsi, setFormDeskripsi] = useState('');
   const [onlinePriceSame, setOnlinePriceSame] = useState(true);
@@ -444,6 +445,7 @@ export default function ProductsPage() {
     setFormNama('');
     setFormNamaAlt('');
     setFormKategori('');
+    setFormUnitBisnis('');
     setFormHargaToko('');
     setFormDeskripsi('');
     setOnlinePriceSame(true);
@@ -479,6 +481,7 @@ export default function ProductsPage() {
         nama: formNama,
         nama_alternatif: formNamaAlt || null,
         kategori: formKategori || null,
+        unit_bisnis: formUnitBisnis || null,
         harga_jual_toko: String(formHargaToko || '').replace(/[^0-9]/g, '') || 0,
         harga_online_sama: onlinePriceSame,
         lacak_inventori: trackInventory,
@@ -702,9 +705,17 @@ export default function ProductsPage() {
               Batal
             </button>
             <div className="pi-store-select-group">
-              <span>Simpan di:</span>
-              <select className="pi-store-select">
-                <option>{businessSettings?.nama_bisnis || 'StarPhoto & Advertising'}</option>
+              <span>Unit Bisnis:</span>
+              <select
+                className="pi-store-select"
+                value={formUnitBisnis ? String(formUnitBisnis) : ''}
+                onChange={(e) => setFormUnitBisnis(e.target.value)}
+                title="Kosongkan supaya produk tetap tampil ke kedua unit -- staff/kasir cuma lihat unit sendiri kalau ditandai"
+              >
+                <option value="">(Semua unit)</option>
+                {unitBisnisOptions.map((u) => (
+                  <option key={u.id} value={String(u.id)}>{u.nama}</option>
+                ))}
               </select>
             </div>
             <button
