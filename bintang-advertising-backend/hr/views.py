@@ -9,6 +9,7 @@ from rest_framework.decorators import action
 
 from api.models import JobBoard
 from api.permissions import IsOwnerOrManager, IsStrictOwnerOrManager
+from api.services.hr_leave_status_bridge import cek_status_cuti_libur
 
 from .models import Absensi, Kontrak, StaffAnnouncement, DailyAttendanceSession, UnlockRequest, Akun, TransaksiBukuBesar, SlipGaji
 from .serializers import AbsensiSerializer, AnnouncementSerializer, KontrakSerializer, AkunSerializer, TransaksiBukuBesarSerializer, SlipGajiSerializer
@@ -143,6 +144,20 @@ class ClockInView(APIView):
                 {"detail": "Sesi absensi hari ini belum dibuka oleh Manager/Owner."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # 1b. Cek cuti/hari libur menurut HR -- HR tetap satu-satunya sumber
+        #     kebenaran untuk jam kerja/shift/hari libur/kebijakan cuti,
+        #     Bintang cuma sesi kerja harian sederhana (keputusan user
+        #     2026-09-22). Fail-open kalau HR tidak bisa dihubungi (lihat
+        #     cek_status_cuti_libur) -- hanya menolak kalau HR SECARA
+        #     EKSPLISIT bilang sedang cuti/hari libur.
+        if request.user.hr_employee_id:
+            status_cuti = cek_status_cuti_libur(request.user.hr_employee_id, today)
+            if status_cuti["on_leave"] or status_cuti["is_holiday"]:
+                return Response(
+                    {"detail": status_cuti["reason"] or "Menurut HR, hari ini Anda tidak bekerja."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
 
         # 2. Cek batas maksimal dan persetujuan keterlambatan.
         if now > session.batas_maksimal:
