@@ -16,6 +16,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 from rest_framework_simplejwt.tokens import RefreshToken, UntypedToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
@@ -107,6 +108,16 @@ def buka_kunci_login(username):
     key = kunci_login_key(username)
     cache.delete(key)
     cache.delete(f"{key}:locked")
+
+
+def decode_refresh_jti(refresh_token_str):
+    """JTI refresh token, dipakai SessionToken.refresh_jti agar SessionRevokeView bisa
+    memblokir OutstandingToken terkait. Gagal decode -> string kosong (baris tetap
+    tersimpan, hanya cabut-instan lewat menu Owner yang tidak berfungsi utk baris itu)."""
+    try:
+        return RefreshToken(refresh_token_str).get("jti", "") or ""
+    except Exception:
+        return ""
 
 
 # Kunci per-IP (spray/enumeration): satu IP yang gagal login ke MAKS_AKUN_BERBEDA_PER_IP
@@ -396,6 +407,7 @@ Tim Keamanan StarPhoto & Advertising
         SessionToken.objects.create(
             user=user,
             token_jti=jti,
+            refresh_jti=decode_refresh_jti(refresh_token),
             ip_address=ip,
             user_agent=ua,
             device_name=_parse_device(ua),
@@ -492,6 +504,7 @@ class VerifyLoginView(APIView):
         SessionToken.objects.create(
             user=user,
             token_jti=jti,
+            refresh_jti=decode_refresh_jti(refresh_token),
             ip_address=cached_data["ip"],
             user_agent=cached_data["ua"],
             device_name=_parse_device(cached_data["ua"]),
@@ -710,17 +723,45 @@ class SessionRevokeView(APIView):
             )
 
         session.revoke()
+
+        # Sebelumnya cuma menandai baris ini "tidak aktif" -- token JWT-nya sendiri
+        # (stateless) tetap sah sampai kedaluwarsa alami, jadi tombol "Cabut Sesi"
+        # tidak benar-benar menghentikan siapa pun. Blokir refresh token terkait
+        # lewat token_blacklist (kita tidak menyimpan refresh token mentah, hanya
+        # JTI-nya, jadi diblokir lewat OutstandingToken, bukan RefreshToken(raw)).
+        # Access token yang sudah terlanjur terbit TETAP sah sampai kedaluwarsa
+        # sendiri (maks. 1 jam) -- ini bukan cabut instan, tapi refresh berikutnya
+        # pasti ditolak sehingga user dipaksa login ulang dalam ≤1 jam.
+        blokir_berhasil = False
+        if session.refresh_jti:
+            try:
+                outstanding = OutstandingToken.objects.get(jti=session.refresh_jti)
+                BlacklistedToken.objects.get_or_create(token=outstanding)
+                blokir_berhasil = True
+            except OutstandingToken.DoesNotExist:
+                pass
+
         SecurityAuditLog.objects.create(
             user=request.user,
             event="TOKEN_REVOKED",
             ip_address=_get_client_ip(request),
-            keterangan=f"Owner mencabut sesi milik {session.user.username}",
+            keterangan=(
+                f"Owner mencabut sesi milik {session.user.username}"
+                + ("" if blokir_berhasil else " (refresh token tidak terblokir -- sesi lama sebelum fitur ini)")
+            ),
             berhasil=True,
         )
 
         return Response(
             {
-                "detail": f"Sesi milik {session.user.username} berhasil dicabut.",
+                "detail": (
+                    f"Sesi milik {session.user.username} berhasil dicabut. "
+                    + (
+                        "Login berikutnya ditolak; sesi yang sedang berjalan berhenti dalam maks. 1 jam."
+                        if blokir_berhasil
+                        else "Catatan: sesi ini dibuat sebelum fitur cabut-instan ada, jadi refresh token-nya tidak ikut diblokir."
+                    )
+                ),
                 "session_id": pk,
             }
         )

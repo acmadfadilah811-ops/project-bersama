@@ -503,9 +503,12 @@ export default function Settings() {
   // ── Revoke session ──────────────────────────────────────
   const revokeSession = async (sessionId) => {
     try {
-      await apiClient.delete(`/security/sessions/${sessionId}/`);
+      const res = await apiClient.delete(`/security/sessions/${sessionId}/`);
       setSessions((prev) => prev.filter((s) => s.id !== sessionId));
-      showSecToast('success', 'Sesi berhasil dicabut.');
+      // Server menjelaskan apakah berhenti maks. 1 jam (sesi baru) atau tidak
+      // bisa dicabut instan (sesi lama sebelum fitur ini) -- tampilkan apa
+      // adanya, bukan pesan generik yang menyiratkan langsung berhenti.
+      showSecToast('success', res.data?.detail || 'Sesi berhasil dicabut.');
     } catch {
       showSecToast('error', 'Gagal mencabut sesi.');
     }

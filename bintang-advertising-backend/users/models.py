@@ -91,7 +91,20 @@ class SessionToken(models.Model):
         max_length=255,
         unique=True,
         db_index=True,
-        help_text="JWT ID (jti claim) — digunakan untuk identifikasi & revoke.",
+        help_text="JWT ID (jti claim) dari ACCESS token — dipakai utk identifikasi baris ini.",
+    )
+    refresh_jti = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text=(
+            "JTI refresh token yang menerbitkan access token ini. Dipakai SessionRevokeView "
+            "utk memblokir OutstandingToken terkait supaya sesi benar-benar berhenti (bukan "
+            "cuma menandai baris ini tidak aktif) -- access token yang sudah terlanjur "
+            "terbit tetap sah sampai kedaluwarsa alami (maks. 1 jam), refresh berikutnya baru "
+            "ditolak. Baris lama (sebelum kolom ini ada) kosong -- tidak bisa dicabut instan."
+        ),
     )
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.TextField(blank=True, default="")

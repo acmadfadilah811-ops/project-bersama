@@ -6,7 +6,6 @@ di sini hanya memastikan bagian server yang dipanggilnya benar-benar mencabut se
 
 from django.contrib.auth import get_user_model
 from rest_framework.test import APITestCase
-from rest_framework_simplejwt.tokens import RefreshToken
 
 from users.models import SessionToken
 
@@ -79,3 +78,55 @@ class VerifyLoginSessionTokenTests(APITestCase):
         from rest_framework_simplejwt.tokens import AccessToken
         jti = AccessToken(access).get('jti')
         self.assertTrue(SessionToken.objects.filter(token_jti=jti, is_active=True).exists())
+
+
+class SessionRevokeBenarBenarMencabutTests(APITestCase):
+    """Owner mencabut sesi orang lain harus benar-benar menghentikan sesi itu --
+    sebelumnya SessionRevokeView cuma menandai baris DB, refresh token JWT-nya
+    tetap sah dipakai selamanya."""
+
+    def setUp(self):
+        self.owner = get_user_model().objects.create_user(username='owner_cabut', password='OwnerSandi2026x', role='owner')
+        self.staff = get_user_model().objects.create_user(username='staff_cabut', password='StaffSandi2026x', role='staff')
+
+    def login_staff(self):
+        r = self.client.post('/api/auth/login/', {'username': 'staff_cabut', 'password': 'StaffSandi2026x'}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        return r.json()['access'], r.json()['refresh']
+
+    def test_cabut_sesi_memblokir_refresh_token_terkait(self):
+        access, refresh = self.login_staff()
+        session_id = SessionToken.objects.get(user=self.staff, is_active=True).id
+
+        self.client.force_authenticate(self.owner)
+        r = self.client.delete(f'/api/security/sessions/{session_id}/')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertIn('berhenti dalam maks', r.json()['detail'])
+
+        # Refresh token milik staff sekarang harus ditolak -- inilah "cabut sesi"
+        # yang sesungguhnya, bukan cuma baris DB yang berubah.
+        self.client.force_authenticate(None)
+        r2 = self.client.post('/api/auth/refresh/', {'refresh': refresh}, format='json')
+        self.assertEqual(r2.status_code, 401)
+
+    def test_cabut_sesi_lama_tanpa_refresh_jti_tetap_jalan_dgn_catatan(self):
+        self.login_staff()
+        session = SessionToken.objects.get(user=self.staff, is_active=True)
+        session.refresh_jti = ''   # simulasikan baris lama (sebelum kolom ini ada)
+        session.save(update_fields=['refresh_jti'])
+
+        self.client.force_authenticate(self.owner)
+        r = self.client.delete(f'/api/security/sessions/{session.id}/')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertIn('sebelum fitur cabut-instan', r.json()['detail'])
+        session.refresh_from_db()
+        self.assertFalse(session.is_active)
+
+    def test_admin_tidak_boleh_cabut_sesi(self):
+        # IsStrictOwnerOrManager: hanya owner/manager, admin sengaja dikecualikan.
+        admin = get_user_model().objects.create_user(username='admin_cabut', password='AdminSandi2026x', role='admin')
+        self.login_staff()
+        session_id = SessionToken.objects.get(user=self.staff, is_active=True).id
+        self.client.force_authenticate(admin)
+        r = self.client.delete(f'/api/security/sessions/{session_id}/')
+        self.assertEqual(r.status_code, 403)
