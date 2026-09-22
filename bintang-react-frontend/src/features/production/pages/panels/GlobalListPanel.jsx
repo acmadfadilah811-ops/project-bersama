@@ -11,6 +11,7 @@ import {
   Printer,
   Truck,
   FileCheck,
+  Paperclip,
 } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
 import logoStarfoto from '../../../../assets/logo-starfoto.png';
@@ -505,9 +506,22 @@ export default function GlobalListPanel() {
                                 {item.jenis_produk || '-'}
                               </span>
                               {item.desain_susulan && (
-                                <span className="inline-flex items-center gap-1 ml-2 px-1.5 py-0.5 rounded bg-cyan-50 border border-cyan-100 text-[8px] font-black text-cyan-700 uppercase tracking-wider animate-pulse">
-                                  Desain Susulan
-                                </span>
+                                item.gdrive_customer_link ? (
+                                  <a
+                                    href={item.gdrive_customer_link}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="inline-flex items-center gap-1 ml-2 px-1.5 py-0.5 rounded bg-cyan-50 border border-cyan-100 text-[8px] font-black text-cyan-700 uppercase tracking-wider hover:bg-cyan-100"
+                                  >
+                                    <Paperclip size={9} className="shrink-0" />
+                                    Desain Susulan
+                                  </a>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 ml-2 px-1.5 py-0.5 rounded bg-cyan-50 border border-cyan-100 text-[8px] font-black text-cyan-700 uppercase tracking-wider animate-pulse">
+                                    Desain Susulan
+                                  </span>
+                                )
                               )}
                               {item.bahan && (
                                 <span className="text-slate-400 ml-1.5">/ {item.bahan}</span>

@@ -8,6 +8,7 @@ import {
   MessageCircle,
   ExternalLink,
   AlertTriangle,
+  Paperclip,
 } from 'lucide-react';
 import { parsePreviousNotes } from '../jobConstants';
 import KomplainModal from '../../../orders/components/KomplainModal';
@@ -173,6 +174,24 @@ export default function WorkspaceReviewModal({ workspaceJob, onRevisi, onClose }
                 )}
               </div>
             </div>
+
+            {/* File/Link Desain dari Pelanggan */}
+            {orderItemData?.fileLink && (
+              <div className="md:col-span-2">
+                <span className="block font-bold text-slate-500 uppercase text-[9px] tracking-wider mb-0.5">
+                  File Desain dari Pelanggan
+                </span>
+                <a
+                  href={orderItemData.fileLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 text-emerald-700 font-bold rounded-lg px-3 py-2 text-xs transition-colors"
+                >
+                  <Paperclip size={14} className="shrink-0" />
+                  Buka File dari Pelanggan
+                </a>
+              </div>
+            )}
           </div>
         </div>
 
