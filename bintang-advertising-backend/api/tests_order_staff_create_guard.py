@@ -104,6 +104,64 @@ class OrderStaffCreateGuardTests(APITestCase):
         self.assertEqual(order.dp_dibayar, 25000)
 
 
+class OrderSpvKordivCreateGuardTests(APITestCase):
+    """SPV & Kordiv juga punya menu "Buat Order" (Sidebar.jsx menuSpvKordiv,
+    StaffCreateOrderPanel.jsx dipasang sama seperti staff) -- perform_create()
+    mengecualikan role in ('staff', 'spv', 'kordiv') sekaligus (bukan cuma
+    'staff'), tapi sebelumnya cuma role 'staff' yang diuji eksplisit di file
+    ini. Order offline SPV/Kordiv harus masuk antrean gabungan
+    "Antrean Online & Offline" (?sumber=wa,staff) persis seperti staff,
+    dengan dilayani_oleh_nama tercatat sesuai pembuatnya masing-masing
+    (verifikasi diminta user 2026-09-22)."""
+
+    def test_spv_order_masuk_sumber_staff_dengan_nama_pembuat_benar(self):
+        spv = User.objects.create_user(
+            username='spv_create_guard', password='pw12345', role='spv',
+            first_name='Budi', last_name='Spv',
+        )
+        self.client.force_authenticate(user=spv)
+        res = self.client.post('/api/orders/', {
+            'nomor_wa': '081234500001', 'nama': 'Pelanggan SPV',
+            'status_global': 'selesai', 'dp_dibayar': 999999,
+        })
+        self.assertEqual(res.status_code, 201, res.content)
+        order = Order.objects.get(id=res.data['id'])
+        self.assertEqual(order.sumber, 'staff')
+        self.assertEqual(order.dilayani_oleh_id, spv.id)
+        self.assertEqual(order.status_global, 'review')
+        self.assertEqual(order.dp_dibayar, 0)
+
+        # Muncul di antrean gabungan Online & Offline, dengan nama pembuat.
+        owner = User.objects.create_user(username='owner_spv_guard', password='pw12345', role='owner')
+        self.client.force_authenticate(user=owner)
+        res_list = self.client.get('/api/orders/', {'sumber': 'wa,staff'})
+        row = next(r for r in res_list.data if r['id'] == order.id)
+        self.assertEqual(row['dilayani_oleh_nama'], 'Budi Spv')
+
+    def test_kordiv_order_masuk_sumber_staff_dengan_nama_pembuat_benar(self):
+        kordiv = User.objects.create_user(
+            username='kordiv_create_guard', password='pw12345', role='kordiv',
+            first_name='Sari', last_name='Kordiv',
+        )
+        self.client.force_authenticate(user=kordiv)
+        res = self.client.post('/api/orders/', {
+            'nomor_wa': '081234500002', 'nama': 'Pelanggan Kordiv',
+            'diskon_persen': 50, 'metode_diskon': 'kupon',
+        })
+        self.assertEqual(res.status_code, 201, res.content)
+        order = Order.objects.get(id=res.data['id'])
+        self.assertEqual(order.sumber, 'staff')
+        self.assertEqual(order.dilayani_oleh_id, kordiv.id)
+        self.assertEqual(order.diskon_persen, 0)
+        self.assertEqual(order.metode_diskon, 'tidak_ada')
+
+        owner = User.objects.create_user(username='owner_kordiv_guard', password='pw12345', role='owner')
+        self.client.force_authenticate(user=owner)
+        res_list = self.client.get('/api/orders/', {'sumber': 'wa,staff'})
+        row = next(r for r in res_list.data if r['id'] == order.id)
+        self.assertEqual(row['dilayani_oleh_nama'], 'Sari Kordiv')
+
+
 class OrderItemStaffWriteGuardTests(APITestCase):
     """OrderItemViewSet._ensure_write_role() sebelumnya memblokir role
     'staff' TOTAL dari membuat item order -- kalau tidak dikecualikan
