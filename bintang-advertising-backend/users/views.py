@@ -83,8 +83,8 @@ def _parse_device(user_agent: str) -> str:
 # Penguncian akun sementara (AKS-03): MAKS_GAGAL_LOGIN gagal berturut-turut dalam
 # DURASI_KUNCI_LOGIN detik -> login ditolak selama sisa masa kunci. Kunci per username
 # (bukan per IP) agar tebakan dari banyak IP tetap terhitung.
-MAKS_GAGAL_LOGIN = 5
-DURASI_KUNCI_LOGIN = 15 * 60
+MAKS_GAGAL_LOGIN = 3
+DURASI_KUNCI_LOGIN = 10 * 60
 
 
 def kunci_login_key(username):

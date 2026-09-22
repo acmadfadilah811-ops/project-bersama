@@ -15,49 +15,49 @@ class KunciAkunTests(APITestCase):
     def login(self, sandi, username='kunci_uji'):
         return self.client.post('/api/auth/login/', {'username': username, 'password': sandi}, format='json')
 
-    def test_lima_kali_salah_lalu_terkunci_walau_sandi_benar(self):
-        for i in range(4):
+    def test_tiga_kali_salah_lalu_terkunci_10_menit_walau_sandi_benar(self):
+        for i in range(2):
             self.assertEqual(self.login('salah').status_code, 401, i)
-        self.assertEqual(self.login('salah').status_code, 429)   # percobaan ke-5 langsung mengunci
+        self.assertEqual(self.login('salah').status_code, 429)   # percobaan ke-3 langsung mengunci
         r = self.login('SandiBenar2026x')
         self.assertEqual(r.status_code, 429)
         self.assertGreater(r.json()['retry_after'], 0)
-        self.assertLessEqual(r.json()['retry_after'], 900)
+        self.assertLessEqual(r.json()['retry_after'], 600)
 
-    def test_empat_kali_salah_belum_terkunci_dan_sandi_benar_menghapus_hitungan(self):
-        for _ in range(4):
+    def test_dua_kali_salah_belum_terkunci_dan_sandi_benar_menghapus_hitungan(self):
+        for _ in range(2):
             self.login('salah')
         self.assertEqual(self.login('SandiBenar2026x').status_code, 200)
-        for _ in range(4):
+        for _ in range(2):
             self.login('salah')
         self.assertEqual(self.login('SandiBenar2026x').status_code, 200)
 
     def test_pesan_gagal_menyebut_sisa_percobaan(self):
         r = self.login('salah')
         self.assertEqual(r.status_code, 401)
-        self.assertEqual(r.json()['sisa_percobaan'], 4)
+        self.assertEqual(r.json()['sisa_percobaan'], 2)
 
     def test_username_tidak_ada_diperlakukan_sama_anti_enumerasi(self):
-        for _ in range(5):
+        for _ in range(3):
             self.login('x', username='hantu')
         self.assertEqual(self.login('x', username='hantu').status_code, 429)
 
     def test_kegagalan_dan_penguncian_tercatat_di_audit_log(self):
-        for _ in range(5):
+        for _ in range(3):
             self.login('salah')
         self.login('salah')
-        self.assertEqual(SecurityAuditLog.objects.filter(event='LOGIN_FAILED').count(), 5)
+        self.assertEqual(SecurityAuditLog.objects.filter(event='LOGIN_FAILED').count(), 3)
         self.assertTrue(SecurityAuditLog.objects.filter(event='LOGIN_FAILED', keterangan__contains='dikunci').exists())
 
     def test_kunci_berakhir_setelah_masa_habis(self):
-        for _ in range(5):
+        for _ in range(3):
             self.login('salah')
-        cache.clear()   # simulasi 15 menit berlalu
+        cache.clear()   # simulasi 10 menit berlalu
         self.assertEqual(self.login('SandiBenar2026x').status_code, 200)
 
     def test_owner_bisa_membuka_kunci_akun_lain(self):
         owner = get_user_model().objects.create_user(username='own_kunci', password='OwnerSandi2026x', role='owner')
-        for _ in range(5):
+        for _ in range(3):
             self.login('salah')
         self.assertEqual(self.login('SandiBenar2026x').status_code, 429)
         self.client.force_authenticate(owner)
