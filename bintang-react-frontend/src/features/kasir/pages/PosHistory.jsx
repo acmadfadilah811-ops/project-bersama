@@ -653,9 +653,15 @@ export default function PosHistory({ onToggleSidebar }) {
                         setShowActionDropdown(false);
                         // ReceiptPrint dirender di luar dropdown (hidden, hanya
                         // muncul saat print:block). QZ Tray atau dialog browser
-                        // dipilih oleh konfigurasi perangkat kasir.
+                        // dipilih oleh konfigurasi perangkat kasir. Halaman ini
+                        // selalu konteks riwayat -- selalu ditandai SALINAN.
                         try {
-                          await printReceipt({ receipt: selectedSale, businessSettings });
+                          await printReceipt({ receipt: { ...selectedSale, isReprint: true }, businessSettings });
+                          const endpoint = selectedSale.tipe === 'order'
+                            ? `/orders/${selectedSale.id}/tandai-cetak-ulang/`
+                            : `/pos/sales/${selectedSale.id}/tandai-cetak-ulang/`;
+                          // Fire-and-forget -- jejak audit tidak boleh menggagalkan cetak.
+                          apiClient.post(endpoint).catch(() => {});
                         } catch (error) {
                           notifyError('Cetak resi gagal', getPrintErrorMessage(error));
                         }
@@ -1179,8 +1185,14 @@ export default function PosHistory({ onToggleSidebar }) {
       )}
 
       {/* Tersembunyi kecuali saat print (lihat ReceiptPrint.jsx), dipicu
-          tombol "Cetak Resi" melalui PrintService. */}
-      <ReceiptPrint receipt={selectedSale} settings={businessSettings} />
+          tombol "Cetak Resi" melalui PrintService. Halaman ini SELALU
+          konteks riwayat transaksi (bukan alur checkout) -- setiap cetak
+          dari sini otomatis "SALINAN" (UAT "Cetak ulang nota berfungsi
+          dan ditandai sebagai salinan", 2026-09-22). */}
+      <ReceiptPrint
+        receipt={selectedSale ? { ...selectedSale, isReprint: true } : null}
+        settings={businessSettings}
+      />
 
     </div>
   );

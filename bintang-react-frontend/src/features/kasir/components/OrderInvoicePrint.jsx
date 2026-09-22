@@ -9,7 +9,7 @@ import logoStarfoto from '../../../assets/logo-starfoto.png';
  * pesanan punya `items[].jenis_produk` dengan dimensi P x L dan riwayat DP.
  * Memaksakan satu komponen untuk keduanya akan penuh percabangan.
  */
-export default function OrderInvoicePrint({ order, dibayarSekarang, metode, settings }) {
+export default function OrderInvoicePrint({ order, dibayarSekarang, metode, settings, isReprint }) {
   if (!order) return null;
 
   const formatCurrency = (val) =>
@@ -57,6 +57,11 @@ export default function OrderInvoicePrint({ order, dibayarSekarang, metode, sett
           <h2 className="text-lg font-extrabold uppercase tracking-wide text-slate-700">
             Faktur Pesanan
           </h2>
+          {isReprint && (
+            <p className="text-[11px] font-black uppercase tracking-widest text-rose-600 border border-rose-300 rounded px-2 py-0.5 inline-block mt-1">
+              SALINAN
+            </p>
+          )}
           <p className="text-[11px] font-bold mt-1">No. {order.id}</p>
           <p className="text-[10px] text-slate-500">{tanggal}</p>
         </div>

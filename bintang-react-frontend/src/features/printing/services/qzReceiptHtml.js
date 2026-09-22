@@ -34,6 +34,7 @@ export function buildQzReceiptHtml({ receipt, settings, paperSize }) {
     </tr>`).join('');
   const customer = receipt?.pelanggan_name || receipt?.customerName;
   const documentTitle = receipt?.documentTitle || settings?.pos_resi_judul || 'RESI PEMBELIAN';
+  const isReprint = !!receipt?.isReprint;
 
   return `<!doctype html>
 <html><head><meta charset="utf-8"><style>
@@ -46,6 +47,7 @@ export function buildQzReceiptHtml({ receipt, settings, paperSize }) {
 </style></head><body>
   <div class="center"><h1>${escapeHtml(settings?.nama_bisnis || 'BINTANG ADVERTISING')}</h1>
   <h2>${escapeHtml(documentTitle)}</h2>
+  ${isReprint ? '<p class="total">*** SALINAN ***</p>' : ''}
   <p>${escapeHtml(new Date(receipt?.created_at || Date.now()).toLocaleString('id-ID'))}</p></div>
   <div class="divider"></div>
   <table><tr><td>Nota</td><td class="right">${escapeHtml(receipt?.nomor || '-')}</td></tr>

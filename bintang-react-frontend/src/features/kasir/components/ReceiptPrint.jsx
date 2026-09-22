@@ -11,6 +11,7 @@ export default function ReceiptPrint({ receipt, settings }) {
   const isPaperSaving = !!extSettings.enable_paper_saving;
   const thermalWidth = paperSize === '58mm' ? '48mm' : '72mm';
   const documentTitle = receipt.documentTitle || settings?.pos_resi_judul || 'RESI PEMBELIAN';
+  const isReprint = !!receipt.isReprint;
   const formatReceiptDateTime = (value) => new Intl.DateTimeFormat('id-ID', {
     dateStyle: 'short',
     timeStyle: 'short',
@@ -72,6 +73,11 @@ export default function ReceiptPrint({ receipt, settings }) {
           </div>
           <div className="text-right">
             <h2 className="text-lg font-extrabold uppercase tracking-wide text-slate-700">{receipt.documentTitle || 'Faktur Penjualan (POS)'}</h2>
+            {isReprint && (
+              <p className="text-[11px] font-black uppercase tracking-widest text-rose-600 border border-rose-300 rounded px-2 py-0.5 inline-block mt-1">
+                SALINAN
+              </p>
+            )}
             {!settings?.pos_resi_sembunyikan_no_pesanan && (
               <p className="text-[10px] font-black text-slate-900 mt-1">No. Invoice: {receipt.nomor}</p>
             )}
@@ -241,6 +247,11 @@ export default function ReceiptPrint({ receipt, settings }) {
         />
         <h2 className="text-xs font-black uppercase tracking-wider">{settings?.nama_bisnis || 'StarPhoto & Advertising'}</h2>
         <h3 className="text-[10px] font-bold uppercase">{documentTitle}</h3>
+        {isReprint && (
+          <p className="text-[10px] font-black uppercase tracking-widest border border-black px-2 py-0.5 inline-block">
+            *** SALINAN ***
+          </p>
+        )}
         <p className="text-[9px] text-slate-650">Tanggal: {formatReceiptDateTime(receipt.created_at)}</p>
       </div>
 

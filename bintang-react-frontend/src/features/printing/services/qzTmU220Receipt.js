@@ -62,6 +62,7 @@ export function buildTmU220Receipt(receipt, settings) {
     ESC + 'a' + '\x01',
     ...wrap(storeName),
     'RESI PENJUALAN',
+    ...(receipt?.isReprint ? [ESC + 'E' + '\x01', '*** SALINAN ***', ESC + 'E' + '\x00'] : []),
     ESC + 'a' + '\x00',
     divider(),
     ...row('No.', receipt?.nomor || '-'),

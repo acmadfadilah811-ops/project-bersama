@@ -17,6 +17,14 @@ export default function InvoiceModal({ order, onClose }) {
 
   if (!order) return null;
 
+  const cetakFaktur = () => {
+    requestBrowserPrint();
+    // Fire-and-forget -- jejak audit "SALINAN" (UAT 2026-09-22) tidak
+    // boleh menggagalkan cetak. Modal ini selalu jalur cetak ulang (lihat
+    // komentar dibayarSekarang=0 di atas).
+    apiClient.post(`/orders/${order.id}/tandai-cetak-ulang/`).catch(() => {});
+  };
+
   const kirimInvoiceWa = async () => {
     if (sendingInvoice) return;
     setSendingInvoice(true);
@@ -46,7 +54,7 @@ export default function InvoiceModal({ order, onClose }) {
   return (
     <>
       {/* dibayarSekarang = 0: ini cetak ulang, bukan pencatatan pembayaran baru */}
-      <OrderInvoicePrint order={order} dibayarSekarang={0} metode={null} />
+      <OrderInvoicePrint order={order} dibayarSekarang={0} metode={null} isReprint />
 
       <div className="fixed inset-0 z-[9999] flex items-center justify-center p-5 print:hidden">
         <div className="absolute inset-0 bg-slate-900/45 backdrop-blur-sm" onClick={onClose} />
@@ -129,7 +137,7 @@ export default function InvoiceModal({ order, onClose }) {
             </button>
             <button
               type="button"
-              onClick={requestBrowserPrint}
+              onClick={cetakFaktur}
               className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-black text-xs rounded-xl flex items-center gap-1.5 cursor-pointer"
             >
               <Printer size={14} /> Cetak Faktur
