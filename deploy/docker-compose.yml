@@ -73,6 +73,12 @@ services:
     volumes:
       - static_files:/app/static
       - media_files:/app/media
+      # Sertifikat + private key QZ Tray (cetak-diam POS) -- BUKAN media
+      # publik, sengaja bind mount terpisah dari media_files/ supaya tidak
+      # pernah ke-serve nginx lewat /media/ (private key bocor kalau
+      # ditaruh di sana). File asli cuma ada di host VPS
+      # (deploy/qz-secrets/), tidak pernah masuk git -- lihat .gitignore.
+      - ./qz-secrets:/app/qz-secrets:ro
     deploy:
       replicas: ${BACKEND_REPLICAS:-2}
     healthcheck:
