@@ -1,4 +1,4 @@
-import { MessageCircle, Clock, Phone, CheckCircle, Search, X, Calendar, Globe2 } from 'lucide-react';
+import { MessageCircle, Clock, Phone, CheckCircle, Search, X, Calendar, Globe2, User } from 'lucide-react';
 
 const formatCurrency = (val) =>
   new Intl.NumberFormat('id-ID', {
@@ -6,6 +6,17 @@ const formatCurrency = (val) =>
     currency: 'IDR',
     minimumFractionDigits: 0,
   }).format(val);
+
+// Label filter Sumber -- selaras dengan Order.sumber (api/models.py). Cuma
+// 'wa'/'staff' yang relevan di Antrean Online & Offline hari ini, tapi
+// dibuat generik supaya konsisten kalau daftar sumber gabungan lain dipakai.
+const SUMBER_LABEL = {
+  wa: 'Online (WA)',
+  staff: 'Offline (Staff)',
+  pos: 'POS Terminal',
+  manual: 'Input Manual',
+  agent: 'AI Agent',
+};
 
 /** Daftar Antrean Online & Offline — grid kartu full layar (redesign
  * 2026-09-07, mengikuti pola "Antrean Global Divisi" di Papan Kerja Staff:
@@ -24,6 +35,7 @@ export default function WaOrderList({
   judulKosong = 'Belum Ada Pesanan WhatsApp',
   pesanKosong = 'Pesanan yang dibuat otomatis dari WhatsApp akan muncul di sini.',
   searchQuery, onSearchChange,
+  sumberOptions, sumberFilter = 'semua', onSumberFilterChange,
   dateFrom, dateTo, onDateFromChange, onDateToChange,
   cariSemua, onToggleCariSemua,
   page = 1, pageSize = 20, totalCount = 0, onPageChange, onPageSizeChange,
@@ -100,6 +112,23 @@ export default function WaOrderList({
           >
             <Globe2 size={11} /> Semua
           </button>
+
+          {/* Filter Sumber (Online/Offline) -- cuma tampil kalau halaman ini
+              menggabungkan >1 sumber (WaOrderQueue.jsx menentukan lewat
+              sumberOptions). Order offline (dari staff/spv/kordiv, lihat
+              StaffCreateOrderPanel.jsx) masuk sumber='staff'. */}
+          {sumberOptions && sumberOptions.length > 1 && (
+            <select
+              value={sumberFilter}
+              onChange={(e) => onSumberFilterChange(e.target.value)}
+              className="shrink-0 border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-600 outline-none focus:ring-1 focus:ring-indigo-400 bg-white cursor-pointer"
+            >
+              <option value="semua">Semua Sumber</option>
+              {sumberOptions.map((s) => (
+                <option key={s} value={s}>{SUMBER_LABEL[s] || s}</option>
+              ))}
+            </select>
+          )}
         </div>
 
         {/* Petunjuk kecil: filter tanggal otomatis diabaikan selagi mengetik
@@ -162,6 +191,17 @@ export default function WaOrderList({
                       </span>
                     )}
                   </div>
+
+                  {/* Nama pembuat order offline (staff/SPV/Kordiv yang
+                      pakai "Buat Order", lihat StaffCreateOrderPanel.jsx) --
+                      Order.dilayani_oleh_nama (api/serializers.py). Order
+                      WA tidak punya pembuat manusia, tidak ditampilkan. */}
+                  {order.sumber === 'staff' && order.dilayani_oleh_nama && (
+                    <div className="flex items-center gap-1 text-[9.5px] text-amber-700 font-bold">
+                      <User size={9} className="shrink-0" />
+                      <span className="truncate">Dibuat oleh {order.dilayani_oleh_nama}</span>
+                    </div>
+                  )}
 
                   <div className="flex items-center gap-1 text-[9.5px] text-slate-400 font-semibold">
                     <Phone size={9} className="shrink-0" />

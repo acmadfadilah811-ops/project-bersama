@@ -81,6 +81,12 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
   const [dateFrom, setDateFrom] = useState(todayISO());
   const [dateTo, setDateTo] = useState(todayISO());
   const [searchQuery, setSearchQuery] = useState('');
+  // Filter Sumber: 'semua' (gabungan, default -- sama seperti prop `sumber`
+  // dari route), atau salah satu nilai `sumber` (mis. 'wa' saja / 'staff'
+  // saja) kalau kasir mau lihat cuma Online atau cuma Offline. Cuma relevan
+  // kalau `sumber` prop-nya gabungan (mengandung koma) -- kalau halaman ini
+  // sudah dikunci ke satu sumber tunggal, filter ini tidak ditampilkan.
+  const [sumberFilter, setSumberFilter] = useState('semua');
   const [cariSemua, setCariSemua] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(40);
@@ -92,7 +98,8 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
   const fetchQueue = async () => {
     setLoading(true);
     try {
-      const params = { sumber, page, page_size: pageSize };
+      const sumberEfektif = sumberFilter !== 'semua' ? sumberFilter : sumber;
+      const params = { sumber: sumberEfektif, page, page_size: pageSize };
       const q = searchQuery.trim();
       if (q) params.search = q;
       // Sedang mengetik pencarian -- abaikan filter tanggal otomatis (tidak
@@ -199,12 +206,12 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
 
   useEffect(() => {
     setPage(1);
-  }, [sumber, dateFrom, dateTo, searchQuery, cariSemua]);
+  }, [sumber, sumberFilter, dateFrom, dateTo, searchQuery, cariSemua]);
 
   useEffect(() => {
     const t = setTimeout(() => fetchQueueRef.current(), 250);
     return () => clearTimeout(t);
-  }, [sumber, dateFrom, dateTo, searchQuery, cariSemua, page, pageSize]);
+  }, [sumber, sumberFilter, dateFrom, dateTo, searchQuery, cariSemua, page, pageSize]);
 
   useEffect(() => {
     const interval = setInterval(() => fetchQueueRef.current(), 15000);
@@ -590,6 +597,12 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
             pesanKosong={sumber.includes(',') ? 'Pesanan dari WhatsApp maupun yang dibantu staff akan muncul di sini.' : sumber === 'staff' ? 'Order yang dibuatkan staff untuk membantu pelanggan akan muncul di sini.' : 'Pesanan yang dibuat otomatis dari WhatsApp akan muncul di sini.'}
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
+            // Toggle Online/Offline cuma masuk akal kalau halaman ini
+            // memang menggabungkan >1 sumber (mis. "wa,staff") -- kalau
+            // sudah dikunci ke satu sumber tunggal lewat route, sembunyikan.
+            sumberOptions={sumber.includes(',') ? sumber.split(',').map((s) => s.trim()) : null}
+            sumberFilter={sumberFilter}
+            onSumberFilterChange={setSumberFilter}
             dateFrom={dateFrom}
             dateTo={dateTo}
             onDateFromChange={setDateFrom}
