@@ -1,5 +1,5 @@
 import base64
-import json
+import hashlib
 import tempfile
 from pathlib import Path
 
@@ -33,6 +33,14 @@ class QZSigningEndpointTests(APITestCase):
         self.assertIn('belum dikonfigurasi', response.data['detail'])
 
     def test_owner_can_fetch_certificate_and_verify_server_signature(self):
+        # qz-tray.js TIDAK mengirim JSON mentah -- ia meng-hash SHA-256
+        # {call, params, timestamp} DULU di browser, hash hex 64-karakter
+        # itulah yang dikirim ke endpoint sign (lihat komentar
+        # api/services/qz_signing.py). Bug asli (2026-09-22): endpoint ini
+        # sebelumnya mengira menerima JSON mentah dan selalu gagal
+        # json.loads() untuk request sungguhan dari qz-tray -- test lama di
+        # sini ikut salah asumsi (mengirim JSON), jadi tidak pernah
+        # menangkap bug-nya.
         private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         private_pem = private_key.private_bytes(
             encoding=serialization.Encoding.PEM,
@@ -52,14 +60,13 @@ class QZSigningEndpointTests(APITestCase):
             ):
                 self.client.force_authenticate(self.owner)
                 certificate_response = self.client.get('/api/integrations/qz/certificate/')
-                signed_request = json.dumps(
-                    {'call': 'print', 'params': {}, 'timestamp': 1760000000000}, separators=(',', ':'),
-                )
+                # Hash SHA-256 hex -- persis format yang dikirim qz-tray.js sungguhan.
+                signed_request = hashlib.sha256(b'{"call":"print","params":{},"timestamp":1760000000000}').hexdigest()
                 sign_response = self.client.post('/api/integrations/qz/sign/', {'request': signed_request}, format='json')
 
         self.assertEqual(certificate_response.status_code, status.HTTP_200_OK)
         self.assertEqual(certificate_response.data['certificate'], 'QZ TEST CERTIFICATE')
-        self.assertEqual(sign_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(sign_response.status_code, status.HTTP_200_OK, sign_response.content)
         private_key.public_key().verify(
             base64.b64decode(sign_response.data['signature']),
             signed_request.encode('utf-8'),
@@ -71,20 +78,34 @@ class QZSigningEndpointTests(APITestCase):
         self.client.force_authenticate(self.staff)
 
         certificate_response = self.client.get('/api/integrations/qz/certificate/')
-        sign_response = self.client.post('/api/integrations/qz/sign/', {'request': '{}'}, format='json')
+        sign_response = self.client.post(
+            '/api/integrations/qz/sign/', {'request': 'a' * 64}, format='json',
+        )
 
         self.assertEqual(certificate_response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(sign_response.status_code, status.HTTP_403_FORBIDDEN)
 
     @override_settings(QZ_TRAY_CERTIFICATE_PATH='', QZ_TRAY_PRIVATE_KEY_PATH='')
-    def test_supported_role_cannot_sign_non_print_operation(self):
+    def test_request_bukan_hash_sha256_ditolak_400(self):
+        # Server tidak bisa lagi memvalidasi 'call' (hash tidak bisa
+        # dibalik) -- satu-satunya validasi masuk akal: bentuknya harus
+        # hash SHA-256 hex (64 karakter). JSON mentah/string sembarang harus
+        # ditolak, bukan diam-diam ditandatangani.
         self.client.force_authenticate(self.kasir)
 
         response = self.client.post(
             '/api/integrations/qz/sign/',
-            {'request': json.dumps({'call': 'file.write', 'params': {}, 'timestamp': 1760000000000})},
+            {'request': '{"call":"print","params":{},"timestamp":1760000000000}'},
             format='json',
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('tidak diizinkan', response.data['detail'])
+        self.assertIn('tidak valid', response.data['detail'])
+
+    @override_settings(QZ_TRAY_CERTIFICATE_PATH='', QZ_TRAY_PRIVATE_KEY_PATH='')
+    def test_request_kosong_ditolak_400(self):
+        self.client.force_authenticate(self.kasir)
+
+        response = self.client.post('/api/integrations/qz/sign/', {'request': ''}, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
