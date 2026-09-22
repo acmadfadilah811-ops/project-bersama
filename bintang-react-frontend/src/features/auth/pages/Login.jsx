@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import loginDashboardBg from '../../../assets/login_dashboard_bg.jpg';
 import { semuaKriteriaTerpenuhi, formatSisaWaktu } from '../utils/kriteriaSandi';
-import { pesanLoginGagal } from '../utils/pesanLogin';
+import { pesanLoginGagal, detikKunciLogin } from '../utils/pesanLogin';
 import SandiChecklist from '../components/SandiChecklist';
 
 // Sesi lupa-password disimpan sementara agar tidak hilang saat halaman dimuat ulang
@@ -60,6 +60,8 @@ export default function Login() {
   const [bolehKirimUlangPada, setBolehKirimUlangPada] = useState(0); // epoch ms
   const [sisaDetik, setSisaDetik] = useState(0);
   const [successMsg, setSuccessMsg] = useState('');
+  const [kunciSampai, setKunciSampai] = useState(0); // epoch ms; 0 = tidak terkunci
+  const [sisaKunci, setSisaKunci] = useState(0);
 
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -74,6 +76,19 @@ export default function Login() {
       setForgotPasswordMode('verify');
     }
   }, []);
+
+  // Hitung mundur masa kunci login.
+  useEffect(() => {
+    const hitung = () => {
+      const sisa = Math.max(0, Math.ceil((kunciSampai - Date.now()) / 1000));
+      setSisaKunci(sisa);
+      if (sisa === 0 && kunciSampai) setKunciSampai(0);
+    };
+    hitung();
+    if (!kunciSampai) return undefined;
+    const id = setInterval(hitung, 1000);
+    return () => clearInterval(id);
+  }, [kunciSampai]);
 
   // Hitung mundur jeda kirim ulang OTP.
   useEffect(() => {
@@ -191,6 +206,8 @@ export default function Login() {
         navigate('/dashboard');
       }
     } catch (err) {
+      const detikKunci = detikKunciLogin(err);
+      if (detikKunci) setKunciSampai(Date.now() + detikKunci * 1000);
       setError(pesanLoginGagal(err));
     } finally {
       setLoading(false);
@@ -482,14 +499,6 @@ export default function Login() {
           </form>
         ) : (
           <form onSubmit={handleSubmit} className="w-full flex flex-col gap-5">
-            {/* Pesan Error */}
-            {error && (
-              <div className="bg-red-600 text-white text-sm p-3 rounded-lg flex items-center justify-center gap-2 shadow-lg">
-                <AlertTriangle size={18} />
-                <span>{error}</span>
-              </div>
-            )}
-
             {/* Pesan Sukses */}
             {successMsg && (
               <div className="bg-emerald-600 text-white text-sm p-3 rounded-lg flex items-center justify-center gap-2 shadow-lg">
@@ -531,6 +540,24 @@ export default function Login() {
               />
             </div>
 
+            {/* Pemberitahuan login (di bawah kolom password): tetap tampil sampai percobaan berikutnya */}
+            {(error || sisaKunci > 0) && (
+              <div
+                role="alert"
+                className="-mt-2 bg-red-50 border border-red-200 text-red-700 text-sm p-3 rounded-lg flex items-start gap-2"
+              >
+                <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+                <div className="flex flex-col gap-1">
+                  <span>{error}</span>
+                  {sisaKunci > 0 && (
+                    <span className="font-bold">
+                      Coba lagi dalam {formatSisaWaktu(sisaKunci)} menit.
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Remember Me & Forgot Password */}
             <div className="flex items-center justify-between mt-1">
               {/* Custom Checkbox Remember Me */}
@@ -571,10 +598,10 @@ export default function Login() {
             <div className="grid mt-4">
               <button
                 type="submit"
-                disabled={loading}
-                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold h-[52px] transition-colors disabled:opacity-50 text-[16px] shadow-lg shadow-blue-950/20 rounded-lg cursor-pointer"
+                disabled={loading || sisaKunci > 0}
+                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold h-[52px] transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-[16px] shadow-lg shadow-blue-950/20 rounded-lg cursor-pointer"
               >
-                {loading ? 'Memuat...' : 'MASUK'}
+                {loading ? 'Memuat...' : sisaKunci > 0 ? 'AKUN DIKUNCI SEMENTARA' : 'MASUK'}
               </button>
             </div>
           </form>

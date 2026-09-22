@@ -53,8 +53,13 @@ apiClient.interceptors.response.use(
 
     const originalRequest = error.config;
 
+    // 401 dari endpoint autentikasi (salah password / OTP) adalah jawaban biasa, bukan
+    // sesi habis: jangan refresh token dan jangan muat ulang halaman, kalau tidak pesan
+    // "password salah / akun dikunci" langsung hilang bersama reload.
+    const urlAuth = /\/auth\/(login|verify-login|forgot-password)\//.test(originalRequest?.url || '');
+
     // Hanya proses 401 dan yang belum pernah di-retry
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && !originalRequest._retry && !urlAuth) {
       const refreshToken = authSession.getRefreshToken();
 
       // Kalau tidak ada refresh token sama sekali → langsung logout
