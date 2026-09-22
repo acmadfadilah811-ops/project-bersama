@@ -364,3 +364,62 @@ class RingkasanTimBebanDivisiSpvTests(APITestCase):
         self.assertEqual(beban['Divisi Cetak Outdoor']['kendala'], 1)
         self.assertEqual(beban['Divisi Digital Print']['job_aktif'], 1)
         self.assertEqual(beban['Divisi Digital Print']['kendala'], 0)
+
+
+class RingkasanTimKordivBawahanSpvTests(APITestCase):
+    """ringkasan_tim() -- SPV harus bisa melihat akun Kordiv bawahannya
+    (identitas + ringkasan timnya), bukan cuma angka agregat per-divisi tanpa
+    tahu siapa Kordiv-nya (keputusan disepakati 2026-09-22)."""
+
+    def setUp(self):
+        self.divisi_a = Divisi.objects.create(nama='Divisi Cetak Outdoor Kb')
+        self.tahap_a = TahapProses.objects.create(nama='Tahap A Kb', divisi=self.divisi_a, urutan=1)
+
+        self.spv = User.objects.create_user(username='spv_kordiv_bawahan', password='pw12345', role='spv')
+        self.kordiv_a = User.objects.create_user(
+            username='kordiv_a_kb', password='pw12345', role='kordiv', first_name='Budi',
+            divisi=self.divisi_a, atasan=self.spv, no_hp='0812345678',
+        )
+        self.staff_a1 = User.objects.create_user(
+            username='staff_a1_kb', password='pw12345', role='staff', atasan=self.kordiv_a,
+        )
+        self.staff_a2 = User.objects.create_user(
+            username='staff_a2_kb', password='pw12345', role='staff', atasan=self.kordiv_a,
+        )
+        # SPV lain + kordiv bawahannya sendiri -- tidak boleh ikut muncul di sini.
+        self.spv_lain = User.objects.create_user(username='spv_kb_lain', password='pw12345', role='spv')
+        User.objects.create_user(
+            username='kordiv_kb_lain', password='pw12345', role='kordiv', atasan=self.spv_lain,
+        )
+        Absensi.objects.create(staff=self.spv, tanggal=timezone.localdate(), jam_masuk=timezone.now())
+
+        order = Order.objects.create(id='ORD-KORDIV-BAWAHAN-1', nomor_wa='08199999994', nama='Pelanggan Kordiv Bawahan')
+        item = OrderItem.objects.create(order=order, jenis_produk='Item KB', qty=1, harga_jual=10000)
+        JobBoard.objects.create(order_item=item, tahap=self.tahap_a, pic_staff=self.staff_a1, status_pekerjaan='dikerjakan')
+
+        self.client.force_authenticate(self.spv)
+
+    def test_spv_melihat_kordiv_bawahan_beserta_ringkasan_timnya(self):
+        res = self.client.get('/api/jobs/ringkasan-tim/')
+        self.assertEqual(res.status_code, 200, res.content)
+        nama_kordiv = {k['username']: k for k in res.data['kordiv_bawahan']}
+        self.assertIn('kordiv_a_kb', nama_kordiv)
+        kd = nama_kordiv['kordiv_a_kb']
+        self.assertEqual(kd['nama'], 'Budi')
+        self.assertEqual(kd['divisi_nama'], 'Divisi Cetak Outdoor Kb')
+        self.assertEqual(kd['no_hp'], '0812345678')
+        self.assertEqual(kd['jumlah_staff'], 2)
+        self.assertEqual(kd['job_aktif_tim'], 1)
+
+    def test_kordiv_milik_spv_lain_tidak_ikut_terlihat(self):
+        res = self.client.get('/api/jobs/ringkasan-tim/')
+        usernames = {k['username'] for k in res.data['kordiv_bawahan']}
+        self.assertNotIn('kordiv_kb_lain', usernames)
+
+    def test_kordiv_sendiri_tidak_melihat_daftar_kordiv_bawahan(self):
+        # Kordiv tidak pernah punya bawahan berrole kordiv -- daftar ini kosong,
+        # sesuai desain (fitur ini utk SPV).
+        self.client.force_authenticate(self.kordiv_a)
+        res = self.client.get('/api/jobs/ringkasan-tim/')
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(res.data['kordiv_bawahan'], [])

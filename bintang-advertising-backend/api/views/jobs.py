@@ -606,6 +606,35 @@ class JobBoardViewSet(viewsets.ModelViewSet):
             })
         beban_staff.sort(key=lambda b: b['job_aktif'], reverse=True)
 
+        # Akun Kordiv bawahan -- khusus dipakai SPV. Sebelumnya SPV tidak pernah
+        # melihat IDENTITAS Kordiv yang melapor kepadanya di endpoint mana pun
+        # (CustomUserViewSet/direktori karyawan dibatasi owner/manager/admin,
+        # "Beban Kerja Staff" sengaja hanya role='staff') -- cuma angka agregat
+        # per-divisi yang terlihat, tanpa tahu siapa Kordiv-nya. Ini SENGAJA
+        # ringkas (identitas + divisi + ringkasan tim Kordiv itu saja, BUKAN
+        # akses penuh ke profil/data HR Kordiv) -- keputusan disepakati
+        # 2026-09-22: SPV harus bisa melihat akun Kordiv bawahannya.
+        kordiv_bawahan = []
+        qs_kordiv = CustomUser.objects.filter(
+            id__in=subordinate_ids, role='kordiv',
+        ).exclude(id=user.id).select_related('divisi')
+        for k in qs_kordiv:
+            tim_kordiv_ids = get_subordinate_user_ids(k) - {k.id}
+            job_aktif_tim = JobBoard.objects.filter(
+                pic_staff_id__in=tim_kordiv_ids,
+                status_pekerjaan__in=('antrean', 'dikerjakan', 'kendala'),
+            ).count()
+            kordiv_bawahan.append({
+                'id': k.id,
+                'username': k.username,
+                'nama': k.get_full_name() or k.username,
+                'divisi_nama': k.divisi.nama if k.divisi else None,
+                'no_hp': k.no_hp,
+                'jumlah_staff': CustomUser.objects.filter(id__in=tim_kordiv_ids, role='staff').count(),
+                'job_aktif_tim': job_aktif_tim,
+            })
+        kordiv_bawahan.sort(key=lambda kd: kd['nama'])
+
         # Perbandingan antar divisi -- khusus dipakai SPV (mengawasi lintas
         # Kordiv/divisi sekaligus, tidak seperti Kordiv yang cuma 1 divisi
         # sendiri) supaya cepat lihat divisi mana yang keteteran. Dikelompokkan
@@ -654,6 +683,7 @@ class JobBoardViewSet(viewsets.ModelViewSet):
             'selesai_hari_ini': selesai_hari_ini,
             'job_belum_dialokasikan': job_belum_dialokasikan,
             'beban_staff': beban_staff,
+            'kordiv_bawahan': kordiv_bawahan,
             'beban_divisi': beban_divisi,
             'pemakaian_mesin': pemakaian_mesin,
         })

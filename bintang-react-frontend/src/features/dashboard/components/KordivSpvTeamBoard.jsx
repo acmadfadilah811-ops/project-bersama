@@ -438,6 +438,40 @@ export default function KordivSpvTeamBoard({ role }) {
         </div>
       </div>
 
+      {/* Kordiv Bawahan -- khusus SPV. Sebelumnya SPV sama sekali tidak bisa
+          melihat SIAPA Kordiv yang melapor kepadanya (direktori karyawan
+          dibatasi owner/manager/admin) -- cuma angka agregat per-divisi tanpa
+          identitas. Keputusan disepakati 2026-09-22: SPV harus bisa melihat
+          akun Kordiv bawahannya. */}
+      {role === 'spv' && (
+        <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-3 space-y-3">
+          <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+            <Users size={14} className="text-indigo-700" />
+            <h2 className="text-xs font-bold text-slate-900">Kordiv Bawahan</h2>
+          </div>
+          {(ringkasan?.kordiv_bawahan || []).length === 0 ? (
+            <p className="text-[11px] text-slate-400 text-center py-4">Belum ada Kordiv yang melapor ke Anda.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {ringkasan.kordiv_bawahan.map((kd) => (
+                <div key={kd.id} className="border border-slate-200 rounded-lg p-2.5 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-slate-800 truncate">{kd.nama}</p>
+                    <p className="text-[10px] text-slate-400 truncate">
+                      {kd.divisi_nama || 'Tanpa divisi'} {kd.no_hp ? `· ${kd.no_hp}` : ''}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-[10px] text-slate-500">{kd.jumlah_staff} staff</p>
+                    <p className="text-[10px] font-semibold text-indigo-700">{kd.job_aktif_tim} job aktif</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Perbandingan Antar Divisi -- khusus SPV (mengawasi lintas Kordiv/
           divisi sekaligus), tidak relevan untuk Kordiv yang cuma 1 divisi. */}
       {role === 'spv' && (
