@@ -130,3 +130,82 @@ class SessionRevokeBenarBenarMencabutTests(APITestCase):
         self.client.force_authenticate(admin)
         r = self.client.delete(f'/api/security/sessions/{session_id}/')
         self.assertEqual(r.status_code, 403)
+
+
+class SatuAkunSatuSesiTests(APITestCase):
+    """UAT poin 29: satu akun tidak bisa dipakai login di banyak perangkat
+    sekaligus -- login baru harus otomatis mencabut & memblokir semua sesi
+    lama milik akun yang sama (bukan cuma menambah SessionToken baru)."""
+
+    def setUp(self):
+        from django.core.cache import cache
+        # LoginRateThrottle (10/menit, per-IP) dibagi oleh SEMUA test class di
+        # file ini -- class ini login berkali-kali per test, jadi bersihkan
+        # cache di awal & akhir supaya tidak menghabiskan jatah class lain
+        # yang jalan setelahnya dalam satu test run.
+        cache.clear()
+        self.addCleanup(cache.clear)
+        # email diisi -- dipakai test verifikasi-IP-baru di bawah (jalur itu
+        # cuma aktif kalau user.email terisi, lihat CustomLoginView).
+        self.user = get_user_model().objects.create_user(
+            username='dua_device_uji', password='SandiLama2026x', role='staff',
+            email='dua_device@test.local')
+
+    def login(self, **extra):
+        r = self.client.post('/api/auth/login/', {'username': 'dua_device_uji', 'password': 'SandiLama2026x'}, format='json', **extra)
+        self.assertEqual(r.status_code, 200, r.content)
+        return r.json()['access'], r.json()['refresh']
+
+    def test_login_kedua_mencabut_sesi_pertama(self):
+        access1, refresh1 = self.login()
+        session1_id = SessionToken.objects.get(user=self.user, is_active=True).id
+
+        access2, refresh2 = self.login()
+
+        # Sesi pertama harus sudah tidak aktif...
+        session1 = SessionToken.objects.get(id=session1_id)
+        self.assertFalse(session1.is_active)
+        # ...dan refresh token-nya benar-benar diblokir, bukan cuma baris DB.
+        r = self.client.post('/api/auth/refresh/', {'refresh': refresh1}, format='json')
+        self.assertEqual(r.status_code, 401)
+
+        # Sesi kedua (device baru) tetap sah.
+        r2 = self.client.post('/api/auth/refresh/', {'refresh': refresh2}, format='json')
+        self.assertEqual(r2.status_code, 200, r2.content)
+
+    def test_hanya_satu_sesi_aktif_setelah_beberapa_kali_login(self):
+        self.login()
+        self.login()
+        self.login()
+        self.assertEqual(SessionToken.objects.filter(user=self.user, is_active=True).count(), 1)
+
+    def test_login_baru_tidak_mencabut_sesi_user_lain(self):
+        other = get_user_model().objects.create_user(username='user_lain_uji', password='SandiLama2026x', role='staff')
+        r = self.client.post('/api/auth/login/', {'username': 'user_lain_uji', 'password': 'SandiLama2026x'}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        other_session_id = SessionToken.objects.get(user=other, is_active=True).id
+
+        self.login()
+
+        self.assertTrue(SessionToken.objects.get(id=other_session_id).is_active)
+
+    def test_login_via_verifikasi_ip_baru_juga_mencabut_sesi_lama(self):
+        import os
+        from unittest import mock
+        from django.core.cache import cache
+
+        access1, refresh1 = self.login(REMOTE_ADDR='10.2.2.1')
+        session1_id = SessionToken.objects.get(user=self.user, is_active=True).id
+
+        with mock.patch.dict(os.environ, {'SECURITY_BYPASS_IP_VERIFICATION': 'False'}):
+            r = self.client.post('/api/auth/login/', {'username': 'dua_device_uji', 'password': 'SandiLama2026x'}, format='json',
+                                  REMOTE_ADDR='10.2.2.2')
+            self.assertEqual(r.json().get('detail'), 'VERIFICATION_REQUIRED', r.content)
+            temp_token = r.json()['temp_token']
+            otp = cache.get(f'login_otp_{temp_token}')['otp']
+            r2 = self.client.post('/api/auth/verify-login/', {'temp_token': temp_token, 'otp': otp}, format='json')
+        self.assertEqual(r2.status_code, 200, r2.content)
+
+        self.assertFalse(SessionToken.objects.get(id=session1_id).is_active)
+        r3 = self.client.post('/api/auth/refresh/', {'refresh': refresh1}, format='json')
+        self.assertEqual(r3.status_code, 401)

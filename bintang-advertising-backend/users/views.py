@@ -120,6 +120,24 @@ def decode_refresh_jti(refresh_token_str):
         return ""
 
 
+def _matikan_sesi_lain(user):
+    """Satu akun tidak boleh login dari banyak perangkat sekaligus -- dipanggil
+    tepat sebelum SessionToken baru dibuat di CustomLoginView/VerifyLoginView.
+    Semua sesi aktif LAIN milik user ini langsung dicabut & refresh token-nya
+    diblokir (pola sama dengan SessionRevokeView milik Owner), supaya device
+    lama benar-benar ter-logout, bukan cuma baris SessionToken ditandai mati
+    sementara token JWT-nya tetap sah."""
+    sesi_lain = SessionToken.objects.filter(user=user, is_active=True)
+    for sesi in sesi_lain:
+        sesi.revoke()
+        if sesi.refresh_jti:
+            try:
+                outstanding = OutstandingToken.objects.get(jti=sesi.refresh_jti)
+                BlacklistedToken.objects.get_or_create(token=outstanding)
+            except OutstandingToken.DoesNotExist:
+                pass
+
+
 # Kunci per-IP (spray/enumeration): satu IP yang gagal login ke MAKS_AKUN_BERBEDA_PER_IP
 # akun BERBEDA dalam masa DURASI_KUNCI_IP diblokir dari login akun manapun -- kunci
 # per-akun saja tidak menghentikan penyerang yang mencoba banyak akun sekali per akun
@@ -404,6 +422,7 @@ Tim Keamanan StarPhoto & Advertising
             expires_at = timezone.now() + timedelta(days=7)
 
         # Simpan SessionToken
+        _matikan_sesi_lain(user)
         SessionToken.objects.create(
             user=user,
             token_jti=jti,
@@ -501,6 +520,7 @@ class VerifyLoginView(APIView):
             jti = uuid.uuid4().hex
             expires_at = timezone.now() + timedelta(days=7)
 
+        _matikan_sesi_lain(user)
         SessionToken.objects.create(
             user=user,
             token_jti=jti,
