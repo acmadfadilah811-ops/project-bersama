@@ -69,11 +69,28 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => {
+    // Ambil token SEBELUM dihapus dari storage -- dipakai untuk mencabut sesi
+    // di server. Sebelumnya logout cuma menghapus token di browser; JWT lama
+    // tetap sah di server sampai kedaluwarsa alami (akses 1 jam, refresh 7 hari),
+    // jadi kalau token sempat bocor tetap bisa dipakai walau user sudah "logout".
+    const refreshToken = authSession.getRefreshToken();
+    const accessToken = authSession.getAccessToken();
+
     authSession.clear();
     // business_settings TIDAK dihapus dari localStorage maupun state —
     // itu data bisnis (logo, nama toko) yang sama untuk semua user,
     // bukan data sensitif. Logo tetap tampil saat login kembali.
     setUser(null);
+
+    if (refreshToken && accessToken) {
+      // Header dipasang manual: authSession sudah dikosongkan di atas (supaya UI
+      // langsung responsif), jadi interceptor apiClient tidak lagi punya token utk
+      // dipasang otomatis. Best-effort -- kalau token sudah kedaluwarsa/gagal,
+      // sesi lokal tetap sudah terhapus di atas.
+      apiClient
+        .post('/auth/logout/', { refresh: refreshToken }, { headers: { Authorization: `Bearer ${accessToken}` } })
+        .catch(() => {});
+    }
   };
 
   const updateUser = (newData) => {

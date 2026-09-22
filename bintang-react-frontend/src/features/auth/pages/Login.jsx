@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import apiClient from '../../../api/apiClient';
 import {
@@ -69,6 +69,17 @@ export default function Login() {
 
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // AKS-06: IdleLogoutGuard mengalihkan ke sini dgn state.alasan='idle' saat
+  // sesi ditutup otomatis (30 menit tanpa aktivitas). Tampilkan sekali saja --
+  // history.replace mencegah pesan muncul lagi kalau user menekan Back.
+  useEffect(() => {
+    if (location.state?.alasan === 'idle') {
+      setSuccessMsg('Sesi berakhir karena tidak ada aktivitas selama 30 menit. Silakan masuk kembali.');
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location, navigate]);
 
   // Pulihkan sesi lupa-password yang masih berjalan (mis. setelah halaman dimuat ulang).
   useEffect(() => {

@@ -5,6 +5,7 @@ import { AuthProvider } from './context/AuthContext';
 
 import { DynamicIslandProvider } from './context/DynamicIslandContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import IdleLogoutGuard from './components/IdleLogoutGuard';
 import Layout from './components/Layout';
 import Login from './features/auth/pages/Login';
 import Dashboard from './features/dashboard/pages/Dashboard';
@@ -129,6 +130,7 @@ function App() {
     <AuthProvider>
       <DynamicIslandProvider>
         <BrowserRouter>
+          <IdleLogoutGuard />
           <Routes>
             {/* Halaman publik */}
             <Route path="/login" element={<Login />} />

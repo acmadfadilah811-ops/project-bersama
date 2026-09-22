@@ -1,4 +1,5 @@
 from datetime import timedelta
+from datetime import timezone as dt_timezone
 import os
 import secrets
 import uuid
@@ -381,7 +382,12 @@ Tim Keamanan StarPhoto & Advertising
             decoded = UntypedToken(access_token)
             jti = decoded.get("jti") or uuid.uuid4().hex
             exp = decoded.get("exp", 0)
-            expires_at = timezone.datetime.fromtimestamp(exp, tz=timezone.utc)
+            # django.utils.timezone.utc dihapus di Django 5.0 -- baris ini SELALU
+            # melempar AttributeError sebelum fix ini, membuang jti yg sudah benar
+            # dihitung di atas dan diganti UUID acak (SessionToken.token_jti jadi
+            # tidak pernah cocok dgn token sungguhan sejak awal). Pakai
+            # datetime.timezone.utc dari stdlib (aliased dt_timezone di impor atas).
+            expires_at = timezone.datetime.fromtimestamp(exp, tz=dt_timezone.utc)
         except Exception:
             jti = uuid.uuid4().hex
             expires_at = timezone.now() + timedelta(days=7)
@@ -476,7 +482,9 @@ class VerifyLoginView(APIView):
             decoded = UntypedToken(access_token)
             jti = decoded.get("jti") or uuid.uuid4().hex
             exp = decoded.get("exp", 0)
-            expires_at = timezone.datetime.fromtimestamp(exp, tz=timezone.utc)
+            # Bug sama dgn CustomLoginView (lihat komentar di sana): timezone.utc
+            # dihapus di Django 5.0.
+            expires_at = timezone.datetime.fromtimestamp(exp, tz=dt_timezone.utc)
         except Exception:
             jti = uuid.uuid4().hex
             expires_at = timezone.now() + timedelta(days=7)
@@ -537,16 +545,18 @@ class LogoutView(APIView):
         ua = request.META.get("HTTP_USER_AGENT", "")
 
         try:
-            token = RefreshToken(refresh_raw)
-            jti = token.get("jti", "")
-            # Blacklist jika tersedia
-            token.blacklist()
+            RefreshToken(refresh_raw).blacklist()
         except Exception:
-            jti = ""
+            pass
 
-        # Revoke SessionToken di DB kita
-        if jti:
-            session = SessionToken.objects.filter(token_jti=jti, user=request.user).first()
+        # SessionToken.token_jti menyimpan JTI ACCESS token (lihat CustomLoginView),
+        # bukan JTI refresh token -- dulu di sini salah pakai JTI refresh sehingga
+        # tidak pernah cocok dan SessionToken tidak pernah tercabut (sesi lama tetap
+        # muncul "aktif" di menu Sesi Aktif walau user sudah logout). request.auth
+        # adalah AccessToken tervalidasi milik request ini (JWTAuthentication).
+        access_jti = request.auth.get("jti", "") if request.auth else ""
+        if access_jti:
+            session = SessionToken.objects.filter(token_jti=access_jti, user=request.user).first()
             if session:
                 session.revoke()
 
