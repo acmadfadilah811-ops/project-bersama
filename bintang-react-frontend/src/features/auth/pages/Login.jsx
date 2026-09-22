@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import apiClient from '../../../api/apiClient';
@@ -10,6 +10,8 @@ import {
   ArrowLeft,
   CheckCircle2,
   KeyRound,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import loginDashboardBg from '../../../assets/login_dashboard_bg.jpg';
 import { semuaKriteriaTerpenuhi, formatSisaWaktu } from '../utils/kriteriaSandi';
@@ -43,6 +45,26 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [remember, setRemember] = useState(false);
+  // Toggle lihat/sembunyikan password -- sebelumnya tidak ada sama sekali,
+  // cuma mengandalkan ikon mata bawaan browser (kadang tidak konsisten
+  // munculnya, mis. baru muncul setelah field dikosongkan ulang). Kunci
+  // object per-field, pola sama seperti showPw di Settings.jsx (Ganti
+  // Password) yang sudah benar.
+  const [showPw, setShowPw] = useState({});
+  // Kuirk Chrome/Edge: field yang nilainya diisi autofill password manager
+  // browser kadang tidak menggambar ulang teks aslinya walau atribut type
+  // sudah berubah jadi "text" -- baru "muncul" setelah field diketik/
+  // dihapus manual (keluhan user 2026-09-22, sama di HR/CRM). Ref per-field
+  // + nudge fokus/kursor sesudah re-render memaksa browser gambar ulang.
+  const pwInputRefs = useRef({});
+  const nudgePasswordRedraw = (key) => {
+    requestAnimationFrame(() => {
+      const el = pwInputRefs.current[key];
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+  };
 
   // OTP Verification States
   const [verificationRequired, setVerificationRequired] = useState(false);
@@ -456,14 +478,25 @@ export default function Login() {
             {/* Password Baru */}
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-500">Password Baru</label>
-              <input
-                type="password"
-                value={forgotNewPassword}
-                onChange={(e) => setForgotPasswordNewPassword(e.target.value)}
-                className="w-full h-[45px] bg-slate-50 border border-slate-200 outline-none text-slate-800 px-3 text-sm focus:border-indigo-500 rounded-lg"
-                placeholder="Password Baru"
-                required
-              />
+              <div className="relative">
+                <input
+                  ref={(el) => { pwInputRefs.current.baru = el; }}
+                  type={showPw.baru ? 'text' : 'password'}
+                  value={forgotNewPassword}
+                  onChange={(e) => setForgotPasswordNewPassword(e.target.value)}
+                  className="w-full h-[45px] bg-slate-50 border border-slate-200 outline-none text-slate-800 px-3 pr-10 text-sm focus:border-indigo-500 rounded-lg"
+                  placeholder="Password Baru"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => { setShowPw({ ...showPw, baru: !showPw.baru }); nudgePasswordRedraw('baru'); }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  tabIndex={-1}
+                >
+                  {showPw.baru ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
               {/* Checklist kriteria: centang hijau / silang merah */}
               <SandiChecklist
                 sandi={forgotNewPassword}
@@ -477,14 +510,25 @@ export default function Login() {
               <label className="text-xs font-semibold text-slate-500">
                 Konfirmasi Password Baru
               </label>
-              <input
-                type="password"
-                value={forgotConfirmPassword}
-                onChange={(e) => setForgotPasswordConfirmPassword(e.target.value)}
-                className="w-full h-[45px] bg-slate-50 border border-slate-200 outline-none text-slate-800 px-3 text-sm focus:border-indigo-500 rounded-lg"
-                placeholder="Konfirmasi Password"
-                required
-              />
+              <div className="relative">
+                <input
+                  ref={(el) => { pwInputRefs.current.ulang = el; }}
+                  type={showPw.ulang ? 'text' : 'password'}
+                  value={forgotConfirmPassword}
+                  onChange={(e) => setForgotPasswordConfirmPassword(e.target.value)}
+                  className="w-full h-[45px] bg-slate-50 border border-slate-200 outline-none text-slate-800 px-3 pr-10 text-sm focus:border-indigo-500 rounded-lg"
+                  placeholder="Konfirmasi Password"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => { setShowPw({ ...showPw, ulang: !showPw.ulang }); nudgePasswordRedraw('ulang'); }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  tabIndex={-1}
+                >
+                  {showPw.ulang ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
             </div>
 
             {/* Tombol Submit */}
@@ -562,7 +606,8 @@ export default function Login() {
                 <Lock size={20} strokeWidth={2.5} />
               </div>
               <input
-                type="password"
+                ref={(el) => { pwInputRefs.current.login = el; }}
+                type={showPw.login ? 'text' : 'password'}
                 id="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -570,6 +615,14 @@ export default function Login() {
                 placeholder="Password"
                 required
               />
+              <button
+                type="button"
+                onClick={() => { setShowPw({ ...showPw, login: !showPw.login }); nudgePasswordRedraw('login'); }}
+                className="w-[52px] h-full flex items-center justify-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                tabIndex={-1}
+              >
+                {showPw.login ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
             </div>
 
             {/* Pemberitahuan login (di bawah kolom password): tetap tampil sampai percobaan berikutnya */}
