@@ -15,6 +15,16 @@ from ..models import Order, OrderItem, OrderActivityLog
 
 logger = logging.getLogger(__name__)
 
+# Upload publik (AllowAny) -- harus divalidasi ketat di server, bukan cuma
+# label UI yang gampang dilewati siapa pun yang langsung POST ke endpoint
+# ini (bug ditemukan user 2026-09-22: UI klaim "PNG/JPG/JPEG/PDF, maks
+# 10MB" tapi server menerima apa saja tanpa cek sama sekali).
+DESAIN_SUSULAN_MAKS_UKURAN_BYTES = 10 * 1024 * 1024  # 10 MB
+DESAIN_SUSULAN_EKSTENSI_DIIZINKAN = {"png", "jpg", "jpeg", "pdf"}
+DESAIN_SUSULAN_CONTENT_TYPE_DIIZINKAN = {
+    "image/png", "image/jpeg", "application/pdf",
+}
+
 
 class HealthCheckView(APIView):
     """GET /api/health/ — Cek status semua komponen sistem."""
@@ -182,8 +192,25 @@ class PublicSubmitDesignView(APIView):
         if file_obj:
             from django.core.files.storage import default_storage
             import uuid
+
+            ext = file_obj.name.rsplit('.', 1)[-1].lower() if '.' in file_obj.name else ''
+            if ext not in DESAIN_SUSULAN_EKSTENSI_DIIZINKAN:
+                return Response(
+                    {'error': 'Format file tidak didukung. Gunakan PNG, JPG, JPEG, atau PDF.'},
+                    status=400,
+                )
+            if file_obj.content_type not in DESAIN_SUSULAN_CONTENT_TYPE_DIIZINKAN:
+                return Response(
+                    {'error': 'Format file tidak didukung. Gunakan PNG, JPG, JPEG, atau PDF.'},
+                    status=400,
+                )
+            if file_obj.size > DESAIN_SUSULAN_MAKS_UKURAN_BYTES:
+                return Response(
+                    {'error': 'Ukuran file maksimal 10MB.'},
+                    status=400,
+                )
+
             # Buat nama file unik agar tidak timpa
-            ext = file_obj.name.split('.')[-1]
             unique_name = f"{order_id}_{item.id}_{uuid.uuid4().hex[:6]}.{ext}"
             path = default_storage.save(f'desain_susulan/{unique_name}', file_obj)
             file_url = request.build_absolute_uri(settings.MEDIA_URL + path)
