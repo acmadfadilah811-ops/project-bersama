@@ -233,6 +233,27 @@ class IsOwnerManagerOrFinanceRoleReadOnly(BasePermission):
         )
 
 
+class IsOwnerManagerAdminKasirOrFinanceRole(BasePermission):
+    """Khusus CustomerViewSet & SupplierViewSet (Pelanggan & Supplier,
+    2026-09-24) -- ketinggalan waktu buka akses Finance ke Piutang/Hutang
+    sebelumnya, akibatnya halaman "Pengaturan Supplier" & "Simpanan
+    Pelanggan" gagal memuat untuk Admin/SPV Finance (403 ke /suppliers/
+    dan /customers/). Perilaku owner/manager/admin/kasir TIDAK diubah
+    (IsOwnerManagerAdminOrKasir, god node dipakai puluhan titik, R2,
+    sengaja TIDAK disentuh) -- class baru ini menambahkan: Admin Finance
+    akses penuh (termasuk ubah akun_hutang/jatuh_tempo_hari supplier,
+    bagian dari kewenangan Hutang-nya), SPV Finance baca saja."""
+    def has_permission(self, request, view):
+        if not (request.user and request.user.is_authenticated):
+            return False
+        role = getattr(request.user, 'role', '')
+        if role in ('owner', 'manager', 'admin', 'kasir', 'admin_finance'):
+            return True
+        if role == 'spv_finance':
+            return request.method in SAFE_METHODS
+        return False
+
+
 class IsSpvOrOwnerManager(BasePermission):
     """Khusus Laporan Produksi (target & kendala operasional, 2026-09-23,
     diperluas ke Kordiv juga 2026-09-24) -- SPV/Kordiv adalah pembuat

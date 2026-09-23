@@ -10,6 +10,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from api.customer_models import Customer, Supplier
 from api.product_models import Purchase
 
 User = get_user_model()
@@ -173,4 +174,55 @@ class PayrollRiwayatAksesFinanceTests(APITestCase):
     def test_staff_tidak_bisa_lihat_riwayat_payroll(self):
         self.client.force_authenticate(self.staff)
         res = self.client.get('/api/accounting/payroll/riwayat/')
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class CustomerSupplierAksesFinanceTests(APITestCase):
+    """Halaman "Simpanan Pelanggan" & "Pengaturan Supplier" gagal memuat
+    untuk Admin/SPV Finance (2026-09-24) -- CustomerViewSet & SupplierViewSet
+    ketinggalan waktu buka akses Finance ke Piutang/Hutang sebelumnya."""
+
+    def setUp(self):
+        self.admin_finance = User.objects.create_user(username='adminfin_cs', password='secret', role='admin_finance')
+        self.spv_finance = User.objects.create_user(username='spvfin_cs', password='secret', role='spv_finance')
+        self.staff = User.objects.create_user(username='staff_cs', password='secret', role='staff')
+        self.customer = Customer.objects.create(nama='Pelanggan Uji Finance')
+        self.supplier = Supplier.objects.create(nama='Supplier Uji Finance')
+
+    def test_admin_finance_bisa_lihat_dan_ubah_pelanggan(self):
+        self.client.force_authenticate(self.admin_finance)
+        res_get = self.client.get('/api/customers/')
+        self.assertEqual(res_get.status_code, status.HTTP_200_OK)
+        res_patch = self.client.patch(f'/api/customers/{self.customer.id}/', {'catatan': 'diubah admin finance'}, format='json')
+        self.assertEqual(res_patch.status_code, status.HTTP_200_OK, res_patch.content)
+
+    def test_spv_finance_hanya_baca_pelanggan(self):
+        self.client.force_authenticate(self.spv_finance)
+        res_get = self.client.get('/api/customers/')
+        self.assertEqual(res_get.status_code, status.HTTP_200_OK)
+        res_patch = self.client.patch(f'/api/customers/{self.customer.id}/', {'catatan': 'coba ubah spv finance'}, format='json')
+        self.assertEqual(res_patch.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_staff_tetap_ditolak_pelanggan(self):
+        self.client.force_authenticate(self.staff)
+        res = self.client.get('/api/customers/')
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_admin_finance_bisa_lihat_dan_ubah_pengaturan_supplier(self):
+        self.client.force_authenticate(self.admin_finance)
+        res_get = self.client.get('/api/suppliers/')
+        self.assertEqual(res_get.status_code, status.HTTP_200_OK)
+        res_patch = self.client.patch(f'/api/suppliers/{self.supplier.id}/', {'jatuh_tempo_hari': 30}, format='json')
+        self.assertEqual(res_patch.status_code, status.HTTP_200_OK, res_patch.content)
+
+    def test_spv_finance_hanya_baca_supplier(self):
+        self.client.force_authenticate(self.spv_finance)
+        res_get = self.client.get('/api/suppliers/')
+        self.assertEqual(res_get.status_code, status.HTTP_200_OK)
+        res_patch = self.client.patch(f'/api/suppliers/{self.supplier.id}/', {'jatuh_tempo_hari': 30}, format='json')
+        self.assertEqual(res_patch.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_staff_tetap_ditolak_supplier(self):
+        self.client.force_authenticate(self.staff)
+        res = self.client.get('/api/suppliers/')
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)

@@ -10,7 +10,7 @@ from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from api.permissions import IsOwnerManagerAdminOrKasir
+from api.permissions import IsOwnerManagerAdminOrKasir, IsOwnerManagerAdminKasirOrFinanceRole
 
 from .customer_models import (
     CustomerGroup, Customer, CustomerNote, CustomerNoteEntry, CustomerNoteDocument,
@@ -60,7 +60,8 @@ class CustomerViewSet(ToggleStatusMixin, viewsets.ModelViewSet):
     queryset = Customer.objects.all().select_related('customer_group')
     serializer_class = CustomerSerializer
     # BE-24: staff diblokir penuh (baca & tulis) dari database pelanggan.
-    permission_classes = [IsOwnerManagerAdminOrKasir]
+    # Admin/SPV Finance ditambahkan 2026-09-24 (lihat docstring permission).
+    permission_classes = [IsOwnerManagerAdminKasirOrFinanceRole]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -377,7 +378,8 @@ class SupplierViewSet(ToggleStatusMixin, viewsets.ModelViewSet):
     """
     queryset = Supplier.objects.all()
     serializer_class = SupplierSerializer
-    permission_classes = [IsOwnerManagerAdminOrKasir]
+    # Admin/SPV Finance ditambahkan 2026-09-24 (lihat docstring permission).
+    permission_classes = [IsOwnerManagerAdminKasirOrFinanceRole]
 
     _FIELD_PENGATURAN_TERKUNCI_KASIR = {'akun_hutang', 'jatuh_tempo_hari'}
 
