@@ -371,10 +371,10 @@ export default function UangMukaPembelian() {
 
             {/* Date Range Picker Popover Menu */}
             {isDatePickerOpen && (
-              <div className="absolute right-0 mt-1.5 bg-white border border-slate-205 rounded-xl shadow-2xl z-[999] flex overflow-hidden animate-fade-in">
+              <div className="absolute right-0 mt-1.5 bg-white border border-slate-205 rounded-xl shadow-2xl z-[999] flex animate-fade-in">
                 
                 {/* Left Predefined Options list */}
-                <div className="w-32 border-r border-slate-150 bg-slate-50/50 py-2 flex flex-col font-bold">
+                <div className={`w-32 border-r border-slate-150 bg-slate-50/50 py-2 flex flex-col font-bold rounded-l-xl ${selectedRange !== 'Custom Range' ? 'rounded-r-xl' : ''}`}>
                   {dateRanges.map((r) => (
                     <button
                       key={r.label}
@@ -394,7 +394,7 @@ export default function UangMukaPembelian() {
 
                 {/* Right Dual Calendar View (Rendered when selectedRange is Custom Range) */}
                 {selectedRange === 'Custom Range' && (
-                  <div className="p-3 flex flex-col gap-3 bg-white animate-scale-up">
+                  <div className="p-3 flex flex-col gap-3 bg-white animate-scale-up rounded-r-xl">
                     
                     {/* Navigation Bar */}
                     <div className="flex items-center justify-between pb-2 border-b border-slate-100">
