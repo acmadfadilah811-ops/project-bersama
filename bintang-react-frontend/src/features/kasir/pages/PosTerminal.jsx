@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Wallet } from 'lucide-react';
+import { Wallet, AlertTriangle, CheckCircle2, XCircle, Info, X } from 'lucide-react';
 import { useKasir } from '../context/KasirContext';
 import apiClient from '../../../api/apiClient';
 import { fetchAllPages } from '../../../utils/paginatedApi';
 import { notify, notifyApiError, notifyError, notifySuccess } from '../../../utils/notify';
 import { useAuth } from '../../../context/AuthContext';
+import { useDynamicIsland } from '../../../context/DynamicIslandContext';
 import { getPrintErrorMessage, printReceiptAfterRender } from '../../printing/services/printService';
 
 // Subcomponents for POS Kasir v2
@@ -83,6 +84,15 @@ const itemDiscountTotal = (item) => {
 export default function PosTerminal({ onToggleSidebar }) {
   const navigate = useNavigate();
   const { businessSettings, user } = useAuth();
+  // Widget notifikasi bawaan (DynamicIsland) cuma dirender di Topbar app
+  // utama -- Terminal Kasir pakai header sendiri (PosHeaderBar) yang TIDAK
+  // pernah menampilkannya, jadi semua notify()/notifyError()/notifySuccess()
+  // di sini selama ini silent (bug ditemukan user 2026-09-24, awalnya
+  // ditemukan lewat peringatan stok kritis yang tidak muncul). Popup mandiri
+  // di bawah ini baca context yang SAMA (activeNotification/dismissNotification)
+  // supaya semua notify() di seluruh app otomatis kelihatan juga di sini,
+  // tanpa perlu ubah pemanggilnya satu-satu.
+  const { activeNotification, dismissNotification } = useDynamicIsland();
   const {
     cart,
     addToCart,
@@ -953,6 +963,44 @@ export default function PosTerminal({ onToggleSidebar }) {
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-900 font-sans">
+      {/* Popup notifikasi mandiri (2026-09-24) -- lihat catatan di atas
+          soal PosHeaderBar tidak merender widget notifikasi bawaan. */}
+      {activeNotification && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[99999] w-full max-w-sm px-4 animate-fade-in">
+          <div className={`flex items-start gap-3 rounded-2xl shadow-2xl border px-4 py-3 ${
+            activeNotification.type === 'error'
+              ? 'bg-rose-950 border-rose-800 text-white'
+              : activeNotification.type === 'warning'
+                ? 'bg-amber-950 border-amber-800 text-white'
+                : activeNotification.type === 'success'
+                  ? 'bg-emerald-950 border-emerald-800 text-white'
+                  : 'bg-slate-950 border-slate-800 text-white'
+          }`}>
+            <div className="shrink-0 mt-0.5">
+              {activeNotification.type === 'error' && <XCircle size={18} className="text-rose-400" />}
+              {activeNotification.type === 'warning' && <AlertTriangle size={18} className="text-amber-400" />}
+              {activeNotification.type === 'success' && <CheckCircle2 size={18} className="text-emerald-400" />}
+              {!['error', 'warning', 'success'].includes(activeNotification.type) && <Info size={18} className="text-sky-400" />}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[11px] font-black uppercase tracking-wide leading-none">
+                {activeNotification.title}
+              </div>
+              <div className="text-xs text-slate-200 leading-snug mt-1 break-words">
+                {activeNotification.message}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={dismissNotification}
+              className="shrink-0 text-slate-400 hover:text-white cursor-pointer"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Top Header Bar SS 1 */}
       <PosHeaderBar
         selectedCustomer={selectedContact}
