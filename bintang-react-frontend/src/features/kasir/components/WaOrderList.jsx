@@ -36,7 +36,7 @@ export default function WaOrderList({
   pesanKosong = 'Pesanan yang dibuat otomatis dari WhatsApp akan muncul di sini.',
   searchQuery, onSearchChange,
   sumberOptions, sumberFilter = 'semua', onSumberFilterChange,
-  dateFrom, dateTo, onDateFromChange, onDateToChange,
+  tanggal, onTanggalChange,
   cariSemua, onToggleCariSemua,
   page = 1, pageSize = 20, totalCount = 0, onPageChange, onPageSizeChange,
 }) {
@@ -85,19 +85,17 @@ export default function WaOrderList({
             )}
           </div>
 
+          {/* Pilih 1 tanggal saja (disederhanakan dari rentang dari-sampai,
+              2026-09-24) -- kasir sehari-hari cuma butuh lihat 1 hari
+              tertentu, rentang tanggal dulu sering bikin bingung karena
+              harus isi 2 kolom. Untuk cari lintas tanggal, pakai toggle
+              "Semua" di sebelah, bukan atur rentang manual. */}
           <div className={`flex items-center gap-1 shrink-0 ${(cariSemua || searchQuery) ? 'opacity-40 pointer-events-none' : ''}`}>
             <Calendar size={12} className="text-slate-400 shrink-0" />
             <input
               type="date"
-              value={dateFrom}
-              onChange={(e) => onDateFromChange(e.target.value)}
-              className="border border-slate-200 rounded-lg px-1.5 py-1.5 text-[10px] font-bold text-slate-600 outline-none focus:ring-1 focus:ring-indigo-400"
-            />
-            <span className="text-slate-300 text-[10px]">–</span>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => onDateToChange(e.target.value)}
+              value={tanggal}
+              onChange={(e) => onTanggalChange(e.target.value)}
               className="border border-slate-200 rounded-lg px-1.5 py-1.5 text-[10px] font-bold text-slate-600 outline-none focus:ring-1 focus:ring-indigo-400"
             />
           </div>
@@ -215,6 +213,8 @@ export default function WaOrderList({
                   <div className="flex justify-between items-center mt-0.5 pt-1 border-t border-slate-100 w-full text-[9.5px] font-bold">
                     <span className="text-slate-400 flex items-center gap-0.5">
                       <Clock size={9} />
+                      {new Date(order.waktu).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })}
+                      {' • '}
                       {new Date(order.waktu).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                     </span>
                     <span className="text-indigo-600 truncate">

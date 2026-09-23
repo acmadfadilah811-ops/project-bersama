@@ -78,8 +78,9 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
   // tanggal UTC, jadi dini hari WIB (00:00-07:00) salah jatuh ke "kemarin"
   // (bug ditemukan user 2026-09-07, ditemukan lewat kasus serupa di
   // Kanban Personal).
-  const [dateFrom, setDateFrom] = useState(todayISO());
-  const [dateTo, setDateTo] = useState(todayISO());
+  // Disederhanakan dari rentang dari-sampai jadi 1 tanggal saja (2026-09-24,
+  // permintaan user) -- date_from & date_to dikirim sama-sama ke backend.
+  const [tanggal, setTanggal] = useState(todayISO());
   const [searchQuery, setSearchQuery] = useState('');
   // Filter Sumber: 'semua' (gabungan, default -- sama seperti prop `sumber`
   // dari route), atau salah satu nilai `sumber` (mis. 'wa' saja / 'staff'
@@ -108,8 +109,10 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
       // 2026-09-07). Toggle "Cari Semua" tetap berlaku sendiri kalau kasir
       // mau browsing semua tanggal TANPA mengetik kata kunci apa pun.
       if (!cariSemua && !q) {
-        if (dateFrom) params.date_from = dateFrom;
-        if (dateTo) params.date_to = dateTo;
+        if (tanggal) {
+          params.date_from = tanggal;
+          params.date_to = tanggal;
+        }
       }
       const res = await apiClient.get('/orders/', { params });
       const data = res.data;
@@ -206,12 +209,12 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
 
   useEffect(() => {
     setPage(1);
-  }, [sumber, sumberFilter, dateFrom, dateTo, searchQuery, cariSemua]);
+  }, [sumber, sumberFilter, tanggal, searchQuery, cariSemua]);
 
   useEffect(() => {
     const t = setTimeout(() => fetchQueueRef.current(), 250);
     return () => clearTimeout(t);
-  }, [sumber, sumberFilter, dateFrom, dateTo, searchQuery, cariSemua, page, pageSize]);
+  }, [sumber, sumberFilter, tanggal, searchQuery, cariSemua, page, pageSize]);
 
   useEffect(() => {
     const interval = setInterval(() => fetchQueueRef.current(), 15000);
@@ -603,10 +606,8 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
             sumberOptions={sumber.includes(',') ? sumber.split(',').map((s) => s.trim()) : null}
             sumberFilter={sumberFilter}
             onSumberFilterChange={setSumberFilter}
-            dateFrom={dateFrom}
-            dateTo={dateTo}
-            onDateFromChange={setDateFrom}
-            onDateToChange={setDateTo}
+            tanggal={tanggal}
+            onTanggalChange={setTanggal}
             cariSemua={cariSemua}
             onToggleCariSemua={setCariSemua}
             page={page}
