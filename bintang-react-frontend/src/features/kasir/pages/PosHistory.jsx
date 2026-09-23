@@ -58,6 +58,18 @@ function normalizeOrderItem(it) {
     nama, qty, harga_satuan: hargaSatuan, jumlah,
     // Alias supaya Cetak Resi (ReceiptPrint.jsx) tetap bisa dipakai untuk Pesanan juga.
     nama_snapshot: nama, harga_snapshot: hargaSatuan, subtotal: jumlah,
+    // Field mentah untuk Reorder (buildReorderItems) -- item di sini SUDAH
+    // dinormalisasi (bukan payload OrderItemSerializer asli), jadi field
+    // product/variant/paket/dll HARUS diteruskan manual di sini, tidak
+    // otomatis ikut seperti object aslinya.
+    product: it.product ?? null,
+    variant: it.variant ?? null,
+    paket: it.paket ?? null,
+    panjang: it.panjang || 0,
+    lebar: it.lebar || 0,
+    harga_per_m2: it.harga_per_m2 || 0,
+    keterangan_detail: it.keterangan_detail || '',
+    harga_jual: jumlah,
   };
 }
 
@@ -331,7 +343,7 @@ export default function PosHistory({ onToggleSidebar }) {
         variant_id: it.variant || null,
         qty,
         harga_satuan: Math.round(hargaSatuanAsli * 0.5),
-        nama: it.jenis_produk || it.product_nama || 'Item Reorder',
+        nama: it.nama || 'Item Reorder',
         is_custom_priced: true,
         panjang: it.panjang || 0,
         lebar: it.lebar || 0,
