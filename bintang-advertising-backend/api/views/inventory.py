@@ -356,11 +356,19 @@ def _get_or_create_inventory_item_for_product(product):
     if existing:
         return existing
     kategori_nama = product.kategori.nama if product.kategori_id else 'Bahan Baku'
+    # Bug ditemukan user 2026-09-24: stok selalu di-hardcode 0 di sini,
+    # padahal docstring fungsi ini sendiri menjanjikan "disinkron otomatis
+    # dari Product" -- akibatnya resep baru SELALU dianggap kehabisan bahan
+    # (order/POS ditolak "tidak mencukupi") walau Product sumbernya stoknya
+    # banyak. Disinkron NYATA di sini sekarang, tapi cuma SEKALI saat
+    # InventoryItem ini pertama kali dibuat -- perubahan qty_stok Product
+    # SESUDAHNYA tidak otomatis mengikuti (dua stok terpisah, belum ada
+    # sinkronisasi berkelanjutan; known gap, di luar cakupan perbaikan ini).
     return InventoryItem.objects.create(
         nama=product.nama,
         satuan=product.satuan or 'pcs',
         kategori=kategori_nama,
-        stok=0.0,
+        stok=float(product.qty_stok or 0),
         product=product,
     )
 

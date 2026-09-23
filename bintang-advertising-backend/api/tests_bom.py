@@ -143,6 +143,21 @@ class BomItemCreateFromProductTest(APITestCase):
         results = list_res.data['results'] if isinstance(list_res.data, dict) else list_res.data
         self.assertEqual(results[0]['items'][0]['inventory_item_nama'], 'IVORY 260GR')
 
+    def test_inventoryitem_baru_mewarisi_qty_stok_produk_sumber(self):
+        """Bug ditemukan user 2026-09-24: InventoryItem baru selalu dibuat
+        stok=0 walau Product sumbernya stoknya banyak (mis. 1000) --
+        akibatnya resep BARU selalu dianggap kehabisan bahan baku (order/POS
+        ditolak 'tidak mencukupi') padahal stok produknya sebenarnya banyak."""
+        produk_stok_banyak = Product.objects.create(
+            nama='IVORY 230GR', price_type='flat', harga_jual_toko=0, satuan='pcs', qty_stok=1000,
+        )
+        res = self.client.post('/api/bom-items/create-from-product/', {
+            'bom': self.bom_id, 'product_id': produk_stok_banyak.id, 'qty_required_per_unit': 50,
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.content)
+        inv_item = InventoryItem.objects.get(product=produk_stok_banyak)
+        self.assertEqual(inv_item.stok, 1000.0)
+
     def test_pilih_produk_yang_sama_dua_kali_tidak_membuat_inventoryitem_dobel(self):
         self.client.post('/api/bom-items/create-from-product/', {
             'bom': self.bom_id, 'product_id': self.bahan_product.id, 'qty_required_per_unit': 4,
