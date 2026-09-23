@@ -2,12 +2,18 @@ import { useState, useEffect, useRef } from 'react';
 import { Calendar, Download, ChevronsUpDown, ChevronDown } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
 import { Select } from '../components/PageShell';
+import { todayISO, toISODate } from '../../../../utils/date';
 
 export function StockMovementPage() {
-  const [startDate, setStartDate] = useState('2026-06-25');
-  const [endDate, setEndDate] = useState('2026-06-25');
+  // Sebelumnya hardcode ke tanggal lama ('2026-06-25') -- pergerakan stok
+  // yang BARU terjadi (mis. order hari ini) tidak pernah kelihatan sampai
+  // user sadar harus ganti filter tanggal manual (bug ditemukan user
+  // 2026-09-24; datanya sendiri sudah benar tersimpan, cuma tersembunyi
+  // filter). Default sekarang selalu hari ini.
+  const [startDate, setStartDate] = useState(todayISO());
+  const [endDate, setEndDate] = useState(todayISO());
   const [showDateDropdown, setShowDateDropdown] = useState(false);
-  const [selectedPreset, setSelectedPreset] = useState('custom');
+  const [selectedPreset, setSelectedPreset] = useState('today');
   const [searchVal, setSearchVal] = useState('');
   const [isAutocomplete, setIsAutocomplete] = useState(true);
 
@@ -136,9 +142,10 @@ export function StockMovementPage() {
     const end = new Date(endDate);
     start.setDate(start.getDate() + direction);
     end.setDate(end.getDate() + direction);
-    const toISO = (d) => d.toISOString().split('T')[0];
-    setStartDate(toISO(start));
-    setEndDate(toISO(end));
+    // toISOString() dilarang di sini (lihat catatan besar di utils/date.js) --
+    // konversi ke UTC bikin tanggal salah mundur sehari selama dini hari WIB.
+    setStartDate(toISODate(start));
+    setEndDate(toISODate(end));
   };
 
   const handlePresetSelect = (preset) => {
@@ -179,9 +186,10 @@ export function StockMovementPage() {
         return;
     }
     
-    const toISO = (d) => d.toISOString().split('T')[0];
-    setStartDate(toISO(start));
-    setEndDate(toISO(end));
+    // toISOString() dilarang di sini (lihat catatan besar di utils/date.js) --
+    // konversi ke UTC bikin tanggal salah mundur sehari selama dini hari WIB.
+    setStartDate(toISODate(start));
+    setEndDate(toISODate(end));
     setSelectedPreset(preset);
     
     if (preset !== 'custom') {
