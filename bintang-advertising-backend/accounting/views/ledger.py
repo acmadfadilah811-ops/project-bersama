@@ -8,7 +8,7 @@ from rest_framework import generics
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.permissions import IsOwnerOrManager
+from api.permissions import IsOwnerManagerAdminOrFinanceRole
 
 from ..models import Account
 from ..serializers import LedgerLineSerializer, LedgerSummarySerializer
@@ -42,7 +42,7 @@ class LedgerSummaryView(generics.ListAPIView):
     """
 
     serializer_class = LedgerSummarySerializer
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerAdminOrFinanceRole]
 
     def get_queryset(self):
         return _active_accounts_queryset(
@@ -70,7 +70,7 @@ class LedgerSummaryExportView(APIView):
     sama seperti LedgerSummaryView.
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerAdminOrFinanceRole]
 
     def get(self, request):
         accounts = list(_active_accounts_queryset(
@@ -102,7 +102,7 @@ class LedgerAllAccountsDetailView(APIView):
     bukan file Excel. Akun tanpa transaksi di rentang tanggal dilewati.
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerAdminOrFinanceRole]
 
     def get(self, request):
         accounts = list(_active_accounts_queryset(request.query_params.get("search")))
@@ -129,7 +129,7 @@ class LedgerDetailExportView(APIView):
     akun. Akun tanpa transaksi di rentang tanggal tidak dimunculkan.
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerAdminOrFinanceRole]
 
     def get(self, request):
         accounts = list(_active_accounts_queryset(request.query_params.get("search")))
@@ -156,7 +156,7 @@ class LedgerAccountDetailView(APIView):
     saldo berjalan per baris. search: cocokkan ke No. Transaksi.
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerAdminOrFinanceRole]
 
     def get(self, request, account_id):
         account = get_object_or_404(Account, id=account_id)
@@ -174,7 +174,7 @@ class LedgerAccountDetailView(APIView):
 class LedgerAccountExportView(APIView):
     """GET /api/accounting/ledger/<int:account_id>/export/?date_from=&date_to= — Excel Rincian Mutasi Akun."""
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerAdminOrFinanceRole]
 
     def get(self, request, account_id):
         account = get_object_or_404(Account, id=account_id)

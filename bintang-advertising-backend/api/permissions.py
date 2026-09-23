@@ -182,6 +182,57 @@ class IsSpvFinanceOrOwnerManager(BasePermission):
         )
 
 
+class IsOwnerManagerAdminFinanceOrReadOnly(BasePermission):
+    """Khusus alur Pengadaan (Purchase/PurchaseWorkflow) -- Admin Finance
+    DITAMBAH 2026-09-24 (instruksi user: boleh buat & setujui pengadaan
+    penuh, bukan cuma catat pembayaran) di samping owner/manager/admin yang
+    sudah bisa sejak awal (IsOwnerManagerAdminOrReadOnly, TIDAK diubah --
+    dipakai 10+ ViewSet lain, R2). SPV Finance TIDAK termasuk di sini --
+    perannya baca agregat/laporan, bukan pelaksana pengadaan (SAFE_METHODS
+    tetap terbuka untuknya lewat cabang read-only di bawah)."""
+    def has_permission(self, request, view):
+        if request.method in SAFE_METHODS:
+            return bool(request.user and request.user.is_authenticated)
+        return bool(
+            request.user and
+            request.user.is_authenticated and
+            getattr(request.user, 'role', '') in ('owner', 'manager', 'admin', 'admin_finance')
+        )
+
+
+class IsOwnerManagerAdminOrFinanceRole(BasePermission):
+    """Khusus laporan keuangan akuntansi resmi (Laba Rugi/Neraca/Arus Kas/
+    Perubahan Modal/Buku Besar, 2026-09-24) -- read-access DITAMBAH Admin
+    Finance & SPV Finance di samping owner/manager/admin yang sudah bisa
+    (IsOwnerOrManager, TIDAK diubah -- god node dipakai puluhan titik, R2).
+    Endpoint-endpoint ini semuanya read-only/export by design (tidak ada
+    create/update/delete transaksi lewat sini), jadi tidak perlu pemisahan
+    SAFE_METHODS seperti class read-only lainnya."""
+    def has_permission(self, request, view):
+        return bool(
+            request.user and
+            request.user.is_authenticated and
+            getattr(request.user, 'role', '') in (
+                'owner', 'manager', 'admin', 'admin_finance', 'spv_finance',
+            )
+        )
+
+
+class IsOwnerManagerOrFinanceRoleReadOnly(BasePermission):
+    """Khusus riwayat posting Payroll (PayrollRiwayatView, 2026-09-24) --
+    Admin Finance & SPV Finance boleh MELIHAT hasil posting gaji yang
+    masuk ke Finance (poin UAT "menerima data payroll otomatis"), TIDAK
+    boleh memicu pratinjau/posting/koreksi/bayar -- itu tetap murni
+    kewenangan Owner/Manager (IsStrictOwnerOrManager, TIDAK diubah;
+    pengaturan payroll sendiri ada di sisi HR, bukan Finance)."""
+    def has_permission(self, request, view):
+        return bool(
+            request.user and
+            request.user.is_authenticated and
+            getattr(request.user, 'role', '') in ('owner', 'manager', 'admin_finance', 'spv_finance')
+        )
+
+
 class IsSpvOrOwnerManager(BasePermission):
     """Khusus Laporan Produksi (target & kendala operasional, 2026-09-23,
     diperluas ke Kordiv juga 2026-09-24) -- SPV/Kordiv adalah pembuat

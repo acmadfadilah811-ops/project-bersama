@@ -155,8 +155,28 @@ const menuSpvKordiv = [
   { path: '/profile', label: 'Profil', icon: User, isGroup: false },
 ];
 
+// 2026-09-24: dibuka ke fitur akuntansi yang sudah ada (sebelumnya cuma
+// Dashboard+Profil) -- lihat utils/permissions.js untuk penjelasan lengkap
+// pembagian akses admin_finance (buku-besar+accounting-internal) vs
+// spv_finance (accounting-internal saja). "Transaksi & Pembayaran" tetap
+// ditampilkan untuk keduanya di sini -- filteredMenu di bawah yang
+// menyaring submenu-nya per role lewat hasMenuAccess (spv_finance akan
+// otomatis kehilangan grup ini karena tidak punya feature id `buku-besar`).
 const menuFinance = [
   { path: '/finance-dashboard', label: 'Dashboard', icon: Wallet, isGroup: false },
+  {
+    id: 'transaksi_pembayaran_finance',
+    label: 'Transaksi & Pembayaran',
+    icon: Wallet,
+    accent: 'emerald',
+    isGroup: true,
+    submenus: [
+      { path: '/transaksi/penjualan', label: 'Penjualan', icon: ShoppingCart },
+      { path: '/transaksi/pembelian', label: 'Pembelian', icon: ShoppingBag },
+      { path: '/transaksi/pendapatan-pengeluaran', label: 'Pendapatan/Pengeluaran', icon: ArrowLeftRight },
+    ],
+  },
+  { path: '/accounting-internal', label: 'Akuntansi Internal', icon: BookOpen, isGroup: false },
   { path: '/profile', label: 'Profil', icon: User, isGroup: false },
 ];
 
@@ -248,6 +268,13 @@ export default function Sidebar() {
     if (path === '/divisi') return 'divisi';
     if (path === '/settings' || path.startsWith('/settings/')) return 'settings';
     if (path.startsWith('/accounting-internal')) return 'accounting-internal';
+    // 2026-09-24: sebelumnya tidak dipetakan sama sekali -- fid null di sini
+    // fail-open ke "tampil" (lihat filteredMenu di bawah), jadi grup
+    // "Transaksi & Pembayaran" selalu muncul di sidebar utk SEMUA role
+    // tanpa terkecuali (SPV Finance pun ikut lihat walau tidak diberi akses
+    // buku-besar, lalu dipentalkan ProtectedRoute.jsx saat diklik -- link
+    // mati yang membingungkan). Disamakan dengan utils/permissions.js.
+    if (path.startsWith('/transaksi')) return 'buku-besar';
     return null;
   };
 

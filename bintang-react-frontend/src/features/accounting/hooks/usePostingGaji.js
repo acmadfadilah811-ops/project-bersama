@@ -25,13 +25,20 @@ export function usePostingGaji() {
     try {
       const [p, r, m] = await Promise.all([
         ambilPratinjauGaji(tahun, bulan).catch((e) => {
-          // Kegagalan pratinjau (HR mati, akun belum lengkap) ditampilkan sebagai pesan, bukan toast.
+          // Kegagalan pratinjau (HR mati, akun belum lengkap, atau 403 utk
+          // Admin/SPV Finance yang cuma boleh baca riwayat) ditampilkan
+          // sebagai pesan, bukan toast -- dan TIDAK BOLEH menggagalkan
+          // Promise.all ini, karena kalau gagal-cepat, ambilRiwayatGaji()
+          // yang sebetulnya sukses pun ikut tidak pernah ter-set (bug
+          // ditemukan 2026-09-24 saat membuka akses baca riwayat gaji ke
+          // Finance -- pemetaan akun 403 untuk mereka bikin riwayat ikut
+          // kosong walau endpoint riwayat-nya sendiri berhasil).
           setPratinjau(null);
           setGalat(e.response?.data?.error || 'Gagal memuat pratinjau gaji.');
           return null;
         }),
         ambilRiwayatGaji(),
-        ambilPemetaanGaji(),
+        ambilPemetaanGaji().catch(() => []),
       ]);
       if (p) setPratinjau(p);
       setRiwayat(r);

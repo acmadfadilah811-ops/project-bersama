@@ -18,7 +18,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.exceptions import ValidationError
-from api.permissions import IsOwnerManagerAdminOrReadOnly, scoped_by_unit_bisnis
+from api.permissions import IsOwnerManagerAdminOrReadOnly, IsOwnerManagerAdminFinanceOrReadOnly, scoped_by_unit_bisnis
 from rest_framework.response import Response
 
 from .product_models import (
@@ -2054,7 +2054,7 @@ class PurchaseViewSet(viewsets.ModelViewSet):
         .select_related('dibuat_oleh', 'supplier_ref', 'retur_ref')
     )
     serializer_class = PurchaseSerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminFinanceOrReadOnly]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):

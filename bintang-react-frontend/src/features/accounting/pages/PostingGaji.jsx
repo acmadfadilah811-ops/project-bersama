@@ -9,10 +9,31 @@ import { usePostingGaji } from '../hooks/usePostingGaji';
 export default function PostingGaji() {
   const { user } = useAuth();
   const g = usePostingGaji();
+  const bolehPosting = ['owner', 'manager'].includes(user?.role);
+  // Admin/SPV Finance (2026-09-24): boleh BACA riwayat posting gaji yang
+  // sudah masuk ke Finance (poin UAT "menerima data payroll otomatis"),
+  // tapi tidak boleh memicu pratinjau/posting/koreksi/bayar -- itu murni
+  // Owner/Manager (backend juga menolak, Aturan M2). Role lain di luar
+  // keduanya tetap ditolak sama sekali.
+  const bolehLihatRiwayat = bolehPosting || ['admin_finance', 'spv_finance'].includes(user?.role);
 
-  // Endpoint dibatasi Owner/Manager di server; ini hanya pesan yang ramah.
-  if (!['owner', 'manager'].includes(user?.role)) {
-    return <p className="text-sm text-slate-500 p-6">Posting Gaji hanya dapat diakses Owner atau Manager.</p>;
+  if (!bolehLihatRiwayat) {
+    return <p className="text-sm text-slate-500 p-6">Posting Gaji hanya dapat diakses Owner, Manager, Admin Finance, atau SPV Finance.</p>;
+  }
+
+  if (!bolehPosting) {
+    return (
+      <div className="space-y-5">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900">Riwayat Posting Gaji</h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Gaji final dari HR (Horilla) yang sudah dicatat sebagai jurnal ke Finance. Pratinjau dan aksi posting hanya bisa dilakukan Owner/Manager.
+          </p>
+        </div>
+        {g.memuat && <p className="text-sm text-slate-400">Memuat...</p>}
+        <RiwayatPostingGaji riwayat={g.riwayat} />
+      </div>
+    );
   }
 
   return (

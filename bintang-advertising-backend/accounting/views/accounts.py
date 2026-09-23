@@ -8,7 +8,7 @@ from rest_framework import generics
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 
-from api.permissions import IsOwnerOrManager
+from api.permissions import IsOwnerOrManager, IsOwnerManagerAdminOrFinanceRole
 
 from ..models import Account, AccountClassification
 from ..serializers import AccountClassificationSerializer, AccountCreateSerializer, AccountListSerializer
@@ -54,7 +54,15 @@ class AccountListView(generics.ListCreateAPIView):
     kalau nanti Daftar Akun butuh tambah akun manual juga).
     """
 
-    permission_classes = [IsOwnerOrManager]
+    def get_permissions(self):
+        # GET (baca daftar akun) dibuka ke Admin Finance/SPV Finance
+        # 2026-09-24 -- dibutuhkan mis. dropdown akun di halaman Posting
+        # Gaji (read-only bagi mereka). POST ("Tambah Akun") tetap murni
+        # Owner/Manager -- itu perubahan struktur COA, bukan pekerjaan
+        # harian Finance.
+        if self.request.method == "GET":
+            return [IsOwnerManagerAdminOrFinanceRole()]
+        return [IsOwnerOrManager()]
 
     def get_serializer_class(self):
         return AccountCreateSerializer if self.request.method == "POST" else AccountListSerializer

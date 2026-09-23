@@ -2,9 +2,18 @@ import { useState, useRef } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 
+// Admin Finance & SPV Finance (2026-09-24): dibatasi ke area yang relevan
+// dengan pekerjaan Finance (Piutang, Hutang, Laporan Keuangan, Posting Gaji
+// -- baca saja) -- TIDAK dapat Pengaturan Akuntansi/COA/Jurnal Umum manual/
+// Kas & Bank treasury/Aset/Tutup Buku/Hak Akses, itu tetap eksklusif
+// Owner/Manager/Admin (keputusan user: Tutup Buku jangan dibuka ke Finance).
+const FINANCE_ROLE_ALLOWED_TOP_IDS = ['piutang', 'hutang', 'laporan'];
+const FINANCE_ROLE_JURNAL_SUBITEMS = ['buku-besar', 'posting-gaji']; // bukan 'jurnal-umum'
+
 export default function AccountingSecondarySidebar({ activeSubMenu, onSelectMenu }) {
   const { user } = useAuth();
   const isKasir = user?.role?.toLowerCase() === 'kasir';
+  const isFinanceRole = ['admin_finance', 'spv_finance'].includes(user?.role?.toLowerCase());
   const [openDropdowns, setOpenDropdowns] = useState({
     jurnal: false,
     kasBank: false,
@@ -171,10 +180,23 @@ export default function AccountingSecondarySidebar({ activeSubMenu, onSelectMenu
     { id: 'hak-akses', label: 'Penyesuaian Hak Akses', isGroup: false },
   ];
 
+  // Admin Finance/SPV Finance: sisakan Piutang, Hutang, Laporan Keuangan
+  // utuh, dan grup Jurnal & Buku Besar dipangkas ke Buku Besar + Posting
+  // Gaji saja (baca) -- Jurnal Umum manual tetap Owner/Manager/Admin.
+  const visibleNavItems = isFinanceRole
+    ? navItems
+        .filter((item) => FINANCE_ROLE_ALLOWED_TOP_IDS.includes(item.id) || item.id === 'jurnal')
+        .map((item) => (
+          item.id === 'jurnal'
+            ? { ...item, subItems: item.subItems.filter((s) => FINANCE_ROLE_JURNAL_SUBITEMS.includes(s.id)) }
+            : item
+        ))
+    : navItems;
+
   return (
     <aside className="w-56 shrink-0 bg-white border border-slate-200 rounded-xl p-2.5 shadow-sm min-h-[580px] flex flex-col md:sticky md:top-6 self-start z-30">
       <nav className="space-y-0.5 text-xs font-medium">
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           if (!item.isGroup) {
             const isActive = activeSubMenu === item.id;
             return (

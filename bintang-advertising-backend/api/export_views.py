@@ -3,7 +3,7 @@ import logging
 from django.http import HttpResponse, Http404
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
-from api.permissions import IsOwnerOrManager
+from api.permissions import IsOwnerOrManager, CanAccessFinanceVerification
 from rest_framework.response import Response
 from rest_framework.negotiation import DefaultContentNegotiation
 from .models import Order, InventoryItem, JobBoard, Contact
@@ -1032,8 +1032,12 @@ class ExportCashTransactionsView(APIView):
     """Export Excel untuk Pendapatan/Pengeluaran (Kas Masuk/Keluar).
 
     Menghormati filter yang sama dengan layar: ?arah=, ?start=, ?end=, ?search=
+
+    CanAccessFinanceVerification (bukan IsOwnerOrManager) -- Admin Finance/
+    SPV Finance juga boleh ekspor Pendapatan/Pengeluaran yang bisa mereka
+    catat/verifikasi (2026-09-24), konsisten dengan CashTransactionViewSet.
     """
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [CanAccessFinanceVerification]
 
     def get(self, request):
         from .finance_models import CashTransaction

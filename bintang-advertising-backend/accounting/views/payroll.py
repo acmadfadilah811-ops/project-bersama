@@ -7,7 +7,7 @@ from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.permissions import IsStrictOwnerOrManager
+from api.permissions import IsStrictOwnerOrManager, IsOwnerManagerOrFinanceRoleReadOnly
 
 from ..models import PayrollComponentMapping, PayrollPosting
 from ..serializers.payroll import PayrollComponentMappingSerializer, PayrollPostingSerializer, bentuk_pratinjau
@@ -74,9 +74,13 @@ class PayrollBayarView(_PayrollAPIView):
 
 
 class PayrollRiwayatView(generics.ListAPIView):
-    """GET /api/accounting/payroll/riwayat/ -- semua versi posting, terbaru dulu."""
+    """GET /api/accounting/payroll/riwayat/ -- semua versi posting, terbaru dulu.
 
-    permission_classes = [IsStrictOwnerOrManager]
+    Admin Finance/SPV Finance boleh baca (poin UAT "menerima data payroll
+    otomatis", 2026-09-24) -- pratinjau/posting/koreksi/bayar TETAP murni
+    Owner/Manager (_PayrollAPIView di atas, tidak diubah)."""
+
+    permission_classes = [IsOwnerManagerOrFinanceRoleReadOnly]
     serializer_class = PayrollPostingSerializer
     pagination_class = None
     queryset = PayrollPosting.objects.select_related("journal_entry", "payment_journal_entry", "posted_by")

@@ -7,7 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ..permissions import IsOwnerManagerAdminOrReadOnly
+from ..permissions import IsOwnerManagerAdminFinanceOrReadOnly
 from ..product_models import Purchase, StockInDocument, StockInDocumentItem
 from ..product_serializers import PurchaseSerializer, StockInDocumentSerializer
 from ..purchase_workflow_models import PurchaseActivityLog, catat_purchase
@@ -19,7 +19,7 @@ def _get_user(request):
 
 
 class PurchaseWorkflowView(APIView):
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminFinanceOrReadOnly]
 
     def get_purchase(self, pk):
         return get_object_or_404(Purchase.objects.prefetch_related('items'), pk=pk, is_retur=False)

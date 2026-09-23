@@ -6,7 +6,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.permissions import IsOwnerOrManager
+from api.permissions import IsOwnerManagerAdminOrFinanceRole
 
 from ..services.ledger import (
     get_balance_sheet, get_cash_flow, get_cash_flow_detail, get_changes_in_equity, get_income_statement,
@@ -29,7 +29,7 @@ class IncomeStatementView(APIView):
     terpisah supaya perhitungan selalu dari satu fungsi yang sama.
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerAdminOrFinanceRole]
 
     def get(self, request):
         date_from, date_to = resolve_date_range(request)
@@ -39,7 +39,7 @@ class IncomeStatementView(APIView):
 class IncomeStatementExportView(APIView):
     """GET /api/accounting/reports/income-statement/export/?date_from=&date_to= — Excel Laba Rugi."""
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerAdminOrFinanceRole]
 
     def get(self, request):
         date_from, date_to = resolve_date_range(request)
@@ -61,7 +61,7 @@ class BalanceSheetView(APIView):
     dipertahankan di response untuk kompatibilitas UI.
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerAdminOrFinanceRole]
 
     def get(self, request):
         date_from, date_to = resolve_date_range(request)
@@ -71,7 +71,7 @@ class BalanceSheetView(APIView):
 class BalanceSheetExportView(APIView):
     """GET /api/accounting/reports/balance-sheet/export/?date_from=&date_to= — Excel Neraca."""
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerAdminOrFinanceRole]
 
     def get(self, request):
         date_from, date_to = resolve_date_range(request)
@@ -86,7 +86,7 @@ class BalanceSheetExportView(APIView):
 class ChangesInEquityView(APIView):
     """GET /api/accounting/reports/changes-in-equity/?date_from=&date_to=."""
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerAdminOrFinanceRole]
 
     def get(self, request):
         date_from, date_to = resolve_date_range(request)
@@ -96,7 +96,7 @@ class ChangesInEquityView(APIView):
 class CashFlowView(APIView):
     """GET /api/accounting/reports/cash-flow/?date_from=&date_to=."""
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerAdminOrFinanceRole]
 
     def get(self, request):
         date_from, date_to = resolve_date_range(request)
@@ -106,7 +106,7 @@ class CashFlowView(APIView):
 class CashFlowDetailView(APIView):
     """GET /api/accounting/reports/cash-flow/<category>/?date_from=&date_to=&page=."""
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerAdminOrFinanceRole]
     valid_categories = {
         "penerimaan_pelanggan", "penerimaan_penjualan_aset_lancar", "pembayaran_pemasok",
         "biaya_operasional", "pendapatan_lain", "pengeluaran_lain", "aset_tetap",

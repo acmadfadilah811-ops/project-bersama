@@ -82,8 +82,17 @@ export const DEFAULT_PERMISSIONS = {
   kasir: ['kasir-pos'],
   spv: ['staff-dashboard', 'jobs', 'permintaan-bahan'],
   kordiv: ['staff-dashboard', 'jobs', 'permintaan-bahan'],
-  admin_finance: ['finance-dashboard'],
-  spv_finance: ['finance-dashboard'],
+  // 2026-09-24: dibuka ke fitur akuntansi yang sudah ada (sebelumnya cuma
+  // finance-dashboard) -- Admin Finance jadi pelaksana penuh alur
+  // Pengadaan/Pendapatan-Pengeluaran (buku-besar -> /transaksi/*) DAN lihat
+  // laporan keuangan (accounting-internal, tapi tab Tutup Buku/COA/
+  // Pengaturan/Hak Akses disaring lewat AccountingSecondarySidebar.jsx,
+  // BUKAN di sini -- backend-nya juga tetap menolak role ini, lihat
+  // api/permissions.py IsStrictOwnerOrManager). SPV Finance cuma dapat
+  // accounting-internal (baca laporan) -- perannya supervisi/agregat,
+  // bukan pelaksana transaksi harian, jadi TIDAK dapat buku-besar.
+  admin_finance: ['finance-dashboard', 'buku-besar', 'accounting-internal'],
+  spv_finance: ['finance-dashboard', 'accounting-internal'],
 };
 
 

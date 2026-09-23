@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useAuth } from '../../../context/AuthContext';
 import TransaksiTopbar from '../../transaksi/components/TransaksiTopbar';
 import { TransaksiProvider } from '../../transaksi/components/TransaksiContext';
 import AccountingSecondarySidebar from '../components/AccountingSecondarySidebar';
@@ -53,12 +54,20 @@ import FeatureShield from '../components/FeatureShield';
 import PenyesuaianHakAkses from './PenyesuaianHakAkses';
 
 export default function AccountingInternalApp() {
+  const { user } = useAuth();
+  // Admin Finance/SPV Finance tidak dapat tab "Pengaturan Akuntansi"
+  // (lihat AccountingSecondarySidebar.jsx) -- tanpa default ini mereka
+  // mendarat di tab kosong yang tidak ada di sidebar mereka sendiri
+  // (2026-09-24).
+  const isFinanceRole = ['admin_finance', 'spv_finance'].includes(user?.role?.toLowerCase());
+  const defaultActiveParam = isFinanceRole ? 'laporan-laba-rugi-satu-periode' : 'setting';
+
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeParam = searchParams.get('active') || 'setting';
+  const activeParam = searchParams.get('active') || defaultActiveParam;
   const accountingSettings = useAccountingSettings();
   const { settings, loading } = accountingSettings;
 
-  const needsSetup = !loading && (!settings.initial_setup_completed_at || !settings.is_active);
+  const needsSetup = !isFinanceRole && !loading && (!settings.initial_setup_completed_at || !settings.is_active);
 
   const mapParamToMenuId = (param) => {
     if (param === 'setting') return 'settings';
