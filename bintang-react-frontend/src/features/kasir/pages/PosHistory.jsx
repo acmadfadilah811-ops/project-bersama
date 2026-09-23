@@ -675,8 +675,28 @@ export default function PosHistory({ onToggleSidebar }) {
               </div>
               <div className="flex items-center gap-2 text-slate-800 font-bold">
                 <DollarSign size={16} className="text-slate-700 shrink-0" />
-                <span>{selectedSale.metode_bayar} ({selectedSale.status})</span>
+                <span>{selectedSale.metode_bayar}</span>
               </div>
+              {/* Status order (SELESAI/SIAP DIAMBIL/dll) dulu cuma nebeng teks
+                  kecil di baris metode bayar -- gampang tertukar dengan status
+                  bayar "Lunas" (dua hal berbeda: bayar lunas ≠ order status
+                  SELESAI). Dibuat badge terpisah & mencolok supaya kasir bisa
+                  langsung lihat kenapa menu Retur/Reorder muncul atau tidak
+                  (keduanya HANYA untuk status_global 'selesai', 2026-09-24). */}
+              {selectedSale.tipe === 'order' && (
+                <div className="flex items-center gap-2">
+                  <Factory size={16} className="text-slate-600 shrink-0" />
+                  <span className={`px-2.5 py-1 rounded-full text-[11px] font-black tracking-wide ${
+                    selectedSale.status_global === 'selesai'
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : selectedSale.status_global === 'batal'
+                        ? 'bg-rose-100 text-rose-700'
+                        : 'bg-amber-100 text-amber-700'
+                  }`}>
+                    Status Order: {selectedSale.status}
+                  </span>
+                </div>
+              )}
               {selectedSale.tipe === 'order' && selectedSale.keterangan_bayar && (
                 <div className={`flex items-center gap-2 font-bold ${
                   selectedSale.sisa_tagihan > 0 ? 'text-amber-700' : 'text-emerald-700'
