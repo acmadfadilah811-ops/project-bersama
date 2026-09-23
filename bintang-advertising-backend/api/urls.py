@@ -17,6 +17,7 @@ from .views.purchase_workflow import PurchaseWorkflowView
 from .views.material_requisition import MaterialRequisitionViewSet
 from .views.purchase_reports import PurchaseReportView
 from .views.laporan_produksi import LaporanTargetProduksiViewSet, RingkasanProduksiSpvView, ExportLaporanProduksiView
+from .views.laporan_keuangan import LaporanTargetKeuanganViewSet, RingkasanKeuanganFinanceView, ExportLaporanKeuanganView
 from .views.qz import QZCertificateView, QZSignView
 from .views.wa_pricelist import (
     WaPricelistListView, WaPricelistDetailView, WaPricelistTemplateView, WaPricelistImportView,
@@ -58,6 +59,7 @@ router.register(r'pos-payment-methods', views.POSPaymentMethodViewSet, basename=
 router.register(r'mesin', views.MesinViewSet, basename='mesin')
 router.register(r'material-requisitions', MaterialRequisitionViewSet, basename='material-requisition')
 router.register(r'laporan-produksi/target', LaporanTargetProduksiViewSet, basename='laporan-target-produksi')
+router.register(r'laporan-keuangan/target', LaporanTargetKeuanganViewSet, basename='laporan-target-keuangan')
 router.register(r'penggunaan-mesin', views.PenggunaanMesinViewSet, basename='penggunaan-mesin')
 router.register(r'maintenance-mesin', views.MaintenanceMesinViewSet, basename='maintenance-mesin')
 
@@ -152,12 +154,14 @@ urlpatterns = [
     path('export/sales-items-by-brand/', ExportSalesItemsByBrandView.as_view(), name='export-sales-items-by-brand'),
     path('export/sales-details/', ExportSalesDetailsView.as_view(), name='export-sales-details'),
     path('export/laporan-produksi/', ExportLaporanProduksiView.as_view(), name='export-laporan-produksi'),
+    path('export/laporan-keuangan/', ExportLaporanKeuanganView.as_view(), name='export-laporan-keuangan'),
     path('stock-fifo/sync/', product_views.StockFifoSyncView.as_view(), name='stock-fifo-sync'),
     path('stock-fifo/status/', product_views.StockFifoStatusView.as_view(), name='stock-fifo-status'),
 
     # Reports Endpoints
     path('reports/staff-performance/', StaffPerformanceReportView.as_view(), name='staff-performance-report'),
     path('laporan-produksi/ringkasan/', RingkasanProduksiSpvView.as_view(), name='laporan-produksi-ringkasan'),
+    path('laporan-keuangan/ringkasan/', RingkasanKeuanganFinanceView.as_view(), name='laporan-keuangan-ringkasan'),
     path('reports/purchases/<str:report_id>/', PurchaseReportView.as_view(), name='purchase-report-data'),
     # Laporan generik — HARUS setelah route reports/ yang spesifik di atas,
     # karena <str:report_id> akan menangkap segmen apa pun.

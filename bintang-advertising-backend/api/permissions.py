@@ -154,6 +154,26 @@ class CanAccessFinanceVerification(BasePermission):
         )
 
 
+class CanExportFinanceData(BasePermission):
+    """Khusus ExportCashTransactionsView (2026-09-24 fix) --
+    CanAccessFinanceVerification sebelumnya dipasang di sini juga, tapi
+    class itu SENGAJA menyertakan kasir (supaya CashTransactionViewSet/
+    RingkasanShiftViewSet tetap bisa diakses kasir seperti perilaku lama)
+    -- akibatnya tanpa sadar kasir ikut bisa BULK EXPORT data kas,
+    melanggar kebijakan "semua endpoint export manajerial-only"
+    (tests_security.py, permission semula endpoint ini IsOwnerOrManager).
+    Ditemukan lewat full regression run, bukan diminta user -- diperbaiki
+    proaktif karena data kas adalah data sensitif. Class baru ini:
+    owner/manager (perilaku asli) + admin_finance/spv_finance (perluasan
+    UAT 2026-09-24), TANPA kasir/staff/admin generik."""
+    def has_permission(self, request, view):
+        return bool(
+            request.user and
+            request.user.is_authenticated and
+            getattr(request.user, 'role', '') in ('owner', 'manager', 'admin_finance', 'spv_finance')
+        )
+
+
 class IsAdminFinanceOrOwnerManager(BasePermission):
     """Khusus aksi verifikasi laporan kasir (RingkasanShift/CashTransaction)
     & Papan Kerja Admin Finance -- Admin Finance adalah pelaksana utamanya,
@@ -252,6 +272,23 @@ class IsOwnerManagerAdminKasirOrFinanceRole(BasePermission):
         if role == 'spv_finance':
             return request.method in SAFE_METHODS
         return False
+
+
+class IsFinanceRoleOrOwnerManager(BasePermission):
+    """Khusus Laporan Kerja Harian Finance (target & kendala operasional
+    lingkup keuangan, 2026-09-24) -- Admin Finance & SPV Finance SAMA-SAMA
+    boleh membuat laporan harian mereka sendiri (bukan hierarki tulis),
+    Owner/Manager akses penuh lintas laporan. Siapa-lihat-laporan-siapa
+    (SPV Finance mengawasi + lihat laporan Admin Finance, Admin Finance
+    cuma lihat miliknya sendiri) diatur di get_queryset() view, BUKAN di
+    sini -- konsisten dengan keputusan user: SPV Finance = pengawas,
+    Admin Finance = eksekutor."""
+    def has_permission(self, request, view):
+        return bool(
+            request.user and
+            request.user.is_authenticated and
+            getattr(request.user, 'role', '') in ('owner', 'manager', 'admin_finance', 'spv_finance')
+        )
 
 
 class IsSpvOrOwnerManager(BasePermission):

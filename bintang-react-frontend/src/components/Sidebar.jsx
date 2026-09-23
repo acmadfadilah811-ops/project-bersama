@@ -164,6 +164,7 @@ const menuSpvKordiv = [
 // otomatis kehilangan grup ini karena tidak punya feature id `buku-besar`).
 const menuFinance = [
   { path: '/finance-dashboard', label: 'Dashboard', icon: Wallet, isGroup: false },
+  { path: '/laporan-kerja-keuangan', label: 'Laporan Kerja Harian', icon: ClipboardList, isGroup: false },
   {
     id: 'transaksi_pembayaran_finance',
     label: 'Transaksi & Pembayaran',
@@ -275,6 +276,7 @@ export default function Sidebar() {
     // buku-besar, lalu dipentalkan ProtectedRoute.jsx saat diklik -- link
     // mati yang membingungkan). Disamakan dengan utils/permissions.js.
     if (path.startsWith('/transaksi')) return 'buku-besar';
+    if (path.startsWith('/laporan-kerja-keuangan')) return 'laporan-kerja-keuangan';
     return null;
   };
 

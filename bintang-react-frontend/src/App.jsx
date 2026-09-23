@@ -13,6 +13,7 @@ import AdminDashboard from './features/dashboard/pages/AdminDashboard';
 import StaffDashboard from './features/dashboard/pages/StaffDashboard';
 import RingkasanTim from './features/dashboard/pages/RingkasanTim';
 import FinanceDashboard from './features/dashboard/pages/FinanceDashboard';
+import LaporanKerjaKeuangan from './features/dashboard/pages/LaporanKerjaKeuangan';
 import ExecutiveDashboard from './features/dashboard/pages/ExecutiveDashboard';
 import ExecutiveNav from './features/dashboard/components/ExecutiveNav';
 import AiBusinessAnalyst from './features/dashboard/pages/AiBusinessAnalyst';
@@ -148,6 +149,7 @@ function App() {
                 <Route path="/staff-dashboard" element={<StaffDashboard />} />
                 <Route path="/ringkasan-tim" element={<RingkasanTim />} />
                 <Route path="/finance-dashboard" element={<FinanceDashboard />} />
+                <Route path="/laporan-kerja-keuangan" element={<LaporanKerjaKeuangan />} />
                 {/* Backend membatasi ke owner/manager; route ini hanya jalur masuknya. */}
                 <Route path="/dashboard-eksekutif" element={<ExecutiveDashboard />} />
                 <Route

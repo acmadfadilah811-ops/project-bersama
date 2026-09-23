@@ -3,7 +3,7 @@ import logging
 from django.http import HttpResponse, Http404
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
-from api.permissions import IsOwnerOrManager, CanAccessFinanceVerification
+from api.permissions import IsOwnerOrManager, CanExportFinanceData
 from rest_framework.response import Response
 from rest_framework.negotiation import DefaultContentNegotiation
 from .models import Order, InventoryItem, JobBoard, Contact
@@ -1033,11 +1033,15 @@ class ExportCashTransactionsView(APIView):
 
     Menghormati filter yang sama dengan layar: ?arah=, ?start=, ?end=, ?search=
 
-    CanAccessFinanceVerification (bukan IsOwnerOrManager) -- Admin Finance/
-    SPV Finance juga boleh ekspor Pendapatan/Pengeluaran yang bisa mereka
-    catat/verifikasi (2026-09-24), konsisten dengan CashTransactionViewSet.
+    CanExportFinanceData (bukan IsOwnerOrManager) -- Admin Finance/SPV
+    Finance juga boleh ekspor Pendapatan/Pengeluaran yang bisa mereka
+    catat/verifikasi (2026-09-24). SEMPAT dipasang CanAccessFinanceVerification
+    (dipakai bareng CashTransactionViewSet/RingkasanShiftViewSet), tapi
+    class itu ikut menyertakan kasir -- kasir jadi bisa bulk export data
+    kas, melanggar kebijakan "export manajerial-only" (tests_security.py,
+    fix 2026-09-24). CanExportFinanceData TIDAK menyertakan kasir.
     """
-    permission_classes = [CanAccessFinanceVerification]
+    permission_classes = [CanExportFinanceData]
 
     def get(self, request):
         from .finance_models import CashTransaction

@@ -20,6 +20,7 @@ export const MENU_FEATURES = [
   { id: 'divisi', label: 'Divisi & Tahap Proses', path: '/divisi' },
   { id: 'accounting-internal', label: 'Akuntansi Internal', path: '/accounting-internal' },
   { id: 'finance-dashboard', label: 'Dashboard Finance', path: '/finance-dashboard' },
+  { id: 'laporan-kerja-keuangan', label: 'Laporan Kerja Harian (Finance)', path: '/laporan-kerja-keuangan' },
   { id: 'wa-bot-config', label: 'Pengaturan WA Bot', path: '/pengaturan-wa-bot' },
   { id: 'permintaan-bahan', label: 'Permintaan Bahan', path: '/permintaan-bahan' },
 ];
@@ -91,8 +92,8 @@ export const DEFAULT_PERMISSIONS = {
   // api/permissions.py IsStrictOwnerOrManager). SPV Finance cuma dapat
   // accounting-internal (baca laporan) -- perannya supervisi/agregat,
   // bukan pelaksana transaksi harian, jadi TIDAK dapat buku-besar.
-  admin_finance: ['finance-dashboard', 'buku-besar', 'accounting-internal'],
-  spv_finance: ['finance-dashboard', 'accounting-internal'],
+  admin_finance: ['finance-dashboard', 'buku-besar', 'accounting-internal', 'laporan-kerja-keuangan'],
+  spv_finance: ['finance-dashboard', 'accounting-internal', 'laporan-kerja-keuangan'],
 };
 
 
@@ -195,6 +196,9 @@ export function getFeatureIdByPath(path) {
   if (path.startsWith('/papan-kerja') || path.startsWith('/produksi') || path.startsWith('/jobs')) return 'jobs';
   if (path.startsWith('/product-inventory')) return 'product-inventory';
   if (path.startsWith('/transaksi')) return 'buku-besar';
+  // HARUS sebelum '/laporan' generik di bawah -- kalau tidak, prefix
+  // '/laporan' bikin ini salah dipetakan ke 'reports'.
+  if (path.startsWith('/laporan-kerja-keuangan')) return 'laporan-kerja-keuangan';
   if (path.startsWith('/laporan')) return 'reports';
   if (path.startsWith('/marketing')) return 'customers';
   if (path.startsWith('/users')) return 'employees';

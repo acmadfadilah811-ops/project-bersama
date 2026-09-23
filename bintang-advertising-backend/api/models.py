@@ -1454,6 +1454,11 @@ from .machine_models import *
 # biaya produksi/BOM).
 from .laporan_produksi_models import *
 
+# Laporan Kerja Harian Admin/SPV Finance: target & kendala operasional
+# lingkup keuangan (lihat laporan_keuangan_models.py, pola sama dengan
+# LaporanTargetProduksi tapi tanpa divisi produksi).
+from .laporan_keuangan_models import *
+
 # Model Permintaan Bahan (Material Requisition) -- alur Kordiv/SPV -> gudang,
 # tidak mengubah stok/jurnal (lihat requisition_models.py).
 from .requisition_models import *
