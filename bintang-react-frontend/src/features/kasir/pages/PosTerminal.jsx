@@ -49,6 +49,48 @@ const makeCheckoutKey = () => {
 // tempat notifikasinnya di bagian top bar"). Jadi sekarang state-nya berdiri
 // sendiri (`stokKritisModal`, lihat dalam komponen) dan dirender sebagai
 // modal blocking penuh, bukan lewat notify()/DynamicIsland.
+//
+// CATATAN (2026-09-24, revisi ke-3): user minta notifikasi ini menahan kasir
+// SEBELUM pembayaran ("kasir mau melanjutkan ke pembayaran, jadi kasir
+// tertahan dulu"), bukan cuma info setelah transaksi selesai (waktu itu uang
+// sudah diterima, terlambat untuk menahan apa pun). Jadi sekarang ada 2 mode:
+// - 'gate': dihitung di klien dari qty_stok & stok_minimum produk yang sudah
+//   ada di keranjang (lihat `hitungStokKritisKeranjang`), dipicu saat kasir
+//   klik "Bayar" -- SEBELUM modal pembayaran dibuka. Kasir wajib klik
+//   "Lanjutkan ke Pembayaran" (atau "Batal" utk kembali ke keranjang).
+// - 'info': tetap dipertahankan sebagai jaring pengaman setelah transaksi
+//   benar-benar tersimpan di server (data race dgn kasir lain bisa membuat
+//   hasil akhir beda dari perkiraan di 'gate').
+const hitungStokKritisKeranjang = (cartItems) => {
+  if (!Array.isArray(cartItems) || cartItems.length === 0) return [];
+  const totalQtyByKey = new Map();
+  const infoByKey = new Map();
+  cartItems.forEach((item) => {
+    const product = item.product;
+    if (!product || !product.lacak_inventori) return;
+    const minimum = Number(product.stok_minimum || 0);
+    if (minimum <= 0) return;
+    const variant = item.variant;
+    const key = variant ? `${product.id}-${variant.id}` : `${product.id}`;
+    totalQtyByKey.set(key, (totalQtyByKey.get(key) || 0) + (Number(item.qty) || 0));
+    if (!infoByKey.has(key)) {
+      infoByKey.set(key, {
+        nama: variant ? `${product.nama} (${variant.nama_varian})` : product.nama,
+        stokSaatIni: Number((variant ? variant.qty_stok : product.qty_stok) || 0),
+        minimum,
+      });
+    }
+  });
+  const warnings = [];
+  totalQtyByKey.forEach((totalQty, key) => {
+    const info = infoByKey.get(key);
+    const sisa = info.stokSaatIni - totalQty;
+    if (sisa <= info.minimum) {
+      warnings.push({ nama: info.nama, sisa, minimum: info.minimum });
+    }
+  });
+  return warnings;
+};
 
 const itemReceiptNote = (item) => {
   const rows = [];
@@ -740,7 +782,7 @@ export default function PosTerminal({ onToggleSidebar }) {
       });
 
       if (Array.isArray(res.data.stok_kritis) && res.data.stok_kritis.length > 0) {
-        setStokKritisModal(res.data.stok_kritis);
+        setStokKritisModal({ items: res.data.stok_kritis, mode: 'info' });
       }
 
       setLastTransaction({
@@ -844,7 +886,7 @@ export default function PosTerminal({ onToggleSidebar }) {
       });
       const order = res.data;
       if (Array.isArray(order.stok_kritis) && order.stok_kritis.length > 0) {
-        setStokKritisModal(order.stok_kritis);
+        setStokKritisModal({ items: order.stok_kritis, mode: 'info' });
       }
       setLastTransaction({
         ...order,
@@ -1007,11 +1049,13 @@ export default function PosTerminal({ onToggleSidebar }) {
         </div>
       )}
 
-      {/* Popup stok kritis (2026-09-24, revisi ke-2) -- modal blocking besar,
+      {/* Popup stok kritis (2026-09-24, revisi ke-3) -- modal blocking besar,
           BUKAN pill activeNotification di atas, sesuai instruksi eksplisit
-          user: kasir tidak punya tempat notifikasi di topbar, jadi ini harus
-          berdiri sendiri di tengah layar dan wajib diklik "Mengerti" untuk
-          ditutup (tidak auto-hilang). */}
+          user: kasir tidak punya tempat notifikasi di topbar. Mode 'gate'
+          dipicu SEBELUM modal pembayaran dibuka (menahan kasir dulu), mode
+          'info' dipicu SETELAH transaksi tersimpan (jaring pengaman kalau
+          hasil akhir server beda dari perkiraan klien). Keduanya wajib
+          diklik tombolnya untuk ditutup (tidak auto-hilang). */}
       {stokKritisModal && (
         <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-3xl border-4 border-amber-500 bg-amber-950 shadow-2xl overflow-hidden">
@@ -1021,15 +1065,17 @@ export default function PosTerminal({ onToggleSidebar }) {
               </div>
               <div>
                 <div className="text-lg font-black text-white leading-tight">
-                  {stokKritisModal.length > 1 ? 'Stok Beberapa Produk Menipis' : 'Stok Produk Menipis'}
+                  {stokKritisModal.items.length > 1 ? 'Stok Beberapa Produk Menipis' : 'Stok Produk Menipis'}
                 </div>
                 <div className="text-xs text-amber-200 mt-0.5">
-                  Segera lakukan restok atau laporkan ke gudang.
+                  {stokKritisModal.mode === 'gate'
+                    ? 'Transaksi ini akan membuat stok di bawah/sama dengan ambang minimum.'
+                    : 'Segera lakukan restok atau laporkan ke gudang.'}
                 </div>
               </div>
             </div>
             <div className="px-6 pb-4 space-y-2 max-h-64 overflow-y-auto">
-              {stokKritisModal.map((s, idx) => (
+              {stokKritisModal.items.map((s, idx) => (
                 <div
                   key={`${s.nama}-${idx}`}
                   className="flex items-center justify-between gap-3 rounded-xl bg-amber-900/50 border border-amber-700/60 px-4 py-3"
@@ -1041,13 +1087,25 @@ export default function PosTerminal({ onToggleSidebar }) {
                 </div>
               ))}
             </div>
-            <div className="px-6 pb-6">
+            <div className="px-6 pb-6 flex gap-3">
+              {stokKritisModal.mode === 'gate' && (
+                <button
+                  type="button"
+                  onClick={() => setStokKritisModal(null)}
+                  className="flex-1 rounded-xl bg-amber-900/60 border border-amber-700/60 hover:bg-amber-900 text-amber-100 font-bold text-sm py-3 cursor-pointer transition-colors"
+                >
+                  Batal
+                </button>
+              )}
               <button
                 type="button"
-                onClick={() => setStokKritisModal(null)}
-                className="w-full rounded-xl bg-amber-500 hover:bg-amber-400 text-amber-950 font-black text-sm py-3 cursor-pointer transition-colors"
+                onClick={() => {
+                  setStokKritisModal(null);
+                  if (stokKritisModal.mode === 'gate') setShowPaymentModal(true);
+                }}
+                className="flex-1 rounded-xl bg-amber-500 hover:bg-amber-400 text-amber-950 font-black text-sm py-3 cursor-pointer transition-colors"
               >
-                Mengerti
+                {stokKritisModal.mode === 'gate' ? 'Lanjutkan ke Pembayaran' : 'Mengerti'}
               </button>
             </div>
           </div>
@@ -1091,6 +1149,13 @@ export default function PosTerminal({ onToggleSidebar }) {
             if (!selectedContact?.nama || !selectedContact?.nomor_wa) {
               setRightPanelMode('customerList');
               notifyError('Pilih pelanggan dulu', 'Order tidak bisa dibuat tanpa data pelanggan (nama & nomor WhatsApp). Pilih atau tambahkan pelanggan terlebih dahulu.');
+              return;
+            }
+            // Gerbang stok kritis (2026-09-24, instruksi user: kasir harus
+            // tertahan SEBELUM pembayaran, bukan diberi tahu setelahnya).
+            const kritis = hitungStokKritisKeranjang(cart);
+            if (kritis.length > 0) {
+              setStokKritisModal({ items: kritis, mode: 'gate' });
               return;
             }
             setShowPaymentModal(true);
