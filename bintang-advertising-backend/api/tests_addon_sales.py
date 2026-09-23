@@ -15,7 +15,7 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from . import stock_fifo
-from .models import Divisi, Order, OrderItem, TahapProses
+from .models import Contact, Divisi, Order, OrderItem, TahapProses
 from .pos_models import POSSale
 from .product_models import Addon, Product, ProductStockMovement, SaleItemAddon
 
@@ -46,11 +46,13 @@ class AddonSalesTest(APITestCase):
             linked_product=self.bahan_mata_ayam, linked_qty=Decimal('4'),
         )
         self.addon.applies_to.add(self.produk)
+        self.pelanggan = Contact.objects.create(nomor_wa='081200000001', nama='Pelanggan Addon')
 
         self.client.force_authenticate(self.owner)
 
     def test_pos_sale_addon_menambah_harga_dan_mengurangi_stok_bahan(self):
         res = self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{
                 'product_id': self.produk.id, 'qty': 2, 'harga': 999999,  # harga klien harus diabaikan
                 'addon_ids': [self.addon.id],
@@ -91,6 +93,7 @@ class AddonSalesTest(APITestCase):
         dengan benar lintas 2 transaksi POS terpisah."""
         for _ in range(2):
             res = self.client.post('/api/pos/sales/', {
+                'pelanggan': self.pelanggan.nomor_wa,
                 'items': [{'product_id': self.produk.id, 'qty': 2, 'harga': 50000, 'addon_ids': [self.addon.id]}],
                 'status': 'paid',
                 'dibayar': 110000,
@@ -108,6 +111,7 @@ class AddonSalesTest(APITestCase):
 
     def test_addon_tidak_berlaku_untuk_produk_lain_ditolak(self):
         res = self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{'product_id': self.produk_lain.id, 'qty': 1, 'harga': 20000, 'addon_ids': [self.addon.id]}],
             'status': 'paid',
             'dibayar': 20000,
@@ -118,6 +122,7 @@ class AddonSalesTest(APITestCase):
 
     def test_void_pos_sale_memulihkan_stok_bahan_addon(self):
         res = self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{'product_id': self.produk.id, 'qty': 2, 'harga': 50000, 'addon_ids': [self.addon.id]}],
             'status': 'paid',
             'dibayar': 110000,

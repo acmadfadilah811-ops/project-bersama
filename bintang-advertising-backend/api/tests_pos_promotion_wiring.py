@@ -12,6 +12,7 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from api.marketing_models import DiscountCoupon, POSPromotion
+from api.models import Contact
 from api.pos_models import POSSale
 from api.pos_services import create_sale, void_sale
 from api.product_models import Product
@@ -30,11 +31,12 @@ class PosPromotionWiringTests(APITestCase):
             nama='Produk Gratis Promo', harga_beli=5000, harga_jual_toko=20000,
             qty_stok=10, lacak_inventori=True,
         )
+        self.pelanggan = Contact.objects.create(nomor_wa='081200000099', nama='Pelanggan Promo Wiring')
 
     def _sale_paid(self, items, **extra):
         return create_sale(user=self.user, data={
             'items': items, 'status': 'paid', 'dibayar': 10_000_000,
-            'metode_bayar': 'CASH', **extra,
+            'metode_bayar': 'CASH', 'pelanggan': self.pelanggan.nomor_wa, **extra,
         })
 
     def test_promo_da_memotong_total_saat_transaksi_memenuhi_ambang(self):

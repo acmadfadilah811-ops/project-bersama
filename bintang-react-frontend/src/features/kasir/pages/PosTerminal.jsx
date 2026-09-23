@@ -739,11 +739,14 @@ export default function PosTerminal({ onToggleSidebar }) {
   };
 
   const handleConfirmPayment = (paymentData) => {
+    // Data pelanggan WAJIB untuk SEMUA jenis pembayaran (bukan cuma DP) --
+    // "Pelanggan umum" tanpa identitas dihapus (instruksi user 2026-09-24),
+    // supaya setiap order selalu tertaut ke pelanggan yang jelas.
+    if (!selectedContact?.nama || !selectedContact?.nomor_wa) {
+      notifyError('Data pelanggan diperlukan', 'Pilih atau tambahkan pelanggan (nama & nomor WhatsApp) sebelum membuat order.');
+      return;
+    }
     if (paymentData.paymentType === 'dp') {
-      if (!selectedContact?.nama || !selectedContact?.nomor_wa) {
-        notifyError('Data pelanggan diperlukan', 'Pilih pelanggan beserta nomor WhatsApp sebelum menerima DP.');
-        return;
-      }
       if (!selectedPelayanId) {
         notifyError('Karyawan diperlukan', 'Pilih karyawan yang melayani sebelum menerima DP.');
         return;
@@ -959,6 +962,15 @@ export default function PosTerminal({ onToggleSidebar }) {
           selectedCartItemKey={selectedCartItemKey}
           onPayClick={() => {
             if (cart.length === 0) return;
+            // Cek pelanggan di titik paling awal, sebelum modal pembayaran
+            // dibuka sama sekali -- kasir langsung tahu harus pilih/tambah
+            // pelanggan dulu, bukan baru ditolak setelah isi nominal bayar
+            // (validasi cadangan tetap ada di handleConfirmPayment).
+            if (!selectedContact?.nama || !selectedContact?.nomor_wa) {
+              setRightPanelMode('customerList');
+              notifyError('Pilih pelanggan dulu', 'Order tidak bisa dibuat tanpa data pelanggan (nama & nomor WhatsApp). Pilih atau tambahkan pelanggan terlebih dahulu.');
+              return;
+            }
             setShowPaymentModal(true);
           }}
           onVoidClick={() => {

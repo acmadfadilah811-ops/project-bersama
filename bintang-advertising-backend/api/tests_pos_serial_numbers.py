@@ -10,7 +10,7 @@ validasi nomor itu ada di pool `Product.serial_numbers` & belum terjual
 Void mengembalikan nomor seri ke pool (bisa dijual lagi)."""
 from rest_framework.test import APITestCase
 
-from api.models import CustomUser
+from api.models import Contact, CustomUser
 from api.pos_models import POSSaleItem
 from api.product_models import Product
 
@@ -34,10 +34,12 @@ class PosSerialNumberCheckoutTests(APITestCase):
             username='owner_seri', password='rahasia123', role='owner',
         )
         self.client.force_authenticate(self.owner)
+        self.pelanggan = Contact.objects.create(nomor_wa='081200000091', nama='Pelanggan Serial Uji')
 
     def test_checkout_wajib_kirim_serial_numbers(self):
         p = _produk_seri()
         res = self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{'product_id': p.id, 'qty': 1}],
             'status': 'paid', 'dibayar': 2000000, 'metode_bayar': 'tunai',
         }, format='json')
@@ -47,6 +49,7 @@ class PosSerialNumberCheckoutTests(APITestCase):
     def test_checkout_serial_valid_tercatat_dan_pool_ditandai_terjual(self):
         p = _produk_seri()
         res = self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{'product_id': p.id, 'qty': 1, 'serial_numbers': ['SN-001']}],
             'status': 'paid', 'dibayar': 2000000, 'metode_bayar': 'tunai',
         }, format='json')
@@ -65,6 +68,7 @@ class PosSerialNumberCheckoutTests(APITestCase):
         p.serial_numbers[0]['no_pesanan'] = 'POS-LAMA-1'
         p.save(update_fields=['serial_numbers'])
         res = self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{'product_id': p.id, 'qty': 1, 'serial_numbers': ['SN-001']}],
             'status': 'paid', 'dibayar': 2000000, 'metode_bayar': 'tunai',
         }, format='json')
@@ -74,6 +78,7 @@ class PosSerialNumberCheckoutTests(APITestCase):
     def test_checkout_serial_tidak_terdaftar_ditolak(self):
         p = _produk_seri()
         res = self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{'product_id': p.id, 'qty': 1, 'serial_numbers': ['SN-NGAWUR']}],
             'status': 'paid', 'dibayar': 2000000, 'metode_bayar': 'tunai',
         }, format='json')
@@ -82,6 +87,7 @@ class PosSerialNumberCheckoutTests(APITestCase):
     def test_checkout_jumlah_serial_tidak_sama_dengan_qty_ditolak(self):
         p = _produk_seri()
         res = self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{'product_id': p.id, 'qty': 2, 'serial_numbers': ['SN-001']}],
             'status': 'paid', 'dibayar': 4000000, 'metode_bayar': 'tunai',
         }, format='json')
@@ -90,6 +96,7 @@ class PosSerialNumberCheckoutTests(APITestCase):
     def test_checkout_serial_duplikat_dalam_satu_transaksi_ditolak(self):
         p = _produk_seri()
         res = self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{'product_id': p.id, 'qty': 2, 'serial_numbers': ['SN-001', 'SN-001']}],
             'status': 'paid', 'dibayar': 4000000, 'metode_bayar': 'tunai',
         }, format='json')
@@ -98,6 +105,7 @@ class PosSerialNumberCheckoutTests(APITestCase):
     def test_void_mengembalikan_serial_ke_pool(self):
         p = _produk_seri()
         res = self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{'product_id': p.id, 'qty': 1, 'serial_numbers': ['SN-001']}],
             'status': 'paid', 'dibayar': 2000000, 'metode_bayar': 'tunai',
         }, format='json')
@@ -112,6 +120,7 @@ class PosSerialNumberCheckoutTests(APITestCase):
 
         # Setelah void, nomor seri yang sama bisa dipakai lagi di transaksi baru.
         res2 = self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{'product_id': p.id, 'qty': 1, 'serial_numbers': ['SN-001']}],
             'status': 'paid', 'dibayar': 2000000, 'metode_bayar': 'tunai',
         }, format='json')
@@ -120,6 +129,7 @@ class PosSerialNumberCheckoutTests(APITestCase):
     def test_laporan_item_penjualan_menampilkan_no_seri(self):
         p = _produk_seri()
         res = self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{'product_id': p.id, 'qty': 1, 'serial_numbers': ['SN-001']}],
             'status': 'paid', 'dibayar': 2000000, 'metode_bayar': 'tunai',
         }, format='json')
@@ -135,6 +145,7 @@ class PosSerialNumberCheckoutTests(APITestCase):
             qty_stok=10, lacak_inventori=False,
         )
         res = self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{'product_id': p.id, 'qty': 3}],
             'status': 'paid', 'dibayar': 105000, 'metode_bayar': 'tunai',
         }, format='json')

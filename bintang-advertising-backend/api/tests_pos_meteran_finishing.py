@@ -14,6 +14,7 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from . import stock_fifo
+from .models import Contact
 from .product_models import Addon, Product, ProductStockMovement, SaleItemAddon
 
 
@@ -43,9 +44,11 @@ class PosMeteranFinishingTest(APITestCase):
         )
         self.addon.applies_to.add(self.banner)
         self.addon.applies_to.add(self.kartu_nama)
+        self.pelanggan = Contact.objects.create(nomor_wa='081200000096', nama='Pelanggan Meteran Uji')
 
     def test_meteran_dihitung_ulang_server_bukan_dipercaya_dari_klien(self):
         res = self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{
                 'product_id': self.banner.id, 'qty': 2,
                 'panjang': 2, 'lebar': 3,
@@ -69,6 +72,7 @@ class PosMeteranFinishingTest(APITestCase):
         # akan diam-diam mengabaikan panjang/lebar utk produk 'flat' dan
         # menagih harga flat polos — beda dari yang kasir/pelanggan lihat.
         res = self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{
                 'product_id': self.kartu_nama.id, 'qty': 1,
                 'panjang': 2, 'lebar': 3,
@@ -87,6 +91,7 @@ class PosMeteranFinishingTest(APITestCase):
         # Tanpa P x L diisi (mode Unit Biasa), harga flat tetap apa adanya —
         # paksa_per_m2 tidak boleh ikut2an nyala kalau kasir tidak isi ukuran.
         res = self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{'product_id': self.kartu_nama.id, 'qty': 2}],
             'status': 'paid', 'dibayar': 100000, 'metode_bayar': 'CASH',
         }, format='json')
@@ -95,6 +100,7 @@ class PosMeteranFinishingTest(APITestCase):
 
     def test_meteran_tanpa_ukuran_ditolak_bukan_ditaksir(self):
         res = self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{'product_id': self.banner.id, 'qty': 1}],
             'status': 'paid', 'dibayar': 100000, 'metode_bayar': 'CASH',
         }, format='json')
@@ -102,6 +108,7 @@ class PosMeteranFinishingTest(APITestCase):
 
     def test_meteran_bisa_pakai_addon(self):
         res = self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{
                 'product_id': self.banner.id, 'qty': 1, 'panjang': 1, 'lebar': 1,
                 'addon_ids': [self.addon.id],
@@ -115,6 +122,7 @@ class PosMeteranFinishingTest(APITestCase):
 
     def test_meteran_memotong_stok_produk(self):
         res = self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{'product_id': self.banner.id, 'qty': 3, 'panjang': 1, 'lebar': 1}],
             'status': 'paid', 'dibayar': 75000, 'metode_bayar': 'CASH',
         }, format='json')
@@ -124,6 +132,7 @@ class PosMeteranFinishingTest(APITestCase):
 
     def test_finishing_biaya_ditambahkan_dan_tetap_bisa_addon_dan_potong_stok(self):
         res = self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{
                 'product_id': self.kartu_nama.id, 'qty': 2,
                 'finishing_biaya': 3000,
@@ -140,6 +149,7 @@ class PosMeteranFinishingTest(APITestCase):
 
     def test_qty_addon_independen_dari_qty_item_induk(self):
         res = self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{
                 'product_id': self.kartu_nama.id, 'qty': 1,
                 'addons': [{'id': self.addon.id, 'qty': 3}],

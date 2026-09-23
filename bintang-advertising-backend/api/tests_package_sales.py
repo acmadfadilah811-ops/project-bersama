@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 from rest_framework.test import APITestCase
 
-from api.models import CustomUser, Order, OrderItem
+from api.models import Contact, CustomUser, Order, OrderItem
 from api.marketing_models import DiscountCoupon
 from api.pos_models import POSSaleItem
 from api.product_models import Product, ProductPackage, ProductPackageItem
@@ -26,10 +26,12 @@ class PackageSalesTests(APITestCase):
             harga_jual_online=70000, publikasi=True, tampil_pos=True,
         )
         ProductPackageItem.objects.create(paket=self.package, product=self.product, qty=2)
+        self.pelanggan = Contact.objects.create(nomor_wa='081200000098', nama='Pelanggan Paket Uji')
 
     @patch('accounting.services.pos_posting.post_pos_sale_journal')
     def test_pos_menyimpan_paket_dan_memotong_stok_komponen(self, post_journal):
         response = self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{'package_id': self.package.id, 'qty': 2}],
             'status': 'paid', 'dibayar': 120000, 'metode_bayar': 'tunai',
         }, format='json')

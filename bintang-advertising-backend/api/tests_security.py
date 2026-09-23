@@ -40,6 +40,7 @@ class SecurityPermissionTestCase(APITestCase):
             harga_jual_toko=10000.0,
             lacak_inventori=True
         )
+        self.pelanggan_security = Contact.objects.create(nomor_wa='081200000090', nama='Pelanggan Security Uji')
 
         # Create Account for finance tests
         self.akun = Akun.objects.create(
@@ -236,6 +237,7 @@ class SecurityPermissionTestCase(APITestCase):
 
         # Kasir perform checkout / sale in POS
         pos_data = {
+            "pelanggan": self.pelanggan_security.nomor_wa,
             "subtotal": 20000.0,
             "diskon": 0.0,
             "pajak": 0.0,

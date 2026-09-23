@@ -15,7 +15,7 @@ from rest_framework.test import APITestCase
 
 from hr.models import Absensi
 
-from .models import Divisi, JobBoard, Order, OrderItem, TahapProses
+from .models import Contact, Divisi, JobBoard, Order, OrderItem, TahapProses
 from .pos_models import POSSale, POSSaleItem
 from .product_models import Product
 
@@ -33,6 +33,7 @@ class SpkDariPosTest(APITestCase):
             harga_snapshot=Decimal('50000'), qty=Decimal('1'), subtotal=Decimal('50000'),
         )
         self.client.force_authenticate(self.owner)
+        self.pelanggan = Contact.objects.create(nomor_wa='081200000089', nama='Pelanggan SPK Uji')
 
     def _terbitkan(self, **payload):
         return self.client.post(f'/api/pos/sales/{self.sale.id}/terbitkan-spk/', payload, format='json')
@@ -71,6 +72,7 @@ class SpkDariPosTest(APITestCase):
 
     def test_checkout_pos_lunas_menerbitkan_spk_dalam_transaksi_yang_sama(self):
         res = self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{
                 'product_id': self.produk.id,
                 'qty': 1,
@@ -89,6 +91,7 @@ class SpkDariPosTest(APITestCase):
 
     def test_checkout_pos_hold_tidak_boleh_menerbitkan_spk(self):
         res = self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{'product_id': self.produk.id, 'qty': 1, 'harga': 50000, 'nama': 'Spanduk'}],
             'status': 'hold',
             'dibayar': 0,

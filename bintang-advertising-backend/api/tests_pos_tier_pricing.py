@@ -38,15 +38,10 @@ class PosTierPricingCustomerGroupTests(APITestCase):
         )
         self.kontak_umum = Contact.objects.create(nomor_wa='628222222222', nama='Pelanggan Biasa')
 
-    def test_checkout_tanpa_pelanggan_pakai_harga_umum(self):
-        res = self.client.post('/api/pos/sales/', {
-            'items': [{'product_id': self.product.id, 'qty': 1}],
-            'status': 'paid', 'dibayar': 10000, 'metode_bayar': 'tunai',
-        }, format='json')
-        self.assertEqual(res.status_code, 201, res.content)
-        item = POSSaleItem.objects.get(sale_id=res.data['id'])
-        self.assertEqual(item.harga_snapshot, 10000)
-
+    # test_checkout_tanpa_pelanggan_pakai_harga_umum dihapus (2026-09-24) --
+    # /pos/sales/ sekarang MEWAJIBKAN pelanggan, "tanpa pelanggan sama
+    # sekali" tidak berlaku lagi. Skenario "tier umum" tetap terwakili oleh
+    # test_checkout_pelanggan_tanpa_tipe_pakai_harga_umum di bawah.
     def test_checkout_pelanggan_tanpa_tipe_pakai_harga_umum(self):
         res = self.client.post('/api/pos/sales/', {
             'items': [{'product_id': self.product.id, 'qty': 1}],
@@ -107,17 +102,10 @@ class PosTierPricingGuestTests(APITestCase):
     def test_migration_0117_membuat_customer_group_guest(self):
         self.assertTrue(CustomerGroup.objects.filter(nama='Guest', is_active=True).exists())
 
-    def test_checkout_tanpa_pelanggan_tidak_otomatis_pakai_tier_guest(self):
-        # Tanpa pelanggan sama sekali harus tetap jatuh ke tier Umum — Guest
-        # bukan default otomatis.
-        res = self.client.post('/api/pos/sales/', {
-            'items': [{'product_id': self.product.id, 'qty': 1}],
-            'status': 'paid', 'dibayar': 10000, 'metode_bayar': 'tunai',
-        }, format='json')
-        self.assertEqual(res.status_code, 201, res.content)
-        item = POSSaleItem.objects.get(sale_id=res.data['id'])
-        self.assertEqual(item.harga_snapshot, 10000)
-
+    # test_checkout_tanpa_pelanggan_tidak_otomatis_pakai_tier_guest dihapus
+    # (2026-09-24) -- /pos/sales/ sekarang MEWAJIBKAN pelanggan. Skenario
+    # "Guest bukan default otomatis" tetap terwakili oleh test di bawah
+    # (pelanggan tertaut tapi tanpa customer_group).
     def test_checkout_pelanggan_tanpa_customer_group_tidak_otomatis_pakai_tier_guest(self):
         # Pelanggan tertaut tapi belum dikategorikan (customer_group kosong)
         # juga tetap tier Umum, bukan otomatis Guest.

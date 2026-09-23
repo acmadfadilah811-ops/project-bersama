@@ -108,11 +108,16 @@ def create_sale(*, user, data):
         if pos_settings.wajib_shift_aktif() and shift is None:
             raise ValidationError({'error': 'Buka shift Anda sendiri sebelum transaksi.'})
 
-        customer = None
-        if data.get('pelanggan'):
-            customer = Contact.objects.filter(pk=data['pelanggan']).first()
-            if customer is None:
-                raise ValidationError({'error': 'Pelanggan tidak valid.'})
+        # Pelanggan WAJIB dipilih -- "Pelanggan Umum" tanpa identitas dihapus
+        # (instruksi user 2026-09-24), supaya setiap transaksi kasir selalu
+        # tertaut ke pelanggan yang jelas. Dicek di sini (satu-satunya
+        # pemanggil create_sale(), lihat pos_views.py POSSaleViewSet.create)
+        # bukan cuma di frontend, supaya panggilan API langsung juga tertolak.
+        if not data.get('pelanggan'):
+            raise ValidationError({'error': 'Pelanggan wajib dipilih sebelum transaksi.'})
+        customer = Contact.objects.filter(pk=data['pelanggan']).first()
+        if customer is None:
+            raise ValidationError({'error': 'Pelanggan tidak valid.'})
         # Tipe Pelanggan (CustomerGroup) member yang tertaut — dipakai supaya
         # tier harga per tipe pelanggan (mis. Reseller, Guest) benar-benar
         # dipakai saat checkout, bukan cuma tersimpan (bug ditemukan

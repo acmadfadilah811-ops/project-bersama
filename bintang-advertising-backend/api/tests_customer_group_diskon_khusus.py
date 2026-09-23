@@ -122,6 +122,11 @@ class PosCustomerGroupDiscountTests(APITestCase):
         )
         self.customer = Customer.objects.create(nama='Pelanggan VIP Uji', customer_group=self.grup)
         self.contact = Contact.objects.create(nomor_wa='6281200077766', nama='Pelanggan VIP Uji', customer=self.customer)
+        # Pelanggan tanpa customer_group -- dipakai test "tidak kena diskon"
+        # (2026-09-24: /pos/sales/ sekarang MEWAJIBKAN pelanggan dipilih,
+        # jadi kasus "tanpa pelanggan sama sekali" tidak berlaku lagi;
+        # yang diuji sekarang: pelanggan ada tapi tidak tertaut customer_group).
+        self.contact_tanpa_grup = Contact.objects.create(nomor_wa='6281200077767', nama='Pelanggan Biasa Uji')
         self.kategori = ProductCategory.objects.create(nama='Kategori CG POS', key='test-kat-cg-pos')
         self.product = Product.objects.create(
             nama='Produk CG POS', kategori=self.kategori, sku='TEST-CG-POS-1',
@@ -140,6 +145,7 @@ class PosCustomerGroupDiscountTests(APITestCase):
     def test_pos_tanpa_pelanggan_tidak_kena_diskon(self):
         sale = create_sale(user=self.owner, data={
             'items': [{'product_id': self.product.id, 'qty': 1, 'nama': 'Produk CG POS'}],
+            'pelanggan': self.contact_tanpa_grup.nomor_wa,
             'status': 'paid', 'dibayar': 50000, 'metode_bayar': 'CASH',
         })
         self.assertEqual(sale.diskon_tipe_pelanggan, Decimal('0'))

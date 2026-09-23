@@ -9,7 +9,7 @@ from django.contrib.auth import get_user_model
 from rest_framework.test import APITestCase
 
 from accounting.models import Account, AccountClassification
-from api.models import BillOfMaterials, BoMItem, InventoryItem, RestockHistory
+from api.models import BillOfMaterials, BoMItem, Contact, InventoryItem, RestockHistory
 from api.pos_models import POSSale
 from api.product_models import Product, ProductVariant
 
@@ -39,9 +39,11 @@ class PosBomDeductionTest(APITestCase):
         )
         self.bom = BillOfMaterials.objects.create(product=self.product, nama='BoM Banner Flexi')
         BoMItem.objects.create(bom=self.bom, inventory_item=self.bahan, qty_required_per_unit=2.0)
+        self.pelanggan = Contact.objects.create(nomor_wa='081200000097', nama='Pelanggan BoM Uji')
 
     def _jual(self, qty):
         return self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{'product_id': self.product.id, 'qty': qty, 'harga': 25000}],
             'status': 'paid', 'dibayar': 25000 * qty, 'metode_bayar': 'tunai',
         }, format='json')
@@ -64,6 +66,7 @@ class PosBomDeductionTest(APITestCase):
             qty_stok=20, lacak_inventori=True,
         )
         response = self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{'product_id': produk_polos.id, 'qty': 2, 'harga': 10000}],
             'status': 'paid', 'dibayar': 20000, 'metode_bayar': 'tunai',
         }, format='json')
@@ -91,6 +94,7 @@ class PosBomDeductionTest(APITestCase):
         BoMItem.objects.create(bom=bom_varian, inventory_item=bahan_kain, qty_required_per_unit=1.0)
 
         response = self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{'product_id': produk_varian.id, 'variant_id': varian.id, 'qty': 2, 'harga': 90000}],
             'status': 'paid', 'dibayar': 180000, 'metode_bayar': 'tunai',
         }, format='json')

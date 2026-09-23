@@ -289,6 +289,7 @@ class IntegrasiPOSTestCase(BasisPromoTestCase):
 
     def _payload(self, **override):
         data = {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{'product_id': self.produk.pk, 'qty': 2}],
             'dibayar': 100000,
             'status': 'paid',

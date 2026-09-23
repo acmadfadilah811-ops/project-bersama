@@ -25,7 +25,7 @@ from django.contrib.auth import get_user_model
 from rest_framework.test import APITestCase
 
 from accounting.models import Account, AccountClassification
-from api.models import BillOfMaterials, BoMItem, InventoryItem, RestockHistory, SystemConfig
+from api.models import BillOfMaterials, BoMItem, Contact, InventoryItem, RestockHistory, SystemConfig
 from api.pos_models import POSSale
 from api.product_models import Product, ProductStockMovement
 
@@ -51,9 +51,11 @@ class PosMultilineSameProductTest(APITestCase):
         )
         self.bom = BillOfMaterials.objects.create(product=self.product, nama='BoM Banner Meteran')
         BoMItem.objects.create(bom=self.bom, inventory_item=self.bahan, qty_required_per_unit=2.0)
+        self.pelanggan = Contact.objects.create(nomor_wa='081200000095', nama='Pelanggan Multi Uji')
 
     def _jual_dua_baris(self, qty1=5, qty2=3):
         return self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [
                 {'product_id': self.product.id, 'qty': qty1, 'harga': 20000},
                 {'product_id': self.product.id, 'qty': qty2, 'harga': 20000},
@@ -122,6 +124,7 @@ class PosBlokirHargaDibawahModalTest(APITestCase):
             nama='Produk Rugi', harga_beli=10000, harga_jual_toko=5000,
             qty_stok=5, lacak_inventori=True,
         )
+        self.pelanggan = Contact.objects.create(nomor_wa='081200000094', nama='Pelanggan Harga Uji')
 
     def _set_ext(self, **overrides):
         cfg, _ = SystemConfig.objects.get_or_create(key='pos_ext_settings', defaults={'value': '{}'})
@@ -132,6 +135,7 @@ class PosBlokirHargaDibawahModalTest(APITestCase):
 
     def _jual(self):
         return self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{'product_id': self.product.id, 'qty': 1, 'harga': 5000}],
             'status': 'paid', 'dibayar': 5000, 'metode_bayar': 'tunai',
         }, format='json')
@@ -161,9 +165,11 @@ class PosBlokirStokKosongTest(APITestCase):
             nama='Produk Stok Toggle', harga_beli=10000, harga_jual_toko=25000,
             qty_stok=5, lacak_inventori=True,
         )
+        self.pelanggan = Contact.objects.create(nomor_wa='081200000093', nama='Pelanggan Stok Toggle Uji')
 
     def _jual(self, qty):
         return self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{'product_id': self.product.id, 'qty': qty, 'harga': 25000}],
             'status': 'paid', 'dibayar': 25000 * qty, 'metode_bayar': 'tunai',
         }, format='json')
@@ -195,9 +201,11 @@ class PosCheckoutIdempotencyTest(APITestCase):
             nama='Produk Idempotensi', harga_beli=10000, harga_jual_toko=25000,
             qty_stok=50, lacak_inventori=True,
         )
+        self.pelanggan = Contact.objects.create(nomor_wa='081200000092', nama='Pelanggan Idempotensi Uji')
 
     def _jual(self, idem_key):
         return self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{'product_id': self.product.id, 'qty': 1, 'harga': 25000}],
             'status': 'paid', 'dibayar': 25000, 'metode_bayar': 'tunai',
             'idempotency_key': idem_key,
@@ -225,6 +233,7 @@ class PosCheckoutIdempotencyTest(APITestCase):
 
     def test_tanpa_idempotency_key_tetap_berfungsi_seperti_biasa(self):
         response = self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
             'items': [{'product_id': self.product.id, 'qty': 1, 'harga': 25000}],
             'status': 'paid', 'dibayar': 25000, 'metode_bayar': 'tunai',
         }, format='json')
