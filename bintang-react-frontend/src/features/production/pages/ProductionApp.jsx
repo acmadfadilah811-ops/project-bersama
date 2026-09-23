@@ -38,6 +38,11 @@ import MesinPanel from './panels/MesinPanel';
 import LogPenggunaanMesinPanel from './panels/LogPenggunaanMesinPanel';
 import DeadlineBadge, { getDeadlineTier } from '../components/DeadlineBadge';
 
+// SPV/Kordiv: mengawasi & menugaskan job tim, tidak pernah "mengerjakan"
+// job sendiri (lihat JobBoardViewSet.get_queryset() backend) -- dipakai
+// juga di StaffDashboard, reuse langsung bukan diimplementasikan ulang.
+import KordivSpvTeamBoard from '../../dashboard/components/KordivSpvTeamBoard';
+
 // --- DYNAMIC MINI CALENDAR COMPONENT ---
 function MiniCalendar() {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -242,6 +247,8 @@ export default function ProductionApp() {
         defaultTab = 'papan_kerja_spk';
       } else if (roleLower === 'admin') {
         defaultTab = 'global_list';
+      } else if (['spv', 'kordiv'].includes(roleLower)) {
+        defaultTab = 'tim_saya';
       }
       
       setActiveTab(defaultTab);
@@ -424,6 +431,18 @@ export default function ProductionApp() {
           }
           return <GlobalListPanel />;
       }
+    } else if (['spv', 'kordiv'].includes(user?.role?.toLowerCase())) {
+      // SPV/Kordiv: assign job langsung ke staff bawahan tanpa perlu klaim
+      // sendiri dulu -- sebelumnya dilempar ke ClaimPool/KanbanPersonal
+      // (dirancang utk staff yang mengerjakan sendiri), padahal SPV/Kordiv
+      // tidak pernah jadi pic_staff (bug dilaporkan user 2026-09-23).
+      switch (activeTab) {
+        case 'logs':
+          return <ActivityLogsPanel logs={logs} />;
+        case 'tim_saya':
+        default:
+          return <KordivSpvTeamBoard role={user.role} />;
+      }
     } else {
       // Staff Mode Panels
       switch (activeTab) {
@@ -509,6 +528,11 @@ export default function ProductionApp() {
       { id: 'divisions', label: 'Monitoring Divisi', icon: FolderTree },
       { id: 'mesin', label: 'Penggunaan Mesin', icon: Wrench },
       { id: 'log-penggunaan-mesin', label: 'Log Penggunaan Mesin', icon: History },
+      { id: 'logs', label: 'Log Aktivitas', icon: Bell },
+    ];
+  } else if (['spv', 'kordiv'].includes(roleLower)) {
+    menuItems = [
+      { id: 'tim_saya', label: 'Papan Kerja Tim', icon: Users },
       { id: 'logs', label: 'Log Aktivitas', icon: Bell },
     ];
   } else {
@@ -726,7 +750,7 @@ export default function ProductionApp() {
               {/* Navigation Menu */}
               <div className="bg-white border border-[#e2e8f0] rounded-lg p-3 flex flex-col gap-1 shadow-sm">
                 <div className="text-[8.5px] font-extrabold uppercase tracking-wide text-slate-400 border-b border-slate-100 pb-1.5 mb-1">
-                  NAVIGASI {isAdminMode ? 'ADMIN' : 'STAFF'}
+                  NAVIGASI {isAdminMode ? 'ADMIN' : (['spv', 'kordiv'].includes(user?.role?.toLowerCase()) ? 'TIM' : 'STAFF')}
                 </div>
                 {menuItems.map((item) => {
                   const Icon = item.icon;
