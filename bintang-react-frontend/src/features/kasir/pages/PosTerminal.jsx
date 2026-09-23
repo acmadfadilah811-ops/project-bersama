@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Wallet } from 'lucide-react';
 import { useKasir } from '../context/KasirContext';
 import apiClient from '../../../api/apiClient';
 import { fetchAllPages } from '../../../utils/paginatedApi';
@@ -90,6 +91,8 @@ export default function PosTerminal({ onToggleSidebar }) {
     getTaxAmount,
     setCartNotes,
     salesDiscountPreview,
+    shiftAktif,
+    loadingShift,
   } = useKasir();
 
   // Mode Tampilan Panel Kanan: 'catalog' | 'itemDetail' | 'customerList'
@@ -892,6 +895,37 @@ export default function PosTerminal({ onToggleSidebar }) {
       notifyError('Cetak cek pesanan gagal', getPrintErrorMessage(error));
     }
   };
+
+  // Kasir wajib buka shift dulu sebelum bisa membuka Terminal/bertransaksi
+  // (instruksi user 2026-09-24) -- sebelumnya tidak ada penjagaan sama
+  // sekali di sini, kasir bisa langsung buka Terminal & checkout meski
+  // belum membuka shift (backend juga tidak menolak, shift cuma tertaut
+  // best-effort ke pembayaran kalau ada). `loadingShift` dicek dulu supaya
+  // tidak sempat "kedip" nampilkan layar ini sebelum status shift selesai
+  // dimuat dari server.
+  if (!loadingShift && !shiftAktif) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-slate-900 font-sans p-6">
+        <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-sm w-full p-8 text-center space-y-4">
+          <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center">
+            <Wallet size={26} />
+          </div>
+          <h2 className="text-base font-extrabold text-slate-900">Shift Kasir Belum Dibuka</h2>
+          <p className="text-xs text-slate-500 font-semibold leading-relaxed">
+            Anda harus membuka shift kasir (setor kas awal) terlebih dahulu sebelum bisa
+            membuka Terminal Kasir dan melakukan transaksi.
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate('/kasir/shift')}
+            className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-sm shadow-md shadow-indigo-500/20 transition-all cursor-pointer"
+          >
+            Buka Shift Sekarang
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-900 font-sans">
