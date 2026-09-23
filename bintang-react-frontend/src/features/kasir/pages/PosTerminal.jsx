@@ -4,7 +4,7 @@ import { Wallet } from 'lucide-react';
 import { useKasir } from '../context/KasirContext';
 import apiClient from '../../../api/apiClient';
 import { fetchAllPages } from '../../../utils/paginatedApi';
-import { notifyApiError, notifyError, notifySuccess } from '../../../utils/notify';
+import { notify, notifyApiError, notifyError, notifySuccess } from '../../../utils/notify';
 import { useAuth } from '../../../context/AuthContext';
 import { getPrintErrorMessage, printReceiptAfterRender } from '../../printing/services/printService';
 
@@ -32,6 +32,24 @@ const makeCheckoutKey = () => {
   if (window.crypto?.randomUUID) return window.crypto.randomUUID();
   const suffix = `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`.replace(/[^a-f0-9]/g, '').padEnd(12, '0').slice(-12);
   return `00000000-0000-4000-8000-${suffix}`;
+};
+
+// Popup peringatan stok menipis setelah transaksi (2026-09-24, instruksi
+// user) -- backend mengirim `stok_kritis` di response checkout (lihat
+// pos_services.stok_kritis_warnings), array kosong kalau tidak ada yang
+// tembus ambang minimum. Digabung jadi satu popup per transaksi (bukan
+// satu popup per item) supaya tidak membanjiri kasir kalau banyak item
+// sekaligus tembus ambang minimumnya.
+const tampilkanPeringatanStokKritis = (stokKritis) => {
+  if (!Array.isArray(stokKritis) || stokKritis.length === 0) return;
+  const daftar = stokKritis
+    .map((s) => `${s.nama}: sisa ${s.sisa} (ambang ${s.minimum})`)
+    .join(' | ');
+  notify({
+    type: 'warning',
+    title: stokKritis.length > 1 ? 'Stok Beberapa Produk Menipis' : 'Stok Produk Menipis',
+    message: daftar,
+  });
 };
 
 const itemReceiptNote = (item) => {
@@ -709,6 +727,8 @@ export default function PosTerminal({ onToggleSidebar }) {
         idempotency_key: paymentData.checkoutKey,
       });
 
+      tampilkanPeringatanStokKritis(res.data.stok_kritis);
+
       setLastTransaction({
         ...res.data,
         id: res.data.id,
@@ -809,6 +829,7 @@ export default function PosTerminal({ onToggleSidebar }) {
         spk: spkPayload,
       });
       const order = res.data;
+      tampilkanPeringatanStokKritis(order.stok_kritis);
       setLastTransaction({
         ...order,
         isOrderReceipt: true,

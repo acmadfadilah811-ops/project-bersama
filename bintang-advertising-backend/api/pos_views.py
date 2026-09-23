@@ -19,7 +19,7 @@ from . import pos_settings
 from . import spk
 from .permissions import IsOwnerManagerAdminOrKasir, scoped_by_unit_bisnis
 from .throttles import PasskeyRateThrottle
-from .pos_services import create_sale, void_sale
+from .pos_services import create_sale, void_sale, stok_kritis_warnings
 from .services.pos_receipt_whatsapp import (
     format_waktu_dokumen, hitung_total_diskon_resi, kirim_resi_pos_whatsapp,
 )
@@ -334,7 +334,16 @@ class POSSaleViewSet(viewsets.ModelViewSet):
                 if existing:
                     return Response(self.get_serializer(existing).data, status=status.HTTP_200_OK)
             raise
-        return Response(self.get_serializer(sale).data, status=status.HTTP_201_CREATED)
+        payload = self.get_serializer(sale).data
+        # Peringatan stok menipis (2026-09-24, instruksi user) -- kasir tidak
+        # dapat notifikasi apa pun saat stok tembus ambang minimum setelah
+        # transaksi. Dihitung di sini (bukan di create_sale()) supaya tidak
+        # mengubah kontrak return value create_sale, lihat docstring
+        # stok_kritis_warnings di pos_services.py.
+        payload['stok_kritis'] = stok_kritis_warnings(
+            (item.product, item.variant) for item in sale.items.select_related('product', 'variant').all()
+        )
+        return Response(payload, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], permission_classes=[IsOwnerManagerAdminOrKasir])
     @transaction.atomic

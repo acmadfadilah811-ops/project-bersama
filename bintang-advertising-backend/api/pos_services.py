@@ -715,6 +715,37 @@ def resolve_and_assign_payment_method(sale):
 
     return sale
 
+
+def stok_kritis_warnings(pairs):
+    """Peringatan stok menipis setelah transaksi (2026-09-24, instruksi user:
+    kasir tidak dapat notifikasi apa pun saat stok tembus ambang minimum).
+    `pairs`: iterable of (product, variant_or_None) yang baru saja terjual/
+    dipotong stoknya di transaksi ini. Dipanggil dari view SETELAH
+    create_sale()/checkout_pos() commit -- bukan bagian dari create_sale()
+    itu sendiri, supaya tidak mengubah kontrak return value (masih
+    mengembalikan objek sale/order apa adanya) dan bisa dipakai ulang oleh
+    alur Order (checkout_pos di views/orders.py) tanpa duplikasi logic."""
+    seen = set()
+    warnings = []
+    for product, variant in pairs:
+        if not product or not product.lacak_inventori:
+            continue
+        key = (product.id, variant.id if variant else None)
+        if key in seen:
+            continue
+        seen.add(key)
+        minimum = float(product.stok_minimum or 0)
+        if minimum <= 0:
+            continue
+        owner = variant or product
+        owner.refresh_from_db(fields=['qty_stok'])
+        sisa = float(owner.qty_stok or 0)
+        if sisa <= minimum:
+            nama = f"{product.nama} ({variant.nama_varian})" if variant else product.nama
+            warnings.append({'nama': nama, 'sisa': sisa, 'minimum': minimum})
+    return warnings
+
+
 def void_sale(*, sale_id, user):
     with transaction.atomic():
         sale = POSSale.objects.select_for_update().prefetch_related('items').get(pk=sale_id)

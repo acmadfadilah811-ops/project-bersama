@@ -30,6 +30,7 @@ from ..permissions import IsOwnerOrManager, IsOwnerManagerAdminOrKasir, IsOwnerM
 from users.models import SecurityAuditLog
 
 from .jobs import deduct_job_materials_if_needed
+from ..pos_services import stok_kritis_warnings
 
 logger = logging.getLogger(__name__)
 
@@ -678,6 +679,12 @@ class OrderViewSet(viewsets.ModelViewSet):
         jadwalkan_invoice_dp_otomatis(order.id)
         payload = OrderSerializer(order, context={'request': request}).data
         payload['jobs'] = jobs
+        # Peringatan stok menipis (2026-09-24, instruksi user) -- sama
+        # dengan POSSaleViewSet.create, lihat docstring stok_kritis_warnings
+        # di pos_services.py.
+        payload['stok_kritis'] = stok_kritis_warnings(
+            (item.product, item.variant) for item in order.items.select_related('product', 'variant').all()
+        )
         return Response(payload, status=status.HTTP_201_CREATED)
 
     def _ensure_write_role(self):
