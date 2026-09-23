@@ -35,11 +35,13 @@ function hitungRentang(mode) {
 }
 
 /**
- * Panel Laporan Produksi khusus SPV -- ringkasan data produksi NYATA
- * (JobBoard, lewat /laporan-produksi/ringkasan/) + form buat laporan
+ * Panel Laporan Produksi untuk SPV & Kordiv -- ringkasan data produksi
+ * NYATA (JobBoard, lewat /laporan-produksi/ringkasan/) + form buat laporan
  * target & kendala operasional manual (/laporan-produksi/target/).
- * Instruksi user 2026-09-23. Dirender di RingkasanTim.jsx, HANYA untuk
- * role spv (Kordiv tidak diminta ikut fitur ini).
+ * Instruksi user 2026-09-23, diperluas ke Kordiv 2026-09-24. Dirender di
+ * RingkasanTim.jsx untuk kedua role -- dropdown divisi (beban_divisi dari
+ * /jobs/ringkasan-tim/) otomatis cuma berisi 1 divisi untuk Kordiv (lazim
+ * 1 divisi sendiri) vs beberapa untuk SPV (lintas Kordiv/divisi).
  */
 export default function LaporanProduksiSpvPanel() {
   const [filterMode, setFilterMode] = useState('harian');

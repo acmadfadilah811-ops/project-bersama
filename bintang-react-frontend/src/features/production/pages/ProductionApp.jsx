@@ -177,6 +177,7 @@ export default function ProductionApp() {
     fetchPricelists,
     fetchDivisions,
     claimJobs,
+    assignJobsToStaff,
     startJob,
     forwardJob,
   } = useProductionData();
@@ -397,6 +398,8 @@ export default function ProductionApp() {
   // Kordiv, yang sekarang boleh klaim & kerjakan job sendiri juga (instruksi
   // user), bukan cuma assign ke staff bawahan. Diekstrak jadi fungsi supaya
   // tidak duplikat JSX di dua cabang renderPanel().
+  const isSupervisorRole = ['spv', 'kordiv'].includes(user?.role?.toLowerCase());
+
   const renderClaimPool = () => (
     <ClaimPool
       claimPool={claimPool}
@@ -410,6 +413,10 @@ export default function ProductionApp() {
       onPageSizeChange={(size) => { setClaimPoolPageSize(size); setClaimPoolPage(1); }}
       onClaimMany={handleClaimMany}
       loading={loading}
+      // SPV/Kordiv saja: bisa langsung tugaskan ke staff bawahan dari
+      // Antrean Global, bukan cuma klaim sendiri (instruksi user 2026-09-24).
+      staffOptions={isSupervisorRole ? staffList : []}
+      onAssignStaff={isSupervisorRole ? assignJobsToStaff : undefined}
     />
   );
 

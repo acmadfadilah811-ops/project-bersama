@@ -27,9 +27,9 @@ export default function RingkasanTim() {
         </p>
       </div>
       <KordivSpvTeamBoard role={role} />
-      {/* Laporan target & kendala operasional -- khusus SPV, instruksi user
-          2026-09-23. Kordiv tidak diminta ikut fitur ini. */}
-      {role === 'spv' && <LaporanProduksiSpvPanel />}
+      {/* Laporan target & kendala operasional -- SPV (2026-09-23) & Kordiv
+          (2026-09-24). */}
+      {['spv', 'kordiv'].includes(role) && <LaporanProduksiSpvPanel />}
     </div>
   );
 }

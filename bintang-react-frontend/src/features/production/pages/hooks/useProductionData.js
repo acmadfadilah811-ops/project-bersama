@@ -232,6 +232,28 @@ export default function useProductionData() {
     };
   };
 
+  // SPV/Kordiv menugaskan langsung ke staff bawahan dari Antrean Global
+  // (bukan cuma klaim untuk diri sendiri) -- instruksi user 2026-09-24.
+  // Sama seperti claimJobs: satu order bisa berisi beberapa job/item,
+  // dipanggil per-job lalu refetch sekali di akhir.
+  const assignJobsToStaff = async (jobIds, staffId) => {
+    const hasil = await Promise.allSettled(
+      jobIds.map((id) => apiClient.post(`/jobs/${id}/assign-staff/`, { staff_id: staffId })),
+    );
+    const gagal = hasil.filter((r) => r.status === 'rejected');
+    await refetchClaimPool(false);
+    if (gagal.length === 0) {
+      return { ok: true };
+    }
+    const pesanPertama = gagal[0]?.reason?.response?.data?.error || 'Gagal menugaskan staff.';
+    return {
+      ok: false,
+      error: gagal.length === jobIds.length
+        ? pesanPertama
+        : `${gagal.length} dari ${jobIds.length} item gagal ditugaskan: ${pesanPertama}`,
+    };
+  };
+
   const startJob = async (jobId) => {
     try {
       const res = await apiClient.post(`/jobs/${jobId}/start/`);
@@ -317,6 +339,7 @@ export default function useProductionData() {
     fetchPricelists,
     fetchDivisions,
     claimJobs,
+    assignJobsToStaff,
     startJob,
     completeJob,
     forwardJob,

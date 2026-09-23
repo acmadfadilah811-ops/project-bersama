@@ -1,7 +1,8 @@
-"""Laporan Produksi SPV: target & kendala operasional (input manual) +
-ringkasan data produksi nyata dari JobBoard. Instruksi user 2026-09-23,
-5 kriteria UAT: data nyata (bukan dummy), bisa dibuat SPV, jumlah selesai
-harus cocok dengan modul produksi, filter tanggal, scoping per divisi."""
+"""Laporan Produksi SPV & Kordiv: target & kendala operasional (input
+manual) + ringkasan data produksi nyata dari JobBoard. Instruksi user
+2026-09-23, 5 kriteria UAT: data nyata (bukan dummy), bisa dibuat SPV,
+jumlah selesai harus cocok dengan modul produksi, filter tanggal, scoping
+per divisi. Diperluas ke Kordiv 2026-09-24."""
 import datetime
 
 from django.contrib.auth import get_user_model
@@ -245,3 +246,58 @@ class ExportLaporanProduksiTests(APITestCase):
             res['Content-Type'],
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         )
+
+
+class LaporanTargetProduksiKordivTests(APITestCase):
+    """Kordiv diperluas ke fitur ini 2026-09-24 (sebelumnya SPV saja) --
+    perilakunya harus sama persis: dibatasi ke divisi tim bawahannya
+    sendiri, lewat get_subordinate_divisi_ids() yang sama."""
+
+    def setUp(self):
+        self.divisi_a = Divisi.objects.create(nama='Divisi A LTP Kordiv')
+        self.divisi_b = Divisi.objects.create(nama='Divisi B LTP Kordiv')
+        self.tahap_a = TahapProses.objects.create(nama='Cetak A Kordiv', divisi=self.divisi_a, urutan=1)
+        self.kordiv = User.objects.create_user(
+            username='kordiv_ltp', password='secret', role='kordiv', divisi=self.divisi_a,
+        )
+        self.kordiv_lain = User.objects.create_user(
+            username='kordiv_lain_ltp', password='secret', role='kordiv', divisi=self.divisi_b,
+        )
+        self.staff_a = User.objects.create_user(
+            username='staff_a_ltp_kordiv', password='secret', role='staff', divisi=self.divisi_a, atasan=self.kordiv,
+        )
+
+    def test_kordiv_bisa_buat_laporan_untuk_divisinya(self):
+        self.client.force_authenticate(self.kordiv)
+        res = self.client.post('/api/laporan-produksi/target/', {
+            'divisi': self.divisi_a.id, 'periode_tipe': 'mingguan',
+            'tanggal_mulai': '2026-09-21', 'tanggal_selesai': '2026-09-27', 'target_selesai': 20,
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.data)
+        self.assertEqual(res.data['dibuat_oleh'], self.kordiv.id)
+
+    def test_kordiv_tidak_bisa_buat_laporan_untuk_divisi_lain(self):
+        self.client.force_authenticate(self.kordiv)
+        res = self.client.post('/api/laporan-produksi/target/', {
+            'divisi': self.divisi_b.id, 'periode_tipe': 'mingguan',
+            'tanggal_mulai': '2026-09-21', 'tanggal_selesai': '2026-09-27', 'target_selesai': 20,
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_kordiv_hanya_lihat_laporan_divisinya_sendiri(self):
+        self.client.force_authenticate(self.kordiv_lain)
+        self.client.post('/api/laporan-produksi/target/', {
+            'divisi': self.divisi_b.id, 'periode_tipe': 'harian',
+            'tanggal_mulai': '2026-09-24', 'tanggal_selesai': '2026-09-24', 'target_selesai': 5,
+        }, format='json')
+
+        self.client.force_authenticate(self.kordiv)
+        res = self.client.get('/api/laporan-produksi/target/')
+        hasil = res.data['results'] if isinstance(res.data, dict) else res.data
+        divisi_ids = {row['divisi'] for row in hasil}
+        self.assertNotIn(self.divisi_b.id, divisi_ids)
+
+    def test_kordiv_bisa_export(self):
+        self.client.force_authenticate(self.kordiv)
+        res = self.client.get('/api/export/laporan-produksi/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)

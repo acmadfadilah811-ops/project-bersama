@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { Inbox, UserCheck, Ruler, Clipboard, AlertCircle, Layers, ClipboardList } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Inbox, UserCheck, UserPlus, Ruler, Clipboard, AlertCircle, Layers, ClipboardList } from 'lucide-react';
 import DeadlineBadge from '../../components/DeadlineBadge';
 
 /** Antrean Global Divisi -- job unassigned yang bisa diklaim staff di
@@ -18,8 +18,30 @@ export default function ClaimPool({
   claimPool, claimPoolCount = 0, onClaimMany, loading,
   tahapOptions = [], tahapFilter = '', onTahapFilterChange,
   page = 1, pageSize = 30, onPageChange, onPageSizeChange,
+  // SPV/Kordiv saja (instruksi user 2026-09-24): opsi langsung menugaskan
+  // ke staff bawahan dari sini, tanpa perlu pindah ke tab "Papan Kerja Tim".
+  // Staff biasa tidak dapat kedua prop ini, jadi UI-nya otomatis sembunyi.
+  staffOptions = [], onAssignStaff,
 }) {
   const totalPages = Math.max(1, Math.ceil(claimPoolCount / pageSize));
+  const [assignPilihan, setAssignPilihan] = useState({});
+  const [assigningKey, setAssigningKey] = useState(null);
+
+  const handleAssign = async (grup) => {
+    const staffId = assignPilihan[grup.key];
+    if (!staffId) return;
+    setAssigningKey(grup.key);
+    try {
+      const res = await onAssignStaff(grup.jobs.map((j) => j.id), staffId);
+      if (res && res.ok === false) {
+        alert(res.error || 'Gagal menugaskan staff.');
+      } else {
+        setAssignPilihan((prev) => { const next = { ...prev }; delete next[grup.key]; return next; });
+      }
+    } finally {
+      setAssigningKey(null);
+    }
+  };
 
   // Kelompokkan per order/transaksi (nomor_sumber + sumber) — sebelumnya
   // tiap job (= tiap item pesanan) dirender sebagai kartu lepas satu-satu,
@@ -214,7 +236,7 @@ export default function ClaimPool({
                   qty 2 dengan finishing beda per unit) butuh 2x klik klaim
                   padahal itu tetap satu pekerjaan/satu order yang sama (bug
                   ditemukan 2026-08-13). */}
-              <div className="px-3 py-2 bg-slate-50 border-t border-slate-100">
+              <div className="px-3 py-2 bg-slate-50 border-t border-slate-100 space-y-1.5">
                 <button
                   onClick={() => onClaimMany(grup.jobs.map((j) => j.id))}
                   className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold shadow-sm hover:shadow-md transition-all cursor-pointer border-none"
@@ -222,6 +244,28 @@ export default function ClaimPool({
                   <UserCheck size={13} />
                   {grup.jobs.length > 1 ? `Klaim Semua (${grup.jobs.length} Item)` : 'Klaim Pekerjaan'}
                 </button>
+                {staffOptions.length > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <select
+                      value={assignPilihan[grup.key] || ''}
+                      onChange={(e) => setAssignPilihan((prev) => ({ ...prev, [grup.key]: e.target.value }))}
+                      className="flex-1 min-w-0 text-[10.5px] border border-slate-200 rounded-md px-1.5 py-1 bg-white focus:outline-none"
+                    >
+                      <option value="">Tugaskan ke staff...</option>
+                      {staffOptions.map((s) => (
+                        <option key={s.id} value={s.id}>{s.username}</option>
+                      ))}
+                    </select>
+                    <button
+                      disabled={!assignPilihan[grup.key] || assigningKey === grup.key}
+                      onClick={() => handleAssign(grup)}
+                      className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-md border border-indigo-200 text-indigo-700 hover:bg-indigo-50 text-[10.5px] font-bold disabled:opacity-40 cursor-pointer"
+                    >
+                      <UserPlus size={12} />
+                      {assigningKey === grup.key ? '...' : 'Tugaskan'}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))}

@@ -1,10 +1,11 @@
-"""Laporan Produksi untuk SPV: target & kendala operasional (input manual,
-LaporanTargetProduksiViewSet) + ringkasan data produksi nyata dari JobBoard
-(RingkasanProduksiSpvView, read-only). Instruksi user 2026-09-23.
+"""Laporan Produksi untuk SPV & Kordiv: target & kendala operasional (input
+manual, LaporanTargetProduksiViewSet) + ringkasan data produksi nyata dari
+JobBoard (RingkasanProduksiSpvView, read-only). Instruksi user 2026-09-23,
+diperluas ke Kordiv 2026-09-24 (sebelumnya SPV saja).
 
-Owner/Manager melihat semua divisi tanpa dibatasi; SPV dibatasi ke divisi
-tim bawahannya sendiri (get_subordinate_user_ids), sama seperti pola
-scoping JobBoardViewSet/ringkasan-tim yang sudah ada.
+Owner/Manager melihat semua divisi tanpa dibatasi; SPV/Kordiv dibatasi ke
+divisi tim bawahannya sendiri (get_subordinate_divisi_ids), sama seperti
+pola scoping JobBoardViewSet/ringkasan-tim yang sudah ada.
 """
 from django.db.models import Count, Q
 from django.http import HttpResponse
@@ -27,7 +28,7 @@ def _scoped_laporan_qs(user, params):
     ViewSet DAN export, supaya keduanya selalu menampilkan baris yang
     sama persis (tidak boleh menyimpang)."""
     qs = LaporanTargetProduksi.objects.select_related('dibuat_oleh', 'divisi').order_by('-tanggal_mulai', '-id')
-    if user.role == 'spv':
+    if user.role in ('spv', 'kordiv'):
         divisi_ids = get_subordinate_divisi_ids(user)
         qs = qs.filter(Q(dibuat_oleh=user) | Q(divisi_id__in=divisi_ids))
 
@@ -48,8 +49,8 @@ def _scoped_laporan_qs(user, params):
 
 class LaporanTargetProduksiViewSet(viewsets.ModelViewSet):
     """
-    GET    /api/laporan-produksi/target/            — owner/manager: semua; SPV: milik sendiri + divisi tim bawahannya
-    POST   /api/laporan-produksi/target/             — owner/manager/SPV
+    GET    /api/laporan-produksi/target/            — owner/manager: semua; SPV/Kordiv: milik sendiri + divisi tim bawahannya
+    POST   /api/laporan-produksi/target/             — owner/manager/SPV/Kordiv
     PATCH  /api/laporan-produksi/target/{id}/        — pembuat laporan atau owner/manager
     DELETE /api/laporan-produksi/target/{id}/        — pembuat laporan atau owner/manager
     """
@@ -62,7 +63,7 @@ class LaporanTargetProduksiViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         user = self.request.user
         divisi = serializer.validated_data.get('divisi')
-        if user.role == 'spv' and divisi is not None:
+        if user.role in ('spv', 'kordiv') and divisi is not None:
             if divisi.id not in get_subordinate_divisi_ids(user):
                 raise PermissionDenied('Anda hanya dapat membuat laporan untuk divisi tim Anda sendiri.')
         serializer.save(dibuat_oleh=user)
@@ -70,17 +71,17 @@ class LaporanTargetProduksiViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         instance = self.get_object()
         user = self.request.user
-        if user.role == 'spv' and instance.dibuat_oleh_id != user.id:
+        if user.role in ('spv', 'kordiv') and instance.dibuat_oleh_id != user.id:
             raise PermissionDenied('Anda hanya dapat mengubah laporan yang Anda buat sendiri.')
         divisi = serializer.validated_data.get('divisi', instance.divisi)
-        if user.role == 'spv' and divisi is not None:
+        if user.role in ('spv', 'kordiv') and divisi is not None:
             if divisi.id not in get_subordinate_divisi_ids(user):
                 raise PermissionDenied('Anda hanya dapat membuat laporan untuk divisi tim Anda sendiri.')
         serializer.save()
 
     def perform_destroy(self, instance):
         user = self.request.user
-        if user.role == 'spv' and instance.dibuat_oleh_id != user.id:
+        if user.role in ('spv', 'kordiv') and instance.dibuat_oleh_id != user.id:
             raise PermissionDenied('Anda hanya dapat menghapus laporan yang Anda buat sendiri.')
         instance.delete()
 
@@ -106,7 +107,7 @@ class RingkasanProduksiSpvView(APIView):
 
         user = request.user
         scope_pic_ids = None
-        if user.role == 'spv':
+        if user.role in ('spv', 'kordiv'):
             scope_pic_ids = get_subordinate_user_ids(user)
 
         selesai_qs = JobBoard.objects.filter(
