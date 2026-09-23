@@ -91,6 +91,14 @@ class Product(models.Model):
     maksimal_pesanan = models.PositiveIntegerField(default=0, help_text="0 = tidak dibatasi")
 
     lacak_inventori = models.BooleanField(default=True)
+    # Keterangan stok (qty_stok) di kartu katalog Kasir POS Terminal, diatur
+    # per-produk (instruksi user 2026-09-24) -- terpisah dari lacak_inventori
+    # (yang menentukan apakah stok BENAR-BENAR dipotong saat transaksi).
+    # Produk custom/made-to-order tanpa stok bermakna bisa dimatikan di sini
+    # tanpa mematikan lacak_inventori-nya.
+    tampilkan_stok_pos = models.BooleanField(
+        default=True, help_text='Tampilkan keterangan stok di kartu katalog Kasir POS Terminal',
+    )
     rack = models.CharField(max_length=100, blank=True, default='', help_text="Lokasi rak penyimpanan")
     qty_stok = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     on_hold_qty = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, help_text="Qty stok yang sedang ditahan/dipesan")

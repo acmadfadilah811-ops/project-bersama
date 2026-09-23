@@ -310,6 +310,9 @@ export default function ProductDetailPage({ product, onBack, onUpdated, categori
 
   // Inventori section edit states
   const [lacakInventoriEdit, setLacakInventoriEdit] = useState(false);
+  // Keterangan stok di kartu Kasir POS Terminal -- terpisah dari
+  // lacakInventoriEdit (2026-09-24, lihat catatan di model Product).
+  const [tampilkanStokPosEdit, setTampilkanStokPosEdit] = useState(true);
   const [stokMinimumEdit, setStokMinimumEdit] = useState(5);
   const [onHoldQtyEdit, setOnHoldQtyEdit] = useState(0);
   const [satuanEdit, setSatuanEdit] = useState('pcs');
@@ -647,6 +650,7 @@ export default function ProductDetailPage({ product, onBack, onUpdated, categori
 
   const startEditInventori = () => {
     setLacakInventoriEdit(!!product.lacak_inventori);
+    setTampilkanStokPosEdit(product.tampilkan_stok_pos !== false);
     setStokMinimumEdit(product.stok_minimum !== null && product.stok_minimum !== undefined ? product.stok_minimum : 5);
     setOnHoldQtyEdit(product.on_hold_qty !== null && product.on_hold_qty !== undefined ? product.on_hold_qty : 0);
     setSatuanEdit(product.satuan || 'pcs');
@@ -660,6 +664,7 @@ export default function ProductDetailPage({ product, onBack, onUpdated, categori
     try {
       const payload = {
         lacak_inventori: lacakInventoriEdit,
+        tampilkan_stok_pos: tampilkanStokPosEdit,
         stok_minimum: parseFloat(stokMinimumEdit) || 0,
         satuan: satuanEdit,
       };
@@ -1784,6 +1789,28 @@ export default function ProductDetailPage({ product, onBack, onUpdated, categori
                   </div>
                 </div>
 
+                {/* Tampilkan Stok di Kasir POS */}
+                <div style={{ padding: '8px 0 10px 0' }}>
+                  <div style={{ fontSize: 13, color: '#64748b', marginBottom: 8 }}>
+                    Tampilkan Stok di Kasir POS <span style={{ fontWeight: 400 }}>(keterangan qty stok muncul di kartu katalog Terminal Kasir)</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <label className="pi-switch">
+                      <input
+                        type="checkbox"
+                        checked={tampilkanStokPosEdit}
+                        onChange={(e) => setTampilkanStokPosEdit(e.target.checked)}
+                      />
+                      <span className="pi-slider">
+                        <span className="pi-slider-text">{tampilkanStokPosEdit ? 'Ya' : 'Tidak'}</span>
+                      </span>
+                    </label>
+                    <span style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>
+                      {tampilkanStokPosEdit ? 'Ya' : 'Tidak'}
+                    </span>
+                  </div>
+                </div>
+
                 {/* On hold qty */}
                 <div style={{ padding: '8px 0 10px 0' }}>
                   <div style={{ fontSize: 13, color: '#64748b', marginBottom: 6 }}>
@@ -1896,6 +1923,12 @@ export default function ProductDetailPage({ product, onBack, onUpdated, categori
                 <div style={{ padding: '8px 0 10px 0' }}>
                   <div style={{ fontSize: 13, color: '#64748b', marginBottom: 4 }}>Lacak Inventori</div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{yaTidak(product.lacak_inventori)}</div>
+                </div>
+
+                {/* Tampilkan Stok di Kasir POS */}
+                <div style={{ padding: '8px 0 10px 0' }}>
+                  <div style={{ fontSize: 13, color: '#64748b', marginBottom: 4 }}>Tampilkan Stok di Kasir POS</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{yaTidak(product.tampilkan_stok_pos !== false)}</div>
                 </div>
 
                 {/* On hold qty */}

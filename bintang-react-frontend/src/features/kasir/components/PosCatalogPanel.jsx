@@ -187,6 +187,17 @@ export default function PosCatalogPanel({
                       <h5 className="font-bold text-xs leading-tight text-slate-800 h-[30px] overflow-hidden break-words">
                         {item.nama}
                       </h5>
+                      {/* Keterangan stok -- diatur per-produk lewat toggle
+                          "Tampilkan Stok di Kasir POS" (Produk & Inventori),
+                          2026-09-24. Cuma untuk produk tanpa varian & yang
+                          memang melacak inventori -- qty_stok di level produk
+                          tidak berarti untuk produk bervarian (tiap varian
+                          punya stok sendiri, tidak diagregasi di sini). */}
+                      {!showingPackages && !item.has_variant && item.lacak_inventori && item.tampilkan_stok_pos !== false && (
+                        <div className={`text-[10px] font-bold mt-0.5 ${Number(item.qty_stok) > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          Stok: {Number(item.qty_stok) || 0}
+                        </div>
+                      )}
                       <div className="text-right text-[11px] leading-tight font-extrabold text-slate-900 mt-1">
                         {Number(hargaDisplay).toLocaleString('id-ID')}
                       </div>
