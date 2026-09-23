@@ -91,6 +91,25 @@ class IsOwnerManagerAdminKasirSpvKordiv(BasePermission):
             getattr(request.user, 'role', '') in ['owner', 'manager', 'admin', 'kasir', 'spv', 'kordiv']
         )
 
+class IsOwnerManagerAdminOrSupervisorReadOnly(BasePermission):
+    """
+    Owner/Manager/Admin: akses penuh (baca+tulis, dijaga lebih ketat lagi di
+    CustomUserViewSet.check_permissions()). SPV/Kordiv: HANYA baca (GET) --
+    dibutuhkan supaya mereka bisa memuat daftar bawahannya sendiri untuk
+    dropdown pemilihan staff saat menugaskan SPK (SpkPublishModal,
+    ForwardJobModal). Scoping ke bawahan-saja dilakukan di
+    CustomUserViewSet.get_queryset(), BUKAN di sini -- kelas ini cuma
+    menjawab "boleh baca?", bukan "baca siapa saja?" (root cause 2026-09-23:
+    endpoint /api/users/ sebelumnya 403 total untuk SPV/Kordiv).
+    """
+    def has_permission(self, request, view):
+        role = getattr(request.user, 'role', '')
+        if not (request.user and request.user.is_authenticated):
+            return False
+        if role in ('owner', 'manager', 'admin'):
+            return True
+        return request.method in SAFE_METHODS and role in ('spv', 'kordiv')
+
 class IsOwnerManagerAdminOrKasir(BasePermission):
     """
     Hanya Owner, Manager, Admin, atau Kasir (Staff dilarang).

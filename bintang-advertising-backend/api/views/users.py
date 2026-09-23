@@ -10,7 +10,10 @@ from django.utils import timezone
 
 from ..models import CustomUser, Divisi, UnitBisnis, ShiftTiming, JobBoard
 from ..serializers import CustomUserSerializer, DivisiSerializer, UnitBisnisSerializer, ShiftTimingSerializer
-from ..permissions import IsOwnerManagerOrAdmin, IsOwnerOrManager, IsOwnerManagerAdminOrReadOnly, scoped_by_unit_bisnis
+from ..permissions import (
+    IsOwnerOrManager, IsOwnerManagerAdminOrReadOnly,
+    IsOwnerManagerAdminOrSupervisorReadOnly, get_subordinate_user_ids, scoped_by_unit_bisnis,
+)
 from users.models import SecurityAuditLog
 from users.password_rules import cek_sandi_baru
 from users.views import buka_kunci_login
@@ -25,7 +28,7 @@ class CustomUserViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == 'me':
             return [IsAuthenticated()]
-        return [IsAuthenticated(), IsOwnerManagerOrAdmin()]
+        return [IsAuthenticated(), IsOwnerManagerAdminOrSupervisorReadOnly()]
 
     def check_permissions(self, request):
         super().check_permissions(request)
@@ -62,6 +65,12 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         role = self.request.query_params.get('role')
         if role:
             queryset = queryset.filter(role=role)
+        # SPV/Kordiv cuma boleh baca (lihat get_permissions) DAN cuma boleh
+        # lihat bawahannya sendiri (rekursif) -- bukan seluruh direktori
+        # karyawan. owner/manager/admin tidak difilter (lihat direktori penuh).
+        requester_role = getattr(self.request.user, 'role', None)
+        if requester_role in ('spv', 'kordiv'):
+            queryset = queryset.filter(id__in=get_subordinate_user_ids(self.request.user))
         return queryset
 
     @action(detail=False, methods=['get', 'patch'], url_path='me')
