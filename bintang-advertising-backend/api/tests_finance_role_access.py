@@ -11,6 +11,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from api.customer_models import Customer, Supplier
+from api.models import Order
 from api.product_models import Purchase
 
 User = get_user_model()
@@ -225,4 +226,48 @@ class CustomerSupplierAksesFinanceTests(APITestCase):
     def test_staff_tetap_ditolak_supplier(self):
         self.client.force_authenticate(self.staff)
         res = self.client.get('/api/suppliers/')
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class OrderPiutangAksesFinanceTests(APITestCase):
+    """Halaman Piutang (Semua Piutang, Pelanggan Jatuh Tempo) pakai
+    /orders/ -- get_queryset() sebelumnya menyaring Admin/SPV Finance
+    seperti staff produksi (hanya order yang PIC-nya dirinya sendiri),
+    jadi diam-diam selalu kosong. perform_update() juga blokir SEMUA role
+    non owner/manager/admin/kasir, termasuk Admin Finance yang seharusnya
+    boleh ubah jatuh_tempo (2026-09-24). Hierarki: Admin Finance eksekutor
+    sempit (cuma field jatuh_tempo), SPV Finance read-only penuh."""
+
+    def setUp(self):
+        self.admin_finance = User.objects.create_user(username='adminfin_ord', password='secret', role='admin_finance')
+        self.spv_finance = User.objects.create_user(username='spvfin_ord', password='secret', role='spv_finance')
+        self.order = Order.objects.create(nomor_wa='08123456789', nama='Pelanggan Uji Piutang')
+
+    def test_admin_finance_melihat_order_bukan_daftar_kosong(self):
+        self.client.force_authenticate(self.admin_finance)
+        res = self.client.get('/api/orders/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        rows = res.data['results'] if isinstance(res.data, dict) else res.data
+        self.assertIn(self.order.id, [row['id'] for row in rows])
+
+    def test_spv_finance_melihat_order_bukan_daftar_kosong(self):
+        self.client.force_authenticate(self.spv_finance)
+        res = self.client.get('/api/orders/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        rows = res.data['results'] if isinstance(res.data, dict) else res.data
+        self.assertIn(self.order.id, [row['id'] for row in rows])
+
+    def test_admin_finance_bisa_ubah_jatuh_tempo(self):
+        self.client.force_authenticate(self.admin_finance)
+        res = self.client.patch(f'/api/orders/{self.order.id}/', {'jatuh_tempo': '2026-10-15'}, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK, res.content)
+
+    def test_admin_finance_tidak_bisa_ubah_field_lain(self):
+        self.client.force_authenticate(self.admin_finance)
+        res = self.client.patch(f'/api/orders/{self.order.id}/', {'nama': 'Diubah Admin Finance'}, format='json')
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_spv_finance_tidak_bisa_ubah_jatuh_tempo(self):
+        self.client.force_authenticate(self.spv_finance)
+        res = self.client.patch(f'/api/orders/{self.order.id}/', {'jatuh_tempo': '2026-10-15'}, format='json')
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)

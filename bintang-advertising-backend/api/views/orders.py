@@ -161,7 +161,10 @@ class OrderViewSet(viewsets.ModelViewSet):
         # pic_staff di bawah ditujukan untuk staff produksi, yang memang hanya
         # boleh melihat pekerjaannya sendiri. Tanpa kasir di daftar ini, semua
         # layar kasir yang membaca /orders/ menerima daftar kosong.
-        if user.role in ['owner', 'manager', 'admin', 'kasir']:
+        # Admin/SPV Finance (2026-09-24) ditambahkan sama alasannya -- mereka
+        # bukan PIC job (JobBoard.pic_staff), jadi tanpa ini halaman Piutang
+        # (Semua Piutang, Pelanggan Jatuh Tempo) diam-diam selalu kosong.
+        if user.role in ['owner', 'manager', 'admin', 'kasir', 'admin_finance', 'spv_finance']:
             return base_qs
         my_order_ids = JobBoard.objects.filter(
             pic_staff=user
@@ -663,7 +666,20 @@ class OrderViewSet(viewsets.ModelViewSet):
             raise PermissionDenied('Anda tidak memiliki izin untuk mengubah pesanan.')
 
     def perform_update(self, serializer):
-        self._ensure_write_role()
+        # Admin Finance (2026-09-24): akses sempit HANYA untuk ubah
+        # jatuh_tempo lewat Piutang > Pelanggan Jatuh Tempo -- BUKAN full
+        # write role Order (itu tetap owner/manager/admin/kasir lewat
+        # _ensure_write_role, dipakai bareng bayar/selesaikan/batalkan/retur,
+        # sengaja TIDAK disentuh, R2). SPV Finance TIDAK ditambahkan di sini
+        # (keputusan user: SPV Finance read-only di semua aksi tulis
+        # Akuntansi Internal, Admin Finance satu-satunya eksekutor).
+        if self.request.user.role == 'admin_finance':
+            allowed_fields = {'jatuh_tempo'}
+            if set(serializer.validated_data.keys()) - allowed_fields:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied('Admin Finance hanya dapat mengubah tanggal jatuh tempo pesanan di sini.')
+        else:
+            self._ensure_write_role()
         # 'batal'/'selesai' WAJIB lewat /batalkan/ atau /selesaikan/ (pemulihan
         # stok FIFO + jurnal pembalik/HPP — lihat order_actions.py). PATCH
         # langsung ke field ini akan menimpa status TANPA efek samping itu
