@@ -978,7 +978,9 @@ class JobBoard(models.Model):
     order_item = models.ForeignKey(OrderItem, on_delete=models.CASCADE, null=True, blank=True, related_name='jobs')
     pos_sale_item = models.ForeignKey('POSSaleItem', on_delete=models.CASCADE, null=True, blank=True, related_name='jobs')
     tahap = models.ForeignKey(TahapProses, on_delete=models.SET_NULL, null=True, related_name='jobs')
-    pic_staff = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, limit_choices_to={'role': 'staff'}, related_name='my_tasks')
+    # SPV/Kordiv boleh jadi pic_staff sejak 2026-09-23 (instruksi user:
+    # mereka bisa klaim & kerjakan job sendiri, bukan cuma assign ke staff).
+    pic_staff = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, limit_choices_to={'role__in': ['staff', 'spv', 'kordiv']}, related_name='my_tasks')
     status_pekerjaan = models.CharField(max_length=20, choices=STATUS_JOB_CHOICES, default='antrean', db_index=True) 
     deadline = models.DateField(null=True, blank=True, help_text='Batas tanggal penyelesaian SPK')
     

@@ -393,6 +393,45 @@ export default function ProductionApp() {
     }
   };
 
+  // ClaimPool/KanbanPersonal -- dipakai staff DAN (sejak 2026-09-23) SPV/
+  // Kordiv, yang sekarang boleh klaim & kerjakan job sendiri juga (instruksi
+  // user), bukan cuma assign ke staff bawahan. Diekstrak jadi fungsi supaya
+  // tidak duplikat JSX di dua cabang renderPanel().
+  const renderClaimPool = () => (
+    <ClaimPool
+      claimPool={claimPool}
+      claimPoolCount={claimPoolCount}
+      tahapOptions={tahapList.filter((t) => t.divisi === user?.divisi)}
+      tahapFilter={claimPoolTahap}
+      onTahapFilterChange={setClaimPoolTahap}
+      page={claimPoolPage}
+      pageSize={claimPoolPageSize}
+      onPageChange={setClaimPoolPage}
+      onPageSizeChange={(size) => { setClaimPoolPageSize(size); setClaimPoolPage(1); }}
+      onClaimMany={handleClaimMany}
+      loading={loading}
+    />
+  );
+
+  const renderKanbanPersonal = () => (
+    <KanbanPersonal
+      category={kanbanCategory}
+      activeJobs={jobs}
+      doneJobs={doneJobs}
+      doneJobsCount={doneJobsCount}
+      donePage={donePage}
+      donePageSize={donePageSize}
+      doneDateFrom={doneDateFrom}
+      doneDateTo={doneDateTo}
+      onDonePageChange={setDonePage}
+      onDoneDateFromChange={setDoneDateFrom}
+      onDoneDateToChange={setDoneDateTo}
+      onSelectJob={(job) => setSelectedWorkspaceJob(job)}
+      onStart={handleStart}
+      onComplete={handleComplete}
+    />
+  );
+
   // Render current panel based on active tab
   const renderPanel = () => {
     if (isAdminMode) {
@@ -432,11 +471,15 @@ export default function ProductionApp() {
           return <GlobalListPanel />;
       }
     } else if (['spv', 'kordiv'].includes(user?.role?.toLowerCase())) {
-      // SPV/Kordiv: assign job langsung ke staff bawahan tanpa perlu klaim
-      // sendiri dulu -- sebelumnya dilempar ke ClaimPool/KanbanPersonal
-      // (dirancang utk staff yang mengerjakan sendiri), padahal SPV/Kordiv
-      // tidak pernah jadi pic_staff (bug dilaporkan user 2026-09-23).
+      // SPV/Kordiv: bisa assign job ke staff bawahan (Papan Kerja Tim) DAN
+      // klaim & kerjakan job sendiri (Antrean Global/Pekerjaan Saya, reuse
+      // komponen staff) -- instruksi user 2026-09-23, sebelumnya cuma
+      // assign yang tersedia.
       switch (activeTab) {
+        case 'claim_pool':
+          return renderClaimPool();
+        case 'kanban_personal':
+          return renderKanbanPersonal();
         case 'logs':
           return <ActivityLogsPanel logs={logs} />;
         case 'tim_saya':
@@ -447,60 +490,15 @@ export default function ProductionApp() {
       // Staff Mode Panels
       switch (activeTab) {
         case 'claim_pool':
-          return (
-            <ClaimPool
-              claimPool={claimPool}
-              claimPoolCount={claimPoolCount}
-              tahapOptions={tahapList.filter((t) => t.divisi === user?.divisi)}
-              tahapFilter={claimPoolTahap}
-              onTahapFilterChange={setClaimPoolTahap}
-              page={claimPoolPage}
-              pageSize={claimPoolPageSize}
-              onPageChange={setClaimPoolPage}
-              onPageSizeChange={(size) => { setClaimPoolPageSize(size); setClaimPoolPage(1); }}
-              onClaimMany={handleClaimMany}
-              loading={loading}
-            />
-          );
+          return renderClaimPool();
         case 'kanban_personal':
-          return (
-            <KanbanPersonal
-              category={kanbanCategory}
-              activeJobs={jobs}
-              doneJobs={doneJobs}
-              doneJobsCount={doneJobsCount}
-              donePage={donePage}
-              donePageSize={donePageSize}
-              doneDateFrom={doneDateFrom}
-              doneDateTo={doneDateTo}
-              onDonePageChange={setDonePage}
-              onDoneDateFromChange={setDoneDateFrom}
-              onDoneDateToChange={setDoneDateTo}
-              onSelectJob={(job) => setSelectedWorkspaceJob(job)}
-              onStart={handleStart}
-              onComplete={handleComplete}
-            />
-          );
+          return renderKanbanPersonal();
         case 'log_mesin_saya':
           return <LogPenggunaanMesinPanel mode="staff" currentUser={user} />;
         case 'logs':
           return <ActivityLogsPanel logs={logs} />;
         default:
-          return (
-            <ClaimPool
-              claimPool={claimPool}
-              claimPoolCount={claimPoolCount}
-              tahapOptions={tahapList.filter((t) => t.divisi === user?.divisi)}
-              tahapFilter={claimPoolTahap}
-              onTahapFilterChange={setClaimPoolTahap}
-              page={claimPoolPage}
-              pageSize={claimPoolPageSize}
-              onPageChange={setClaimPoolPage}
-              onPageSizeChange={(size) => { setClaimPoolPageSize(size); setClaimPoolPage(1); }}
-              onClaimMany={handleClaimMany}
-              loading={loading}
-            />
-          );
+          return renderClaimPool();
       }
     }
   };
@@ -533,6 +531,8 @@ export default function ProductionApp() {
   } else if (['spv', 'kordiv'].includes(roleLower)) {
     menuItems = [
       { id: 'tim_saya', label: 'Papan Kerja Tim', icon: Users },
+      { id: 'claim_pool', label: 'Antrean Global', icon: Inbox },
+      { id: 'kanban_personal', label: 'Pekerjaan Saya', icon: ClipboardList },
       { id: 'logs', label: 'Log Aktivitas', icon: Bell },
     ];
   } else {

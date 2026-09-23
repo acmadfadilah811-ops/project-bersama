@@ -16,7 +16,10 @@ from ..models import (
     PenggunaanMesin,
 )
 from ..serializers import JobBoardSerializer, TahapProsesSerializer
-from ..permissions import IsClockedIn, IsOwnerManagerAdminOrReadOnly, get_subordinate_user_ids, scoped_by_unit_bisnis
+from ..permissions import (
+    IsClockedIn, IsOwnerManagerAdminOrReadOnly, get_subordinate_divisi_ids, get_subordinate_user_ids,
+    scoped_by_unit_bisnis,
+)
 
 from .inventory import record_material_consumption_to_general_ledger
 
@@ -457,24 +460,29 @@ class JobBoardViewSet(viewsets.ModelViewSet):
             scoped_qs = base_qs
         # SPV/Kordiv: bisa lihat & kelola job milik SELURUH bawahannya
         # (rekursif, lihat get_subordinate_user_ids) -- cabang organisasi
-        # sendiri saja, tidak pernah divisi/cabang SPV lain. Mereka sendiri
-        # tidak pernah jadi pic_staff (JobBoard.pic_staff dibatasi
-        # role='staff'), jadi tidak perlu klausa "job miliknya sendiri".
+        # sendiri saja, tidak pernah divisi/cabang SPV lain. `pic_staff_id__in`
+        # sudah otomatis mencakup job milik SPV/Kordiv sendiri juga, karena
+        # get_subordinate_user_ids() menyertakan id user itu sendiri -- sejak
+        # 2026-09-23 SPV/Kordiv BOLEH jadi pic_staff (klaim & kerjakan job
+        # sendiri seperti staff, instruksi user), bukan cuma mengawasi/assign.
         # DITAMBAH: job yang BELUM ditugaskan (pic_staff kosong) di divisi
-        # mereka sendiri -- tanpa ini, `pic_staff_id__in=[...]` tidak pernah
+        # TIM bawahannya -- tanpa ini, `pic_staff_id__in=[...]` tidak pernah
         # cocok dengan NULL, jadi Kordiv tidak pernah bisa lihat/assign job
         # unassigned sama sekali (gap ditemukan saat membangun fitur "Assign
         # Staff" Papan Kerja Kordiv, sama seperti aturan unassigned staff di
-        # bawah). SPV umumnya tidak py divisi tunggal (mengawasi beberapa
-        # Kordiv/divisi) -- kalau `user.divisi` kosong, cukup lingkup bawahan
-        # seperti sebelumnya, fail-open ke perilaku lama, bukan error.
+        # bawah). Sengaja pakai get_subordinate_divisi_ids(), BUKAN
+        # `user.divisi_id` -- SPV lazimnya TIDAK punya divisi sendiri
+        # (mengawasi beberapa Kordiv/divisi sekaligus), jadi `user.divisi_id`
+        # membuat SPV TIDAK PERNAH melihat job unassigned sama sekali (bug
+        # ditemukan 2026-09-23, sebelumnya cuma fail-open ke lingkup
+        # bawahan tanpa unassigned -- sekarang benar-benar scoped ke divisi
+        # tim, bukan dihilangkan).
         elif user.role in ('spv', 'kordiv'):
-            scoped_qs = base_qs.filter(pic_staff_id__in=get_subordinate_user_ids(user))
-            if user.divisi_id:
-                scoped_qs = base_qs.filter(
-                    Q(pic_staff_id__in=get_subordinate_user_ids(user)) |
-                    Q(pic_staff__isnull=True, tahap__divisi=user.divisi)
-                )
+            divisi_ids = get_subordinate_divisi_ids(user)
+            scoped_qs = base_qs.filter(
+                Q(pic_staff_id__in=get_subordinate_user_ids(user)) |
+                Q(pic_staff__isnull=True, tahap__divisi_id__in=divisi_ids)
+            )
         # Staff: bisa lihat job miliknya ATAU job unassigned di divisinya
         elif user.divisi:
             scoped_qs = base_qs.filter(
@@ -740,16 +748,26 @@ class JobBoardViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsClockedIn])
     def claim(self, request, pk=None):
-        """POST /api/jobs/{id}/claim/ — Staff mengklaim job unassigned milik divisinya"""
+        """POST /api/jobs/{id}/claim/ — Staff mengklaim job unassigned milik
+        divisinya. SPV/Kordiv boleh klaim & kerjakan job sendiri juga sejak
+        2026-09-23 (instruksi user), dicek terhadap divisi TIM bawahannya
+        (get_subordinate_divisi_ids) -- bukan `user.divisi` langsung, karena
+        SPV lazimnya tidak punya divisi sendiri (mengawasi beberapa
+        Kordiv/divisi sekaligus) dan sebagian akun Kordiv pun belum
+        ditandai divisi-nya."""
         job = self.get_object()
         user = request.user
-        
+
         if job.pic_staff:
             return Response({'error': f'Job sudah diambil oleh {job.pic_staff.username}.'}, status=status.HTTP_400_BAD_REQUEST)
-            
-        if not user.divisi or (job.tahap and job.tahap.divisi != user.divisi):
+
+        if user.role in ('spv', 'kordiv'):
+            divisi_ids = get_subordinate_divisi_ids(user)
+            if not job.tahap or job.tahap.divisi_id not in divisi_ids:
+                return Response({'error': 'Anda hanya dapat mengklaim pekerjaan dari divisi tim Anda sendiri.'}, status=status.HTTP_403_FORBIDDEN)
+        elif not user.divisi or (job.tahap and job.tahap.divisi != user.divisi):
             return Response({'error': 'Anda hanya dapat mengklaim pekerjaan dari divisi Anda sendiri.'}, status=status.HTTP_403_FORBIDDEN)
-            
+
         job.pic_staff = user
         job.status_pekerjaan = 'antrean'
         job.save()

@@ -52,6 +52,24 @@ def get_subordinate_user_ids(user):
     return collected
 
 
+def get_subordinate_divisi_ids(user):
+    """Divisi-divisi tempat bawahan (rekursif, termasuk diri sendiri) SPV/
+    Kordiv ini bekerja -- lihat get_subordinate_user_ids().
+
+    Dipakai sebagai pengganti `user.divisi_id` untuk scoping "job/laporan
+    di divisi tim saya", karena SPV lazimnya TIDAK punya `divisi` sendiri
+    (mengawasi beberapa Kordiv/divisi sekaligus) -- memakai `user.divisi`
+    langsung membuat SPV tidak pernah melihat job/laporan apa pun (bug
+    ditemukan 2026-09-23, lihat JobBoardViewSet.get_queryset()).
+    """
+    subordinate_ids = get_subordinate_user_ids(user)
+    return set(
+        CustomUser.objects.filter(id__in=subordinate_ids, divisi__isnull=False)
+        .values_list("divisi_id", flat=True)
+        .distinct()
+    )
+
+
 class IsOwnerOrManager(BasePermission):
     """
     Hanya Owner, Manager, atau Admin. Role kasir telah dikeluarkan.

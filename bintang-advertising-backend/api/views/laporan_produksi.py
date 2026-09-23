@@ -18,19 +18,8 @@ from rest_framework.views import APIView
 
 from ..laporan_produksi_models import LaporanTargetProduksi
 from ..laporan_produksi_serializers import LaporanTargetProduksiSerializer
-from ..models import CustomUser, Divisi, JobBoard
-from ..permissions import IsSpvOrOwnerManager, get_subordinate_user_ids
-
-
-def _divisi_ids_bawahan(user):
-    """Divisi-divisi tempat bawahan (rekursif) SPV ini bekerja -- dipakai
-    membatasi divisi mana yang boleh dipilih/dilihat SPV di laporan ini."""
-    subordinate_ids = get_subordinate_user_ids(user)
-    return set(
-        CustomUser.objects.filter(id__in=subordinate_ids, divisi__isnull=False)
-        .values_list('divisi_id', flat=True)
-        .distinct()
-    )
+from ..models import JobBoard
+from ..permissions import IsSpvOrOwnerManager, get_subordinate_divisi_ids, get_subordinate_user_ids
 
 
 def _scoped_laporan_qs(user, params):
@@ -39,7 +28,7 @@ def _scoped_laporan_qs(user, params):
     sama persis (tidak boleh menyimpang)."""
     qs = LaporanTargetProduksi.objects.select_related('dibuat_oleh', 'divisi').order_by('-tanggal_mulai', '-id')
     if user.role == 'spv':
-        divisi_ids = _divisi_ids_bawahan(user)
+        divisi_ids = get_subordinate_divisi_ids(user)
         qs = qs.filter(Q(dibuat_oleh=user) | Q(divisi_id__in=divisi_ids))
 
     divisi_param = params.get('divisi')
@@ -74,7 +63,7 @@ class LaporanTargetProduksiViewSet(viewsets.ModelViewSet):
         user = self.request.user
         divisi = serializer.validated_data.get('divisi')
         if user.role == 'spv' and divisi is not None:
-            if divisi.id not in _divisi_ids_bawahan(user):
+            if divisi.id not in get_subordinate_divisi_ids(user):
                 raise PermissionDenied('Anda hanya dapat membuat laporan untuk divisi tim Anda sendiri.')
         serializer.save(dibuat_oleh=user)
 
@@ -85,7 +74,7 @@ class LaporanTargetProduksiViewSet(viewsets.ModelViewSet):
             raise PermissionDenied('Anda hanya dapat mengubah laporan yang Anda buat sendiri.')
         divisi = serializer.validated_data.get('divisi', instance.divisi)
         if user.role == 'spv' and divisi is not None:
-            if divisi.id not in _divisi_ids_bawahan(user):
+            if divisi.id not in get_subordinate_divisi_ids(user):
                 raise PermissionDenied('Anda hanya dapat membuat laporan untuk divisi tim Anda sendiri.')
         serializer.save()
 

@@ -423,3 +423,96 @@ class RingkasanTimKordivBawahanSpvTests(APITestCase):
         res = self.client.get('/api/jobs/ringkasan-tim/')
         self.assertEqual(res.status_code, 200, res.content)
         self.assertEqual(res.data['kordiv_bawahan'], [])
+
+
+class SpvKordivKlaimKerjakanSendiriTests(APITestCase):
+    """Sejak 2026-09-23 (instruksi user): SPV/Kordiv boleh klaim & kerjakan
+    job sendiri juga, bukan cuma assign ke staff bawahan -- pic_staff jadi
+    akun SPV/Kordiv itu sendiri. Dua bug ditemukan & diperbaiki di sesi yang
+    sama: (1) get_queryset() unassigned job pakai `user.divisi` langsung
+    (SPV lazimnya kosong -> tidak pernah lihat job unassigned), (2)
+    claim() punya bug serupa terpisah. Keduanya sekarang pakai
+    get_subordinate_divisi_ids()."""
+
+    def setUp(self):
+        self.divisi = Divisi.objects.create(nama='Divisi Klaim Sendiri')
+        self.divisi_lain = Divisi.objects.create(nama='Divisi Klaim Sendiri Lain')
+        self.tahap = TahapProses.objects.create(nama='Tahap Klaim Sendiri', divisi=self.divisi, urutan=1)
+        self.tahap_lain = TahapProses.objects.create(nama='Tahap Klaim Sendiri Lain', divisi=self.divisi_lain, urutan=1)
+
+        # SPV SENGAJA tanpa divisi sendiri (kasus lazim: mengawasi lintas
+        # Kordiv/divisi) -- inti dari bug yang diperbaiki.
+        self.spv = User.objects.create_user(username='spv_klaim_sendiri', password='pw12345', role='spv')
+        self.kordiv = User.objects.create_user(
+            username='kordiv_klaim_sendiri', password='pw12345', role='kordiv', atasan=self.spv,
+        )
+        self.staff_bawahan_kordiv = User.objects.create_user(
+            username='staff_bawahan_kordiv_klaim', password='pw12345', role='staff',
+            divisi=self.divisi, atasan=self.kordiv,
+        )
+        Absensi.objects.create(staff=self.spv, tanggal=timezone.localdate(), jam_masuk=timezone.now())
+        Absensi.objects.create(staff=self.kordiv, tanggal=timezone.localdate(), jam_masuk=timezone.now())
+
+        order = Order.objects.create(id='ORD-KLAIM-SENDIRI-1', nomor_wa='08111111101', nama='Pelanggan Klaim Sendiri')
+        item = OrderItem.objects.create(order=order, jenis_produk='Item Klaim Sendiri', qty=1, harga_jual=10000)
+        self.job_di_divisi_tim = JobBoard.objects.create(
+            order_item=item, tahap=self.tahap, pic_staff=None, status_pekerjaan='antrean',
+        )
+        item2 = OrderItem.objects.create(order=order, jenis_produk='Item Klaim Sendiri Lain', qty=1, harga_jual=10000)
+        self.job_di_divisi_lain = JobBoard.objects.create(
+            order_item=item2, tahap=self.tahap_lain, pic_staff=None, status_pekerjaan='antrean',
+        )
+
+    def test_spv_tanpa_divisi_sendiri_tetap_lihat_job_unassigned_divisi_tim(self):
+        self.client.force_authenticate(self.spv)
+        res = self.client.get('/api/jobs/', {'unassigned': 'true'})
+        self.assertEqual(res.status_code, 200, res.content)
+        rows = res.data['results'] if isinstance(res.data, dict) else res.data
+        ids = {r['id'] for r in rows}
+        self.assertIn(self.job_di_divisi_tim.id, ids)
+        self.assertNotIn(self.job_di_divisi_lain.id, ids)
+
+    def test_spv_tanpa_divisi_sendiri_bisa_klaim_job_divisi_tim(self):
+        self.client.force_authenticate(self.spv)
+        res = self.client.post(f'/api/jobs/{self.job_di_divisi_tim.id}/claim/')
+        self.assertEqual(res.status_code, 200, res.content)
+        self.job_di_divisi_tim.refresh_from_db()
+        self.assertEqual(self.job_di_divisi_tim.pic_staff_id, self.spv.id)
+
+    def test_spv_tidak_bisa_klaim_job_di_luar_divisi_tim(self):
+        # get_object() sudah menyaring lewat get_queryset() (scoped ke tim)
+        # sebelum sempat masuk ke pengecekan role di dalam claim() -- job di
+        # luar timnya 404 (tidak pernah "ditemukan"), bukan 403.
+        self.client.force_authenticate(self.spv)
+        res = self.client.post(f'/api/jobs/{self.job_di_divisi_lain.id}/claim/')
+        self.assertEqual(res.status_code, 404, res.content)
+
+    def test_kordiv_bisa_klaim_job_divisi_timnya(self):
+        self.client.force_authenticate(self.kordiv)
+        res = self.client.post(f'/api/jobs/{self.job_di_divisi_tim.id}/claim/')
+        self.assertEqual(res.status_code, 200, res.content)
+
+    def test_spv_klaim_lalu_mulai_lalu_selesaikan_job_sendiri(self):
+        """Alur penuh: klaim -> mulai -> selesai, dengan nama SPV sebagai
+        pic_staff -- persis seperti alur staff biasa."""
+        self.client.force_authenticate(self.spv)
+        claim_res = self.client.post(f'/api/jobs/{self.job_di_divisi_tim.id}/claim/')
+        self.assertEqual(claim_res.status_code, 200, claim_res.content)
+
+        start_res = self.client.post(f'/api/jobs/{self.job_di_divisi_tim.id}/start/')
+        self.assertEqual(start_res.status_code, 200, start_res.content)
+        self.job_di_divisi_tim.refresh_from_db()
+        self.assertEqual(self.job_di_divisi_tim.status_pekerjaan, 'dikerjakan')
+
+        forward_res = self.client.post(f'/api/jobs/{self.job_di_divisi_tim.id}/forward/', {'aksi': 'selesai'}, format='json')
+        self.assertEqual(forward_res.status_code, 200, forward_res.content)
+        self.job_di_divisi_tim.refresh_from_db()
+        self.assertEqual(self.job_di_divisi_tim.status_pekerjaan, 'selesai')
+        self.assertEqual(self.job_di_divisi_tim.pic_staff_id, self.spv.id)
+
+    def test_job_sudah_diklaim_orang_lain_ditolak(self):
+        self.job_di_divisi_tim.pic_staff = self.staff_bawahan_kordiv
+        self.job_di_divisi_tim.save(update_fields=['pic_staff'])
+        self.client.force_authenticate(self.spv)
+        res = self.client.post(f'/api/jobs/{self.job_di_divisi_tim.id}/claim/')
+        self.assertEqual(res.status_code, 400, res.content)
