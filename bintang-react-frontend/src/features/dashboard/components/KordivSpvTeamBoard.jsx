@@ -12,7 +12,6 @@ import {
   Printer,
 } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
-import VoidRequestQueue from './VoidRequestQueue';
 
 const STATUS_BADGE = {
   antrean: 'bg-slate-100 text-slate-700 border-slate-200',
@@ -44,10 +43,10 @@ function formatDeadline(tanggal) {
 /**
  * Papan Kerja tim untuk Kordiv & SPV -- diselipkan di StaffDashboard.jsx
  * (bukan halaman terpisah) karena keduanya sudah berbagi dashboard itu.
- * SPV melihat & memproses antrean void request (VoidRequestQueue) --
- * Kordiv TIDAK LAGI, tahap Kordiv di alur void dihapus 2026-09-23
- * (instruksi user: void request langsung ke SPV Finance saja). Kedua role
- * tetap melihat & menugaskan job tim lewat /api/jobs/ +
+ * Antrean void request TIDAK ditampilkan di sini untuk role apa pun --
+ * dipindah khusus ke Papan Kerja SPV Finance (FinanceDashboard.jsx,
+ * VoidRequestQueue.jsx) 2026-09-23 atas instruksi user. Kordiv & SPV di
+ * sini cuma melihat & menugaskan job tim lewat /api/jobs/ +
  * /api/jobs/{id}/assign-staff/.
  */
 export default function KordivSpvTeamBoard({ role }) {
@@ -188,16 +187,8 @@ export default function KordivSpvTeamBoard({ role }) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
-        {/* Antrean Void Request -- khusus SPV (Kordiv tidak lagi terlibat
-            di alur void sejak 2026-09-23, lihat VoidRequestQueue.jsx). */}
-        {role === 'spv' && (
-          <div className="lg:col-span-5">
-            <VoidRequestQueue />
-          </div>
-        )}
-
         {/* Distribusi Job */}
-        <div className={`${role === 'spv' ? 'lg:col-span-7' : 'lg:col-span-12'} bg-white rounded-lg border border-slate-200 shadow-sm flex flex-col`}>
+        <div className="lg:col-span-12 bg-white rounded-lg border border-slate-200 shadow-sm flex flex-col">
           <div className="p-3 border-b border-slate-100 space-y-2">
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-bold text-slate-900">Distribusi Job Tim ({filteredJobs.length})</h2>

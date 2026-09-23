@@ -15,7 +15,7 @@ export default function RingkasanTim() {
   const role = user?.role;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 pt-6 pb-12 space-y-4">
+    <div className="max-w-[1600px] mx-auto px-4 pt-6 pb-12 space-y-4">
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
           <Users size={22} className="text-indigo-600" /> Papan Kerja Tim
