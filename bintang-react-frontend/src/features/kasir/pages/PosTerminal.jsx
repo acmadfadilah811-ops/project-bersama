@@ -4,7 +4,7 @@ import { Wallet, AlertTriangle, CheckCircle2, XCircle, Info, X } from 'lucide-re
 import { useKasir } from '../context/KasirContext';
 import apiClient from '../../../api/apiClient';
 import { fetchAllPages } from '../../../utils/paginatedApi';
-import { notify, notifyApiError, notifyError, notifySuccess } from '../../../utils/notify';
+import { notifyApiError, notifyError, notifySuccess } from '../../../utils/notify';
 import { useAuth } from '../../../context/AuthContext';
 import { useDynamicIsland } from '../../../context/DynamicIslandContext';
 import { getPrintErrorMessage, printReceiptAfterRender } from '../../printing/services/printService';
@@ -41,17 +41,14 @@ const makeCheckoutKey = () => {
 // tembus ambang minimum. Digabung jadi satu popup per transaksi (bukan
 // satu popup per item) supaya tidak membanjiri kasir kalau banyak item
 // sekaligus tembus ambang minimumnya.
-const tampilkanPeringatanStokKritis = (stokKritis) => {
-  if (!Array.isArray(stokKritis) || stokKritis.length === 0) return;
-  const daftar = stokKritis
-    .map((s) => `${s.nama}: sisa ${s.sisa} (ambang ${s.minimum})`)
-    .join(' | ');
-  notify({
-    type: 'warning',
-    title: stokKritis.length > 1 ? 'Stok Beberapa Produk Menipis' : 'Stok Produk Menipis',
-    message: daftar,
-  });
-};
+//
+// CATATAN (2026-09-24, revisi ke-2): sebelumnya popup ini numpang di pill
+// notifikasi kecil `activeNotification`/DynamicIsland, tapi kasir tetap
+// melaporkan tidak melihat apa pun -- dan user secara eksplisit minta popup
+// besar yang TIDAK dikaitkan dengan area topbar sama sekali ("kasir ngga ada
+// tempat notifikasinnya di bagian top bar"). Jadi sekarang state-nya berdiri
+// sendiri (`stokKritisModal`, lihat dalam komponen) dan dirender sebagai
+// modal blocking penuh, bukan lewat notify()/DynamicIsland.
 
 const itemReceiptNote = (item) => {
   const rows = [];
@@ -93,6 +90,11 @@ export default function PosTerminal({ onToggleSidebar }) {
   // supaya semua notify() di seluruh app otomatis kelihatan juga di sini,
   // tanpa perlu ubah pemanggilnya satu-satu.
   const { activeNotification, dismissNotification } = useDynamicIsland();
+  // Popup stok kritis (2026-09-24) -- BUKAN activeNotification/DynamicIsland
+  // di atas, sengaja berdiri sendiri supaya bisa dirender sebagai modal besar
+  // yang tidak bergantung pada topbar. Isi: array {nama, sisa, minimum} dari
+  // response checkout, null kalau tidak sedang ditampilkan.
+  const [stokKritisModal, setStokKritisModal] = useState(null);
   const {
     cart,
     addToCart,
@@ -737,7 +739,9 @@ export default function PosTerminal({ onToggleSidebar }) {
         idempotency_key: paymentData.checkoutKey,
       });
 
-      tampilkanPeringatanStokKritis(res.data.stok_kritis);
+      if (Array.isArray(res.data.stok_kritis) && res.data.stok_kritis.length > 0) {
+        setStokKritisModal(res.data.stok_kritis);
+      }
 
       setLastTransaction({
         ...res.data,
@@ -839,7 +843,9 @@ export default function PosTerminal({ onToggleSidebar }) {
         spk: spkPayload,
       });
       const order = res.data;
-      tampilkanPeringatanStokKritis(order.stok_kritis);
+      if (Array.isArray(order.stok_kritis) && order.stok_kritis.length > 0) {
+        setStokKritisModal(order.stok_kritis);
+      }
       setLastTransaction({
         ...order,
         isOrderReceipt: true,
@@ -997,6 +1003,53 @@ export default function PosTerminal({ onToggleSidebar }) {
             >
               <X size={14} />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Popup stok kritis (2026-09-24, revisi ke-2) -- modal blocking besar,
+          BUKAN pill activeNotification di atas, sesuai instruksi eksplisit
+          user: kasir tidak punya tempat notifikasi di topbar, jadi ini harus
+          berdiri sendiri di tengah layar dan wajib diklik "Mengerti" untuk
+          ditutup (tidak auto-hilang). */}
+      {stokKritisModal && (
+        <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl border-4 border-amber-500 bg-amber-950 shadow-2xl overflow-hidden">
+            <div className="flex items-center gap-3 px-6 pt-6 pb-4">
+              <div className="shrink-0 flex items-center justify-center w-12 h-12 rounded-full bg-amber-500/20">
+                <AlertTriangle size={28} className="text-amber-400" />
+              </div>
+              <div>
+                <div className="text-lg font-black text-white leading-tight">
+                  {stokKritisModal.length > 1 ? 'Stok Beberapa Produk Menipis' : 'Stok Produk Menipis'}
+                </div>
+                <div className="text-xs text-amber-200 mt-0.5">
+                  Segera lakukan restok atau laporkan ke gudang.
+                </div>
+              </div>
+            </div>
+            <div className="px-6 pb-4 space-y-2 max-h-64 overflow-y-auto">
+              {stokKritisModal.map((s, idx) => (
+                <div
+                  key={`${s.nama}-${idx}`}
+                  className="flex items-center justify-between gap-3 rounded-xl bg-amber-900/50 border border-amber-700/60 px-4 py-3"
+                >
+                  <span className="text-sm font-semibold text-white">{s.nama}</span>
+                  <span className="text-xs text-amber-200 whitespace-nowrap">
+                    Sisa <span className="font-bold text-white">{s.sisa}</span> (ambang {s.minimum})
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className="px-6 pb-6">
+              <button
+                type="button"
+                onClick={() => setStokKritisModal(null)}
+                className="w-full rounded-xl bg-amber-500 hover:bg-amber-400 text-amber-950 font-black text-sm py-3 cursor-pointer transition-colors"
+              >
+                Mengerti
+              </button>
+            </div>
           </div>
         </div>
       )}
