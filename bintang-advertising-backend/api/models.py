@@ -1447,6 +1447,11 @@ from .integration_models import *
 # Import model Penggunaan Mesin (Mesin, PenggunaanMesin, MaintenanceMesin)
 from .machine_models import *
 
+# Laporan Produksi SPV: target & kendala operasional per periode (lihat
+# laporan_produksi_models.py -- beda dari production_models.py yang soal
+# biaya produksi/BOM).
+from .laporan_produksi_models import *
+
 # Model Permintaan Bahan (Material Requisition) -- alur Kordiv/SPV -> gudang,
 # tidak mengubah stok/jurnal (lihat requisition_models.py).
 from .requisition_models import *

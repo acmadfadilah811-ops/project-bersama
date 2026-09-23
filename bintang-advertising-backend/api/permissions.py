@@ -164,6 +164,19 @@ class IsSpvFinanceOrOwnerManager(BasePermission):
         )
 
 
+class IsSpvOrOwnerManager(BasePermission):
+    """Khusus Laporan Produksi (target & kendala operasional, 2026-09-23) --
+    SPV adalah pembuat laporannya, Owner/Manager tetap bisa akses/override
+    langsung untuk melihat semua divisi. Scoping ke divisi bawahan SPV
+    sendiri dilakukan di get_queryset() view, BUKAN di sini."""
+    def has_permission(self, request, view):
+        return bool(
+            request.user and
+            request.user.is_authenticated and
+            getattr(request.user, 'role', '') in ('owner', 'manager', 'spv')
+        )
+
+
 class IsOwnerManagerAdminOrReadOnly(BasePermission):
     """
     Owner, Manager, Admin memiliki akses penuh (write/read).

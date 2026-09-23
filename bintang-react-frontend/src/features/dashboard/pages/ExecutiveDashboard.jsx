@@ -5,6 +5,7 @@ import {
   BarList, BarTerlaris, MonthlyTrendChart, SERIES, STATUS, StokBar, TrenChart, rupiah,
 } from '../components/ExecutiveCharts';
 import ExecutiveNav from '../components/ExecutiveNav';
+import LaporanProduksiOwnerSection from '../components/LaporanProduksiOwnerSection';
 
 /**
  * Dashboard eksekutif ("Ringkasan") — ringkasan lintas periode untuk
@@ -286,6 +287,9 @@ export default function ExecutiveDashboard() {
           </ul>
         </section>
       </div>
+
+      {/* ===== Laporan Produksi (target & kendala operasional dari SPV) ===== */}
+      <LaporanProduksiOwnerSection />
 
       {/* ===== SDM (HR) ===== */}
       <h2 className="text-lg font-black text-slate-900 pt-2">SDM</h2>

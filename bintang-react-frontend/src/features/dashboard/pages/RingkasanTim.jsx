@@ -1,6 +1,7 @@
 import { Users } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import KordivSpvTeamBoard from '../components/KordivSpvTeamBoard';
+import LaporanProduksiSpvPanel from '../components/LaporanProduksiSpvPanel';
 
 /**
  * Halaman landing SPV/Kordiv (HomeRedirect di App.jsx mengarahkan ke sini,
@@ -26,6 +27,9 @@ export default function RingkasanTim() {
         </p>
       </div>
       <KordivSpvTeamBoard role={role} />
+      {/* Laporan target & kendala operasional -- khusus SPV, instruksi user
+          2026-09-23. Kordiv tidak diminta ikut fitur ini. */}
+      {role === 'spv' && <LaporanProduksiSpvPanel />}
     </div>
   );
 }
