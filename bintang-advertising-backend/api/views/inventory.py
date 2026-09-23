@@ -110,6 +110,87 @@ class InventoryItemViewSet(viewsets.ModelViewSet):
         kwargs['partial'] = True
         return self.update(request, *args, **kwargs)
 
+    @action(detail=False, methods=['get'], url_path='summary')
+    def summary(self, request):
+        """Pergerakan stok Bahan Baku (RestockHistory) -- pasangan dari
+        ProductStockMovementViewSet.summary di product_views.py, TAPI
+        untuk InventoryItem (bahan baku resep/BoM), bukan Product jadi
+        barang. Sebelumnya halaman "Pergerakan Stok" cuma menampilkan
+        Product, bahan baku yang terpotong otomatis lewat BoM (order/POS)
+        sama sekali tidak kelihatan di sana (keluhan user 2026-09-24) --
+        endpoint ini yang dipanggil dari tab "Bahan Baku" di halaman itu.
+
+        RestockHistory tidak punya field `tipe` seperti ProductStockMovement
+        (masuk/keluar/penjualan/pengembalian) -- cuma `delta` (+ = masuk,
+        - = keluar), jadi ringkasannya lebih sederhana: in/out saja.
+        """
+        from django.utils.dateparse import parse_date
+
+        start_date_str = request.query_params.get('start_date')
+        end_date_str = request.query_params.get('end_date')
+        start_date = parse_date(start_date_str) if start_date_str else timezone.localdate()
+        end_date = parse_date(end_date_str) if end_date_str else timezone.localdate()
+        if not start_date or not end_date:
+            return Response({'error': 'Format tanggal tidak valid'}, status=400)
+
+        items_qs = self.get_queryset()
+        page = self.paginate_queryset(items_qs)
+        items = page if page is not None else items_qs
+
+        item_ids = [i.id for i in items]
+        histories = RestockHistory.objects.filter(item_id__in=item_ids).order_by('waktu')
+
+        by_item = {item.id: [] for item in items}
+        for h in histories:
+            by_item.setdefault(h.item_id, []).append(h)
+
+        result = []
+        for item in items:
+            rows = by_item.get(item.id, [])
+            before = [h for h in rows if h.waktu.date() < start_date]
+            during = [h for h in rows if start_date <= h.waktu.date() <= end_date]
+            after = [h for h in rows if h.waktu.date() > end_date]
+
+            if before:
+                initial_val = before[-1].stok_akhir
+            elif during:
+                initial_val = during[0].stok_awal
+            elif after:
+                initial_val = after[0].stok_awal
+            else:
+                initial_val = item.stok
+
+            in_qty = sum(h.delta for h in during if h.delta > 0)
+            out_qty = sum(-h.delta for h in during if h.delta < 0)
+
+            if during:
+                sisa_val = during[-1].stok_akhir
+            elif before:
+                sisa_val = before[-1].stok_akhir
+            else:
+                sisa_val = initial_val
+
+            result.append({
+                'id': f'inv-{item.id}',
+                'group': item.kategori or 'Bahan Baku',
+                'product': item.nama,
+                'sku': item.id,
+                'satuan': item.satuan,
+                'initial': float(initial_val),
+                'in': float(in_qty),
+                # RestockHistory tidak membedakan penjualan/retur seperti
+                # ProductStockMovement -- semua pengurangan (BoM, restock
+                # manual negatif, penyesuaian) digabung jadi 'out' saja.
+                'returnStock': 0.0,
+                'sales': 0.0,
+                'out': float(out_qty),
+                'sisa': float(sisa_val),
+            })
+
+        if page is not None:
+            return self.get_paginated_response(result)
+        return Response(result)
+
 
 class InventoryRestockView(APIView):
     """POST /api/inventory/<pk>/restock/ — Tambah/kurangi stok dan catat history."""

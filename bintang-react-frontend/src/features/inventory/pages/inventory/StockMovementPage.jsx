@@ -14,6 +14,13 @@ export function StockMovementPage() {
   const [endDate, setEndDate] = useState(todayISO());
   const [showDateDropdown, setShowDateDropdown] = useState(false);
   const [selectedPreset, setSelectedPreset] = useState('today');
+  // Tab "Produk" vs "Bahan Baku" (2026-09-24) -- sebelumnya halaman ini
+  // CUMA menampilkan pergerakan Product, bahan baku yang terpotong otomatis
+  // lewat resep/BoM (order/POS) sama sekali tidak kelihatan di sini
+  // walau datanya sudah benar tersimpan (RestockHistory). Endpoint beda
+  // (/inventory/summary/ vs /product-stock-movements/summary/) tapi
+  // bentuk responsnya sengaja disamakan supaya tabel yang sama bisa dipakai.
+  const [sourceTab, setSourceTab] = useState('produk'); // 'produk' | 'bahan-baku'
   const [searchVal, setSearchVal] = useState('');
   const [isAutocomplete, setIsAutocomplete] = useState(true);
 
@@ -50,7 +57,8 @@ export function StockMovementPage() {
       try {
         const params = { start_date: startDate, end_date: endDate, page: currentPage, page_size: pageSize };
         if (debouncedSearch) params.search = debouncedSearch;
-        const res = await apiClient.get('/product-stock-movements/summary/', { params });
+        const endpoint = sourceTab === 'bahan-baku' ? '/inventory/summary/' : '/product-stock-movements/summary/';
+        const res = await apiClient.get(endpoint, { params });
         if (!isMounted || fetchId !== fetchIdRef.current) return; // respons basi, abaikan
         const data = res.data;
         setMovementList(Array.isArray(data) ? data : data.results || []);
@@ -67,12 +75,12 @@ export function StockMovementPage() {
     return () => {
       isMounted = false;
     };
-  }, [startDate, endDate, currentPage, pageSize, debouncedSearch]);
+  }, [startDate, endDate, currentPage, pageSize, debouncedSearch, sourceTab]);
 
   // Reset page number on filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, startDate, endDate]);
+  }, [debouncedSearch, startDate, endDate, sourceTab]);
 
   const handleDownloadExcel = async () => {
     try {
@@ -208,8 +216,34 @@ export function StockMovementPage() {
         <div>
           <h2 style={{ fontSize: '16px', fontWeight: 'bold', color: '#1e293b', margin: 0 }}>Pergerakan Stok</h2>
           <span style={{ fontSize: '12px', color: '#64748b', marginTop: '2px', display: 'block' }}>{totalCount} Item</span>
+          {/* Tab Produk / Bahan Baku (2026-09-24) */}
+          <div style={{ display: 'flex', gap: 4, marginTop: 8, background: '#f1f5f9', borderRadius: 8, padding: 3, width: 'fit-content' }}>
+            {[
+              { id: 'produk', label: 'Produk' },
+              { id: 'bahan-baku', label: 'Bahan Baku' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setSourceTab(tab.id)}
+                style={{
+                  border: 0,
+                  borderRadius: 6,
+                  padding: '5px 14px',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  background: sourceTab === tab.id ? '#ffffff' : 'transparent',
+                  color: sourceTab === tab.id ? '#1e293b' : '#64748b',
+                  boxShadow: sourceTab === tab.id ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
-        
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {/* Date range picker with arrows */}
           <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #cbd5e1', borderRadius: '6px', background: '#ffffff', height: '34px', position: 'relative' }}>
@@ -346,37 +380,39 @@ export function StockMovementPage() {
             )}
           </div>
 
-          <button 
-            type="button"
-            onClick={handleDownloadExcel}
-            style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '6px', 
-              background: '#16a34a', // green matching screenshot
-              border: 0, 
-              padding: '0 16px', 
-              borderRadius: '6px', 
-              fontSize: '13px', 
-              fontWeight: 'bold', 
-              color: '#ffffff', 
-              cursor: 'pointer',
-              height: '34px',
-              boxShadow: '0 2px 4px rgba(22, 163, 74, 0.15)'
-            }}
-          >
-            <Download size={14} />
-            <span>Download Excel</span>
-          </button>
+          {sourceTab === 'produk' && (
+            <button
+              type="button"
+              onClick={handleDownloadExcel}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: '#16a34a', // green matching screenshot
+                border: 0,
+                padding: '0 16px',
+                borderRadius: '6px',
+                fontSize: '13px',
+                fontWeight: 'bold',
+                color: '#ffffff',
+                cursor: 'pointer',
+                height: '34px',
+                boxShadow: '0 2px 4px rgba(22, 163, 74, 0.15)'
+              }}
+            >
+              <Download size={14} />
+              <span>Download Excel</span>
+            </button>
+          )}
         </div>
       </div>
 
       {/* Row 2: Autocomplete Filter matching Olsera screenshot (page-size dipindah ke footer, format sama Halaman Produk) */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <input 
+          <input
             type="text"
-            placeholder="Masukkan nama produk (autocomplete)"
+            placeholder={sourceTab === 'bahan-baku' ? 'Masukkan nama bahan baku (autocomplete)' : 'Masukkan nama produk (autocomplete)'}
             value={searchVal}
             onChange={(e) => setSearchVal(e.target.value)}
             style={{ 
