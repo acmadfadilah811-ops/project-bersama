@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown, ChevronLeft, ChevronRight, Search, Calendar, Check, Loader2 } from 'lucide-react';
 import { notify } from '../../../utils/notify';
 import { fetchAllPages } from '../../../utils/paginatedApi';
@@ -52,10 +53,18 @@ export default function UangMukaPembelian() {
   
   const datePickerRef = useRef(null);
   const pageSizeRef = useRef(null);
+  // Popover kalender dirender lewat portal (lihat catatan di JSX-nya di
+  // bawah), jadi butuh ref sendiri di luar datePickerRef supaya klik di
+  // dalam popover tidak dianggap "klik luar" dan menutup dropdown.
+  const anchorRef = useRef(null);
+  const popoverRef = useRef(null);
+  const [popoverPos, setPopoverPos] = useState({ top: 0, right: 0 });
 
   useEffect(() => {
     function handleClickOutside(event) {
-      if (datePickerRef.current && !datePickerRef.current.contains(event.target)) {
+      const insideAnchor = datePickerRef.current && datePickerRef.current.contains(event.target);
+      const insidePopover = popoverRef.current && popoverRef.current.contains(event.target);
+      if (!insideAnchor && !insidePopover) {
         setIsDatePickerOpen(false);
       }
       if (pageSizeRef.current && !pageSizeRef.current.contains(event.target)) {
@@ -65,6 +74,29 @@ export default function UangMukaPembelian() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Hitung posisi popover relatif ke viewport setiap kali dibuka/di-resize.
+  // Bug lama (2026-09-24): popover diposisikan `absolute` di dalam <main>
+  // yang position:static, sedangkan AccountingSecondarySidebar (sibling
+  // <main>) pakai sticky+z-30 -- akibatnya sidebar SELALU digambar di atas
+  // isi <main> apa pun z-index popovernya (aturan stacking context CSS),
+  // jadi kolom pilihan rentang di popover ketutup sidebar. Portal ke
+  // document.body + position:fixed menghindari masalah ini sepenuhnya
+  // tanpa mengubah layout bersama yang dipakai banyak halaman lain.
+  useEffect(() => {
+    if (!isDatePickerOpen) return undefined;
+    const updatePosition = () => {
+      if (!anchorRef.current) return;
+      const rect = anchorRef.current.getBoundingClientRect();
+      setPopoverPos({
+        top: rect.bottom + 6,
+        right: window.innerWidth - rect.right,
+      });
+    };
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    return () => window.removeEventListener('resize', updatePosition);
+  }, [isDatePickerOpen]);
 
   const dpStatusToPaymentStatus = { 'Digunakan': 'lunas', 'Digunakan Sebagian': 'sebagian', 'Tidak Digunakan': 'belum' };
 
@@ -361,6 +393,7 @@ export default function UangMukaPembelian() {
           <div className="relative" ref={datePickerRef}>
             <button
               type="button"
+              ref={anchorRef}
               onClick={() => setIsDatePickerOpen(!isDatePickerOpen)}
               className="flex items-center gap-2 px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 transition-all cursor-pointer font-bold"
             >
@@ -369,9 +402,14 @@ export default function UangMukaPembelian() {
               <ChevronDown size={12} className="text-slate-400" />
             </button>
 
-            {/* Date Range Picker Popover Menu */}
-            {isDatePickerOpen && (
-              <div className="absolute right-0 mt-1.5 bg-white border border-slate-205 rounded-xl shadow-2xl z-[999] flex animate-fade-in">
+            {/* Date Range Picker Popover Menu -- portal ke document.body
+                supaya lepas dari stacking context <main>, lihat catatan
+                di useEffect updatePosition di atas. */}
+            {isDatePickerOpen && createPortal(
+              <div
+                ref={popoverRef}
+                style={{ position: 'fixed', top: popoverPos.top, right: popoverPos.right }}
+                className="bg-white border border-slate-205 rounded-xl shadow-2xl z-[999] flex animate-fade-in">
                 
                 {/* Left Predefined Options list */}
                 <div className={`w-32 border-r border-slate-150 bg-slate-50/50 py-2 flex flex-col font-bold rounded-l-xl ${selectedRange !== 'Custom Range' ? 'rounded-r-xl' : ''}`}>
@@ -475,7 +513,8 @@ export default function UangMukaPembelian() {
 
                   </div>
                 )}
-              </div>
+              </div>,
+              document.body
             )}
           </div>
 
