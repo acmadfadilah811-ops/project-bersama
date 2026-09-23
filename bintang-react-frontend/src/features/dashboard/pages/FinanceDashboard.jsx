@@ -2,6 +2,7 @@ import { Wallet } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import AdminFinanceBoard from '../components/AdminFinanceBoard';
 import SpvFinanceBoard from '../components/SpvFinanceBoard';
+import VoidRequestQueue from '../components/VoidRequestQueue';
 
 /**
  * Landing page role admin_finance & spv_finance (2026-09-18). Konten
@@ -25,7 +26,14 @@ export default function FinanceDashboard() {
             : 'Verifikasi setoran kas kasir, pengeluaran/kas kecil, dan pantau piutang.'}
         </p>
       </div>
-      {role === 'spv_finance' ? <SpvFinanceBoard /> : <AdminFinanceBoard />}
+      {role === 'spv_finance' ? (
+        <div className="space-y-4">
+          <VoidRequestQueue />
+          <SpvFinanceBoard />
+        </div>
+      ) : (
+        <AdminFinanceBoard />
+      )}
     </div>
   );
 }

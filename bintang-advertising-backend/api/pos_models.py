@@ -146,20 +146,24 @@ class POSVoidRequest(models.Model):
     yang dibayar langsung/lunas, bukan Order (Pesanan) DP.
 
     Kasir tidak bisa memanggil /pos/sales/{id}/void/ langsung — dia harus
-    mengajukan permintaan di sini dulu, owner menyetujui lewat Dashboard
-    (men-generate `otp_code`), baru kasir bisa menyelesaikan void dengan
-    kode itu. Owner/manager/admin tetap bisa langsung void tanpa alur ini.
-    Ditolak sejak awal kalau transaksi sudah ditandai `diambil_pada` (sudah
-    diambil pelanggan & resi/notifikasi selesai terkirim lewat panel
-    Pesanan & Pelunasan) — instruksi user 2026-08-14.
+    mengajukan permintaan di sini dulu, owner/SPV/SPV Finance menyetujui
+    lewat Dashboard (men-generate `otp_code`), baru kasir bisa menyelesaikan
+    void dengan kode itu. Owner/manager/admin tetap bisa langsung void
+    tanpa alur ini. Ditolak sejak awal kalau transaksi sudah ditandai
+    `diambil_pada` (sudah diambil pelanggan & resi/notifikasi selesai
+    terkirim lewat panel Pesanan & Pelunasan) — instruksi user 2026-08-14.
+
+    Alur sempat 2 tahap (Kordiv lalu SPV/owner/manager, 2026-09-18) --
+    tahap Kordiv DIHAPUS 2026-09-23 (instruksi user: void request langsung
+    ke SPV Finance saja, Kordiv tidak lagi terlibat). `menunggu_spv` dan
+    field `disetujui_kordiv_oleh`/`disetujui_kordiv_pada` dipertahankan
+    apa adanya untuk kompatibilitas data lama (jangan diedit/dihapus, lihat
+    DB2) -- permintaan baru langsung dibuat 'pending' dan disetujui final
+    dari situ, lihat api/services/pos_void_otp.py.
     """
     STATUS_CHOICES = (
-        ('pending', 'Menunggu Persetujuan Kordiv'),
-        # Kordiv sudah menyetujui tahap 1, menunggu approval final SPV/
-        # owner/manager (tahap 2) -- lihat api/services/pos_void_otp.py.
-        # Owner/manager tetap bisa langsung setujui/tolak dari status
-        # 'pending' juga (shortcut, tidak wajib lewat Kordiv).
-        ('menunggu_spv', 'Disetujui Kordiv, Menunggu SPV'),
+        ('pending', 'Menunggu Persetujuan'),
+        ('menunggu_spv', 'Disetujui Kordiv, Menunggu SPV'),  # legacy, lihat docstring class
         ('disetujui', 'Disetujui'),
         ('ditolak', 'Ditolak'),
         ('digunakan', 'Sudah Digunakan'),

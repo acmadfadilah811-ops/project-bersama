@@ -4,9 +4,6 @@ import {
   Activity,
   CheckCircle2,
   AlertTriangle,
-  ShieldAlert,
-  Check,
-  X,
   UserPlus,
   Search,
   Users,
@@ -15,6 +12,7 @@ import {
   Printer,
 } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
+import VoidRequestQueue from './VoidRequestQueue';
 
 const STATUS_BADGE = {
   antrean: 'bg-slate-100 text-slate-700 border-slate-200',
@@ -46,38 +44,31 @@ function formatDeadline(tanggal) {
 /**
  * Papan Kerja tim untuk Kordiv & SPV -- diselipkan di StaffDashboard.jsx
  * (bukan halaman terpisah) karena keduanya sudah berbagi dashboard itu.
- * Kordiv memproses void request tahap 1 (setujui-kordiv/tolak-kordiv),
- * SPV tahap 2/final (setujui/tolak, sama seperti Owner Dashboard.jsx --
- * lihat catatan di sana soal 2 tahap ini). Kedua role melihat & menugaskan
- * job tim lewat /api/jobs/ + /api/jobs/{id}/assign-staff/.
+ * SPV melihat & memproses antrean void request (VoidRequestQueue) --
+ * Kordiv TIDAK LAGI, tahap Kordiv di alur void dihapus 2026-09-23
+ * (instruksi user: void request langsung ke SPV Finance saja). Kedua role
+ * tetap melihat & menugaskan job tim lewat /api/jobs/ +
+ * /api/jobs/{id}/assign-staff/.
  */
 export default function KordivSpvTeamBoard({ role }) {
   const [ringkasan, setRingkasan] = useState(null);
   const [jobs, setJobs] = useState([]);
-  const [voidQueue, setVoidQueue] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tahapFilter, setTahapFilter] = useState('Semua');
   const [search, setSearch] = useState('');
-  const [voidActionLoading, setVoidActionLoading] = useState(null);
-  const [rejectingId, setRejectingId] = useState(null);
-  const [rejectReason, setRejectReason] = useState('');
   const [assignMenuJobId, setAssignMenuJobId] = useState(null);
   const [assignLoading, setAssignLoading] = useState(null);
   const [error, setError] = useState(null);
 
-  const voidStatus = role === 'kordiv' ? 'pending' : 'menunggu_spv';
-
   const fetchAll = useCallback(async () => {
     try {
       setLoading(true);
-      const [resRingkasan, resJobs, resVoid] = await Promise.all([
+      const [resRingkasan, resJobs] = await Promise.all([
         apiClient.get('/jobs/ringkasan-tim/'),
         apiClient.get('/jobs/', { params: { status_pekerjaan: 'antrean,dikerjakan,kendala,selesai' } }),
-        apiClient.get('/pos-void-requests/', { params: { status: voidStatus } }),
       ]);
       setRingkasan(resRingkasan.data);
       setJobs(Array.isArray(resJobs.data) ? resJobs.data : resJobs.data?.results || []);
-      setVoidQueue(Array.isArray(resVoid.data) ? resVoid.data : resVoid.data?.results || []);
       setError(null);
     } catch (err) {
       console.error('Gagal memuat Papan Kerja tim:', err);
@@ -85,7 +76,7 @@ export default function KordivSpvTeamBoard({ role }) {
     } finally {
       setLoading(false);
     }
-  }, [voidStatus]);
+  }, []);
 
   useEffect(() => {
     fetchAll();
@@ -117,41 +108,6 @@ export default function KordivSpvTeamBoard({ role }) {
       alert(err.response?.data?.error || 'Gagal menugaskan staff.');
     } finally {
       setAssignLoading(null);
-    }
-  };
-
-  const voidApproveAction = role === 'kordiv' ? 'setujui-kordiv' : 'setujui';
-  const voidRejectAction = role === 'kordiv' ? 'tolak-kordiv' : 'tolak';
-
-  const handleVoidApprove = async (req) => {
-    setVoidActionLoading(req.id);
-    try {
-      const res = await apiClient.post(`/pos-void-requests/${req.id}/${voidApproveAction}/`);
-      if (role !== 'kordiv' && res.data.otp_code) {
-        alert(`Disetujui. Kode OTP: ${res.data.otp_code} (berlaku 15 menit, otomatis terisi di layar kasir).`);
-      }
-      await fetchAll();
-    } catch (err) {
-      alert(err.response?.data?.error || 'Gagal menyetujui permintaan void.');
-    } finally {
-      setVoidActionLoading(null);
-    }
-  };
-
-  const submitVoidReject = async (req) => {
-    if (!rejectReason.trim()) return;
-    setVoidActionLoading(req.id);
-    try {
-      await apiClient.post(`/pos-void-requests/${req.id}/${voidRejectAction}/`, {
-        alasan_tolak: rejectReason.trim(),
-      });
-      setRejectingId(null);
-      setRejectReason('');
-      await fetchAll();
-    } catch (err) {
-      alert(err.response?.data?.error || 'Gagal menolak permintaan void.');
-    } finally {
-      setVoidActionLoading(null);
     }
   };
 
@@ -232,92 +188,16 @@ export default function KordivSpvTeamBoard({ role }) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
-        {/* Antrean Void Request */}
-        <div className="lg:col-span-5 bg-white rounded-lg border border-slate-200 shadow-sm flex flex-col">
-          <div className="px-3 py-2 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-            <div className="flex items-center gap-2">
-              <ShieldAlert size={14} className="text-amber-700" />
-              <div>
-                <h2 className="text-xs font-bold text-slate-900">
-                  {role === 'kordiv' ? 'Antrean Void Request (Tahap 1)' : 'Antrean Void Request (Final)'}
-                </h2>
-                <p className="text-[10px] text-slate-500">
-                  {role === 'kordiv' ? 'Persetujuan awal sebelum diteruskan ke SPV/Owner' : 'Sudah disetujui Kordiv, menunggu keputusan Anda'}
-                </p>
-              </div>
-            </div>
-            <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
-              {voidQueue.length} Permintaan
-            </span>
+        {/* Antrean Void Request -- khusus SPV (Kordiv tidak lagi terlibat
+            di alur void sejak 2026-09-23, lihat VoidRequestQueue.jsx). */}
+        {role === 'spv' && (
+          <div className="lg:col-span-5">
+            <VoidRequestQueue />
           </div>
-          <div className="p-2 space-y-2 max-h-[480px] overflow-y-auto">
-            {voidQueue.length === 0 ? (
-              <p className="text-[11px] text-slate-400 text-center py-8">Tidak ada void request menunggu persetujuan.</p>
-            ) : (
-              voidQueue.map((req) => (
-                <div key={req.id} className="bg-white rounded-lg border border-slate-200 p-2.5 space-y-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <span className="font-mono text-xs font-bold text-indigo-700">{req.sale_nomor}</span>
-                      <p className="text-[11px] text-slate-700 mt-0.5">
-                        Pemohon: <strong>{req.diminta_oleh_nama || '-'}</strong>
-                      </p>
-                    </div>
-                  </div>
-                  <div className="bg-slate-50 rounded p-2 text-[11px] border border-slate-100 text-slate-600 italic">
-                    "{req.alasan}"
-                  </div>
-                  {rejectingId === req.id ? (
-                    <div className="space-y-1.5 bg-red-50/40 p-2 rounded border border-red-100">
-                      <textarea
-                        rows={2}
-                        value={rejectReason}
-                        onChange={(e) => setRejectReason(e.target.value)}
-                        placeholder="Alasan penolakan (wajib)..."
-                        className="w-full text-[11px] p-1.5 rounded border border-red-200 focus:outline-none"
-                      />
-                      <div className="flex justify-end gap-1.5">
-                        <button
-                          onClick={() => { setRejectingId(null); setRejectReason(''); }}
-                          className="px-2 py-1 text-[10px] font-medium text-slate-600 hover:bg-slate-100 rounded"
-                        >
-                          Batal
-                        </button>
-                        <button
-                          disabled={voidActionLoading === req.id || !rejectReason.trim()}
-                          onClick={() => submitVoidReject(req)}
-                          className="px-2 py-1 text-[10px] font-bold bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded"
-                        >
-                          Kirim Penolakan
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex justify-end gap-1.5 pt-1 border-t border-slate-100">
-                      <button
-                        disabled={voidActionLoading === req.id}
-                        onClick={() => setRejectingId(req.id)}
-                        className="px-2.5 py-1 text-[11px] font-semibold rounded-lg border border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-50 flex items-center gap-1"
-                      >
-                        <X size={12} /> Tolak
-                      </button>
-                      <button
-                        disabled={voidActionLoading === req.id}
-                        onClick={() => handleVoidApprove(req)}
-                        className="px-3 py-1 text-[11px] font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white flex items-center gap-1"
-                      >
-                        <Check size={12} /> Setujui
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+        )}
 
         {/* Distribusi Job */}
-        <div className="lg:col-span-7 bg-white rounded-lg border border-slate-200 shadow-sm flex flex-col">
+        <div className={`${role === 'spv' ? 'lg:col-span-7' : 'lg:col-span-12'} bg-white rounded-lg border border-slate-200 shadow-sm flex flex-col`}>
           <div className="p-3 border-b border-slate-100 space-y-2">
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-bold text-slate-900">Distribusi Job Tim ({filteredJobs.length})</h2>

@@ -45,45 +45,10 @@ def ajukan_permintaan_void(*, sale, kasir, alasan):
     return POSVoidRequest.objects.create(sale=sale, diminta_oleh=kasir, alasan=alasan, status='pending')
 
 
-def setujui_kordiv_void(*, void_request, approver):
-    """Tahap 1 (Kordiv): pending -> menunggu_spv. Belum men-generate OTP --
-    itu baru terjadi di tahap 2 (setujui_permintaan_void, oleh SPV/owner/
-    manager) supaya kasir tidak bisa mulai void sebelum approval final."""
-    void_request = POSVoidRequest.objects.select_for_update().get(pk=void_request.pk)
-    if void_request.status != 'pending':
-        raise PosVoidOtpError('Permintaan ini sudah tidak berstatus menunggu persetujuan Kordiv.')
-
-    void_request.status = 'menunggu_spv'
-    void_request.disetujui_kordiv_oleh = approver
-    void_request.disetujui_kordiv_pada = timezone.now()
-    void_request.save(update_fields=['status', 'disetujui_kordiv_oleh', 'disetujui_kordiv_pada'])
-    return void_request
-
-
-def tolak_kordiv_void(*, void_request, approver, alasan_tolak=''):
-    """Tahap 1 (Kordiv): pending -> ditolak, langsung terminal (tidak lanjut ke SPV)."""
-    void_request = POSVoidRequest.objects.select_for_update().get(pk=void_request.pk)
-    if void_request.status != 'pending':
-        raise PosVoidOtpError('Permintaan ini sudah tidak berstatus menunggu persetujuan Kordiv.')
-    alasan_tolak = (alasan_tolak or '').strip()
-    if not alasan_tolak:
-        raise PosVoidOtpError('Alasan penolakan wajib diisi.')
-
-    void_request.status = 'ditolak'
-    void_request.disetujui_kordiv_oleh = approver
-    void_request.disetujui_kordiv_pada = timezone.now()
-    void_request.alasan_tolak = alasan_tolak
-    void_request.save(update_fields=[
-        'status', 'disetujui_kordiv_oleh', 'disetujui_kordiv_pada', 'alasan_tolak',
-    ])
-    return void_request
-
-
 def setujui_permintaan_void(*, void_request, approver):
-    """Tahap 2/final (SPV/owner/manager): 'menunggu_spv' (jalur normal,
-    sudah lewat Kordiv) ATAU 'pending' (shortcut -- SPV/owner/manager boleh
-    lewati tahap Kordiv sama sekali, konsisten dengan hak override mereka
-    yang sudah ada)."""
+    """Owner/manager/SPV/SPV Finance menyetujui: 'pending' (jalur normal
+    sejak tahap Kordiv dihapus 2026-09-23) ATAU 'menunggu_spv' (permintaan
+    lama dari sebelum perubahan itu, tetap didukung)."""
     void_request = POSVoidRequest.objects.select_for_update().get(pk=void_request.pk)
     if void_request.status not in ('pending', 'menunggu_spv'):
         raise PosVoidOtpError('Permintaan ini sudah tidak berstatus menunggu persetujuan.')

@@ -75,15 +75,15 @@ class POSVoidRequestSerializer(serializers.ModelSerializer):
 
     def get_otp_code(self, obj):
         # Sama seperti OrderVoidRequestSerializer: kode cuma boleh terlihat
-        # owner/manager/spv (approver final) ATAU kasir yang mengajukan
-        # permintaan ini sendiri, dan hanya saat statusnya 'disetujui' &
-        # belum kadaluarsa. Kordiv TIDAK termasuk -- mereka cuma approver
-        # tahap 1 (tidak pernah lihat/pegang OTP, itu wewenang tahap final).
+        # owner/manager/spv/spv_finance (approver final) ATAU kasir yang
+        # mengajukan permintaan ini sendiri, dan hanya saat statusnya
+        # 'disetujui' & belum kadaluarsa. Kordiv TIDAK termasuk -- sejak
+        # 2026-09-23 mereka tidak lagi jadi approver di alur ini sama sekali.
         request = self.context.get('request')
         user = getattr(request, 'user', None) if request else None
         if not user or obj.status != 'disetujui' or self.get_kadaluarsa(obj):
             return ''
-        if getattr(user, 'role', '') in ('owner', 'manager', 'spv'):
+        if getattr(user, 'role', '') in ('owner', 'manager', 'spv', 'spv_finance'):
             return obj.otp_code
         if obj.diminta_oleh_id == getattr(user, 'id', None):
             return obj.otp_code
