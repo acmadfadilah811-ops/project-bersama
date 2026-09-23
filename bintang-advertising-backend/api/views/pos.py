@@ -40,15 +40,28 @@ class SaldoKasHarianViewSet(viewsets.ModelViewSet):
     http_method_names = ['get', 'post', 'head', 'options']
 
     def create(self, request, *args, **kwargs):
-        """Satu kasir aktif dalam satu waktu (ganti operator = bergantian,
-        bukan paralel) — mesin kasir fisiknya cuma satu. Dikunci di server
-        (row-lock) supaya dua kasir tidak bisa sama-sama buka shift meski
-        lewat device/tab berbeda; sebelumnya tidak ada penegakan sama sekali.
+        """Satu kasir aktif dalam satu waktu PER UNIT BISNIS (ganti operator
+        di mesin kasir fisik yang sama = bergantian, bukan paralel). Dikunci
+        di server (row-lock) supaya dua kasir di unit bisnis yang SAMA tidak
+        bisa sama-sama buka shift meski lewat device/tab berbeda.
+
+        Dibatasi per `kasir.unit_bisnis` (bukan global) sejak 2026-09-23 --
+        sebelumnya lock berlaku ke SELURUH SISTEM, jadi kasir StarFoto dan
+        kasir Star Advertising (unit bisnis berbeda, mesin kasir fisik
+        berbeda) saling mengunci walau tidak pernah berbagi terminal yang
+        sama (bug dilaporkan user). Kasir tanpa unit_bisnis (None) tetap
+        saling mengunci sesama kasir tanpa unit_bisnis -- `filter(...=None)`
+        di Django menghasilkan `IS NULL`, jadi perilaku lama tetap berlaku
+        untuk akun yang belum ditandai unit bisnisnya.
         """
         with transaction.atomic():
             shift_terbuka = (
                 SaldoKasHarian.objects.select_for_update()
-                .filter(kas_akhir__isnull=True, waktu_tutup__isnull=True)
+                .filter(
+                    kas_akhir__isnull=True,
+                    waktu_tutup__isnull=True,
+                    kasir__unit_bisnis_id=request.user.unit_bisnis_id,
+                )
                 .select_related('kasir')
                 .first()
             )
@@ -57,7 +70,7 @@ class SaldoKasHarianViewSet(viewsets.ModelViewSet):
                 raise ValidationError({
                     'error': f'Shift masih dibuka oleh {nama}. Tutup shift tersebut dulu '
                              f'sebelum ganti operator / buka shift baru — satu kasir aktif '
-                             f'dalam satu waktu.'
+                             f'dalam satu waktu di unit bisnis yang sama.'
                 })
             return super().create(request, *args, **kwargs)
 
