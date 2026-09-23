@@ -315,6 +315,18 @@ class Order(models.Model):
     jumlah_cetak_ulang = models.PositiveIntegerField(default=0)
     terakhir_dicetak_ulang = models.DateTimeField(null=True, blank=True)
 
+    # Reorder akibat human error eksekusi staff (bukan salah sistem/pelanggan,
+    # 2026-09-24) -- ditautkan lewat menu "Reorder" di Riwayat Kasir/POS
+    # History (PosHistory.jsx), dibuat ULANG lewat checkout-pos normal (SPK +
+    # potong stok otomatis saat job selesai, IDENTIK order biasa) dengan
+    # harga 50% (item-level diskon, bukan diskon_persen order yang memang
+    # sengaja diblokir checkout_pos). catatan_pelanggan order baru WAJIB diisi
+    # alasan reorder-nya.
+    reorder_dari = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='reorder_turunan', help_text='Order asal kalau order ini dibuat lewat menu Reorder.',
+    )
+
     def _hitung_diskon_promo_pos(self, subtotal):
         """Diskon dari Promosi POS tipe DQ/DA (Discount Qty/Discount Amount)
         -- HANYA komponen nominal, tidak termasuk BX/FI (item gratis).

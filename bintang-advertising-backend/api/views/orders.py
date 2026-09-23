@@ -395,6 +395,25 @@ class OrderViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Jatuh tempo tidak boleh sebelum hari ini.'},
                             status=status.HTTP_400_BAD_REQUEST)
 
+        # Reorder akibat human error eksekusi staff (menu "Reorder" di Riwayat
+        # Kasir, 2026-09-24) -- order asal WAJIB sudah selesai & catatan alasan
+        # WAJIB diisi, supaya jejak auditnya jelas kenapa order ini dibuat
+        # ulang. Harga 50%-nya diterapkan di level item (diskon per-item dari
+        # klien, TIDAK lewat diskon_persen order yang sengaja diblokir di atas).
+        reorder_dari_id = str(request.data.get('reorder_dari') or '').strip()
+        reorder_dari = None
+        if reorder_dari_id:
+            reorder_dari = Order.objects.filter(pk=reorder_dari_id).first()
+            if not reorder_dari:
+                return Response({'error': 'Order asal reorder tidak ditemukan.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+            if reorder_dari.status_global != 'selesai':
+                return Response({'error': 'Reorder hanya bisa dibuat dari order yang sudah selesai.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+            if not str(request.data.get('catatan') or '').strip():
+                return Response({'error': 'Catatan alasan reorder wajib diisi.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+
         order = Order.objects.create(
             id=order_id,
             nama=nama,
@@ -408,6 +427,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             jatuh_tempo=due_date,
             dilayani_oleh=dilayani_oleh,
             dp_dibayar=0,
+            reorder_dari=reorder_dari,
         )
         order._current_user = request.user
 

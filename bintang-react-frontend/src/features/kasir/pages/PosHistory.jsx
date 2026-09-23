@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Cloud, Search, Filter, MoreVertical, Banknote, Clock, User, DollarSign, Printer, Mail, Smartphone, Factory, XCircle, Eye, X, Check, FileText, Send, Calendar, Globe2 } from 'lucide-react';
+import { Cloud, Search, Filter, MoreVertical, Banknote, Clock, User, DollarSign, Printer, Mail, Smartphone, Factory, XCircle, Eye, X, Check, FileText, Send, Calendar, Globe2, RotateCcw } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import { fetchAllPages } from '../../../utils/paginatedApi';
 import { notifyApiError, notifyError, notifySuccess } from '../../../utils/notify';
@@ -95,6 +95,14 @@ export default function PosHistory({ onToggleSidebar }) {
   const [pendingReturId, setPendingReturId] = useState(null);
   const ROLE_BYPASS_RETUR_OTP = ['owner', 'manager', 'admin'];
   const isReturOtpBypass = ROLE_BYPASS_RETUR_OTP.includes(user?.role);
+
+  // Reorder akibat human error eksekusi staff (2026-09-24, bukan salah
+  // sistem/pelanggan) -- reuse checkout-pos NORMAL (SpkPublishModal yang
+  // sudah ada), harga item 50% via is_custom_priced, ditautkan reorder_dari.
+  const [showReorderModal, setShowReorderModal] = useState(false);
+  const [reorderCatatan, setReorderCatatan] = useState('');
+  const [showReorderSpkModal, setShowReorderSpkModal] = useState(false);
+  const [reordering, setReordering] = useState(false);
 
   // Volume transaksi advertising bisa ~100/hari -- filter tanggal (default
   // hari ini) supaya jumlah baris yang ditarik dari server tetap terbatas
@@ -294,6 +302,80 @@ export default function PosHistory({ onToggleSidebar }) {
     setReturLangsungKonfirmasi(false);
     setShowActionDropdown(false);
     setShowReturModal(true);
+  };
+
+  const openReorderModal = () => {
+    if (!selectedSale) return;
+    setReorderCatatan('');
+    setShowActionDropdown(false);
+    setShowReorderModal(true);
+  };
+
+  const handleReorderCatatanSubmit = (e) => {
+    e.preventDefault();
+    if (!reorderCatatan.trim()) return;
+    setShowReorderModal(false);
+    setShowReorderSpkModal(true);
+  };
+
+  // Item paket dilewati (harga paket dihitung ulang penuh dari master paket
+  // di checkout-pos, tidak bisa dipotong 50% via is_custom_priced) -- known
+  // gap, item produk katalog & item kustom (mayoritas order) tercakup penuh.
+  const buildReorderItems = (items) => (items || [])
+    .filter((it) => !it.paket)
+    .map((it) => {
+      const qty = Number(it.qty) || 1;
+      const hargaSatuanAsli = Number(it.harga_jual || 0) / qty;
+      return {
+        product_id: it.product || null,
+        variant_id: it.variant || null,
+        qty,
+        harga_satuan: Math.round(hargaSatuanAsli * 0.5),
+        nama: it.jenis_produk || it.product_nama || 'Item Reorder',
+        is_custom_priced: true,
+        panjang: it.panjang || 0,
+        lebar: it.lebar || 0,
+        harga_per_m2: it.harga_per_m2 || 0,
+        catatan: it.keterangan_detail || '',
+      };
+    });
+
+  const handleReorderTerbitkan = async (spkPayload) => {
+    if (!selectedSale || reordering) return;
+    const items = buildReorderItems(selectedSale.items);
+    if (items.length === 0) {
+      notifyError('Tidak ada item untuk di-reorder', 'Semua item pada pesanan ini berupa paket, belum didukung untuk Reorder.');
+      return;
+    }
+    setReordering(true);
+    try {
+      const jumlahBayar = items.reduce((acc, it) => acc + it.harga_satuan * it.qty, 0);
+      const idempotencyKey = window.crypto?.randomUUID
+        ? window.crypto.randomUUID()
+        : `00000000-0000-4000-8000-${`${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`.replace(/[^a-f0-9]/g, '').padEnd(12, '0').slice(-12)}`;
+      await apiClient.post('/orders/checkout-pos/', {
+        idempotency_key: idempotencyKey,
+        nama: selectedSale.nama || selectedSale.pelanggan,
+        nomor_wa: selectedSale.nomor_wa,
+        items,
+        jumlah_bayar: jumlahBayar,
+        metode_pembayaran: 'tunai',
+        dilayani_oleh_id: user?.id,
+        jatuh_tempo: new Date().toISOString().slice(0, 10),
+        spk: spkPayload,
+        reorder_dari: selectedSale.id,
+        catatan: `Reorder dari ${selectedSale.nomor || selectedSale.id} (human error eksekusi staff): ${reorderCatatan.trim()}`,
+      });
+      notifySuccess('Reorder berhasil', 'Pesanan reorder dibuat, tercatat bayar 50% dan SPK sudah diterbitkan.');
+      setShowReorderSpkModal(false);
+      setReorderCatatan('');
+      fetchSales();
+    } catch (err) {
+      notifyApiError(err, 'Gagal membuat reorder.');
+      throw err;
+    } finally {
+      setReordering(false);
+    }
   };
 
   const handleConfirmRetur = async (e) => {
@@ -741,6 +823,17 @@ export default function PosHistory({ onToggleSidebar }) {
                       </button>
                     )}
 
+                    {selectedSale?.tipe === 'order' && selectedSale?.status_global === 'selesai' && (
+                      <button
+                        type="button"
+                        onClick={openReorderModal}
+                        className="w-full px-4 py-2.5 hover:bg-indigo-50 text-indigo-700 text-left flex items-center gap-3 border-b border-slate-100 cursor-pointer"
+                      >
+                        <RotateCcw size={16} className="text-indigo-600" />
+                        <span>Reorder (Human Error)</span>
+                      </button>
+                    )}
+
                     {selectedSale?.tipe !== 'order' && (
                       <button
                         type="button"
@@ -941,6 +1034,76 @@ export default function PosHistory({ onToggleSidebar }) {
             </form>
           </div>
         </div>
+      )}
+
+      {/* POPUP MODAL UI: Reorder akibat human error eksekusi staff (2026-09-24) --
+          catatan alasan wajib, lalu SpkPublishModal yang sudah ada untuk terbitkan
+          SPK produksi. Order baru dibuat lewat checkout-pos normal (harga 50%,
+          stok/bahan terpotong otomatis via SPK, sama seperti order biasa). */}
+      {showReorderModal && selectedSale && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden flex flex-col transform scale-100 transition-all duration-300">
+            <div className="bg-indigo-600 px-6 py-4 text-white flex items-center justify-between shadow-sm shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-white shrink-0">
+                  <RotateCcw size={20} />
+                </div>
+                <h3 className="font-extrabold text-base tracking-wide">Reorder — Human Error</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowReorderModal(false)}
+                className="text-white/80 hover:text-white hover:bg-white/10 p-1.5 rounded-full transition-all cursor-pointer"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleReorderCatatanSubmit} className="p-6 space-y-5 bg-white text-xs font-semibold text-slate-700">
+              <p className="text-[11px] text-slate-500 font-semibold -mt-1">
+                Untuk kesalahan eksekusi staff (bukan salah sistem/pelanggan) pada pesanan {selectedSale.nomor}.
+                Order baru dibuat dengan harga 50% dari harga asli, item otomatis sama, dan stok/bahan
+                terpotong otomatis lewat SPK produksi seperti order biasa.
+              </p>
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-2">Catatan Alasan Reorder (wajib)</label>
+                <textarea
+                  value={reorderCatatan}
+                  onChange={(e) => setReorderCatatan(e.target.value)}
+                  rows={3}
+                  placeholder="Contoh: salah potong ukuran saat cetak, staff eksekusi keliru..."
+                  className="w-full border border-slate-300 rounded-xl px-4 py-3 text-sm font-semibold text-slate-900 focus:outline-none focus:border-indigo-500 bg-slate-50 focus:bg-white transition-all resize-none"
+                  required
+                />
+              </div>
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowReorderModal(false)}
+                  className="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-600 hover:bg-slate-50 font-bold transition-all cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={!reorderCatatan.trim()}
+                  className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold shadow-md shadow-indigo-500/20 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  Lanjut: Pilih Tujuan SPK
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showReorderSpkModal && selectedSale && (
+        <SpkPublishModal
+          judul="Terbitkan SPK Reorder"
+          keterangan={`Order reorder dari ${selectedSale.nomor} akan diterbitkan ke divisi/staff berikut.`}
+          wajib
+          onTerbitkan={handleReorderTerbitkan}
+          onClose={() => setShowReorderSpkModal(false)}
+        />
       )}
 
       {/* POPUP MODAL UI: Konfirmasi Retur perlu OTP owner (kasir non-bypass) */}

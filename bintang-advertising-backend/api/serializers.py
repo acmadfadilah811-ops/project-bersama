@@ -660,6 +660,8 @@ class OrderSerializer(serializers.ModelSerializer):
             'jatuh_tempo', 'catatan_footer',
             # Pengembalian / Return Order (T-208 Revisi 2)
             'pengembalian_aktif', 'daftar_pengembalian',
+            # Reorder human error (menu Riwayat Kasir, 2026-09-24)
+            'reorder_dari',
         ]
         extra_kwargs = {
             'id': {'read_only': True},
@@ -672,6 +674,9 @@ class OrderSerializer(serializers.ModelSerializer):
             # unit_bisnis diisi otomatis dari dilayani_oleh (lihat Order.save()),
             # bukan dipilih manual dari client.
             'unit_bisnis': {'read_only': True},
+            # Cuma diset server-side lewat checkout-pos (param reorder_dari),
+            # bukan lewat PATCH generik.
+            'reorder_dari': {'read_only': True},
         }
 
     def get_pengembalian_aktif(self, obj):
