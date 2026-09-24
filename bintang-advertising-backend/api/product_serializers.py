@@ -512,6 +512,7 @@ class StockOpnameDocumentItemSerializer(serializers.ModelSerializer):
     selisih = serializers.SerializerMethodField()
     selisih_harga = serializers.SerializerMethodField()
     selisih_harga_jual = serializers.SerializerMethodField()
+    harga_beli_dasar = serializers.SerializerMethodField()
 
     class Meta:
         model = StockOpnameDocumentItem
@@ -522,7 +523,15 @@ class StockOpnameDocumentItemSerializer(serializers.ModelSerializer):
         return obj.stok_aktual - obj.stok_sistem
 
     def get_selisih_harga(self, obj):
-        return (obj.stok_aktual - obj.stok_sistem) * obj.product.harga_beli
+        # Harga beli varian/produk (snapshot bila sudah diposting) -- bukan
+        # selalu harga beli produk induk seperti sebelumnya.
+        return (obj.stok_aktual - obj.stok_sistem) * self.get_harga_beli_dasar(obj)
+
+    def get_harga_beli_dasar(self, obj):
+        from .services.opname_selisih import harga_beli_owner
+        if obj.harga_beli_snapshot is not None:
+            return obj.harga_beli_snapshot
+        return harga_beli_owner(obj.product, obj.variant)
 
     def get_selisih_harga_jual(self, obj):
         return (obj.stok_aktual - obj.stok_sistem) * obj.product.harga_jual_toko
@@ -531,8 +540,17 @@ class StockOpnameDocumentItemSerializer(serializers.ModelSerializer):
 class StockOpnameDocumentSerializer(serializers.ModelSerializer):
     items = StockOpnameDocumentItemSerializer(many=True, read_only=True)
     dibuat_oleh_nama = serializers.ReadOnlyField(source='dibuat_oleh.username')
+    diposting_oleh_nama = serializers.ReadOnlyField(source='diposting_oleh.username')
+    ringkasan_selisih = serializers.SerializerMethodField()
 
     class Meta:
         model = StockOpnameDocument
         fields = '__all__'
-        read_only_fields = ['nomor', 'status', 'dibuat_oleh']
+        read_only_fields = [
+            'nomor', 'status', 'dibuat_oleh', 'diposting_oleh', 'waktu_diposting',
+            'nilai_surplus', 'nilai_defisit', 'nilai_jurnal_surplus', 'nilai_jurnal_defisit',
+        ]
+
+    def get_ringkasan_selisih(self, obj):
+        from .services.opname_selisih import ringkas_dokumen
+        return ringkas_dokumen(obj)

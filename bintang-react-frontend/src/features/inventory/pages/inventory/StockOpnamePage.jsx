@@ -8,6 +8,7 @@ import { getLogoUrl } from '../../../../utils/logo';
 import { nowTimeLocal, todayISO } from '../../../../utils/date';
 import { receivedByDisplay } from '../../../../utils/stockDocument';
 import { Select } from '../components/PageShell';
+import { OpnameRingkasanSelisih, OpnameRiwayat } from './OpnameSelisihLog';
 
 
 const MONTHS_ID = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
@@ -1052,6 +1053,12 @@ export function StockOpnamePage({ onToggleCreate, viewState: propViewState }) {
             </table>
             </div>
           </div>
+
+          {!effectiveHideQtySelisih && <OpnameRingkasanSelisih doc={activeDetailDoc} />}
+          <OpnameRiwayat
+            docId={activeDetailDoc.id}
+            refreshKey={`${activeDetailDoc.status}-${(activeDetailDoc.items || []).length}-${(activeDetailDoc.items || []).reduce((a, it) => a + Number(it.stok_aktual || 0), 0)}`}
+          />
         </div>
       )}
 

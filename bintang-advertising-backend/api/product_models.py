@@ -481,6 +481,16 @@ class StockOpnameDocument(models.Model):
     catatan = models.TextField(blank=True, default='')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
     dibuat_oleh = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='stock_opname_documents')
+    # Jejak posting & nilai selisih (2026-09-24). `nilai_surplus/defisit` = selisih
+    # x harga beli (snapshot saat posting); `nilai_jurnal_*` = nilai yang benar-benar
+    # dijurnal (biaya lapisan FIFO, M8) -- bisa berbeda kalau biaya tiap lapisan
+    # beda dari harga beli rata-rata.
+    diposting_oleh = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='stock_opname_diposting')
+    waktu_diposting = models.DateTimeField(null=True, blank=True)
+    nilai_surplus = models.DecimalField(max_digits=16, decimal_places=2, default=0)
+    nilai_defisit = models.DecimalField(max_digits=16, decimal_places=2, default=0)
+    nilai_jurnal_surplus = models.DecimalField(max_digits=16, decimal_places=2, default=0)
+    nilai_jurnal_defisit = models.DecimalField(max_digits=16, decimal_places=2, default=0)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -489,6 +499,19 @@ class StockOpnameDocument(models.Model):
 
     def __str__(self):
         return self.nomor or f"StockOpname-{self.pk}"
+
+
+class StockOpnameActivityLog(models.Model):
+    """Riwayat siapa mengerjakan apa pada dokumen Stok Opname (dibuat, item
+    ditambah/diubah/dihapus, diposting, dibatalkan)."""
+    document = models.ForeignKey(StockOpnameDocument, on_delete=models.CASCADE, related_name='logs')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    tindakan = models.CharField(max_length=50)
+    keterangan = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
 
 class StockOpnameDocumentItem(models.Model):
     document = models.ForeignKey(StockOpnameDocument, on_delete=models.CASCADE, related_name='items')
@@ -499,6 +522,10 @@ class StockOpnameDocumentItem(models.Model):
     tanggal_kadaluwarsa = models.DateField(null=True, blank=True, help_text="Tgl Kadaluwarsa (opsional)")
     stok_sistem = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, help_text="Snapshot qty_stok saat produk ditambahkan ke opname")
     stok_aktual = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, help_text="Hasil hitung fisik (per baris/rak; produk sama bisa muncul >1 baris)")
+    harga_beli_snapshot = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="Harga beli produk/varian saat dokumen diposting; dasar nilai selisih yang tetap walau harga beli berubah kemudian.",
+    )
 
     def __str__(self):
         return f"{self.document.nomor} - {self.product.nama} ({self.stok_sistem} -> {self.stok_aktual})"

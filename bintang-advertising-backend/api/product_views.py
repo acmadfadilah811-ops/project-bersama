@@ -26,7 +26,7 @@ from .product_models import (
     Product, ProductVariant, ProductPackage, ProductPackageItem, Addon, Specification, ProductSpecValue,
     ProductStockMovement, ProductImage, StockInDocument, StockInDocumentItem,
     StockOutDocument, StockOutDocumentItem, StockProductionDocument, StockProductionDocumentItem,
-    StockOpnameDocument, StockOpnameDocumentItem, ProductActivityLog,
+    StockOpnameDocument, StockOpnameDocumentItem, StockOpnameActivityLog, ProductActivityLog,
     Purchase, PurchaseItem, PurchasePayment, PurchaseAttachment,
     StockLayer, StockLayerConsumption
 )
@@ -46,6 +46,7 @@ from .customer_models import Supplier
 from . import production_costing
 from . import stock_fifo
 from . import uom
+from .services.opname_selisih import harga_beli_owner
 from .services.purchase_accounting import post_stock_journal
 from .services.purchase_retur_ppn import faktor_biaya_bersih, hitung_bagian_retur
 from .services.purchase_payments import PurchasePaymentError, create_purchase_payment
@@ -219,6 +220,20 @@ def catat_saldo_awal_stok(product, variant, qty, harga_beli, tanggal, actor):
     return movement
 
 
+def _nama_user(user):
+    if not user:
+        return 'Sistem'
+    return (user.get_full_name() or user.username) if hasattr(user, 'get_full_name') else str(user)
+
+
+def catat_opname(document, user, tindakan, keterangan):
+    """Tulis satu baris riwayat pada dokumen Stok Opname."""
+    return StockOpnameActivityLog.objects.create(
+        document=document, user=user if (user and getattr(user, 'is_authenticated', False)) else None,
+        tindakan=tindakan, keterangan=keterangan,
+    )
+
+
 def post_stock_opname_journal(document, actor, surplus_amount, defisit_amount):
     """Jurnal opname: surplus & defisit bisa terjadi bersamaan dalam satu
     dokumen (produk berbeda) — diposting sebagai satu entri gabungan supaya
@@ -242,7 +257,9 @@ def post_stock_opname_journal(document, actor, surplus_amount, defisit_amount):
     if not inventory or not adjustment:
         raise ValidationError('COA 11400 (Persediaan) dan 81000 (Penyesuaian Barang) wajib tersedia.')
 
-    description = f'Opname stok {document.nomor}'
+    input_oleh = _nama_user(document.dibuat_oleh)
+    posting_oleh = _nama_user(actor)
+    description = f'Opname stok {document.nomor} (diinput {input_oleh}, diposting {posting_oleh})'
     lines = []
     if surplus_amount > 0:
         lines += [
@@ -286,6 +303,8 @@ def post_stock_opname_document(document, user):
     with transaction.atomic():
         surplus_total = Decimal('0')
         defisit_total = Decimal('0')
+        nilai_surplus = Decimal('0')   # selisih x harga beli (untuk tampilan)
+        nilai_defisit = Decimal('0')
         for group in groups.values():
             if group['variant']:
                 owner = ProductVariant.objects.select_for_update().get(pk=group['variant'].id)
@@ -294,6 +313,17 @@ def post_stock_opname_document(document, user):
 
             stok_awal = owner.qty_stok
             stok_akhir = group['total']
+            # Catat kondisi NYATA saat posting pada baris dokumen: stok sistem
+            # sebenarnya + harga beli saat itu, supaya nilai selisih dokumen
+            # tetap sama walau harga beli/stok berubah setelahnya.
+            harga_beli = harga_beli_owner(group['product'], group['variant'])
+            document.items.filter(
+                product_id=group['product'].id, variant_id=group['variant'].id if group['variant'] else None,
+            ).update(stok_sistem=stok_awal, harga_beli_snapshot=harga_beli)
+            if stok_akhir > stok_awal:
+                nilai_surplus += (stok_akhir - stok_awal) * harga_beli
+            elif stok_akhir < stok_awal:
+                nilai_defisit += (stok_awal - stok_akhir) * harga_beli
             owner.qty_stok = stok_akhir
             owner.save()
 
@@ -320,8 +350,20 @@ def post_stock_opname_document(document, user):
                 surplus_total += layer.qty_masuk * layer.harga_beli
 
         document.status = 'selesai'
+        document.diposting_oleh = user
+        document.waktu_diposting = timezone.now()
+        document.nilai_surplus = nilai_surplus.quantize(Decimal('0.01'))
+        document.nilai_defisit = nilai_defisit.quantize(Decimal('0.01'))
+        document.nilai_jurnal_surplus = surplus_total.quantize(Decimal('0.01'))
+        document.nilai_jurnal_defisit = defisit_total.quantize(Decimal('0.01'))
         document.save()
         post_stock_opname_journal(document, user, surplus_total, defisit_total)
+        catat_opname(
+            document, user, 'POSTED',
+            f"Diposting oleh {_nama_user(user)}. Selisih (harga beli): lebih Rp {nilai_surplus:,.0f}, "
+            f"kurang Rp {nilai_defisit:,.0f}. Dijurnal (biaya FIFO): lebih Rp {surplus_total:,.0f}, "
+            f"kurang Rp {defisit_total:,.0f}.",
+        )
 
 
 from . import pos_settings
@@ -2980,7 +3022,17 @@ class StockOpnameDocumentViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         today = timezone.now().date()
         nomor = _next_document_number(StockOpnameDocument, f"OP{today.strftime('%y%m%d')}")
-        serializer.save(nomor=nomor, dibuat_oleh=self.request.user)
+        document = serializer.save(nomor=nomor, dibuat_oleh=self.request.user)
+        catat_opname(document, self.request.user, 'CREATED', f"Dokumen opname {nomor} dibuat oleh {_nama_user(self.request.user)}.")
+
+    @action(detail=True, methods=['get'], url_path='logs')
+    def logs(self, request, pk=None):
+        document = self.get_object()
+        return Response([{
+            'id': log.id, 'tindakan': log.tindakan, 'keterangan': log.keterangan,
+            'waktu': log.created_at,
+            'user_nama': _nama_user(log.user) if log.user else 'Sistem',
+        } for log in document.logs.select_related('user')])
 
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -3075,6 +3127,11 @@ class StockOpnameDocumentViewSet(viewsets.ModelViewSet):
             jam_opname=jam_opname, rak=rak, tanggal_kadaluwarsa=tanggal_kadaluwarsa,
             stok_sistem=owner.qty_stok, stok_aktual=stok_aktual,
         )
+        catat_opname(
+            document, request.user, 'ITEM_ADDED',
+            f"{_nama_user(request.user)} menambah {product.nama}{f' ({variant.nama_varian})' if variant else ''}: "
+            f"sistem {owner.qty_stok} -> aktual {stok_aktual}.",
+        )
         return Response(StockOpnameDocumentItemSerializer(item).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='bulk-add-items')
@@ -3127,6 +3184,8 @@ class StockOpnameDocumentViewSet(viewsets.ModelViewSet):
                 )
                 created_items.append(item)
 
+        if created_items:
+            catat_opname(document, request.user, 'ITEMS_ADDED', f"{_nama_user(request.user)} menambah {len(created_items)} produk sekaligus.")
         return Response(
             {
                 'document': StockOpnameDocumentSerializer(document).data,
@@ -3149,6 +3208,7 @@ class StockOpnameDocumentViewSet(viewsets.ModelViewSet):
         if not item:
             return Response({'error': 'Item tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
 
+        aktual_lama = item.stok_aktual
         if 'stok_aktual' in request.data:
             try:
                 stok_aktual = _to_decimal(request.data.get('stok_aktual'), 'stok_aktual')
@@ -3164,6 +3224,11 @@ class StockOpnameDocumentViewSet(viewsets.ModelViewSet):
         if 'tanggal_kadaluwarsa' in request.data:
             item.tanggal_kadaluwarsa = request.data.get('tanggal_kadaluwarsa') or None
         item.save()
+        if item.stok_aktual != aktual_lama:
+            catat_opname(
+                document, request.user, 'ITEM_UPDATED',
+                f"{_nama_user(request.user)} mengubah hitungan {item.product.nama}: {aktual_lama} -> {item.stok_aktual}.",
+            )
 
         return Response(StockOpnameDocumentItemSerializer(item).data)
 
@@ -3173,9 +3238,12 @@ class StockOpnameDocumentViewSet(viewsets.ModelViewSet):
         if document.status != 'draft':
             return Response({'error': 'Dokumen tidak dalam status draft.'}, status=status.HTTP_400_BAD_REQUEST)
         item_id = request.data.get('item_id')
-        deleted, _ = StockOpnameDocumentItem.objects.filter(document=document, id=item_id).delete()
-        if not deleted:
+        item = StockOpnameDocumentItem.objects.filter(document=document, id=item_id).select_related('product').first()
+        if not item:
             return Response({'error': 'Item tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
+        nama_produk = item.product.nama
+        item.delete()
+        catat_opname(document, request.user, 'ITEM_REMOVED', f"{_nama_user(request.user)} menghapus {nama_produk} dari dokumen.")
         return Response(StockOpnameDocumentSerializer(document).data)
 
     @action(detail=True, methods=['post'], url_path='import-csv')
@@ -3245,6 +3313,8 @@ class StockOpnameDocumentViewSet(viewsets.ModelViewSet):
                 )
                 created_items.append(item)
 
+        if created_items:
+            catat_opname(document, request.user, 'IMPORTED', f"{_nama_user(request.user)} mengimpor {len(created_items)} baris dari CSV.")
         return Response(
             {
                 'document': StockOpnameDocumentSerializer(document).data,
@@ -3275,6 +3345,7 @@ class StockOpnameDocumentViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Hanya dokumen draft yang bisa dibatalkan.'}, status=status.HTTP_400_BAD_REQUEST)
         document.status = 'batal'
         document.save()
+        catat_opname(document, request.user, 'CANCELED', f"Dibatalkan oleh {_nama_user(request.user)}.")
         return Response(StockOpnameDocumentSerializer(document).data)
 
 
