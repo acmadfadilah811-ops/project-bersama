@@ -74,3 +74,45 @@ class AdminFinanceTugasTests(APITestCase):
         ):
             res = self._get(self.admin_finance, url)
             self.assertEqual(res.status_code, 200, f'{url} -> {res.status_code}')
+
+
+class AdminFinancePembelianStokMasukTests(APITestCase):
+    """Admin Finance memproses Pembelian sampai posting Stok Masuk (laporan user
+    2026-09-24: posting Stok Masuk ditolak 403 untuk akun admin finance)."""
+
+    def setUp(self):
+        from datetime import date
+        from decimal import Decimal
+        from accounting.models import Account, AccountClassification, AccountingSettings
+        from api.product_models import Product, Purchase, PurchaseItem
+
+        self.af = User.objects.create_user(username='af_stokmasuk', password='x', role='admin_finance')
+        asset, _ = AccountClassification.objects.get_or_create(name='Kas & Bank', defaults={'account_type': 'asset'})
+        liab, _ = AccountClassification.objects.get_or_create(name='Hutang T', defaults={'account_type': 'liability'})
+        inv = Account.objects.create(code='11400', name='Persediaan', account_type='asset', classification=asset)
+        hut = Account.objects.create(code='21000', name='Hutang', account_type='liability', classification=liab)
+        um = Account.objects.create(code='11710', name='Uang Muka', account_type='asset', classification=asset)
+        st, _ = AccountingSettings.objects.get_or_create(defaults={'accounting_start_date': date(2026, 7, 1)})
+        st.purchase_inventory_account, st.purchase_payable_account, st.purchase_advance_account = inv, hut, um
+        st.save()
+        self.produk = Product.objects.create(nama='Produk AF', lacak_inventori=True, qty_stok=0)
+        self.purchase = Purchase.objects.create(nomor='PB-AF-1', tanggal=date(2026, 9, 24), dibuat_oleh=self.af)
+        PurchaseItem.objects.create(purchase=self.purchase, product=self.produk, qty=Decimal('3'), harga_beli=Decimal('1000'))
+
+    def test_admin_finance_bisa_ubah_dan_posting_stok_masuk_dari_pembelian(self):
+        from api.product_models import StockInDocument
+        self.client.force_authenticate(self.af)
+        res = self.client.post(f'/api/purchases/{self.purchase.id}/workflow/siapkan-stok-masuk/',
+                               {'tanggal_diterima': '2026-09-24', 'lanjut_tambah_stok': True}, format='json')
+        self.assertEqual(res.status_code, 201, res.content)
+        doc = StockInDocument.objects.get(purchase=self.purchase)
+        self.assertEqual(self.client.patch(f'/api/stock-in-documents/{doc.id}/', {'catatan': 'cek'}, format='json').status_code, 200)
+        post = self.client.post(f'/api/stock-in-documents/{doc.id}/post-document/', {}, format='json')
+        self.assertEqual(post.status_code, 200, post.content)
+        self.produk.refresh_from_db()
+        self.assertEqual(self.produk.qty_stok, 3)
+
+    def test_kasir_tetap_tidak_bisa_posting_stok_masuk(self):
+        kasir = User.objects.create_user(username='kasir_stokmasuk', password='x', role='kasir')
+        self.client.force_authenticate(kasir)
+        self.assertEqual(self.client.post('/api/stock-in-documents/', {'tanggal': '2026-09-24'}, format='json').status_code, 403)

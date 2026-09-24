@@ -1873,7 +1873,9 @@ class StockInDocumentViewSet(viewsets.ModelViewSet):
     """Dokumen Stok Masuk: header + banyak item, status draft -> selesai/batal."""
     queryset = StockInDocument.objects.all().prefetch_related('items__product').select_related('dibuat_oleh')
     serializer_class = StockInDocumentSerializer
-    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
+    # Admin Finance memproses Pembelian sampai posting Stok Masuk (alur Terima
+    # -> Stok Masuk), jadi ikut izin Pembelian (2026-09-24).
+    permission_classes = [IsOwnerManagerAdminFinanceOrReadOnly]
 
     def perform_create(self, serializer):
         today = timezone.now().date()
@@ -2389,7 +2391,10 @@ class PurchaseViewSet(viewsets.ModelViewSet):
     def remove_payment(self, request, pk=None):
         payment_id = request.data.get('payment_id')
         with transaction.atomic():
-            purchase = self.get_queryset().select_for_update().get(pk=pk)
+            # of=('self',): queryset membawa select_related ke relasi yang boleh
+            # kosong (supplier_ref/retur_ref/dibuat_oleh) -> PostgreSQL menolak
+            # FOR UPDATE di sisi nullable outer join (500 di produksi 2026-09-24).
+            purchase = self.get_queryset().select_for_update(of=('self',)).get(pk=pk)
             payment = PurchasePayment.objects.filter(purchase=purchase, id=payment_id).first()
             if not payment:
                 return Response({'error': 'Pembayaran tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
