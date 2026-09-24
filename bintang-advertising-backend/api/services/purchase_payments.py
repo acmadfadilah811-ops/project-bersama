@@ -86,4 +86,7 @@ def create_purchase_payment(*, purchase_id, data, actor):
         except DjangoValidationError as exc:
             raise PurchasePaymentError(getattr(exc, "messages", [str(exc)])[0]) from exc
         purchase.recompute_payment_status()
+        # Lunas + sudah diterima -> otomatis Telah Diproses (instruksi user 2026-09-24).
+        from .purchase_completion import selesaikan_otomatis_jika_siap
+        selesaikan_otomatis_jika_siap(purchase, actor)
         return purchase

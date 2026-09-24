@@ -98,6 +98,11 @@ def post_stock_in_document(document, actor):
     document.status = 'selesai'
     document.save()
     post_stock_journal(document, actor, direction='in')
+    if document.purchase_id:
+        # Pembelian yang sudah lunas + diterima otomatis pindah ke Telah Diproses
+        # begitu Stok Masuk-nya diposting (instruksi user 2026-09-24).
+        from .services.purchase_completion import selesaikan_otomatis_jika_siap
+        selesaikan_otomatis_jika_siap(document.purchase, actor)
     return document
 
 
