@@ -165,10 +165,9 @@ export default function ReturPembelianDetailView({ docId, onBack, onSaved }) {
   const refDetails = doc.retur_ref_details || {};
   const availableProducts = refDetails.items || [];
 
-  const totalAmount = items.reduce(
-    (acc, it) => acc + Number(it.qty || 1) * Number(it.harga_beli || 0),
-    0
-  );
+  const totalAmount = doc.status !== 'draft'
+    ? Number(doc.total || 0)
+    : items.reduce((acc, it) => acc + Number(it.qty || 1) * Number(it.harga_beli || 0), 0);
 
   return (
     <div className="p-6 w-full mx-auto space-y-5 animate-fade-in text-slate-700">

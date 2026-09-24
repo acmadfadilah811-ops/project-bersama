@@ -81,8 +81,16 @@ def post_stock_journal(document, actor, *, direction="in"):
                 amount = net_target.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
         if ring["pajak"] > 0 and net_target > 0:
             pajak_doc = (ring["pajak"] * amount / net_target).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    # Retur (2026-09-24): porsi PPN pembelian asal yang dikembalikan sudah
+    # disimpan di dokumen retur (lihat post_retur / purchase_retur_ppn) -> dibalik
+    # dari PPN Masukan; hutang berkurang sebesar nilai barang + PPN.
+    pajak_retur = Decimal("0")
+    if direction == "out":
+        purchase_retur = getattr(document, "purchase", None)
+        if purchase_retur is not None and purchase_retur.is_retur:
+            pajak_retur = purchase_retur.pajak_amount
     ppn_masukan = None
-    if pajak_doc > 0:
+    if pajak_doc > 0 or pajak_retur > 0:
         ppn_masukan = Account.objects.filter(
             code="11750", is_active=True, account_type=Account.AccountType.ASSET,
         ).first()
@@ -113,6 +121,16 @@ def post_stock_journal(document, actor, *, direction="in"):
             "debit": pajak_doc,
             "kredit": 0,
             "description": f"PPN Masukan {document.nomor}",
+            "external_document_no": document.nomor,
+        })
+
+    if pajak_retur > 0:
+        lines[0]["debit"] = amount + pajak_retur
+        lines.append({
+            "account": ppn_masukan,
+            "debit": 0,
+            "kredit": pajak_retur,
+            "description": f"Pembalikan PPN Masukan {document.nomor}",
             "external_document_no": document.nomor,
         })
 

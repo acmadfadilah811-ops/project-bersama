@@ -15,6 +15,7 @@ from ..product_serializers import PurchaseSerializer, StockInDocumentSerializer
 from ..purchase_workflow_models import PurchaseActivityLog, catat_purchase
 from ..product_views import _next_document_number, _parse_bool_flag, post_stock_in_document
 from ..services.purchase_completion import selesaikan_otomatis_jika_siap
+from ..services.purchase_retur_ppn import faktor_biaya_bersih
 
 
 def _get_user(request):
@@ -53,11 +54,7 @@ def _catat_penerimaan(purchase, user, *, tanggal, no_terima, lanjut_tambah_stok,
 
     # Diskon dokumen dialokasikan proporsional ke harga beli tiap item, jadi
     # Stok Masuk / lapisan FIFO / HPP memakai biaya BERSIH (2026-09-24).
-    ringkasan = purchase.hitung_ringkasan()
-    faktor = (
-        (ringkasan['subtotal'] - ringkasan['diskon']) / ringkasan['subtotal']
-        if ringkasan['subtotal'] > 0 else Decimal('1')
-    )
+    faktor = faktor_biaya_bersih(purchase)
 
     today = timezone.localdate()
     doc = StockInDocument.objects.create(

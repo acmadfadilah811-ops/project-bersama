@@ -47,6 +47,7 @@ from . import production_costing
 from . import stock_fifo
 from . import uom
 from .services.purchase_accounting import post_stock_journal
+from .services.purchase_retur_ppn import faktor_biaya_bersih, hitung_bagian_retur
 from .services.purchase_payments import PurchasePaymentError, create_purchase_payment
 
 logger = logging.getLogger(__name__)
@@ -2440,6 +2441,16 @@ class PurchaseViewSet(viewsets.ModelViewSet):
 
         exchange = _parse_bool_flag(request.data.get('exchange_new'))
         with transaction.atomic():
+            # Porsi diskon & PPN pembelian asal yang ikut dikembalikan disimpan di
+            # dokumen retur (jadi total retur = nilai barang - diskon + PPN) dan
+            # dipakai jurnal retur untuk membalik PPN Masukan. Retur TUKAR barang
+            # tidak membalik PPN: barang pengganti membawa PPN yang sama (netral).
+            if not exchange:
+                bagian = hitung_bagian_retur(retur)
+                if bagian['diskon'] or bagian['pajak']:
+                    retur.diskon_tipe, retur.diskon_nilai = 'nominal', bagian['diskon']
+                    retur.pajak_tipe, retur.pajak_nilai = 'nominal', bagian['pajak']
+                    retur.save(update_fields=['diskon_tipe', 'diskon_nilai', 'pajak_tipe', 'pajak_nilai', 'updated_at'])
             err = self._apply_purchase_stock(retur, request, direction='out')
             if err:
                 return err
@@ -2476,9 +2487,11 @@ class PurchaseViewSet(viewsets.ModelViewSet):
                 tanggal=tanggal, catatan=purchase.catatan, supplier=purchase.supplier,
                 status='selesai', dibuat_oleh=request.user, purchase=purchase,
             )
+            faktor = faktor_biaya_bersih(purchase)
             for it in purchase.items.select_related('product', 'variant'):
                 if not getattr(it, 'jadikan_stok_keluar', True):
                     continue
+                harga_bersih = (it.harga_beli * faktor).quantize(Decimal('0.01'))
                 if it.variant_id:
                     owner = ProductVariant.objects.select_for_update().get(pk=it.variant_id)
                 else:
@@ -2487,15 +2500,15 @@ class PurchaseViewSet(viewsets.ModelViewSet):
                 stok_akhir = stok_awal + it.qty
                 owner.qty_stok = stok_akhir
                 owner.save()
-                if it.harga_beli:
-                    Product.objects.filter(pk=it.product_id).update(harga_beli=it.harga_beli)
+                if harga_bersih:
+                    Product.objects.filter(pk=it.product_id).update(harga_beli=harga_bersih)
                 ProductStockMovement.objects.create(
                     product=it.product, variant=it.variant, user=request.user, tipe='masuk',
-                    qty=it.qty, harga_beli=it.harga_beli, stok_awal=stok_awal, stok_akhir=stok_akhir,
+                    qty=it.qty, harga_beli=harga_bersih, stok_awal=stok_awal, stok_akhir=stok_akhir,
                     catatan=purchase.catatan, tanggal=tanggal, stock_in_document=doc,
                 )
                 stock_fifo.create_layer(
-                    it.product, it.variant, it.qty, it.harga_beli, tanggal,
+                    it.product, it.variant, it.qty, harga_bersih, tanggal,
                     sumber_tipe='purchase', sumber_nomor=purchase.nomor,
                     tanggal_kadaluwarsa=it.tanggal_kadaluwarsa,
                 )

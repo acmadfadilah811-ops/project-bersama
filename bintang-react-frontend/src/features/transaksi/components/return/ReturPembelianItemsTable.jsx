@@ -26,6 +26,11 @@ export default function ReturPembelianItemsTable({
   );
 
   const isDraft = doc.status === 'draft';
+  // Porsi diskon & PPN pembelian asal dihitung server saat retur diposting
+  // (2026-09-24); sebelum diposting tampil 0.
+  const diskonRetur = Number(doc.diskon_amount || 0);
+  const pajakRetur = Number(doc.pajak_amount || 0);
+  const jumlahRetur = Math.max(0, subtotalRetur - diskonRetur + pajakRetur);
 
   const filteredProducts = availableProducts.filter((p) => {
     const q = searchQuery.toLowerCase().trim();
@@ -224,15 +229,15 @@ export default function ReturPembelianItemsTable({
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500 font-medium">Pajak</span>
-                <span className="font-mono font-semibold text-slate-700">IDR 0</span>
+                <span className="font-mono font-semibold text-slate-700">{fmtIDR(pajakRetur)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500 font-medium">Discount</span>
-                <span className="font-mono font-semibold text-slate-700">IDR 0</span>
+                <span className="font-mono font-semibold text-slate-700">{fmtIDR(diskonRetur)}</span>
               </div>
               <div className="flex justify-between pt-1 border-t border-slate-100">
                 <span className="text-slate-800 font-bold">Jumlah</span>
-                <span className="font-mono font-bold text-slate-900 text-sm">{fmtIDR(subtotalRetur)}</span>
+                <span className="font-mono font-bold text-slate-900 text-sm">{fmtIDR(jumlahRetur)}</span>
               </div>
               <div className="flex justify-between items-center pt-2">
                 <span className="text-slate-500 font-medium">Status Bayar</span>
