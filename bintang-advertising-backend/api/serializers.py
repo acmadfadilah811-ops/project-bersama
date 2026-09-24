@@ -12,6 +12,7 @@ from .models import (
     OrderVoidRequest, OrderReturnRequest
 )
 from .product_serializers import SaleItemAddonSerializer
+from .services.order_stock import potong_stok_order_item
 from .protected_media import protected_media_url
 
 logger = logging.getLogger(__name__)
@@ -310,59 +311,6 @@ class JobBoardSerializer(serializers.ModelSerializer):
             return f"{item.panjang} x {item.lebar} m"
         return "-"
 
-def _potong_stok_order_item(item, user):
-    """Potong stok (M8: lewat FIFO service resmi, bukan langsung qty_stok) saat
-    sebuah OrderItem BARU PERTAMA KALI tertaut ke Product langsung (bukan paket
-    — komponen paket dipotong lewat jalurnya sendiri di checkout_pos()).
-
-    Sebelum diperbaiki: order yang dibuat lewat form WA (`_simpan_order_dari_form`
-    di views/whatsapp.py) atau lewat endpoint /order-items/ generik TIDAK PERNAH
-    memotong stok sama sekali — hanya order dari checkout_pos() (alur DP kasir)
-    yang memotongnya. Fungsi ini menutup celah itu di satu tempat yang dipakai
-    bersama oleh create() dan update() serializer ini.
-
-    `stok_dikurangi` jadi penanda idempoten: begitu True, tidak pernah dipotong
-    ulang di sini lagi (mencegah dobel potong kalau item yang sama diedit lagi).
-    Perubahan qty/produk SETELAH pemotongan pertama SENGAJA tidak ikut
-    menyesuaikan stok otomatis di sini — rekonsiliasi delta yang aman perlu
-    desain terpisah; batasan ini didokumentasikan, bukan dilewatkan diam-diam.
-    """
-    if item.stok_dikurangi or not item.product_id or item.paket_id:
-        return
-    from . import pos_settings, stock_fifo
-    from .product_models import Product, ProductVariant, ProductStockMovement
-    from rest_framework.exceptions import ValidationError
-    from django.db import transaction
-    from django.utils import timezone as _tz
-
-    if not pos_settings.pos_mengurangi_stok():
-        return
-
-    with transaction.atomic():
-        product = Product.objects.select_for_update().get(pk=item.product_id)
-        if not product.lacak_inventori:
-            return
-        variant = (ProductVariant.objects.select_for_update().get(pk=item.variant_id)
-                   if item.variant_id else None)
-        owner = variant or product
-        qty = Decimal(str(item.qty or 0))
-        if qty <= 0:
-            return
-        if qty > Decimal(str(owner.qty_stok or 0)):
-            raise ValidationError({'error': f"Stok '{owner}' tidak mencukupi untuk item ini."})
-        start = owner.qty_stok
-        owner.qty_stok = start - qty
-        owner.save(update_fields=['qty_stok'])
-        movement = ProductStockMovement.objects.create(
-            product=product, variant=variant, user=user, tipe='penjualan',
-            qty=qty, stok_awal=start, stok_akhir=owner.qty_stok, order=item.order,
-            catatan=f'Order {item.order_id} — {item.jenis_produk}', tanggal=_tz.localdate(),
-        )
-        stock_fifo.consume_layers(product, variant, qty, movement=movement)
-        item.stok_dikurangi = True
-        item.save(update_fields=['stok_dikurangi'])
-
-
 # --- 4. Order Item Serializer (Detail Pecahan) ---
 class OrderItemSerializer(serializers.ModelSerializer):
     jobs = JobBoardSerializer(many=True, read_only=True) # Nested JobBoard
@@ -382,7 +330,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
         model = OrderItem
         fields = '__all__'
         # Luas otomatis dihitung backend. stok_dikurangi HANYA boleh diset oleh
-        # server saat benar-benar memotong stok (lihat _potong_stok_order_item) —
+        # server saat benar-benar memotong stok (lihat services/order_stock.py) —
         # kalau writable, klien bisa kirim True untuk diam-diam melewati potong
         # stok, atau False untuk memicu potong dobel.
         read_only_fields = ['luas', 'stok_dikurangi']
@@ -435,7 +383,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
         if current_user:
             instance._current_user = current_user
         instance.save()
-        _potong_stok_order_item(instance, current_user)
+        potong_stok_order_item(instance, current_user)
 
         # Add-on per item — sebelumnya endpoint /order-items/ (dipakai form
         # Antrean WA) tidak punya jalur addon sama sekali, beda dari
@@ -489,7 +437,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
         if current_user:
             instance._current_user = current_user
         instance.save()
-        _potong_stok_order_item(instance, current_user)
+        potong_stok_order_item(instance, current_user)
 
         if insentif_val is not None or biaya_desain_val is not None:
             jobs = instance.jobs.all()

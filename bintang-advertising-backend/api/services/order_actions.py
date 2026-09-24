@@ -159,6 +159,26 @@ def selesaikan_order(order, actor):
     return order
 
 
+def _cocokkan_produk_persis(jenis_produk):
+    """Tautkan teks `jenis_produk` ke SATU Product katalog HANYA kalau namanya
+    sama persis (tanpa beda huruf besar/kecil) dan tidak ambigu (2026-09-24).
+
+    Sengaja lebih ketat dari wa_logic._cocokkan_produk_tunggal (yang fuzzy:
+    substring + kategori + toleransi typo, cukup utk validasi Bahan/Finishing
+    tapi terlalu longgar di sini): tautan ini menentukan potong stok & resep
+    BoM, jadi tebakan yang salah lebih buruk daripada tidak tertaut sama
+    sekali (staff tetap bisa memilih produk di Antrean WA). Produk bervarian
+    dilewati -- stoknya ada di level varian, dan varian tidak bisa ditebak
+    dari teks bebas."""
+    nama = (jenis_produk or '').strip()
+    if not nama or nama.lower() == 'umum':
+        return None
+    from ..product_models import Product
+
+    kandidat = list(Product.objects.filter(nama__iexact=nama, is_active=True, has_variant=False)[:2])
+    return kandidat[0] if len(kandidat) == 1 else None
+
+
 def buat_order_dari_items(nomor_wa, nama_kontak, nama_order, items, raw_detail='', sumber='wa'):
     """Buat Order + OrderItem + JobBoard tahap awal dari data yang SUDAH
     tervalidasi/terstruktur (2026-09-10) -- diekstrak dari
@@ -223,8 +243,13 @@ def buat_order_dari_items(nomor_wa, nama_kontak, nama_order, items, raw_detail='
                 if finishing: detail_json.append({"key": "Finishing", "value": finishing})
                 if bahan: detail_json.append({"key": "Bahan", "value": bahan})
 
+            # Stok TIDAK dipotong di sini (order masih draft & belum diverifikasi):
+            # baru terpotong saat staff menyimpan item di Antrean WA
+            # (/order-items/ -> services/order_stock.py), dan resep BoM baru
+            # bisa ketemu saat pekerjaan produksinya selesai.
             order_item = OrderItem.objects.create(
                 order=order,
+                product=_cocokkan_produk_persis(jenis_produk),
                 jenis_produk=jenis_produk,
                 qty=qty,
                 panjang=float(item_data.get('panjang') or 0),

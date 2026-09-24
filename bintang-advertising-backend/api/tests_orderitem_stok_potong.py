@@ -2,7 +2,7 @@
 checkout_pos) harus tetap memotong stok — sebelumnya order dari form WA
 (_simpan_order_dari_form) dan endpoint /order-items/ generik TIDAK PERNAH
 memotong stok sama sekali, hanya checkout_pos() (alur DP kasir) yang
-melakukannya. Lihat _potong_stok_order_item di api/serializers.py."""
+melakukannya. Lihat potong_stok_order_item di api/services/order_stock.py."""
 from rest_framework.test import APITestCase
 
 from api.models import CustomUser, Order, OrderItem

@@ -518,11 +518,16 @@ class OrderViewSet(viewsets.ModelViewSet):
                 harga_jual=harga_satuan * qty + int(addon_total),
                 detail=[detail] if detail else [],
                 keterangan_detail=str(raw_item.get('catatan') or '')[:2000],
-                # Stok komponen paket dipotong lewat produk komponennya (bukan
-                # field product milik OrderItem ini), jadi flag ini hanya untuk
-                # item produk langsung — supaya OrderItemSerializer tidak ikut
-                # memotong stok lagi kalau item ini diedit lewat /order-items/.
-                stok_dikurangi=bool(product and not package and product.lacak_inventori and pos_settings.pos_mengurangi_stok()),
+                # Stok item ini dipotong di blok stock_lines di bawah (produk
+                # langsung, atau komponen paket lewat produk komponennya) —
+                # flag ini supaya OrderItemSerializer tidak memotong lagi
+                # kalau item ini diedit lewat /order-items/ (2026-09-24: item
+                # paket ikut ditandai; dulu cuma produk langsung, sekarang
+                # /order-items/ juga memotong komponen paket).
+                stok_dikurangi=bool(
+                    pos_settings.pos_mengurangi_stok()
+                    and (package or (product and product.lacak_inventori))
+                ),
             )
             item._current_user = request.user
             item.save()
