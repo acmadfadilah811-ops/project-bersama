@@ -6,7 +6,6 @@ import PembelianItemsTable from './PembelianItemsTable';
 import PembelianPembayaranModal from './PembelianPembayaranModal';
 import PembelianDiskonModal from './PembelianDiskonModal';
 import PembelianPajakModal from './PembelianPajakModal';
-import PembelianPengirimanModal from './PembelianPengirimanModal';
 import PurchaseWorkflowLog from './PurchaseWorkflowLog';
 import PurchaseAttachmentCard from './PurchaseAttachmentCard';
 import ReturPembelianDetailView from './return/ReturPembelianDetailView';
@@ -21,17 +20,10 @@ export default function PembelianDetail({ docId, detailMode = 'butuh-diproses', 
   const [removingPaymentId, setRemovingPaymentId] = useState(null);
   const [togglingPaymentMark, setTogglingPaymentMark] = useState(false);
 
-  // Modals for Diskon, Pajak, Pengiriman (Presisi SS No 1-4)
+  // Diskon & Pajak disimpan di server (2026-09-24) -- angka rupiahnya dihitung
+  // backend (doc.diskon_amount / pajak_amount / total). Ongkir belum didukung.
   const [showDiskonModal, setShowDiskonModal] = useState(false);
   const [showPajakModal, setShowPajakModal] = useState(false);
-  const [showPengirimanModal, setShowPengirimanModal] = useState(false);
-
-  // Values for Diskon, Pajak, Pengiriman
-  const [diskonVal, setDiskonVal] = useState(0);
-  const [diskonType, setDiskonType] = useState('persen');
-  const [pajakVal, setPajakVal] = useState(0);
-  const [pajakType, setPajakType] = useState('persen');
-  const [pengirimanVal, setPengirimanVal] = useState(0);
 
   const fetchDetail = useCallback(async () => {
     try {
@@ -133,15 +125,13 @@ export default function PembelianDetail({ docId, detailMode = 'butuh-diproses', 
   const isRetur = !!doc.is_retur;
   const isCancelled = doc.status === 'batal' || detailMode === 'dibatalkan';
 
-  const subtotal = (doc.items || []).reduce(
-    (acc, it) => acc + Number(it.qty || 1) * Number(it.harga_beli || 0),
-    0
-  );
-  const diskonAmount = diskonType === 'persen' ? Math.round(subtotal * (diskonVal / 100)) : diskonVal;
-  const subtotalAfterDiskon = Math.max(0, subtotal - diskonAmount);
-  const pajakAmount = pajakType === 'persen' ? Math.round(subtotalAfterDiskon * (pajakVal / 100)) : pajakVal;
-  const pengirimanAmount = Number(pengirimanVal) || 0;
-  const totalDitagihkan = Math.max(0, subtotalAfterDiskon + pajakAmount + pengirimanAmount);
+  const diskonVal = Number(doc.diskon_nilai || 0);
+  const diskonType = doc.diskon_tipe || 'persen';
+  const pajakVal = Number(doc.pajak_nilai || 0);
+  const pajakType = doc.pajak_tipe || 'persen';
+  const diskonAmount = Number(doc.diskon_amount || 0);
+  const pajakAmount = Number(doc.pajak_amount || 0);
+  const totalDitagihkan = Number(doc.total || 0);
   const jumlahTerbayar = Number(doc.total_dibayar || 0);
   const sisa = Math.max(0, totalDitagihkan - jumlahTerbayar);
 
@@ -162,6 +152,16 @@ export default function PembelianDetail({ docId, detailMode = 'butuh-diproses', 
       alert(err.response?.data?.error || 'Gagal mengubah penanda pembayaran.');
     } finally {
       setTogglingPaymentMark(false);
+    }
+  };
+
+  const simpanPotongan = async (payload) => {
+    try {
+      await apiClient.patch(`/purchases/${docId}/`, payload);
+      await refreshAll();
+    } catch (err) {
+      const data = err.response?.data;
+      alert(data?.error || (data && Object.values(data)[0]) || 'Gagal menyimpan diskon/pajak.');
     }
   };
 
@@ -352,12 +352,10 @@ export default function PembelianDetail({ docId, detailMode = 'butuh-diproses', 
           items={doc.items}
           diskonAmount={diskonAmount}
           pajakAmount={pajakAmount}
-          pengirimanAmount={pengirimanAmount}
           jumlahTerbayar={jumlahTerbayar}
           payments={doc.payments || []}
           onOpenDiskon={() => setShowDiskonModal(true)}
           onOpenPajak={() => setShowPajakModal(true)}
-          onOpenPengiriman={() => setShowPengirimanModal(true)}
           onOpenPembayaran={() => setIsPayOpen(true)}
           onRemovePayment={handleRemovePayment}
           removingPaymentId={removingPaymentId}
@@ -395,10 +393,7 @@ export default function PembelianDetail({ docId, detailMode = 'butuh-diproses', 
           currentVal={diskonVal}
           currentType={diskonType}
           onClose={() => setShowDiskonModal(false)}
-          onSave={({ val, type }) => {
-            setDiskonVal(val);
-            setDiskonType(type);
-          }}
+          onSave={({ val, type }) => simpanPotongan({ diskon_tipe: type, diskon_nilai: val })}
         />
       )}
 
@@ -407,20 +402,10 @@ export default function PembelianDetail({ docId, detailMode = 'butuh-diproses', 
           currentVal={pajakVal}
           currentType={pajakType}
           onClose={() => setShowPajakModal(false)}
-          onSave={({ val, type }) => {
-            setPajakVal(val);
-            setPajakType(type);
-          }}
+          onSave={({ val, type }) => simpanPotongan({ pajak_tipe: type, pajak_nilai: val })}
         />
       )}
 
-      {showPengirimanModal && (
-        <PembelianPengirimanModal
-          currentVal={pengirimanVal}
-          onClose={() => setShowPengirimanModal(false)}
-          onSave={(val) => setPengirimanVal(val)}
-        />
-      )}
     </div>
   );
 }

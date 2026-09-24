@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from django.conf import settings
 from django.db import models
@@ -575,6 +575,15 @@ class Purchase(models.Model):
         help_text='Penanda administratif pembayaran; tidak membuat pembayaran atau jurnal.',
     )
 
+    # Diskon & PPN tingkat dokumen (2026-09-24). Ongkir sengaja belum ada
+    # (instruksi user). Angka rupiahnya SELALU dihitung server dari nilai ini
+    # (lihat hitung_ringkasan) -- bukan dari total kiriman browser (M6).
+    TIPE_POTONGAN_CHOICES = [('persen', 'Persen'), ('nominal', 'Nominal')]
+    diskon_tipe = models.CharField(max_length=10, choices=TIPE_POTONGAN_CHOICES, default='persen')
+    diskon_nilai = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    pajak_tipe = models.CharField(max_length=10, choices=TIPE_POTONGAN_CHOICES, default='persen')
+    pajak_nilai = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+
     # Retur
     is_retur = models.BooleanField(default=False)
     retur_ref = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='returns')
@@ -601,8 +610,40 @@ class Purchase(models.Model):
         return self.nomor or f"Purchase-{self.pk}"
 
     @property
-    def total(self):
+    def subtotal(self):
         return sum((it.qty * it.harga_beli for it in self.items.all()), start=Decimal('0'))
+
+    def hitung_ringkasan(self, subtotal=None):
+        """Subtotal, diskon, PPN, dan total dokumen. Diskon dipotong dari subtotal
+        (dibatasi maksimal subtotal), PPN dihitung dari subtotal setelah diskon;
+        dibulatkan ke rupiah utuh. Tanpa diskon/PPN, total == subtotal item."""
+        def rupiah(v):
+            return Decimal(v).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+
+        subtotal = self.subtotal if subtotal is None else Decimal(subtotal)
+        if self.diskon_tipe == 'persen':
+            diskon = rupiah(subtotal * self.diskon_nilai / 100)
+        else:
+            diskon = rupiah(self.diskon_nilai)
+        diskon = min(max(diskon, Decimal('0')), subtotal)
+        dasar = subtotal - diskon
+        if self.pajak_tipe == 'persen':
+            pajak = rupiah(dasar * self.pajak_nilai / 100)
+        else:
+            pajak = rupiah(self.pajak_nilai)
+        return {'subtotal': subtotal, 'diskon': diskon, 'pajak': pajak, 'total': dasar + pajak}
+
+    @property
+    def diskon_amount(self):
+        return self.hitung_ringkasan()['diskon']
+
+    @property
+    def pajak_amount(self):
+        return self.hitung_ringkasan()['pajak']
+
+    @property
+    def total(self):
+        return self.hitung_ringkasan()['total']
 
     @property
     def total_dibayar(self):
@@ -615,9 +656,10 @@ class Purchase(models.Model):
         Memakai agregasi DB (bukan properti .total/.total_dibayar) supaya kebal
         terhadap cache prefetch_related yang mungkin sudah basi pada instance ini."""
         from django.db.models import Sum, F, DecimalField
-        total = self.items.aggregate(
+        subtotal = self.items.aggregate(
             t=Sum(F('qty') * F('harga_beli'), output_field=DecimalField())
         )['t'] or Decimal('0')
+        total = self.hitung_ringkasan(subtotal)['total']
         dibayar = self.payments.aggregate(t=Sum('nominal'))['t'] or Decimal('0')
         if dibayar <= 0:
             self.payment_status = 'belum'

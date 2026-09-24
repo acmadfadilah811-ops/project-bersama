@@ -315,6 +315,9 @@ class PurchaseSerializer(serializers.ModelSerializer):
     dibuat_oleh_nama = serializers.ReadOnlyField(source='dibuat_oleh.username')
     dibuat_oleh_email = serializers.SerializerMethodField()
     # Field turunan untuk layar detail & tabel — dihitung dari item & pembayaran.
+    subtotal = serializers.ReadOnlyField()
+    diskon_amount = serializers.ReadOnlyField()
+    pajak_amount = serializers.ReadOnlyField()
     total = serializers.ReadOnlyField()
     total_dibayar = serializers.ReadOnlyField()
     sisa = serializers.SerializerMethodField()
@@ -334,6 +337,44 @@ class PurchaseSerializer(serializers.ModelSerializer):
               'nomor', 'status', 'payment_status', 'payment_marked_paid', 'receive_status',
             'tanggal_diterima', 'no_terima', 'is_retur', 'retur_ref', 'dibuat_oleh',
         ]
+
+    def validate(self, attrs):
+        """Diskon & PPN dokumen (2026-09-24): nilai wajar, dan tidak boleh diubah
+        setelah barang diterima (Stok Masuk sudah membawa biaya bersih & jurnal
+        PPN Masukan) atau bila total baru lebih kecil dari yang sudah dibayar."""
+        kunci = {'diskon_tipe', 'diskon_nilai', 'pajak_tipe', 'pajak_nilai'}
+        if not (kunci & attrs.keys()):
+            return attrs
+        for tipe_key, nilai_key, label in (
+            ('diskon_tipe', 'diskon_nilai', 'Diskon'), ('pajak_tipe', 'pajak_nilai', 'PPN'),
+        ):
+            tipe = attrs.get(tipe_key, getattr(self.instance, tipe_key, 'persen'))
+            nilai = attrs.get(nilai_key, getattr(self.instance, nilai_key, 0))
+            if nilai < 0:
+                raise serializers.ValidationError({nilai_key: f'{label} tidak boleh negatif.'})
+            if tipe == 'persen' and nilai > 100:
+                raise serializers.ValidationError({nilai_key: f'{label} persen tidak boleh lebih dari 100.'})
+
+        purchase = self.instance
+        if purchase is not None:
+            if purchase.stock_in_documents.exclude(status='batal').exists() or purchase.receive_status == 'diterima':
+                raise serializers.ValidationError({'error': 'Diskon dan PPN tidak dapat diubah setelah barang diterima.'})
+            calon = Purchase(
+                diskon_tipe=attrs.get('diskon_tipe', purchase.diskon_tipe),
+                diskon_nilai=attrs.get('diskon_nilai', purchase.diskon_nilai),
+                pajak_tipe=attrs.get('pajak_tipe', purchase.pajak_tipe),
+                pajak_nilai=attrs.get('pajak_nilai', purchase.pajak_nilai),
+            )
+            total_baru = calon.hitung_ringkasan(purchase.subtotal)['total']
+            if total_baru < purchase.total_dibayar:
+                raise serializers.ValidationError({'error': 'Total baru lebih kecil dari pembayaran yang sudah dicatat.'})
+        return attrs
+
+    def update(self, instance, validated_data):
+        instance = super().update(instance, validated_data)
+        # Pembayaran sudah ada -> status lunas/sebagian bisa bergeser oleh total baru.
+        instance.recompute_payment_status()
+        return instance
 
     def get_dibuat_oleh_email(self, obj):
         return obj.dibuat_oleh.email if obj.dibuat_oleh else None

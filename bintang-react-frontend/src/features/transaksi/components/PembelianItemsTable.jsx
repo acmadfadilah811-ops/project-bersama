@@ -8,6 +8,7 @@ export default function PembelianItemsTable({
   diskonAmount = 0,
   pajakAmount = 0,
   pengirimanAmount = 0,
+  tampilkanPengiriman = false,
   jumlahTerbayar = 0,
   payments = [],
   onOpenDiskon,
@@ -144,6 +145,7 @@ export default function PembelianItemsTable({
             </td>
           </tr>
 
+          {tampilkanPengiriman && (
           <tr>
             <td colSpan={4} className="py-2 px-3 text-right text-slate-500 font-semibold">
               Biaya Pengiriman
@@ -161,6 +163,7 @@ export default function PembelianItemsTable({
               </button>
             </td>
           </tr>
+          )}
 
           {/* Baris Total Ditagihkan */}
           <tr className="border-t border-b border-slate-300 font-bold bg-slate-50/50">

@@ -1,11 +1,11 @@
 """Posting akuntansi yang terkait dengan dokumen stok Pembelian."""
 
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework.exceptions import ValidationError
 
-from accounting.models import JournalEntry
+from accounting.models import Account, JournalEntry
 from accounting.services.journal import create_journal_entry
 from accounting.services.purchase_accounts import get_purchase_account_mappings
 
@@ -60,6 +60,35 @@ def post_stock_journal(document, actor, *, direction="in"):
         raise ValidationError(getattr(exc, "messages", [str(exc)])) from exc
     inventory, payable, advance = accounts["inventory"], accounts["payable"], accounts["advance"]
     label = "Stok masuk" if direction == "in" else "Retur stok"
+
+    # Diskon & PPN dokumen pembelian (2026-09-24): Persediaan dicatat NETTO
+    # (subtotal - diskon), PPN masuk ke PPN Masukan, dan Hutang = netto + PPN --
+    # sama dengan Purchase.total sehingga pembayaran melunasi hutang persis.
+    # Harga beli di Stok Masuk sudah dialokasikan netto (dibulatkan 2 desimal);
+    # selisih pembulatan itu diserap ke Persediaan supaya jurnal tepat rupiah.
+    # Kalau qty Stok Masuk diubah gudang (di luar toleransi pembulatan), jurnal
+    # mengikuti nilai aktual dan PPN diskalakan proporsional.
+    pajak_doc = Decimal("0")
+    purchase_doc = getattr(document, "purchase", None) if direction == "in" else None
+    if purchase_doc is not None:
+        ring = purchase_doc.hitung_ringkasan()
+        net_target = ring["subtotal"] - ring["diskon"]
+        if ring["diskon"] > 0 and net_target > 0:
+            toleransi = sum(
+                (Decimal(str(mv.qty or 0)) for mv in document.movements.all()), Decimal("0"),
+            ) * Decimal("0.005") + 1
+            if abs(amount - net_target) <= toleransi:
+                amount = net_target.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        if ring["pajak"] > 0 and net_target > 0:
+            pajak_doc = (ring["pajak"] * amount / net_target).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    ppn_masukan = None
+    if pajak_doc > 0:
+        ppn_masukan = Account.objects.filter(
+            code="11750", is_active=True, account_type=Account.AccountType.ASSET,
+        ).first()
+        if not ppn_masukan:
+            raise ValidationError("Akun PPN Masukan (11750, tipe Aset) wajib tersedia dan aktif untuk pembelian ber-PPN.")
+
     lines = [
         {
             "account": inventory if direction == "in" else payable,
@@ -76,6 +105,16 @@ def post_stock_journal(document, actor, *, direction="in"):
             "external_document_no": document.nomor,
         },
     ]
+
+    if pajak_doc > 0:
+        lines[1]["kredit"] = amount + pajak_doc
+        lines.insert(1, {
+            "account": ppn_masukan,
+            "debit": pajak_doc,
+            "kredit": 0,
+            "description": f"PPN Masukan {document.nomor}",
+            "external_document_no": document.nomor,
+        })
 
     purchase = getattr(document, "purchase", None)
     if direction == "in" and purchase:

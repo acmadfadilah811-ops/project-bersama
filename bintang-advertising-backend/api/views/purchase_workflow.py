@@ -1,3 +1,5 @@
+from decimal import Decimal, ROUND_HALF_UP
+
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -49,6 +51,14 @@ def _catat_penerimaan(purchase, user, *, tanggal, no_terima, lanjut_tambah_stok,
         existing.save(update_fields=['nama_penerima', 'updated_at'])
         return existing, False
 
+    # Diskon dokumen dialokasikan proporsional ke harga beli tiap item, jadi
+    # Stok Masuk / lapisan FIFO / HPP memakai biaya BERSIH (2026-09-24).
+    ringkasan = purchase.hitung_ringkasan()
+    faktor = (
+        (ringkasan['subtotal'] - ringkasan['diskon']) / ringkasan['subtotal']
+        if ringkasan['subtotal'] > 0 else Decimal('1')
+    )
+
     today = timezone.localdate()
     doc = StockInDocument.objects.create(
         nomor=_next_document_number(StockInDocument, f"IN{today.strftime('%y%m%d')}"),
@@ -59,7 +69,8 @@ def _catat_penerimaan(purchase, user, *, tanggal, no_terima, lanjut_tambah_stok,
     for item in purchase.items.all():
         StockInDocumentItem.objects.create(
             document=doc, product=item.product, variant=item.variant, qty=item.qty,
-            harga_beli=item.harga_beli, tanggal_kadaluwarsa=item.tanggal_kadaluwarsa,
+            harga_beli=(item.harga_beli * faktor).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP),
+            tanggal_kadaluwarsa=item.tanggal_kadaluwarsa,
             uom_kode=item.uom_kode, uom_konverter=item.uom_konverter, uom_qty=item.uom_qty,
         )
     catat_purchase(purchase, user, 'STOCK_DRAFT', f'Stok masuk {doc.nomor} dibuat sebagai draft dengan nomor penerimaan {no_terima}. Status penerimaan menjadi Diterima.')
