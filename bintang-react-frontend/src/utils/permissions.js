@@ -26,6 +26,7 @@ export const MENU_FEATURES = [
   { id: 'ringkasan-shift', label: 'Ringkasan Shift', path: '/ringkasan-shift' },
   { id: 'wa-bot-config', label: 'Pengaturan WA Bot', path: '/pengaturan-wa-bot' },
   { id: 'permintaan-bahan', label: 'Permintaan Bahan', path: '/permintaan-bahan' },
+  { id: 'marketing', label: 'Marketing', path: '/marketing' },
 ];
 
 export const DEFAULT_PERMISSIONS = {
@@ -40,6 +41,7 @@ export const DEFAULT_PERMISSIONS = {
     'announcements',
     'reports',
     'laporan',
+    'marketing',
     'product-inventory',
     'customer-supplier',
     'inventory',
@@ -60,6 +62,7 @@ export const DEFAULT_PERMISSIONS = {
     'announcements',
     'reports',
     'laporan',
+    'marketing',
     'product-inventory',
     'customer-supplier',
     'inventory',
@@ -101,17 +104,31 @@ export const DEFAULT_PERMISSIONS = {
   // penjualan, ringkasan shift, produk & inventori, pelanggan & supplier
   // (pembelian sudah lewat buku-besar). Backend-nya baca-saja untuk data POS/shift.
   admin_finance: [
-    'finance-dashboard', 'buku-besar', 'accounting-internal', 'laporan-kerja-keuangan',
+    'finance-dashboard', 'buku-besar', 'laporan-kerja-keuangan',
     'laporan', 'rekap-harian', 'ringkasan-shift', 'product-inventory', 'customer-supplier',
   ],
-  spv_finance: ['finance-dashboard', 'accounting-internal', 'laporan-kerja-keuangan'],
+  // 2026-09-24 (keputusan user): SPV Finance memegang seluruh akuntansi dan
+  // fitur owner -- produk & inventori, marketing, pelanggan & supplier,
+  // transaksi & pembayaran, laporan & pembukuan, Pengaturan > Point of Sale,
+  // dan Permintaan Bahan (dicabut dari owner/manager).
+  spv_finance: [
+    'finance-dashboard', 'accounting-internal', 'laporan-kerja-keuangan',
+    'product-inventory', 'marketing', 'customer-supplier', 'buku-besar',
+    'laporan', 'rekap-harian', 'ringkasan-shift', 'settings', 'permintaan-bahan',
+  ],
 };
 
+
+const REVOKED_PERMISSIONS = {
+  owner: ['permintaan-bahan'],
+  manager: ['permintaan-bahan'],
+  admin_finance: ['accounting-internal'],
+};
 
 // Perizinan yang WAJIB dimiliki dan tidak bisa dihapus per-role
 const LOCKED_PERMISSIONS = {
   admin: ['dashboard', 'settings', 'jobs', 'permintaan-bahan'],
-  manager: ['dashboard', 'permintaan-bahan'],
+  manager: ['dashboard'],
   staff: ['staff-dashboard'],
   kasir: ['kasir-pos'],
   spv: ['staff-dashboard', 'permintaan-bahan'],
@@ -153,6 +170,12 @@ export function getPermissions() {
         }
       });
     }
+  });
+
+  // Fitur yang DICABUT per role -- dipaksa hilang walau masih tersimpan di
+  // localStorage/pengaturan lama (keputusan user 2026-09-24).
+  Object.entries(REVOKED_PERMISSIONS).forEach(([role, ids]) => {
+    if (base[role]) base[role] = base[role].filter((id) => !ids.includes(id));
   });
 
   return base;
@@ -213,7 +236,7 @@ export function getFeatureIdByPath(path) {
   if (path.startsWith('/laporan')) return 'laporan';
   if (path.startsWith('/rekap-harian')) return 'rekap-harian';
   if (path.startsWith('/ringkasan-shift')) return 'ringkasan-shift';
-  if (path.startsWith('/marketing')) return 'customers';
+  if (path.startsWith('/marketing')) return 'marketing';
   if (path.startsWith('/users')) return 'employees';
   if (path.startsWith('/dashboard-eksekutif')) return 'dashboard';
   if (path.startsWith('/komplain')) return 'customers';

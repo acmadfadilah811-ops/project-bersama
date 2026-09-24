@@ -1,7 +1,7 @@
 from rest_framework import generics, status
 from rest_framework.response import Response
 
-from api.permissions import IsOwnerOrManager
+from api.permissions import IsOwnerManagerOrSpvFinance
 
 from ..models import JournalEntry
 from ..serializers import JournalEntryCreateSerializer, JournalEntryListSerializer
@@ -16,7 +16,7 @@ class TransferModalListView(generics.ListAPIView):
     Menampilkan riwayat pemindahan dana antara akun Kas/Bank dan Ekuitas/Modal.
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
     serializer_class = JournalEntryListSerializer
     queryset = JournalEntry.objects.select_related(
         "journal_template", "department",
@@ -46,7 +46,7 @@ class TransferModalCreateView(generics.CreateAPIView):
     Source_type otomatis di-set ke CAPITAL_TRANSFER.
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
     serializer_class = JournalEntryCreateSerializer
 
     def create(self, request, *args, **kwargs):

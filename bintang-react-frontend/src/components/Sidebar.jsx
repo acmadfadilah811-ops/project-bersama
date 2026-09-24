@@ -61,7 +61,6 @@ const groupedMenuOwnerManager = [
   // ExecutiveDashboard.jsx + ExecutiveNav.jsx. Endpoint-nya dibatasi
   // IsOwnerOrManager, makanya cuma ada di menu owner/manager.
   { path: '/dashboard-eksekutif', label: 'Dashboard', icon: LineChart, isGroup: false },
-  { path: '/permintaan-bahan', label: 'Permintaan Bahan', icon: ClipboardList, isGroup: false },
   {
     id: 'produk_inventori',
     label: 'Produk & Inventori',
@@ -203,6 +202,72 @@ const menuFinance = [
   { path: '/profile', label: 'Profil', icon: User, isGroup: false },
 ];
 
+// SPV Finance (keputusan user 2026-09-24): seluruh akuntansi + fitur owner
+// (produk & inventori, marketing, pelanggan & supplier, transaksi, laporan &
+// pembukuan, Pengaturan > Point of Sale) + Permintaan Bahan.
+const menuSpvFinance = [
+  { path: '/finance-dashboard', label: 'Dashboard', icon: Wallet, isGroup: false },
+  { path: '/laporan-kerja-keuangan', label: 'Laporan Kerja Harian', icon: ClipboardList, isGroup: false },
+  { path: '/permintaan-bahan', label: 'Permintaan Bahan', icon: ClipboardList, isGroup: false },
+  {
+    id: 'produk_inventori_spvfin',
+    label: 'Produk & Inventori',
+    icon: Boxes,
+    isGroup: true,
+    submenus: [
+      { path: '/product-inventory/product', label: 'Produk', icon: Package },
+      { path: '/product-inventory/inventory', label: 'Inventori', icon: Package },
+      { path: '/product-inventory/special-type', label: 'Tipe Special', icon: Layers },
+      { path: '/product-inventory/barcode', label: 'Cetak Barcode Produk', icon: Barcode },
+      { path: '/product-inventory/price-label', label: 'Cetak Label Harga', icon: Tag },
+    ],
+  },
+  {
+    id: 'marketing_spvfin',
+    label: 'Marketing',
+    icon: Tag,
+    isGroup: true,
+    submenus: [
+      { path: '/marketing/voucher-diskon', label: 'Voucher & Diskon', icon: Tag },
+      { path: '/marketing/loyalty-point', label: 'Loyalty Point', icon: Gift },
+    ],
+  },
+  { path: '/customer-supplier', label: 'Pelanggan & Supplier', icon: Users, isGroup: false },
+  {
+    id: 'transaksi_pembayaran_spvfin',
+    label: 'Transaksi & Pembayaran',
+    icon: Wallet,
+    accent: 'emerald',
+    isGroup: true,
+    submenus: [
+      { path: '/transaksi/penjualan', label: 'Penjualan', icon: ShoppingCart },
+      { path: '/transaksi/pembelian', label: 'Pembelian', icon: ShoppingBag },
+      { path: '/transaksi/pendapatan-pengeluaran', label: 'Pendapatan/Pengeluaran', icon: ArrowLeftRight },
+    ],
+  },
+  {
+    id: 'laporan_pembukuan_spvfin',
+    label: 'Laporan dan Pembukuan',
+    icon: History,
+    isGroup: true,
+    submenus: [
+      { path: '/rekap-harian', label: 'Rekap Penjualan Harian', icon: CalendarClock },
+      { path: '/ringkasan-shift', label: 'Ringkasan Shift', icon: Wallet },
+      { path: '/laporan/pencairan-dana', label: 'Pencairan Dana', icon: Banknote },
+      { path: '/laporan/laporan', label: 'Laporan', icon: BarChart3 },
+      { path: '/accounting-internal', label: 'Akuntansi Internal', icon: BookOpen },
+    ],
+  },
+  {
+    id: 'pengaturan_spvfin',
+    label: 'Pengaturan',
+    icon: Settings,
+    isGroup: true,
+    submenus: [{ path: '/settings/point-of-sale', label: 'Point Of Sale', icon: CreditCard }],
+  },
+  { path: '/profile', label: 'Profil', icon: User, isGroup: false },
+];
+
 const menuKasir = [
   { path: '/kasir/dashboard', label: 'Dashboard', icon: LayoutDashboard, isGroup: false },
   { path: '/kasir/terminal', label: 'Kasir (POS)', icon: CreditCard, isGroup: false },
@@ -300,6 +365,7 @@ export default function Sidebar() {
     if (path.startsWith('/transaksi')) return 'buku-besar';
     if (path.startsWith('/laporan-kerja-keuangan')) return 'laporan-kerja-keuangan';
     if (path.startsWith('/laporan')) return 'laporan';
+    if (path.startsWith('/marketing')) return 'marketing';
     if (path.startsWith('/rekap-harian')) return 'rekap-harian';
     if (path.startsWith('/ringkasan-shift')) return 'ringkasan-shift';
     return null;
@@ -314,7 +380,9 @@ export default function Sidebar() {
       ? menuAdmin
       : userRole === 'spv' || userRole === 'kordiv'
       ? menuSpvKordiv
-      : userRole === 'admin_finance' || userRole === 'spv_finance'
+      : userRole === 'spv_finance'
+      ? menuSpvFinance
+      : userRole === 'admin_finance'
       ? menuFinance
       : groupedMenuOwnerManager;
 

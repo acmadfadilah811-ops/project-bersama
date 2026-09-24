@@ -8,7 +8,7 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.permissions import IsOwnerOrManager
+from api.permissions import IsOwnerManagerOrSpvFinance
 
 from ..models import Account, BankStatementLine, CashBankAccount
 from ..serializers import BankStatementLineSerializer, CashBankAccountSerializer
@@ -39,7 +39,7 @@ class CashBankAccountListView(generics.ListAPIView):
     """GET /api/accounting/cash-bank-accounts/ — daftar akun terkurasi untuk dropdown Bank Statement."""
 
     serializer_class = CashBankAccountSerializer
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
     queryset = CashBankAccount.objects.select_related("account").filter(is_active=True).order_by("account__code")
 
 
@@ -65,7 +65,7 @@ class BankStatementListView(generics.ListAPIView):
     """
 
     serializer_class = BankStatementLineSerializer
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
     pagination_class = BankStatementPagination
 
     def get_queryset(self):
@@ -88,7 +88,7 @@ class BankStatementImportPreviewView(APIView):
     Langkah 1 dari 2: parse CSV, validasi per baris, TIDAK menyimpan apa pun.
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
     parser_classes = [MultiPartParser]
 
     def post(self, request):
@@ -123,7 +123,7 @@ class BankStatementImportCommitView(APIView):
     Ini BUKAN posting ke Journal Entry — menunggu diproses di Rekonsiliasi Bank.
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def post(self, request):
         account_id = request.data.get("account")

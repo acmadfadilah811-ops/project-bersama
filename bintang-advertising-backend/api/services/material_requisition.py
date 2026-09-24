@@ -22,9 +22,13 @@ from api.permissions import get_subordinate_user_ids
 
 MAKS_ITEM = 30
 ROLE_PEMOHON = ('kordiv', 'spv', 'manager', 'owner')
-ROLE_GUDANG = ('admin', 'manager', 'owner')
-ROLE_LIHAT_SEMUA = ('owner', 'manager', 'admin')
-ROLE_BOLEH_AKSES = ('owner', 'manager', 'admin', 'spv', 'kordiv')
+ROLE_GUDANG = ('admin', 'manager', 'owner', 'spv_finance')
+ROLE_LIHAT_SEMUA = ('owner', 'manager', 'admin', 'spv_finance')
+# Menu Permintaan Bahan dicabut dari Owner & Manager (keputusan user 2026-09-24);
+# persetujuan/pembatalan/gudang dipegang SPV Finance. Owner/Manager tetap
+# berwenang lewat API supaya data lama & kewenangan atasan tidak terkunci.
+ROLE_PENYETUJU = ('owner', 'manager', 'spv_finance')
+ROLE_BOLEH_AKSES = ('owner', 'manager', 'admin', 'spv', 'kordiv', 'spv_finance')
 STATUS_AKTIF = ('diajukan', 'disetujui', 'disiapkan')
 
 
@@ -60,7 +64,7 @@ def boleh_menyetujui(user, req):
     # Pemisahan tugas: tak seorang pun menyetujui permintaannya sendiri (kecuali Owner).
     if req.pemohon_id == user.id and role != 'owner':
         return False
-    if role in ('owner', 'manager'):
+    if role in ROLE_PENYETUJU:
         return True
     if role == 'spv':
         return req.pemohon_id in get_subordinate_user_ids(user)
@@ -250,7 +254,7 @@ def terima(req_id, user):
 def batalkan(req_id, user):
     req = _ambil_terkunci(req_id)
     role = _role(user)
-    if role in ('owner', 'manager'):
+    if role in ROLE_PENYETUJU:
         boleh_status = STATUS_AKTIF
     elif req.pemohon_id == user.id:
         boleh_status = ('diajukan',)
@@ -274,7 +278,7 @@ def aksi_untuk(user, req):
         aksi.append('siapkan')
     if req.status == 'disiapkan' and req.pemohon_id == user.id:
         aksi.append('terima')
-    if (role in ('owner', 'manager') and req.status in STATUS_AKTIF) or (
+    if (role in ROLE_PENYETUJU and req.status in STATUS_AKTIF) or (
             req.pemohon_id == user.id and req.status == 'diajukan'):
         aksi.append('batalkan')
     return aksi
@@ -284,7 +288,7 @@ def ringkasan(user):
     """Angka utk badge/notifikasi -- menghitung HANYA yang menuntut tindakan pengguna ini."""
     role = _role(user)
     data = {'menunggu_persetujuan': 0, 'menunggu_disiapkan': 0, 'siap_diterima': 0}
-    if role in ('owner', 'manager'):
+    if role in ROLE_PENYETUJU:
         data['menunggu_persetujuan'] = MaterialRequisition.objects.filter(status='diajukan').count()
     elif role == 'spv':
         bawahan = get_subordinate_user_ids(user) - {user.id}

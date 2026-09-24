@@ -13,7 +13,9 @@ const FINANCE_ROLE_JURNAL_SUBITEMS = ['buku-besar', 'posting-gaji']; // bukan 'j
 export default function AccountingSecondarySidebar({ activeSubMenu, onSelectMenu }) {
   const { user } = useAuth();
   const isKasir = user?.role?.toLowerCase() === 'kasir';
-  const isFinanceRole = ['admin_finance', 'spv_finance'].includes(user?.role?.toLowerCase());
+  // SPV Finance memegang seluruh akuntansi sejak 2026-09-24 (termasuk Tutup
+  // Buku, COA, Pengaturan) -- hanya Admin Finance yang masih dibatasi.
+  const isFinanceRole = user?.role?.toLowerCase() === 'admin_finance';
   const [openDropdowns, setOpenDropdowns] = useState({
     jurnal: false,
     kasBank: false,

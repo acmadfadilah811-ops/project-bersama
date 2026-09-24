@@ -7,7 +7,7 @@ from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.permissions import IsStrictOwnerOrManager, IsOwnerManagerOrFinanceRoleReadOnly
+from api.permissions import IsStrictOwnerManagerOrSpvFinance, IsOwnerManagerOrFinanceRoleReadOnly
 
 from ..models import PayrollComponentMapping, PayrollPosting
 from ..serializers.payroll import PayrollComponentMappingSerializer, PayrollPostingSerializer, bentuk_pratinjau
@@ -24,7 +24,7 @@ def _periode(data):
 
 
 class _PayrollAPIView(APIView):
-    permission_classes = [IsStrictOwnerOrManager]
+    permission_classes = [IsStrictOwnerManagerOrSpvFinance]
 
     def handle_exception(self, exc):
         if isinstance(exc, svc.PayrollError):
@@ -89,13 +89,13 @@ class PayrollRiwayatView(generics.ListAPIView):
 class PayrollPemetaanListCreateView(generics.ListCreateAPIView):
     """GET/POST /api/accounting/payroll/pemetaan/ -- judul komponen HR -> akun."""
 
-    permission_classes = [IsStrictOwnerOrManager]
+    permission_classes = [IsStrictOwnerManagerOrSpvFinance]
     serializer_class = PayrollComponentMappingSerializer
     pagination_class = None
     queryset = PayrollComponentMapping.objects.select_related("akun", "akun_iuran_perusahaan")
 
 
 class PayrollPemetaanDetailView(generics.RetrieveUpdateDestroyAPIView):
-    permission_classes = [IsStrictOwnerOrManager]
+    permission_classes = [IsStrictOwnerManagerOrSpvFinance]
     serializer_class = PayrollComponentMappingSerializer
     queryset = PayrollComponentMapping.objects.select_related("akun", "akun_iuran_perusahaan")

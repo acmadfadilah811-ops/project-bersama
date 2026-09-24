@@ -8,7 +8,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, permissions
 
-from api.permissions import IsOwnerOrManager
+from api.permissions import IsOwnerManagerOrSpvFinance
 from ..services.pos_reconciliation import reconcile_pos_shift
 
 
@@ -18,7 +18,7 @@ class POSShiftReconciliationView(APIView):
     Rekonsiliasi shift POS vs JournalEntry.
     """
 
-    permission_classes = [permissions.IsAuthenticated, IsOwnerOrManager]
+    permission_classes = [permissions.IsAuthenticated, IsOwnerManagerOrSpvFinance]
 
     def get(self, request):
         shift_id = request.query_params.get("shift_id")

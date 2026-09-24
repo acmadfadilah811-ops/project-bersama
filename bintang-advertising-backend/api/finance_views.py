@@ -9,7 +9,7 @@ from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.permissions import IsAuthenticated
 from .permissions import (
-    IsStrictOwnerOrManager,
+    IsStrictOwnerManagerOrSpvFinance,
     CanAccessFinanceVerification, IsAdminFinanceOrOwnerManager,
 )
 from rest_framework.response import Response
@@ -58,7 +58,7 @@ class CashTransactionTypeViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ('update', 'partial_update', 'destroy'):
-            return [IsStrictOwnerOrManager()]
+            return [IsStrictOwnerManagerOrSpvFinance()]
         # IsOwnerManagerAdminOrKasir (perilaku lama) DITAMBAH admin_finance/
         # spv_finance -- kalau tidak, dropdown tipe transaksi di form
         # Pendapatan/Pengeluaran kosong untuk mereka walau CashTransaction
@@ -170,7 +170,7 @@ class CashTransactionViewSet(viewsets.ModelViewSet):
             # TIDAK diubah -- posting/pembatalan jurnal akuntansi tetap
             # eksklusif Owner/Manager (Aturan Engineering M2), Admin Finance
             # TIDAK dapat akses ini meski dia yang verifikasi.
-            return [IsStrictOwnerOrManager()]
+            return [IsStrictOwnerManagerOrSpvFinance()]
         if self.action == 'verifikasi_admin_finance':
             return [IsAdminFinanceOrOwnerManager()]
         # IsOwnerManagerAdminOrKasir (perilaku lama) DITAMBAH admin_finance/

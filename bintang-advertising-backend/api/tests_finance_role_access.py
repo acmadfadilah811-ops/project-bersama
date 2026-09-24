@@ -42,14 +42,15 @@ class PurchaseAksesFinanceTests(APITestCase):
         res = self.client.patch(f'/api/purchases/{self.purchase.id}/', {'catatan': 'diubah admin finance'}, format='json')
         self.assertEqual(res.status_code, status.HTTP_200_OK, res.content)
 
-    def test_spv_finance_hanya_baca_tidak_bisa_buat_pembelian(self):
+    def test_spv_finance_bisa_buat_pembelian(self):
+        # Keputusan user 2026-09-24: SPV Finance memegang Transaksi & Pembayaran.
         self.client.force_authenticate(self.spv_finance)
         res_get = self.client.get('/api/purchases/')
         self.assertEqual(res_get.status_code, status.HTTP_200_OK)
         res_post = self.client.post('/api/purchases/', {
             'tanggal': '2026-09-24', 'supplier': 'Supplier PF Test 2',
         }, format='json')
-        self.assertEqual(res_post.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(res_post.status_code, status.HTTP_201_CREATED)
 
     def test_staff_tetap_tidak_bisa_buat_pembelian(self):
         self.client.force_authenticate(self.staff)
@@ -197,12 +198,14 @@ class CustomerSupplierAksesFinanceTests(APITestCase):
         res_patch = self.client.patch(f'/api/customers/{self.customer.id}/', {'catatan': 'diubah admin finance'}, format='json')
         self.assertEqual(res_patch.status_code, status.HTTP_200_OK, res_patch.content)
 
-    def test_spv_finance_hanya_baca_pelanggan(self):
+    def test_spv_finance_bisa_ubah_pelanggan(self):
+        # Keputusan user 2026-09-24: SPV Finance memegang fitur owner termasuk
+        # Pelanggan & Supplier (sebelumnya baca saja).
         self.client.force_authenticate(self.spv_finance)
         res_get = self.client.get('/api/customers/')
         self.assertEqual(res_get.status_code, status.HTTP_200_OK)
         res_patch = self.client.patch(f'/api/customers/{self.customer.id}/', {'catatan': 'coba ubah spv finance'}, format='json')
-        self.assertEqual(res_patch.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertNotEqual(res_patch.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_staff_tetap_ditolak_pelanggan(self):
         self.client.force_authenticate(self.staff)
@@ -216,12 +219,12 @@ class CustomerSupplierAksesFinanceTests(APITestCase):
         res_patch = self.client.patch(f'/api/suppliers/{self.supplier.id}/', {'jatuh_tempo_hari': 30}, format='json')
         self.assertEqual(res_patch.status_code, status.HTTP_200_OK, res_patch.content)
 
-    def test_spv_finance_hanya_baca_supplier(self):
+    def test_spv_finance_bisa_ubah_supplier(self):
         self.client.force_authenticate(self.spv_finance)
         res_get = self.client.get('/api/suppliers/')
         self.assertEqual(res_get.status_code, status.HTTP_200_OK)
         res_patch = self.client.patch(f'/api/suppliers/{self.supplier.id}/', {'jatuh_tempo_hari': 30}, format='json')
-        self.assertEqual(res_patch.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(res_patch.status_code, status.HTTP_200_OK)
 
     def test_staff_tetap_ditolak_supplier(self):
         self.client.force_authenticate(self.staff)
@@ -267,7 +270,8 @@ class OrderPiutangAksesFinanceTests(APITestCase):
         res = self.client.patch(f'/api/orders/{self.order.id}/', {'nama': 'Diubah Admin Finance'}, format='json')
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_spv_finance_tidak_bisa_ubah_jatuh_tempo(self):
+    def test_spv_finance_bisa_ubah_jatuh_tempo(self):
+        # Keputusan user 2026-09-24: SPV Finance boleh transaksi & pembayaran.
         self.client.force_authenticate(self.spv_finance)
         res = self.client.patch(f'/api/orders/{self.order.id}/', {'jatuh_tempo': '2026-10-15'}, format='json')
-        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)

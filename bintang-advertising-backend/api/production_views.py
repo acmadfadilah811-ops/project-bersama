@@ -11,7 +11,7 @@ supaya file god itu tidak bertambah gemuk.
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 
-from api.permissions import IsOwnerManagerAdminOrReadOnly
+from api.permissions import IsOwnerManagerAdminSpvFinanceOrReadOnly
 
 from .production_models import ProductionCost, StockProductionDocumentCost
 from .production_serializers import (
@@ -27,7 +27,7 @@ class ProductionCostViewSet(viewsets.ModelViewSet):
     serializer_class = ProductionCostSerializer
     # Biaya produksi menyangkut uang: staff/kasir boleh baca (untuk melihat
     # rincian dokumen), hanya manajemen yang boleh mengubah.
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
 
 class StockProductionDocumentCostViewSet(viewsets.ModelViewSet):
@@ -40,7 +40,7 @@ class StockProductionDocumentCostViewSet(viewsets.ModelViewSet):
         'production_cost__akun', 'document'
     ).all()
     serializer_class = StockProductionDocumentCostSerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
     def get_queryset(self):
         qs = super().get_queryset()

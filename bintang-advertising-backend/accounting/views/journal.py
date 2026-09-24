@@ -11,7 +11,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from api.pagination import OptionalPageNumberPagination
-from api.permissions import IsOwnerOrManager
+from api.permissions import IsOwnerManagerOrSpvFinance
 
 from ..models import JournalAuditLog, JournalEntry
 from ..serializers import JournalAuditLogSerializer, JournalEntryCreateSerializer, JournalEntryListSerializer
@@ -70,7 +70,7 @@ class JournalAuditLogListView(generics.ListAPIView):
     per Journal Entry. `search` mencocokkan No. Transaksi atau nama aktor.
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
     serializer_class = JournalAuditLogSerializer
     pagination_class = OptionalPageNumberPagination
 
@@ -100,7 +100,7 @@ class JournalEntryListCreateView(generics.ListCreateAPIView):
     JournalEntryCreateSerializer.
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
     queryset = JournalEntry.objects.select_related("journal_template", "department", "created_by", "posted_by").prefetch_related(
         "lines__account",
     )
@@ -131,7 +131,7 @@ class JournalImportPreviewView(APIView):
     dikirim balik ke /import/commit/ (bukan upload ulang file-nya).
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
     parser_classes = [MultiPartParser]
 
     def post(self, request):
@@ -161,7 +161,7 @@ class JournalImportCommitView(APIView):
     frontend). Entry dengan is_valid=false dilewati, tidak diproses.
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def post(self, request):
         entries = request.data.get("entries") or []
@@ -189,7 +189,7 @@ class JournalExportView(APIView):
     1 baris Excel per JournalEntryLine (Akun, Debit, Kredit, dst).
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def get(self, request):
         base_qs = JournalEntry.objects.select_related("journal_template", "department", "created_by", "posted_by").prefetch_related(
@@ -214,7 +214,7 @@ class JournalEntryDetailView(APIView):
     GET /api/accounting/journal-entries/<entry_number>/  â€” detail pasangan jurnal
     DELETE /api/accounting/journal-entries/<entry_number>/
     """
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def get(self, request, entry_number):
         entry = get_object_or_404(
@@ -300,7 +300,7 @@ class SingleJournalEntryExportView(APIView):
     entry-nya cuma 1).
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def get(self, request, entry_number):
         entry = get_object_or_404(

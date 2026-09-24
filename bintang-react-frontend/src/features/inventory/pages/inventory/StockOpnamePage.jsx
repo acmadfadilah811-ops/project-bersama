@@ -322,7 +322,7 @@ export function StockOpnamePage({ onToggleCreate, viewState: propViewState }) {
 
   // Owner/Manager selalu lihat data lengkap; role lain mengikuti pengaturan (sistem kita
   // belum punya grup peran granular seperti daftar di atas, jadi diterapkan global per-viewer).
-  const isPrivilegedViewer = user?.role === 'owner' || user?.role === 'manager';
+  const isPrivilegedViewer = ['owner', 'manager', 'spv_finance'].includes(user?.role);
   const effectiveHideQtySistem = hideQtySistem && !isPrivilegedViewer;
   const effectiveHideQtySelisih = hideQtySelisih && !isPrivilegedViewer;
 

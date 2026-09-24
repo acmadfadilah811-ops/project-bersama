@@ -14,7 +14,7 @@ from ..serializers import (
     POSPaymentMethodSerializer,
 )
 from ..permissions import (
-    IsOwnerManagerAdminOrReadOnly, IsOwnerManagerAdminOrKasir, IsOwnerManagerAdminKasirOrFinanceReadOnly,
+    IsOwnerManagerAdminSpvFinanceOrReadOnly, IsOwnerManagerAdminOrKasir, IsOwnerManagerAdminKasirOrFinanceReadOnly,
     CanAccessFinanceVerification, IsAdminFinanceOrOwnerManager,
 )
 from ..services.shift_summary import calculate_shift_cash_summary
@@ -25,12 +25,12 @@ class POSPaymentMethodViewSet(viewsets.ModelViewSet):
     """Cara pembayaran POS (Pengaturan POS > Pembayaran)."""
     queryset = POSPaymentMethod.objects.all()
     serializer_class = POSPaymentMethodSerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
 class POSAntrianDeviceViewSet(viewsets.ModelViewSet):
     queryset = POSAntrianDevice.objects.all().order_by('id')
     serializer_class = POSAntrianDeviceSerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
 
 class SaldoKasHarianViewSet(viewsets.ModelViewSet):

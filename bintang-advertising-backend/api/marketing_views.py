@@ -3,7 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from api.permissions import IsOwnerManagerAdminOrReadOnly, IsOwnerManagerAdminOrKasir
+from api.permissions import IsOwnerManagerAdminSpvFinanceOrReadOnly, IsOwnerManagerAdminOrKasir
 
 from .marketing_models import (
     SalesDiscount, DiscountCoupon, POSPromotion,
@@ -23,7 +23,7 @@ class SalesDiscountViewSet(viewsets.ModelViewSet):
     terpenuhi (lihat promo_engine.evaluate_sales_discount)."""
     queryset = SalesDiscount.objects.all()
     serializer_class = SalesDiscountSerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
     def get_permissions(self):
         # 'preview' murni baca (hitung estimasi diskon), dipakai kasir di POS/SPK —
@@ -92,7 +92,7 @@ class DiscountCouponViewSet(viewsets.ModelViewSet):
     """Kupon Diskon: Marketing > Voucher & Diskon > Kupon Diskon."""
     queryset = DiscountCoupon.objects.all()
     serializer_class = DiscountCouponSerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
     def get_permissions(self):
         # 'evaluate' murni baca (cek & hitung nilai kupon), dipakai kasir di POS —
@@ -177,7 +177,7 @@ class POSPromotionViewSet(viewsets.ModelViewSet):
     """Promosi (POS): Marketing > Voucher & Diskon > Promosi (POS) — tipe BX/DQ/DA/FI."""
     queryset = POSPromotion.objects.all()
     serializer_class = POSPromotionSerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
     def get_permissions(self):
         # 'preview' murni baca (hitung estimasi promosi aktif utk keranjang saat
@@ -266,7 +266,7 @@ class LoyaltyPointSettingViewSet(viewsets.ModelViewSet):
     """Pengaturan Loyalty Point."""
     queryset = LoyaltyPointSetting.objects.all()
     serializer_class = LoyaltyPointSettingSerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
     def list(self, request, *args, **kwargs):
         setting = LoyaltyPointSetting.objects.first()
@@ -280,7 +280,7 @@ class LoyaltyPointRedemptionViewSet(viewsets.ModelViewSet):
     """Penukaran Point."""
     queryset = LoyaltyPointRedemption.objects.all()
     serializer_class = LoyaltyPointRedemptionSerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
 
 class PromoPreviewView(APIView):

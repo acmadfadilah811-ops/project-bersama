@@ -693,7 +693,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         return Response(payload, status=status.HTTP_201_CREATED)
 
     def _ensure_write_role(self):
-        if self.request.user.role not in ('owner', 'manager', 'admin', 'kasir'):
+        if self.request.user.role not in ('owner', 'manager', 'admin', 'kasir', 'spv_finance'):
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied('Anda tidak memiliki izin untuk mengubah pesanan.')
 
@@ -1659,7 +1659,7 @@ class OrderItemViewSet(viewsets.ModelViewSet):
 
     def _ensure_write_role(self, order=None):
         role = self.request.user.role
-        if role in ('owner', 'manager', 'admin', 'kasir'):
+        if role in ('owner', 'manager', 'admin', 'kasir', 'spv_finance'):
             return
         # Staff dikecualikan HANYA untuk mengisi item pesanan miliknya
         # sendiri lewat fitur "Buat Order" (sumber='staff'), selama order
@@ -1999,7 +1999,7 @@ class PengembalianOrderViewSet(viewsets.ModelViewSet):
         user = getattr(self.request, 'user', None)
         if not user or not hasattr(user, 'role'):
             return
-        allowed_roles = {'owner', 'manager', 'admin', 'kasir'}
+        allowed_roles = {'owner', 'manager', 'admin', 'kasir', 'spv_finance'}
         if user.role not in allowed_roles:
             from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied('Role Anda tidak diizinkan mengubah status pengembalian.')

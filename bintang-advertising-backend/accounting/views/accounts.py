@@ -8,7 +8,7 @@ from rest_framework import generics
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 
-from api.permissions import IsOwnerOrManager, IsOwnerManagerAdminOrFinanceRole
+from api.permissions import IsOwnerManagerOrSpvFinance, IsOwnerManagerAdminOrFinanceRole
 
 from ..models import Account, AccountClassification
 from ..serializers import AccountClassificationSerializer, AccountCreateSerializer, AccountListSerializer
@@ -62,7 +62,7 @@ class AccountListView(generics.ListCreateAPIView):
         # harian Finance.
         if self.request.method == "GET":
             return [IsOwnerManagerAdminOrFinanceRole()]
-        return [IsOwnerOrManager()]
+        return [IsOwnerManagerOrSpvFinance()]
 
     def get_serializer_class(self):
         return AccountCreateSerializer if self.request.method == "POST" else AccountListSerializer
@@ -129,7 +129,7 @@ class AccountClassificationListView(generics.ListAPIView):
     """
 
     serializer_class = AccountClassificationSerializer
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
     queryset = AccountClassification.objects.all().order_by("account_type", "order")
 
 
@@ -150,7 +150,7 @@ class AccountDetailView(generics.RetrieveUpdateDestroyAPIView):
     DELETE /api/accounting/accounts/<id>/
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
     queryset = Account.objects.all()
     serializer_class = AccountCreateSerializer
 
@@ -170,7 +170,7 @@ class AccountImportTemplateView(APIView):
     preview dari rentang kode (lihat AccountImportGuideView di bawah).
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def get(self, request):
         output = io.StringIO()
@@ -194,7 +194,7 @@ class AccountImportGuideView(APIView):
     meniru file panduan resmi Olsera (templateGuideAccount, sheet "ruleAccountNo").
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def get(self, request):
         classifications = AccountClassification.objects.exclude(
@@ -221,7 +221,7 @@ class AccountImportPreviewView(APIView):
     klasifikasi, belum terdaftar), TIDAK menyimpan apa pun.
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
     parser_classes = [MultiPartParser]
 
     def post(self, request):
@@ -251,7 +251,7 @@ class AccountImportCommitView(APIView):
     respons /import/preview/. Entry dengan is_valid=false dilewati.
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def post(self, request):
         entries = request.data.get("entries") or []
@@ -268,7 +268,7 @@ class AccountImportCommitView(APIView):
 
 
 class StoreCopyPlaceholderView(APIView):
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def post(self, request):
         return Response({"message": "Berhasil menyalin daftar akun dari toko terpilih (Fitur Simulasi)."}, status=200)

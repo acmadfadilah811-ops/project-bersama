@@ -5,7 +5,7 @@ from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.permissions import IsOwnerOrManager
+from api.permissions import IsOwnerManagerOrSpvFinance
 
 from ..models import PaymentMethod, PaymentMethodAuditLog
 from ..serializers import (
@@ -21,7 +21,7 @@ class PaymentMethodListView(generics.ListAPIView):
     """GET /api/accounting/payment-methods/?search= — Cara Pembayaran, cari lewat Nama/Tipe."""
 
     serializer_class = PaymentMethodSerializer
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def get_queryset(self):
         qs = PaymentMethod.objects.select_related("account", "mdr_debit_account", "mdr_kredit_account")
@@ -40,7 +40,7 @@ class PaymentMethodBulkUpdateAccountView(APIView):
     Baris is_locked (CASH) ditolak dengan pesan jelas, bukan dilewati diam-diam.
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def post(self, request):
         serializer = PaymentMethodBulkUpdateAccountSerializer(data=request.data)
@@ -62,7 +62,7 @@ class PaymentMethodAuditLogView(generics.ListAPIView):
     """GET /api/accounting/payment-methods/<int:payment_method_id>/log/ — 'Detail Log' per cara pembayaran."""
 
     serializer_class = PaymentMethodAuditLogSerializer
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def get_queryset(self):
         return PaymentMethodAuditLog.objects.filter(
@@ -73,7 +73,7 @@ class PaymentMethodAuditLogView(generics.ListAPIView):
 class PaymentMethodMdrUpdateView(APIView):
     """PATCH /api/accounting/payment-methods/<id>/mdr/ â€” simpan Debit/Kredit/Rating MDR."""
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def patch(self, request, payment_method_id):
         serializer = PaymentMethodMdrUpdateSerializer(data=request.data)

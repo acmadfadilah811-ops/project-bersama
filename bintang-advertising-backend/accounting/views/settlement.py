@@ -3,7 +3,7 @@ from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.permissions import IsOwnerOrManager
+from api.permissions import IsOwnerManagerOrSpvFinance
 
 from ..serializers.settlement import SettlementBatchSerializer, SettlementConfirmSerializer
 from ..services.settlement import confirm_settlement_batches, get_settlement_batches
@@ -19,7 +19,7 @@ class SettlementListView(APIView):
     itu dengan metode bayar itu.
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def get(self, request):
         date_from, date_to = resolve_date_range(request)
@@ -44,7 +44,7 @@ class SettlementConfirmView(APIView):
     (KREDIT piutang transit, DEBIT kas/bank + DEBIT MDR kalau ada).
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def post(self, request):
         serializer = SettlementConfirmSerializer(data=request.data)

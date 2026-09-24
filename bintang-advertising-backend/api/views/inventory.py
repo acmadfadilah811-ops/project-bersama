@@ -15,7 +15,7 @@ from ..models import InventoryItem, RestockHistory, ProductPrice, BillOfMaterial
 from ..serializers import (
     InventoryItemSerializer, ProductPriceSerializer, BillOfMaterialsSerializer, BoMItemSerializer
 )
-from ..permissions import IsOwnerManagerAdminOrReadOnly, IsOwnerManagerOrAdmin
+from ..permissions import IsOwnerManagerAdminSpvFinanceOrReadOnly, IsOwnerManagerOrAdmin
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +146,7 @@ def catat_pemakaian_bahan(inventory_item, qty, *, user, ref_no, keterangan_konte
 
 class InventoryItemViewSet(viewsets.ModelViewSet):
     serializer_class   = InventoryItemSerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
     def get_queryset(self):
         qs = InventoryItem.objects.prefetch_related('history').order_by('kategori', 'nama')
@@ -318,7 +318,7 @@ class InventoryRestockView(APIView):
 class ProductPriceViewSet(viewsets.ModelViewSet):
     queryset = ProductPrice.objects.all()
     serializer_class = ProductPriceSerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
     @action(detail=False, methods=['post'], url_path='seed')
     def seed_prices(self, request):
@@ -400,7 +400,7 @@ class BillOfMaterialsViewSet(viewsets.ModelViewSet):
     # Baca (GET) dibuka untuk staff -- WorkspaceSPK.jsx perlu ini untuk
     # deteksi resep otomatis di dropdown "Pilih Bahan" (instruksi user
     # 2026-09-09); ubah/hapus resep tetap Owner/Manager/Admin saja.
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
     def get_queryset(self):
         queryset = self.queryset
@@ -534,7 +534,7 @@ class BoMItemViewSet(viewsets.ModelViewSet):
     serializer_class = BoMItemSerializer
     # Baca dibuka untuk staff (sama alasan dengan BillOfMaterialsViewSet di
     # atas); ubah/hapus tetap Owner/Manager/Admin saja.
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
     @action(detail=False, methods=['post'], url_path='create-from-product')
     def create_from_product(self, request):

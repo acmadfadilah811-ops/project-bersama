@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from api.models import Order, OrderActivityLog, PengembalianOrder
-from api.permissions import IsOwnerOrManager
+from api.permissions import IsOwnerManagerOrSpvFinance
 from api.pos_models import POSSale
 
 from ..models import JournalEntry
@@ -93,7 +93,7 @@ class AccountingSalesView(APIView):
     Query params: `date_from`, `date_to`, `search`, `source`, `category`.
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def get(self, request):
         date_from, error = _parse_filter_date(request, "date_from")

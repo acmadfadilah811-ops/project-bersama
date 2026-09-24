@@ -239,7 +239,7 @@ class IsOwnerManagerAdminFinanceOrReadOnly(BasePermission):
         return bool(
             request.user and
             request.user.is_authenticated and
-            getattr(request.user, 'role', '') in ('owner', 'manager', 'admin', 'admin_finance')
+            getattr(request.user, 'role', '') in ('owner', 'manager', 'admin', 'admin_finance', 'spv_finance')
         )
 
 
@@ -290,11 +290,8 @@ class IsOwnerManagerAdminKasirOrFinanceRole(BasePermission):
         if not (request.user and request.user.is_authenticated):
             return False
         role = getattr(request.user, 'role', '')
-        if role in ('owner', 'manager', 'admin', 'kasir', 'admin_finance'):
-            return True
-        if role == 'spv_finance':
-            return request.method in SAFE_METHODS
-        return False
+        # SPV Finance akses penuh sejak 2026-09-24 (sebelumnya baca saja).
+        return role in ('owner', 'manager', 'admin', 'kasir', 'admin_finance', 'spv_finance')
 
 
 class IsFinanceRoleOrOwnerManager(BasePermission):
@@ -341,6 +338,42 @@ class IsOwnerManagerAdminOrReadOnly(BasePermission):
             request.user.is_authenticated and
             getattr(request.user, 'role', '') in ['owner', 'manager', 'admin']
         )
+
+class IsOwnerManagerOrSpvFinance(BasePermission):
+    """Sama dengan IsOwnerOrManager (owner/manager/admin) DITAMBAH SPV Finance
+    (2026-09-24, keputusan user: seluruh fitur akuntansi & fitur owner --
+    produk/inventori, marketing, pelanggan/supplier, transaksi, laporan,
+    pengaturan POS -- juga dipegang SPV Finance). Class BARU; IsOwnerOrManager
+    (god node) sengaja tidak diubah (R2)."""
+    def has_permission(self, request, view):
+        return bool(
+            request.user and request.user.is_authenticated and
+            getattr(request.user, 'role', '') in ('owner', 'manager', 'admin', 'spv_finance')
+        )
+
+
+class IsStrictOwnerManagerOrSpvFinance(BasePermission):
+    """Sama dengan IsStrictOwnerOrManager (owner/manager) DITAMBAH SPV Finance --
+    termasuk Tutup Buku, posting/pembatalan jurnal, payroll posting (keputusan
+    user 2026-09-24: 'semua termasuk')."""
+    def has_permission(self, request, view):
+        return bool(
+            request.user and request.user.is_authenticated and
+            getattr(request.user, 'role', '') in ('owner', 'manager', 'spv_finance')
+        )
+
+
+class IsOwnerManagerAdminSpvFinanceOrReadOnly(BasePermission):
+    """Sama dengan IsOwnerManagerAdminOrReadOnly (baca: semua user login; tulis:
+    owner/manager/admin) DITAMBAH SPV Finance boleh menulis (2026-09-24)."""
+    def has_permission(self, request, view):
+        if request.method in SAFE_METHODS:
+            return bool(request.user and request.user.is_authenticated)
+        return bool(
+            request.user and request.user.is_authenticated and
+            getattr(request.user, 'role', '') in ('owner', 'manager', 'admin', 'spv_finance')
+        )
+
 
 class IsClockedIn(BasePermission):
     """
@@ -389,5 +422,5 @@ class CanUseMaterialRequisition(BasePermission):
     def has_permission(self, request, view):
         return bool(
             request.user and request.user.is_authenticated and
-            getattr(request.user, 'role', '') in ['owner', 'manager', 'admin', 'spv', 'kordiv']
+            getattr(request.user, 'role', '') in ['owner', 'manager', 'admin', 'spv', 'kordiv', 'spv_finance']
         )

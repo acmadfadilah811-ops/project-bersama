@@ -18,7 +18,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.exceptions import ValidationError
-from api.permissions import IsOwnerManagerAdminOrReadOnly, IsOwnerManagerAdminFinanceOrReadOnly, scoped_by_unit_bisnis
+from api.permissions import IsOwnerManagerAdminSpvFinanceOrReadOnly, IsOwnerManagerAdminFinanceOrReadOnly, scoped_by_unit_bisnis
 from rest_framework.response import Response
 
 from .product_models import (
@@ -444,7 +444,7 @@ def _parse_date_ddmmyyyy(raw):
 class ProductCategoryViewSet(viewsets.ModelViewSet):
     queryset = ProductCategory.objects.all().order_by('urutan')
     serializer_class = ProductCategorySerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -466,17 +466,17 @@ class ProductCategoryViewSet(viewsets.ModelViewSet):
 class BrandViewSet(viewsets.ModelViewSet):
     queryset = Brand.objects.all().order_by('nama')
     serializer_class = BrandSerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
 class SpecialTypeViewSet(viewsets.ModelViewSet):
     queryset = SpecialType.objects.prefetch_related('products_multi').all().order_by('urutan')
     serializer_class = SpecialTypeSerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
 class CollectionViewSet(viewsets.ModelViewSet):
     queryset = Collection.objects.all().order_by('nama')
     serializer_class = CollectionSerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
 class ProductViewSet(viewsets.ModelViewSet):
     # ProductSerializer mengekspos kategori/brand/koleksi + varian & gambar.
@@ -488,7 +488,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         .order_by('-created_at')
     )
     serializer_class = ProductSerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -1508,7 +1508,7 @@ class ProductViewSet(viewsets.ModelViewSet):
 class ProductImageViewSet(viewsets.ModelViewSet):
     queryset = ProductImage.objects.all().order_by('-is_primary', 'id')
     serializer_class = ProductImageSerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -1520,7 +1520,7 @@ class ProductImageViewSet(viewsets.ModelViewSet):
 class ProductVariantViewSet(viewsets.ModelViewSet):
     queryset = ProductVariant.objects.all().order_by('product__nama', 'nama_varian')
     serializer_class = ProductVariantSerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
     def perform_create(self, serializer):
         variant = serializer.save()
@@ -1559,7 +1559,7 @@ class ProductVariantViewSet(viewsets.ModelViewSet):
 class ProductPackageViewSet(viewsets.ModelViewSet):
     queryset = ProductPackage.objects.all().order_by('nama')
     serializer_class = ProductPackageSerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -1666,23 +1666,23 @@ class ProductPackageViewSet(viewsets.ModelViewSet):
 class AddonViewSet(viewsets.ModelViewSet):
     queryset = Addon.objects.all().order_by('nama')
     serializer_class = AddonSerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
 class SpecificationViewSet(viewsets.ModelViewSet):
     queryset = Specification.objects.all().order_by('nama')
     serializer_class = SpecificationSerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
 class ProductSpecValueViewSet(viewsets.ModelViewSet):
     queryset = ProductSpecValue.objects.all().select_related('product', 'specification')
     serializer_class = ProductSpecValueSerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
 class ProductStockMovementViewSet(viewsets.ReadOnlyModelViewSet):
     """Riwayat/Pergerakan Stok — dibuat lewat action stock-in/stock-out/stock-opname di ProductViewSet."""
     queryset = ProductStockMovement.objects.all().select_related('product', 'variant', 'user')
     serializer_class = ProductStockMovementSerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -1873,7 +1873,7 @@ class StockInDocumentViewSet(viewsets.ModelViewSet):
     """Dokumen Stok Masuk: header + banyak item, status draft -> selesai/batal."""
     queryset = StockInDocument.objects.all().prefetch_related('items__product').select_related('dibuat_oleh')
     serializer_class = StockInDocumentSerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
     def perform_create(self, serializer):
         today = timezone.now().date()
@@ -2592,7 +2592,7 @@ class StockOutDocumentViewSet(viewsets.ModelViewSet):
     """Dokumen Stok Keluar: header + banyak item, status draft -> selesai/batal."""
     queryset = StockOutDocument.objects.all().prefetch_related('items__product').select_related('dibuat_oleh')
     serializer_class = StockOutDocumentSerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
     def perform_create(self, serializer):
         today = timezone.now().date()
@@ -2806,7 +2806,7 @@ class StockProductionDocumentViewSet(viewsets.ModelViewSet):
     Sesuai template resmi Olsera: hanya menambah stok produk jadi (tanpa penyerapan bahan baku)."""
     queryset = StockProductionDocument.objects.all().prefetch_related('items__product').select_related('dibuat_oleh')
     serializer_class = StockProductionDocumentSerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
     def get_queryset(self):
         # Frontend sebelumnya fetch semua dokumen lalu filter+paginasi di
@@ -3005,7 +3005,7 @@ class StockOpnameDocumentViewSet(viewsets.ModelViewSet):
     Posting menimpa qty_stok produk dengan qty aktual hasil hitung fisik (bukan menambah/mengurangi)."""
     queryset = StockOpnameDocument.objects.all().prefetch_related('items__product').select_related('dibuat_oleh')
     serializer_class = StockOpnameDocumentSerializer
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
     def get_queryset(self):
         # Sama seperti StockProductionDocumentViewSet - search server sungguhan
@@ -3355,7 +3355,7 @@ class StockFifoSyncView(APIView):
     Membuat satu lapisan saldo awal untuk produk/varian yang punya stok tapi
     belum punya lapisan. Idempoten.
     """
-    permission_classes = [IsOwnerManagerAdminOrReadOnly]
+    permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
     def post(self, request):
         with transaction.atomic():

@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import ValidationError
 from api.pagination import OptionalPageNumberPagination
-from api.permissions import IsStrictOwnerOrManager
+from api.permissions import IsStrictOwnerManagerOrSpvFinance
 
 from ..models import AccountingPeriod
 from ..serializers.period import AccountingPeriodSerializer, PeriodJournalLineSerializer
@@ -20,7 +20,7 @@ class AccountingPeriodListView(generics.ListAPIView):
     """
     GET /api/accounting/periods/?fiscal_year= — list seluruh periode akuntansi & statusnya (Owner/Manager saja).
     """
-    permission_classes = [IsAuthenticated, IsStrictOwnerOrManager]
+    permission_classes = [IsAuthenticated, IsStrictOwnerManagerOrSpvFinance]
     serializer_class = AccountingPeriodSerializer
 
     def get_queryset(self):
@@ -34,7 +34,7 @@ class AccountingPeriodListView(generics.ListAPIView):
 class AccountingPeriodDetailView(APIView):
     """GET /api/accounting/periods/<pk>/detail/?page=&page_size=."""
 
-    permission_classes = [IsAuthenticated, IsStrictOwnerOrManager]
+    permission_classes = [IsAuthenticated, IsStrictOwnerManagerOrSpvFinance]
     pagination_class = OptionalPageNumberPagination
 
     def get(self, request, pk):
@@ -52,7 +52,7 @@ class AccountingPeriodCloseView(APIView):
     """
     POST /api/accounting/close-period/ atau POST /api/accounting/periods/<pk>/close/ — tutup buku / kunci periode akuntansi (Owner/Manager saja).
     """
-    permission_classes = [IsAuthenticated, IsStrictOwnerOrManager]
+    permission_classes = [IsAuthenticated, IsStrictOwnerManagerOrSpvFinance]
 
     def post(self, request, pk=None):
         confirm = request.data.get("confirm")
@@ -95,7 +95,7 @@ class AccountingPeriodCloseAllView(APIView):
     lain — hasil per periode dikembalikan supaya user tahu bulan mana yang
     masih perlu diperbaiki.
     """
-    permission_classes = [IsAuthenticated, IsStrictOwnerOrManager]
+    permission_classes = [IsAuthenticated, IsStrictOwnerManagerOrSpvFinance]
 
     def post(self, request):
         confirm = request.data.get("confirm")

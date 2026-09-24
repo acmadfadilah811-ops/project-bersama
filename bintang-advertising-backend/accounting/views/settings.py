@@ -6,7 +6,7 @@ from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.permissions import IsOwnerOrManager
+from api.permissions import IsOwnerManagerOrSpvFinance
 
 from ..models import Account, AccountingSettings, AccountingLifecycleLog, POSPostingSettingsAuditLog
 from ..serializers.settings import (
@@ -97,7 +97,7 @@ class AccountingSettingsView(APIView):
     Endpoint Singleton untuk pengaturan akuntansi.
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def get(self, request):
         settings = _get_or_create_settings()
@@ -125,7 +125,7 @@ class AccountingCompleteSetupView(APIView):
     pernah ditimpa ulang atau dianggap error.
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def post(self, request):
         settings = _get_or_create_settings()
@@ -158,7 +158,7 @@ class AccountingCompleteSetupView(APIView):
 class AccountingBootstrapDefaultCoaView(APIView):
     """Buat COA standar idempoten untuk instalasi yang masih kosong."""
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def post(self, request):
         _get_or_create_settings()
@@ -176,13 +176,13 @@ class AccountingLifecycleLogListView(generics.ListAPIView):
 
     Membuka riwayat kapan sistem akuntansi dinyalakan atau dimatikan.
     """
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
     serializer_class = AccountingLifecycleLogSerializer
     queryset = AccountingLifecycleLog.objects.all().select_related("actor")
 
 
 class POSPostingSettingsAuditLogListView(generics.ListAPIView):
     """Riwayat siapa yang mengaktifkan atau menonaktifkan auto-post POS."""
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
     serializer_class = POSPostingSettingsAuditLogSerializer
     queryset = POSPostingSettingsAuditLog.objects.all().select_related("actor")

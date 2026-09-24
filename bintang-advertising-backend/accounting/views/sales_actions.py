@@ -3,7 +3,7 @@ from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.permissions import IsOwnerOrManager
+from api.permissions import IsOwnerManagerOrSpvFinance
 
 from ..models import JournalAuditLog, JournalEntry
 from ..serializers import POSSaleBatchActionSerializer
@@ -11,7 +11,7 @@ from ..services.pos_manual_posting import cancel_pos_sales_posting, post_pos_sal
 
 
 class _POSSaleBatchActionView(APIView):
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     service = None
 
@@ -34,7 +34,7 @@ class POSSaleCancelPostView(_POSSaleBatchActionView):
 
 
 class POSSaleJournalLogView(APIView):
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def get(self, request, sale_id):
         audit_logs = JournalAuditLog.objects.filter(

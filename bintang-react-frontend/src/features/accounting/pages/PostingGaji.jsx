@@ -9,7 +9,7 @@ import { usePostingGaji } from '../hooks/usePostingGaji';
 export default function PostingGaji() {
   const { user } = useAuth();
   const g = usePostingGaji();
-  const bolehPosting = ['owner', 'manager'].includes(user?.role);
+  const bolehPosting = ['owner', 'manager', 'spv_finance'].includes(user?.role);
   // Admin/SPV Finance (2026-09-24): boleh BACA riwayat posting gaji yang
   // sudah masuk ke Finance (poin UAT "menerima data payroll otomatis"),
   // tapi tidak boleh memicu pratinjau/posting/koreksi/bayar -- itu murni

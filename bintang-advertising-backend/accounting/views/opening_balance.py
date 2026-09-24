@@ -3,7 +3,7 @@ from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.permissions import IsOwnerOrManager
+from api.permissions import IsOwnerManagerOrSpvFinance
 
 from ..serializers.opening_balance import OpeningBalanceSubmitSerializer
 from ..services.opening_balance import submit_opening_balances
@@ -19,7 +19,7 @@ class OpeningBalanceSubmitView(APIView):
     services.opening_balance.submit_opening_balances().
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def post(self, request):
         serializer = OpeningBalanceSubmitSerializer(data=request.data)

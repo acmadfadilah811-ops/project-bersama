@@ -12,7 +12,7 @@ from django.utils import timezone
 
 from ..models import Contact, Order, KomplainOrder, KomplainLog, CustomerActivity
 from ..serializers import ContactSerializer, KomplainOrderSerializer, CustomerActivitySerializer
-from ..permissions import IsOwnerOrManager, IsOwnerManagerAdminOrKasir
+from ..permissions import IsOwnerManagerOrSpvFinance, IsOwnerManagerAdminOrKasir
 
 
 class ProductionCustomerLiteView(APIView):
@@ -241,7 +241,7 @@ class ContactViewSet(viewsets.ModelViewSet):
 
 
 class ContactStatsView(APIView):
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def get(self, request):
         total_customers = Contact.objects.count()

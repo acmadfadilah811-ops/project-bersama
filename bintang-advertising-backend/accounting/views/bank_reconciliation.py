@@ -4,7 +4,7 @@ from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.permissions import IsOwnerOrManager
+from api.permissions import IsOwnerManagerOrSpvFinance
 
 from ..models import Account
 from ..serializers import (
@@ -32,7 +32,7 @@ class BankReconciliationView(APIView):
     belum tentu sama seperti Kas/Bank, jadi belum dibangun sampai ada contoh nyata.
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def get(self, request):
         account_id = request.query_params.get("account")
@@ -60,7 +60,7 @@ class BankReconciliationMatchView(APIView):
     tandai Reconciled. Manual (dipilih user), bukan auto-match.
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def post(self, request):
         serializer = BankReconciliationMatchSerializer(data=request.data)

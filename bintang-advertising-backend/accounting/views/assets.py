@@ -13,7 +13,7 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.permissions import IsOwnerOrManager
+from api.permissions import IsOwnerManagerOrSpvFinance
 
 from ..models import FixedAsset
 from ..serializers.assets import (
@@ -52,7 +52,7 @@ def _asset_export_response(assets, export_format):
 
 
 class FixedAssetListCreateView(generics.ListCreateAPIView):
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
     pagination_class = AssetPagination
 
     def get_queryset(self):
@@ -89,7 +89,7 @@ class FixedAssetListCreateView(generics.ListCreateAPIView):
 
 
 class FixedAssetDetailView(generics.RetrieveUpdateAPIView):
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
     queryset = FixedAsset.objects.select_related("asset_account", "acquisition_journal")
 
     def get_serializer_class(self):
@@ -97,7 +97,7 @@ class FixedAssetDetailView(generics.RetrieveUpdateAPIView):
 
 
 class FixedAssetTemplateView(APIView):
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def get(self, request):
         output = io.StringIO()
@@ -113,7 +113,7 @@ class FixedAssetTemplateView(APIView):
 
 
 class FixedAssetImportPreviewView(APIView):
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
     parser_classes = [MultiPartParser]
 
     def post(self, request):
@@ -134,7 +134,7 @@ class FixedAssetImportPreviewView(APIView):
 
 
 class FixedAssetImportCommitView(APIView):
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def post(self, request):
         config = FixedAssetAccountConfigSerializer(data=request.data)
@@ -162,7 +162,7 @@ class FixedAssetDepreciationPostView(APIView):
     berikutnya) atau susulan bulan yang terlewat.
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def post(self, request):
         period_raw = str(request.data.get("period") or "").strip()
@@ -194,7 +194,7 @@ class FixedAssetDisposeView(APIView):
     jalur resmi ke status DISPOSED -- lihat FixedAssetUpdateSerializer.
     """
 
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [IsOwnerManagerOrSpvFinance]
 
     def post(self, request, pk):
         asset = get_object_or_404(FixedAsset, pk=pk)
