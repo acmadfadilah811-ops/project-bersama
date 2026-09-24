@@ -109,11 +109,15 @@ def kurangi_stok_produk_sumber(inventory_item, qty, *, user, catatan):
 
     product.qty_stok = stok_awal - qty_dec
     product.save(update_fields=['qty_stok'])
-    movement = ProductStockMovement.objects.create(
+    movement = ProductStockMovement(
         product=product, variant=None, user=user, tipe='keluar', qty=qty_dec,
         stok_awal=stok_awal, stok_akhir=product.qty_stok,
         catatan=catatan, tanggal=timezone.localdate(),
     )
+    # Stok bahan sudah dipotong oleh alur pemakaian ini sendiri -- jangan
+    # dicerminkan lagi oleh sinyal sinkron stok produk (services/bahan_baku_sync).
+    movement._lewati_cermin_bahan = True
+    movement.save()
     stock_fifo.consume_layers(product, None, qty_dec, movement=movement)
     return movement
 
