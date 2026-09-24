@@ -20,7 +20,7 @@ from ..permissions import IsOwnerManagerAdminOrReadOnly, IsOwnerManagerOrAdmin
 logger = logging.getLogger(__name__)
 
 
-def record_material_consumption_to_general_ledger(inventory_item, qty, ref_no, keterangan_konteks, source_id=None):
+def record_material_consumption_to_general_ledger(inventory_item, qty, ref_no, keterangan_konteks, source_id=None, nilai=None):
     """
     Mencatat konsumsi bahan baku ke Buku Besar (Double-Entry Bookkeeping) sebagai Beban HPP.
 
@@ -32,8 +32,9 @@ def record_material_consumption_to_general_ledger(inventory_item, qty, ref_no, k
     (instruksi & bug ditemukan user 2026-08-15).
     """
     try:
-        # Hitung nilai HPP (kuantitas * cost_per_unit)
-        cost = qty * (inventory_item.cost_per_unit or 0.0)
+        # Nilai HPP: `nilai` eksplisit (biaya FIFO produk sumber, lihat
+        # catat_pemakaian_bahan) menang; kalau tidak ada, kuantitas * cost_per_unit.
+        cost = nilai if nilai is not None else qty * (inventory_item.cost_per_unit or 0.0)
         if cost <= 0:
             return
 
@@ -81,10 +82,10 @@ def kurangi_stok_produk_sumber(inventory_item, qty, *, user, catatan):
     angka awal, jadi menu Stok (yang membaca Product) tidak pernah berubah.
 
     Dicatat sebagai mutasi 'keluar' lewat stock_fifo.consume_layers (M8), TANPA
-    jurnal baru dan TANPA `pos_sale`: nilai persediaan sudah dijurnal sekali oleh
-    `record_material_consumption_to_general_ledger` di pemanggil, dan agregasi
-    HPP penjualan POS hanya menjumlah mutasi tipe 'penjualan' (M4 -- tidak
-    dobel). Wajib dipanggil di dalam transaction.atomic (row-lock)."""
+    `pos_sale` (agregasi HPP penjualan POS hanya menjumlah mutasi tipe
+    'penjualan', jadi tidak dobel). Fungsi ini sendiri tidak membuat jurnal --
+    `catat_pemakaian_bahan` yang menjurnalkan senilai `hpp_total` mutasi ini.
+    Wajib dipanggil di dalam transaction.atomic (row-lock)."""
     if not inventory_item.product_id:
         return None
 
@@ -115,6 +116,24 @@ def kurangi_stok_produk_sumber(inventory_item, qty, *, user, catatan):
     )
     stock_fifo.consume_layers(product, None, qty_dec, movement=movement)
     return movement
+
+
+def catat_pemakaian_bahan(inventory_item, qty, *, user, ref_no, keterangan_konteks, source_id, catatan_stok):
+    """Satu pintu pencatatan pemakaian bahan resep (POS & produksi): potong stok
+    Product sumber (FIFO), lalu jurnal HPP bahan (Dr HPP 51000 / Kr Persediaan
+    11400) senilai biaya FIFO yang baru dikonsumsi itu.
+
+    Sebelumnya jurnal memakai `InventoryItem.cost_per_unit`, padahal bahan yang
+    dicerminkan dari katalog Produk selalu bernilai 0 -> jurnal dilewati diam-diam
+    (produksi: 0 jurnal HPP bahan, Persediaan tidak pernah berkurang di buku besar;
+    ditemukan 2026-09-24). Bahan tanpa Product sumber tetap memakai cost_per_unit.
+    Wajib dipanggil di dalam transaction.atomic (M5)."""
+    movement = kurangi_stok_produk_sumber(inventory_item, qty, user=user, catatan=catatan_stok)
+    nilai = movement.hpp_total if movement is not None and movement.hpp_total else None
+    record_material_consumption_to_general_ledger(
+        inventory_item, qty, ref_no=ref_no, keterangan_konteks=keterangan_konteks,
+        source_id=source_id, nilai=nilai,
+    )
 
 
 class InventoryItemViewSet(viewsets.ModelViewSet):

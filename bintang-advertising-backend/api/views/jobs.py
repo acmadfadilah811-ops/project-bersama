@@ -21,7 +21,7 @@ from ..permissions import (
     scoped_by_unit_bisnis,
 )
 
-from .inventory import kurangi_stok_produk_sumber, record_material_consumption_to_general_ledger
+from .inventory import catat_pemakaian_bahan
 
 logger = logging.getLogger(__name__)
 
@@ -131,13 +131,10 @@ def deduct_job_materials_if_needed(job, user):
                 item.save()
 
                 # Catat ke Buku Besar
-                record_material_consumption_to_general_ledger(
-                    item, qty_needed, ref_no=marker,
+                catat_pemakaian_bahan(
+                    item, qty_needed, user=user, ref_no=marker,
                     keterangan_konteks=f"Order {order_item.order_id} - {marker}", source_id=job.id,
-                )
-                kurangi_stok_produk_sumber(
-                    item, qty_needed, user=user,
-                    catatan=f"Pemakaian bahan resep | {order_item_marker} | Job #{job.id} | {bom.nama}",
+                    catatan_stok=f"Pemakaian bahan resep | {order_item_marker} | Job #{job.id} | {bom.nama}",
                 )
         return
 
@@ -195,13 +192,10 @@ def deduct_job_materials_if_needed(job, user):
             item.save()
             
             # Catat ke Buku Besar
-            record_material_consumption_to_general_ledger(
-                item, qty, ref_no=marker,
+            catat_pemakaian_bahan(
+                item, qty, user=user, ref_no=marker,
                 keterangan_konteks=f"Order {order_item.order_id} - {marker}", source_id=job.id,
-            )
-            kurangi_stok_produk_sumber(
-                item, qty, user=user,
-                catatan=f"Pemakaian bahan produksi | Job #{job.id} | {catatan_mat}".strip(' |'),
+                catatan_stok=f"Pemakaian bahan produksi | Job #{job.id} | {catatan_mat}".strip(' |'),
             )
 
 
@@ -281,12 +275,9 @@ class JobMaterialDeductView(APIView):
                 # yang None (bug ditemukan user 2026-08-15).
                 marker = f"Job #{job_id}"
                 konteks = f"Order {job.order_item.order_id} - {marker}" if job.order_item_id else marker
-                record_material_consumption_to_general_ledger(
-                    item, qty, ref_no=marker, keterangan_konteks=konteks, source_id=job.id,
-                )
-                kurangi_stok_produk_sumber(
-                    item, qty, user=request.user,
-                    catatan=f"Pemakaian bahan produksi | Job #{job_id} | {catatan}".strip(' |'),
+                catat_pemakaian_bahan(
+                    item, qty, user=request.user, ref_no=marker, keterangan_konteks=konteks, source_id=job.id,
+                    catatan_stok=f"Pemakaian bahan produksi | Job #{job_id} | {catatan}".strip(' |'),
                 )
 
                 deducted.append({

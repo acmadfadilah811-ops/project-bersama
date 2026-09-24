@@ -191,3 +191,31 @@ class PosBomSinkronProdukSumberTest(APITestCase):
         # Hanya HPP produk jual (Banner: 3 x 10000 dari FIFO fallback), BUKAN
         # ditambah mutasi 'keluar' bahan resep.
         self.assertEqual(_sale_hpp_total(sale), 3 * 10000)
+
+    def test_jurnal_hpp_bahan_pakai_biaya_fifo_produk_sumber_walau_cost_per_unit_nol(self):
+        from accounting.models import JournalEntry
+
+        # Bahan cerminan katalog selalu cost_per_unit 0 -- dulu jurnal dilewati.
+        self.bahan.cost_per_unit = 0.0
+        self.bahan.save(update_fields=['cost_per_unit'])
+        response = self._jual(3)  # 6 bahan x biaya FIFO 1500 = 9000
+        self.assertEqual(response.status_code, 201, response.content)
+
+        sale = POSSale.objects.get(pk=response.data['id'])
+        jurnal = JournalEntry.objects.get(source_type=JournalEntry.SourceType.PRODUCTION, source_id=sale.id)
+        baris = {(l.account.code, l.debit, l.kredit) for l in jurnal.lines.all()}
+        from decimal import Decimal
+        self.assertEqual(baris, {('51000', Decimal('9000'), Decimal('0')), ('11400', Decimal('0'), Decimal('9000'))})
+
+    def test_bahan_tanpa_produk_sumber_tetap_dijurnal_dari_cost_per_unit(self):
+        from accounting.models import JournalEntry
+
+        self.bahan.product = None
+        self.bahan.cost_per_unit = 2000.0
+        self.bahan.save(update_fields=['product', 'cost_per_unit'])
+        response = self._jual(3)  # 6 x 2000 = 12000
+        self.assertEqual(response.status_code, 201, response.content)
+        sale = POSSale.objects.get(pk=response.data['id'])
+        jurnal = JournalEntry.objects.get(source_type=JournalEntry.SourceType.PRODUCTION, source_id=sale.id)
+        self.assertEqual(sum(l.debit for l in jurnal.lines.all()), 12000)
+
