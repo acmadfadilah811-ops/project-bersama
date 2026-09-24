@@ -28,7 +28,9 @@ def _potong_bahan_baku_bom(product, variant, qty_base, sale, user):
     dari `product.lacak_inventori` (jasa yang finished-good-nya tidak
     dihitung stok tetap boleh konsumsi bahan baku per transaksi)."""
     from .models import BillOfMaterials, RestockHistory, InventoryItem
-    from .views.inventory import record_material_consumption_to_general_ledger
+    from .views.inventory import (
+        kurangi_stok_produk_sumber, record_material_consumption_to_general_ledger,
+    )
 
     bom = BillOfMaterials.objects.filter(product_id=product.id, variant_id=variant.id if variant else None).first()
     if not bom and variant:
@@ -62,6 +64,10 @@ def _potong_bahan_baku_bom(product, variant, qty_base, sale, user):
             item, qty_needed, ref_no=marker,
             keterangan_konteks=f"Penjualan POS {sale.nomor} - {product.nama}",
             source_id=sale.id,
+        )
+        kurangi_stok_produk_sumber(
+            item, qty_needed, user=user,
+            catatan=f"Pemakaian bahan resep | {marker} | {bom.nama}",
         )
 
 def money(value):

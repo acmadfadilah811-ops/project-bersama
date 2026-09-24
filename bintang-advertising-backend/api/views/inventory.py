@@ -69,6 +69,54 @@ def record_material_consumption_to_general_ledger(inventory_item, qty, ref_no, k
         raise
 
 
+def kurangi_stok_produk_sumber(inventory_item, qty, *, user, catatan):
+    """Ikut memotong stok Product katalog yang menjadi sumber `inventory_item`
+    (2026-09-24, instruksi user: bahan resep terpakai tapi stok di menu Stok
+    produk bahannya tidak berkurang).
+
+    Bahan baku resep dipilih dari katalog Produk, lalu dicerminkan jadi
+    InventoryItem (`InventoryItem.product`, lihat
+    `_get_or_create_inventory_item_for_product`). Pemakaian resep sebelumnya
+    hanya memotong InventoryItem.stok -- qty_stok Product sumbernya diam di
+    angka awal, jadi menu Stok (yang membaca Product) tidak pernah berubah.
+
+    Dicatat sebagai mutasi 'keluar' lewat stock_fifo.consume_layers (M8), TANPA
+    jurnal baru dan TANPA `pos_sale`: nilai persediaan sudah dijurnal sekali oleh
+    `record_material_consumption_to_general_ledger` di pemanggil, dan agregasi
+    HPP penjualan POS hanya menjumlah mutasi tipe 'penjualan' (M4 -- tidak
+    dobel). Wajib dipanggil di dalam transaction.atomic (row-lock)."""
+    if not inventory_item.product_id:
+        return None
+
+    from decimal import Decimal, ROUND_HALF_UP
+    from .. import stock_fifo
+    from ..product_models import Product, ProductStockMovement
+
+    qty_dec = Decimal(str(qty)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    if qty_dec <= 0:
+        return None
+
+    product = Product.objects.select_for_update().get(pk=inventory_item.product_id)
+    # Produk bervarian menyimpan stok di level varian, bukan qty_stok produk.
+    if not product.lacak_inventori or product.has_variant:
+        return None
+
+    stok_awal = product.qty_stok
+    qty_dec = min(qty_dec, max(stok_awal, Decimal('0')))
+    if qty_dec <= 0:
+        return None
+
+    product.qty_stok = stok_awal - qty_dec
+    product.save(update_fields=['qty_stok'])
+    movement = ProductStockMovement.objects.create(
+        product=product, variant=None, user=user, tipe='keluar', qty=qty_dec,
+        stok_awal=stok_awal, stok_akhir=product.qty_stok,
+        catatan=catatan, tanggal=timezone.localdate(),
+    )
+    stock_fifo.consume_layers(product, None, qty_dec, movement=movement)
+    return movement
+
+
 class InventoryItemViewSet(viewsets.ModelViewSet):
     serializer_class   = InventoryItemSerializer
     permission_classes = [IsOwnerManagerAdminOrReadOnly]
@@ -442,9 +490,9 @@ def _get_or_create_inventory_item_for_product(product):
     # dari Product" -- akibatnya resep baru SELALU dianggap kehabisan bahan
     # (order/POS ditolak "tidak mencukupi") walau Product sumbernya stoknya
     # banyak. Disinkron NYATA di sini sekarang, tapi cuma SEKALI saat
-    # InventoryItem ini pertama kali dibuat -- perubahan qty_stok Product
-    # SESUDAHNYA tidak otomatis mengikuti (dua stok terpisah, belum ada
-    # sinkronisasi berkelanjutan; known gap, di luar cakupan perbaikan ini).
+    # InventoryItem ini pertama kali dibuat. Sesudahnya HANYA pemakaian resep
+    # yang dicerminkan ke Product (`kurangi_stok_produk_sumber`); stok masuk
+    # Product / restock InventoryItem tetap dua stok terpisah (known gap).
     return InventoryItem.objects.create(
         nama=product.nama,
         satuan=product.satuan or 'pcs',

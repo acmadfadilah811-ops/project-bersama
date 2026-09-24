@@ -293,6 +293,30 @@ class DeductJobMaterialsBomLinkTest(APITestCase):
             item=self.bahan, keterangan__icontains=f'Job #{job.id}',
         ).exists())
 
+    def test_pemakaian_bom_order_juga_kurangi_stok_produk_sumber_bahan(self):
+        from api.product_models import ProductStockMovement
+
+        produk_bahan = Product.objects.create(
+            nama='Flexi Roll', price_type='flat', harga_jual_toko=10000,
+            qty_stok=100, lacak_inventori=True,
+        )
+        self.bahan.product = produk_bahan
+        self.bahan.save(update_fields=['product'])
+
+        product = Product.objects.create(nama='Banner Flexi', price_type='flat', harga_jual_toko=50000)
+        bom = BillOfMaterials.objects.create(product=product, nama='BoM Banner Flexi')
+        BoMItem.objects.create(bom=bom, inventory_item=self.bahan, qty_required_per_unit=3.0)
+        order_item = OrderItem.objects.create(order=self.order, jenis_produk='Banner', product=product, qty=2)
+        job = self._buat_job(order_item)
+
+        deduct_job_materials_if_needed(job, self.staff)
+
+        produk_bahan.refresh_from_db()
+        self.assertEqual(float(produk_bahan.qty_stok), 94.0)
+        mv = ProductStockMovement.objects.get(product=produk_bahan, tipe='keluar')
+        self.assertEqual(float(mv.qty), 6.0)
+        self.assertIn(f'Job #{job.id}', mv.catatan)
+
     def test_fallback_ke_product_price_legacy_saat_order_item_tanpa_fk_produk(self):
         product_price = ProductPrice.objects.create(kategori='Umum', nama_produk='Banner Lama', harga=0)
         bom = BillOfMaterials.objects.create(product_price=product_price, nama='BoM Legacy')

@@ -105,3 +105,89 @@ class PosBomDeductionTest(APITestCase):
         # BoM produk utama (tanpa varian) TIDAK ikut kepakai
         self.bahan.refresh_from_db()
         self.assertEqual(self.bahan.stok, 100.0)
+
+
+class PosBomSinkronProdukSumberTest(APITestCase):
+    """Bahan resep yang berasal dari katalog Produk (InventoryItem.product)
+    ikut memotong qty_stok Product sumbernya (instruksi user 2026-09-24)."""
+
+    def setUp(self):
+        from django.utils import timezone
+        from api import stock_fifo
+
+        self.owner = User.objects.create_user(username='owner_bom_sinkron', password='rahasia123', role='owner')
+        self.client.force_authenticate(self.owner)
+        asset, _ = AccountClassification.objects.get_or_create(name='Persediaan Test POS BoM', defaults={'account_type': 'asset'})
+        expense, _ = AccountClassification.objects.get_or_create(name='HPP Test POS BoM', defaults={'account_type': 'expense'})
+        Account.objects.get_or_create(code='11400', defaults={'name': 'Persediaan Test', 'account_type': 'asset', 'classification': asset})
+        Account.objects.get_or_create(code='51000', defaults={'name': 'HPP Test', 'account_type': 'expense', 'classification': expense})
+
+        self.produk_bahan = Product.objects.create(
+            nama='Kertas Ivory 230gr', harga_beli=1500, harga_jual_toko=3000,
+            qty_stok=100, lacak_inventori=True,
+        )
+        stock_fifo.create_layer(self.produk_bahan, None, 100, 1500, timezone.localdate())
+        self.bahan = _buat_inventory_item(nama='Kertas Ivory 230gr', stok=100.0, cost=1500.0)
+        self.bahan.product = self.produk_bahan
+        self.bahan.save(update_fields=['product'])
+
+        self.product = Product.objects.create(
+            nama='Banner Flexi 280gr', harga_beli=10000, harga_jual_toko=25000,
+            qty_stok=50, lacak_inventori=True,
+        )
+        self.bom = BillOfMaterials.objects.create(product=self.product, nama='BoM Banner Flexi')
+        BoMItem.objects.create(bom=self.bom, inventory_item=self.bahan, qty_required_per_unit=2.0)
+        self.pelanggan = Contact.objects.create(nomor_wa='081200000098', nama='Pelanggan BoM Sinkron')
+
+    def _jual(self, qty):
+        return self.client.post('/api/pos/sales/', {
+            'pelanggan': self.pelanggan.nomor_wa,
+            'items': [{'product_id': self.product.id, 'qty': qty, 'harga': 25000}],
+            'status': 'paid', 'dibayar': 25000 * qty, 'metode_bayar': 'tunai',
+        }, format='json')
+
+    def test_pemakaian_resep_ikut_kurangi_stok_produk_sumber(self):
+        from api.product_models import ProductStockMovement, StockLayer
+
+        response = self._jual(3)  # 3 x 2.0 per unit = 6 bahan
+        self.assertEqual(response.status_code, 201, response.content)
+
+        self.produk_bahan.refresh_from_db()
+        self.assertEqual(float(self.produk_bahan.qty_stok), 94.0)
+
+        mv = ProductStockMovement.objects.get(product=self.produk_bahan, tipe='keluar')
+        self.assertEqual(float(mv.qty), 6.0)
+        self.assertEqual(float(mv.stok_awal), 100.0)
+        self.assertEqual(float(mv.stok_akhir), 94.0)
+        self.assertIsNone(mv.pos_sale_id)  # tidak masuk agregasi HPP penjualan POS
+        self.assertEqual(float(mv.hpp_total), 6.0 * 1500)
+        layer = StockLayer.objects.get(product=self.produk_bahan)
+        self.assertEqual(float(layer.sisa_qty), 94.0)
+
+    def test_bahan_tanpa_tautan_produk_tidak_menyentuh_produk_lain(self):
+        self.bahan.product = None
+        self.bahan.save(update_fields=['product'])
+        response = self._jual(3)
+        self.assertEqual(response.status_code, 201, response.content)
+        self.produk_bahan.refresh_from_db()
+        self.assertEqual(float(self.produk_bahan.qty_stok), 100.0)
+
+    def test_stok_produk_sumber_tidak_pernah_negatif(self):
+        # Stok InventoryItem (100) > stok Product sumber (4): selisih dua
+        # stok terpisah tidak boleh membuat qty_stok Product jadi negatif.
+        self.produk_bahan.qty_stok = 4
+        self.produk_bahan.save(update_fields=['qty_stok'])
+        response = self._jual(3)  # butuh 6 bahan
+        self.assertEqual(response.status_code, 201, response.content)
+        self.produk_bahan.refresh_from_db()
+        self.assertEqual(float(self.produk_bahan.qty_stok), 0.0)
+
+    def test_hpp_penjualan_pos_tidak_terhitung_dobel(self):
+        from accounting.services.pos_posting import _sale_hpp_total
+
+        response = self._jual(3)
+        self.assertEqual(response.status_code, 201, response.content)
+        sale = POSSale.objects.get(pk=response.data['id'])
+        # Hanya HPP produk jual (Banner: 3 x 10000 dari FIFO fallback), BUKAN
+        # ditambah mutasi 'keluar' bahan resep.
+        self.assertEqual(_sale_hpp_total(sale), 3 * 10000)
