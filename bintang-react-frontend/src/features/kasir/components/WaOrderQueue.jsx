@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import { useAuth } from '../../../context/AuthContext';
+import useAutoRefresh from '../../../utils/useAutoRefresh';
 import PosHeaderBar from './PosHeaderBar';
 import PelunasanModal from './PelunasanModal';
 import WaOrderItemProductSource from './WaOrderItemProductSource';
@@ -199,6 +200,10 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
     fetchPackages();
     fetchProducts();
   }, []);
+
+  // Perubahan produk/paket di menu Produk otomatis terbaca (instruksi user
+  // 2026-09-24), tanpa kasir perlu reload halaman Antrean.
+  useAutoRefresh(() => Promise.all([fetchProducts(), fetchPackages()]));
 
   // fetchQueue dipanggil ulang tiap filter/halaman berubah (debounced 300ms
   // untuk pencarian) DAN dipoll tiap 15 detik. Interval dipisah dari efek

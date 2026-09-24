@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ShoppingCart, Plus, Trash2, User, Info, CheckCircle2, Search } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
 import NumericInput from '../../../../components/NumericInput';
+import useAutoRefresh from '../../../../utils/useAutoRefresh';
 import WaOrderItemProductSource from '../../../kasir/components/WaOrderItemProductSource';
 import { fetchActiveProducts, fetchActivePackages, fetchHargaKatalog } from '../../../kasir/utils/orderCatalogPricing';
 
@@ -70,20 +71,25 @@ export default function StaffCreateOrderPanel() {
       .catch((err) => console.error('[StaffCreateOrderPanel] Gagal memuat tipe pelanggan:', err));
   }, []);
 
+  const muatKatalog = async () => {
+    try {
+      setProducts(await fetchActiveProducts());
+    } catch {
+      setProducts([]);
+    }
+    try {
+      setPackages(await fetchActivePackages());
+    } catch {
+      setPackages([]);
+    }
+  };
+
   useEffect(() => {
-    (async () => {
-      try {
-        setProducts(await fetchActiveProducts());
-      } catch {
-        setProducts([]);
-      }
-      try {
-        setPackages(await fetchActivePackages());
-      } catch {
-        setPackages([]);
-      }
-    })();
+    muatKatalog();
   }, []);
+
+  // Perubahan produk di menu Produk otomatis terbaca (instruksi user 2026-09-24).
+  useAutoRefresh(muatKatalog);
 
   useEffect(() => {
     const handleClickOutside = (e) => {

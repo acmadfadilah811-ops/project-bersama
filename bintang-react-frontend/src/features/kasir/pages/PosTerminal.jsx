@@ -6,6 +6,8 @@ import apiClient from '../../../api/apiClient';
 import { fetchAllPages } from '../../../utils/paginatedApi';
 import { notifyApiError, notifyError, notifySuccess } from '../../../utils/notify';
 import { useAuth } from '../../../context/AuthContext';
+import useAutoRefresh from '../../../utils/useAutoRefresh';
+import { hitungStokKritisKeranjang, segarkanProdukKeranjang } from '../utils/stokKritis';
 import { useDynamicIsland } from '../../../context/DynamicIslandContext';
 import { getPrintErrorMessage, printReceiptAfterRender } from '../../printing/services/printService';
 
@@ -33,63 +35,6 @@ const makeCheckoutKey = () => {
   if (window.crypto?.randomUUID) return window.crypto.randomUUID();
   const suffix = `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`.replace(/[^a-f0-9]/g, '').padEnd(12, '0').slice(-12);
   return `00000000-0000-4000-8000-${suffix}`;
-};
-
-// Popup peringatan stok menipis setelah transaksi (2026-09-24, instruksi
-// user) -- backend mengirim `stok_kritis` di response checkout (lihat
-// pos_services.stok_kritis_warnings), array kosong kalau tidak ada yang
-// tembus ambang minimum. Digabung jadi satu popup per transaksi (bukan
-// satu popup per item) supaya tidak membanjiri kasir kalau banyak item
-// sekaligus tembus ambang minimumnya.
-//
-// CATATAN (2026-09-24, revisi ke-2): sebelumnya popup ini numpang di pill
-// notifikasi kecil `activeNotification`/DynamicIsland, tapi kasir tetap
-// melaporkan tidak melihat apa pun -- dan user secara eksplisit minta popup
-// besar yang TIDAK dikaitkan dengan area topbar sama sekali ("kasir ngga ada
-// tempat notifikasinnya di bagian top bar"). Jadi sekarang state-nya berdiri
-// sendiri (`stokKritisModal`, lihat dalam komponen) dan dirender sebagai
-// modal blocking penuh, bukan lewat notify()/DynamicIsland.
-//
-// CATATAN (2026-09-24, revisi ke-3): user minta notifikasi ini menahan kasir
-// SEBELUM pembayaran ("kasir mau melanjutkan ke pembayaran, jadi kasir
-// tertahan dulu"), bukan cuma info setelah transaksi selesai (waktu itu uang
-// sudah diterima, terlambat untuk menahan apa pun). Jadi sekarang ada 2 mode:
-// - 'gate': dihitung di klien dari qty_stok & stok_minimum produk yang sudah
-//   ada di keranjang (lihat `hitungStokKritisKeranjang`), dipicu saat kasir
-//   klik "Bayar" -- SEBELUM modal pembayaran dibuka. Kasir wajib klik
-//   "Lanjutkan ke Pembayaran" (atau "Batal" utk kembali ke keranjang).
-// - 'info': tetap dipertahankan sebagai jaring pengaman setelah transaksi
-//   benar-benar tersimpan di server (data race dgn kasir lain bisa membuat
-//   hasil akhir beda dari perkiraan di 'gate').
-const hitungStokKritisKeranjang = (cartItems) => {
-  if (!Array.isArray(cartItems) || cartItems.length === 0) return [];
-  const totalQtyByKey = new Map();
-  const infoByKey = new Map();
-  cartItems.forEach((item) => {
-    const product = item.product;
-    if (!product || !product.lacak_inventori) return;
-    const minimum = Number(product.stok_minimum || 0);
-    if (minimum <= 0) return;
-    const variant = item.variant;
-    const key = variant ? `${product.id}-${variant.id}` : `${product.id}`;
-    totalQtyByKey.set(key, (totalQtyByKey.get(key) || 0) + (Number(item.qty) || 0));
-    if (!infoByKey.has(key)) {
-      infoByKey.set(key, {
-        nama: variant ? `${product.nama} (${variant.nama_varian})` : product.nama,
-        stokSaatIni: Number((variant ? variant.qty_stok : product.qty_stok) || 0),
-        minimum,
-      });
-    }
-  });
-  const warnings = [];
-  totalQtyByKey.forEach((totalQty, key) => {
-    const info = infoByKey.get(key);
-    const sisa = info.stokSaatIni - totalQty;
-    if (sisa <= info.minimum) {
-      warnings.push({ nama: info.nama, sisa, minimum: info.minimum });
-    }
-  });
-  return warnings;
 };
 
 const itemReceiptNote = (item) => {
@@ -137,6 +82,7 @@ export default function PosTerminal({ onToggleSidebar }) {
   // yang tidak bergantung pada topbar. Isi: array {nama, sisa, minimum} dari
   // response checkout, null kalau tidak sedang ditampilkan.
   const [stokKritisModal, setStokKritisModal] = useState(null);
+  const payCheckingRef = useRef(false);
   const {
     cart,
     addToCart,
@@ -450,6 +396,11 @@ export default function PosTerminal({ onToggleSidebar }) {
     return () => clearTimeout(delayDebounce);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCategory, searchTerm, selectedBrand, selectedCollection, catalogPage, catalogPageSize]);
+
+  // Katalog ikut diperbarui otomatis (tab kembali aktif + tiap 60 dtk) supaya
+  // perubahan harga/stok/produk di menu Produk langsung terbaca tanpa kasir
+  // menekan Sync (instruksi user 2026-09-24). Tombol Sync manual tetap ada.
+  useAutoRefresh(fetchProducts);
 
   // Sync manual — kasir bisa tekan kapan saja selama layar Kasir terbuka
   // (harga/stok dari fetch pertama bisa jadi basi kalau layar dibiarkan
@@ -1140,8 +1091,8 @@ export default function PosTerminal({ onToggleSidebar }) {
           }}
           onSelectItem={handleSelectItem}
           selectedCartItemKey={selectedCartItemKey}
-          onPayClick={() => {
-            if (cart.length === 0) return;
+          onPayClick={async () => {
+            if (cart.length === 0 || payCheckingRef.current) return;
             // Cek pelanggan di titik paling awal, sebelum modal pembayaran
             // dibuka sama sekali -- kasir langsung tahu harus pilih/tambah
             // pelanggan dulu, bukan baru ditolak setelah isi nominal bayar
@@ -1153,7 +1104,16 @@ export default function PosTerminal({ onToggleSidebar }) {
             }
             // Gerbang stok kritis (2026-09-24, instruksi user: kasir harus
             // tertahan SEBELUM pembayaran, bukan diberi tahu setelahnya).
-            const kritis = hitungStokKritisKeranjang(cart);
+            // Stok dihitung dari data produk TERBARU (bukan snapshot saat
+            // item dimasukkan ke keranjang) supaya perubahan stok dari menu
+            // Produk / kasir lain ikut terbaca; gagal ambil -> pakai snapshot.
+            payCheckingRef.current = true;
+            let kritis;
+            try {
+              kritis = hitungStokKritisKeranjang(await segarkanProdukKeranjang(cart));
+            } finally {
+              payCheckingRef.current = false;
+            }
             if (kritis.length > 0) {
               setStokKritisModal({ items: kritis, mode: 'gate' });
               return;
