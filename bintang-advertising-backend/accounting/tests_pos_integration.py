@@ -103,6 +103,8 @@ class POSAccountingIntegrationTestCase(APITestCase):
         )
 
     def setUp(self):
+        from api.models import Contact as _KontakUji
+        _KontakUji.objects.get_or_create(nomor_wa="081299900002", defaults={"nama": "Pelanggan Uji"})
         # Pastikan kasir memiliki shift aktif agar pos_settings shift check lolos
         self.shift = SaldoKasHarian.objects.create(
             kasir=self.kasir,
@@ -123,6 +125,7 @@ class POSAccountingIntegrationTestCase(APITestCase):
             "status": "paid",
             "metode_bayar": "Cash",
             "dibayar": 75000,
+            "pelanggan": "081299900002",
             "items": [{"nama": "Spanduk Flexi", "harga": 75000, "qty": 1}],
         }
         res = self.client.post("/api/pos/sales/", data=payload, format="json")
@@ -164,6 +167,7 @@ class POSAccountingIntegrationTestCase(APITestCase):
             "status": "paid",
             "metode_bayar": "QRIS",
             "dibayar": 150000,
+            "pelanggan": "081299900002",
             "items": [{"nama": "Sticker Vinyl", "harga": 150000, "qty": 1}],
         }
         res = self.client.post("/api/pos/sales/", data=payload, format="json")
@@ -203,6 +207,7 @@ class POSAccountingIntegrationTestCase(APITestCase):
             "status": "paid",
             "metode_bayar": "QRIS",
             "dibayar": 250000,
+            "pelanggan": "081299900002",
             "items": [{"nama": "X-Banner Stand", "harga": 250000, "qty": 1}],
         }
         res_sale = self.client.post("/api/pos/sales/", data=payload, format="json")
@@ -263,6 +268,7 @@ class POSAccountingIntegrationTestCase(APITestCase):
             "status": "paid",
             "metode_bayar": "Cash",
             "dibayar": 50000,
+            "pelanggan": "081299900002",
             "items": [{"nama": "Kartu Nama", "harga": 50000, "qty": 1}],
         }
         res = self.client.post("/api/pos/sales/", data=payload, format="json")
@@ -284,6 +290,7 @@ class POSAccountingIntegrationTestCase(APITestCase):
             "status": "paid",
             "metode_bayar": "QRIS",
             "dibayar": 100000,
+            "pelanggan": "081299900002",
             "items": [{"nama": "Pin Bros", "harga": 100000, "qty": 1}],
         }
         self.client.post("/api/pos/sales/", data=payload, format="json")
@@ -319,6 +326,7 @@ class POSAccountingIntegrationTestCase(APITestCase):
             "status": "paid",
             "metode_bayar": "Cash",
             "dibayar": 60000,
+            "pelanggan": "081299900002",
             "items": [{"nama": "Sticker Sheet", "harga": 60000, "qty": 1}],
         }
         res_sale = self.client.post("/api/pos/sales/", data=payload, format="json")
