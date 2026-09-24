@@ -22,6 +22,8 @@ User = get_user_model()
 
 class POSVoidPostingTestCase(TestCase):
     def setUp(self):
+        from api.models import Contact as _KontakUji
+        _KontakUji.objects.get_or_create(nomor_wa="081299900001", defaults={"nama": "Pelanggan Uji"})
         self.user = User.objects.create_user(
             username="owner1", password="password123", role="owner"
         )
@@ -93,6 +95,7 @@ class POSVoidPostingTestCase(TestCase):
         sale = create_sale(
             user=self.user,
             data={
+                "pelanggan": "081299900001",
                 "status": "paid",
                 "metode_bayar": "Cash",
                 "dibayar": 150000,
@@ -146,6 +149,7 @@ class POSVoidPostingTestCase(TestCase):
         sale = create_sale(
             user=self.user,
             data={
+                "pelanggan": "081299900001",
                 "status": "paid",
                 "metode_bayar": "Cash",
                 "dibayar": 100000,
@@ -169,6 +173,7 @@ class POSVoidPostingTestCase(TestCase):
         sale = create_sale(
             user=self.user,
             data={
+                "pelanggan": "081299900001",
                 "status": "paid",
                 "metode_bayar": "QRIS",
                 "dibayar": 200000,
@@ -191,6 +196,7 @@ class POSVoidPostingTestCase(TestCase):
         sale2 = create_sale(
             user=self.user,
             data={
+                "pelanggan": "081299900001",
                 "status": "paid",
                 "metode_bayar": "QRIS",
                 "dibayar": 300000,
@@ -214,6 +220,7 @@ class POSVoidPostingTestCase(TestCase):
         sale = create_sale(
             user=self.user,
             data={
+                "pelanggan": "081299900001",
                 "status": "paid",
                 "metode_bayar": "Cash",
                 "dibayar": 50000,
@@ -240,6 +247,7 @@ class POSVoidPostingTestCase(TestCase):
         sale = create_sale(
             user=self.user,
             data={
+                "pelanggan": "081299900001",
                 "status": "paid",
                 "metode_bayar": "Cash",
                 "dibayar": 50000,
@@ -261,6 +269,8 @@ class POSVoidPostingTestCase(TestCase):
 
 class POSVoidAPIPermissionTestCase(APITestCase):
     def setUp(self):
+        from api.models import Contact as _KontakUji
+        _KontakUji.objects.get_or_create(nomor_wa="081299900001", defaults={"nama": "Pelanggan Uji"})
         self.owner = User.objects.create_user(
             username="owner_user", password="password123", role="owner"
         )
@@ -279,6 +289,7 @@ class POSVoidAPIPermissionTestCase(APITestCase):
         self.sale = create_sale(
             user=self.kasir,
             data={
+                "pelanggan": "081299900001",
                 "status": "paid",
                 "metode_bayar": "Cash",
                 "dibayar": 50000,

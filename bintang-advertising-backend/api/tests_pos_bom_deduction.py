@@ -5,6 +5,8 @@ Sebelum ini, pemotongan BoM otomatis HANYA jalan utk alur Order/cetak
 dilewati sama sekali; kalau produk yang dijual di kasir punya resep BoM,
 bahan bakunya tidak ikut terpotong (instruksi user 2026-08-15).
 """
+from decimal import Decimal
+
 from django.contrib.auth import get_user_model
 from rest_framework.test import APITestCase
 
@@ -218,4 +220,56 @@ class PosBomSinkronProdukSumberTest(APITestCase):
         sale = POSSale.objects.get(pk=response.data['id'])
         jurnal = JournalEntry.objects.get(source_type=JournalEntry.SourceType.PRODUCTION, source_id=sale.id)
         self.assertEqual(sum(l.debit for l in jurnal.lines.all()), 12000)
+
+    def test_void_mengembalikan_bahan_stok_produk_sumber_lapisan_fifo_dan_membalik_jurnal(self):
+        from accounting.models import JournalEntry
+        from api.pos_services import void_sale
+        from api.product_models import StockLayer
+
+        response = self._jual(3)  # 6 bahan x 1500 = 9000
+        self.assertEqual(response.status_code, 201, response.content)
+        sale = POSSale.objects.get(pk=response.data['id'])
+        self.bahan.refresh_from_db()
+        self.assertEqual(self.bahan.stok, 94.0)
+
+        void_sale(sale_id=sale.id, user=self.owner)
+
+        self.bahan.refresh_from_db()
+        self.produk_bahan.refresh_from_db()
+        self.assertEqual(self.bahan.stok, 100.0)
+        self.assertEqual(float(self.produk_bahan.qty_stok), 100.0)
+        self.assertEqual(float(StockLayer.objects.get(product=self.produk_bahan).sisa_qty), 100.0)
+
+        # Jurnal HPP bahan dibalik 1:1 -> saldo bersih HPP & Persediaan dari pemakaian = 0.
+        entries = JournalEntry.objects.filter(source_type=JournalEntry.SourceType.PRODUCTION)
+        self.assertEqual(entries.count(), 2)  # asli + pembalik
+        bersih = {}
+        for entry in entries:
+            for line in entry.lines.all():
+                bersih[line.account.code] = bersih.get(line.account.code, 0) + line.debit - line.kredit
+        self.assertEqual(bersih, {'51000': 0, '11400': 0})
+        self.assertEqual(entries.filter(reversed_entry__isnull=False).count(), 1)
+
+    def test_void_dua_kali_tidak_memulihkan_bahan_dua_kali(self):
+        from rest_framework.exceptions import ValidationError
+        from api.pos_services import void_sale
+
+        response = self._jual(3)
+        sale = POSSale.objects.get(pk=response.data['id'])
+        void_sale(sale_id=sale.id, user=self.owner)
+        with self.assertRaises(ValidationError):
+            void_sale(sale_id=sale.id, user=self.owner)
+        self.bahan.refresh_from_db()
+        self.assertEqual(self.bahan.stok, 100.0)
+
+    def test_nomor_dokumen_jurnal_hpp_bahan_dipotong_maksimal_50_karakter(self):
+        from accounting.models import JournalEntryLine
+        from api.views.inventory import record_material_consumption_to_general_ledger
+
+        record_material_consumption_to_general_ledger(
+            self.bahan, 2.0, ref_no='POS POS-20260924072918370857-FF9610 - Produk #123456/789',
+            keterangan_konteks='uji panjang', source_id=1, nilai=Decimal('3000'),
+        )
+        self.assertTrue(JournalEntryLine.objects.exists())
+        self.assertTrue(all(len(l.external_document_no) <= 50 for l in JournalEntryLine.objects.all()))
 

@@ -38,7 +38,11 @@ def record_material_consumption_to_general_ledger(inventory_item, qty, ref_no, k
         if cost <= 0:
             return
 
-        ket_tx = f"HPP Otomatis: {inventory_item.nama} ({qty} {inventory_item.satuan}) - {keterangan_konteks}"
+        # Batas kolom jurnal: deskripsi 255, nomor dokumen 50 (PostgreSQL menolak
+        # lebih panjang -- penanda POS "POS <nomor> - Produk #<id>/<varian>" bisa
+        # melewati 50 untuk id produk 5 digit atau produk bervarian).
+        ket_tx = f"HPP Otomatis: {inventory_item.nama} ({qty} {inventory_item.satuan}) - {keterangan_konteks}"[:255]
+        ref_no = str(ref_no)[:50]
 
         # Forward to Official Double-Entry Ledger (accounting.JournalEntry)
         try:

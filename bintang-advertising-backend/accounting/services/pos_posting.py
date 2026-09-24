@@ -262,3 +262,47 @@ def post_pos_void_journal(sale: POSSale, actor=None, reason="Void POS") -> Optio
                 raise exc
 
     return None
+
+
+def post_pos_bahan_reversal(sale: POSSale, actor=None, reason="Void POS"):
+    """Balik jurnal HPP bahan resep (Dr HPP 51000 / Kr Persediaan 11400) milik
+    transaksi POS yang di-void (2026-09-24). Jurnal itu terpisah dari jurnal
+    penjualan (source PRODUCTION) dan dikenali dari nomor dokumen barisnya
+    ("POS <nomor> - Produk #..."), karena source_id PRODUCTION juga dipakai
+    id job produksi. Idempoten lewat `reversed_entry` (M4/M7)."""
+    from ..models import JournalAuditLog, JournalEntryLine
+
+    asal_ids = JournalEntryLine.objects.filter(
+        external_document_no__startswith=f"POS {sale.nomor}",
+    ).values("journal_entry_id")
+    entries = JournalEntry.objects.select_for_update().filter(
+        pk__in=asal_ids, source_type=JournalEntry.SourceType.PRODUCTION,
+        status=JournalEntry.Status.POSTED, reversed_entry__isnull=True,
+    )
+    dibalik = []
+    for original in entries:
+        if JournalEntry.objects.filter(reversed_entry=original).exists():
+            continue
+        lines = [{
+            "account": line.account,
+            "debit": line.kredit,
+            "kredit": line.debit,
+            "description": f"Pembalikan {line.description}"[:255],
+            "external_document_no": line.external_document_no,
+        } for line in original.lines.all()]
+        reversal = create_journal_entry(
+            date=timezone.localdate(), lines=lines,
+            description=f"Jurnal Pembalik — {reason} {sale.nomor} (bahan resep)"[:255],
+            source_type=JournalEntry.SourceType.PRODUCTION, source_id=None,
+            created_by=actor or sale.kasir, status=JournalEntry.Status.POSTED,
+        )
+        reversal.reversed_entry = original
+        reversal.save(update_fields=["reversed_entry"])
+        JournalAuditLog.objects.create(
+            journal_entry=original, action=JournalAuditLog.Action.REVERSED,
+            actor=actor or sale.kasir,
+            note=f"{reason}; jurnal pembalik JE#{reversal.entry_number}",
+        )
+        dibalik.append(reversal)
+    return dibalik
+

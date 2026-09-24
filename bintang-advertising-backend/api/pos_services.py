@@ -65,6 +65,53 @@ def _potong_bahan_baku_bom(product, variant, qty_base, sale, user):
             catatan_stok=f"Pemakaian bahan resep | {marker} | {bom.nama}",
         )
 
+def _pulihkan_bahan_baku_bom(sale, user):
+    """Kembalikan bahan resep yang terpakai saat transaksi POS ini dibuat (dipanggil
+    dari void_sale, 2026-09-24): stok bahan (InventoryItem) + stok Product sumbernya
+    (mutasi 'pengembalian', lapisan FIFO dikembalikan). Dikenali dari penanda
+    "POS <nomor> - Produk #" yang ditulis _potong_bahan_baku_bom. Sekali jalan per
+    void (void_sale menolak transaksi yang sudah void)."""
+    from .models import InventoryItem, RestockHistory
+
+    penanda = f"POS {sale.nomor} - Produk #"
+    for riwayat in RestockHistory.objects.filter(
+        keterangan__startswith=f"Pemakaian BoM otomatis | {penanda}", delta__lt=0,
+    ).order_by('id'):
+        item = InventoryItem.objects.select_for_update().get(pk=riwayat.item_id)
+        qty = -riwayat.delta
+        stok_awal = item.stok
+        stok_akhir = round(stok_awal + qty, 4)
+        RestockHistory.objects.create(
+            item=item, user=user, delta=qty, stok_awal=stok_awal, stok_akhir=stok_akhir,
+            keterangan=f"Pembatalan POS (Void) {sale.nomor} | bahan resep dikembalikan",
+        )
+        item.stok = stok_akhir
+        item.save(update_fields=['stok'])
+
+    for asal in ProductStockMovement.objects.filter(
+        tipe='keluar', catatan__startswith=f"Pemakaian bahan resep | {penanda}",
+    ).order_by('id'):
+        product = Product.objects.select_for_update().get(pk=asal.product_id)
+        start = product.qty_stok
+        product.qty_stok = start + asal.qty
+        product.save(update_fields=['qty_stok'])
+        restored_hpp = Decimal('0')
+        for konsumsi in asal.layer_consumptions.select_related('layer').all():
+            restored_hpp += konsumsi.qty * konsumsi.harga_beli
+            if konsumsi.layer_id:
+                lapisan = konsumsi.layer
+                lapisan.sisa_qty += konsumsi.qty
+                lapisan.save(update_fields=['sisa_qty'])
+        balik = ProductStockMovement(
+            product=product, variant=None, user=user, tipe='pengembalian', qty=asal.qty,
+            stok_awal=start, stok_akhir=product.qty_stok, hpp_total=restored_hpp,
+            catatan=f"Pembatalan POS (Void) bahan resep {sale.nomor}", tanggal=timezone.localdate(),
+        )
+        # Stok bahan sudah dipulihkan di atas -- jangan dicerminkan lagi oleh sinyal.
+        balik._lewati_cermin_bahan = True
+        balik.save()
+
+
 def money(value):
     try:
         return Decimal(str(value or 0)).quantize(MONEY, rounding=ROUND_HALF_UP)
@@ -852,6 +899,7 @@ def void_sale(*, sale_id, user):
                         pos_sale=sale, catatan=f"Pembatalan POS (Void) Addon '{addon_link.nama_snapshot}' {sale.nomor}",
                         tanggal=timezone.localdate(),
                     )
+            _pulihkan_bahan_baku_bom(sale, user)
         # Lepas No. Seri yang tadinya ditandai terjual di transaksi ini,
         # supaya bisa dipilih lagi di transaksi lain — independen dari
         # setelan `pos_mengurangi_stok()` (No. Seri bukan soal qty stok).
@@ -890,8 +938,9 @@ def void_sale(*, sale_id, user):
         sale.voided_by = user
         sale.save(update_fields=['status', 'settlement_status', 'voided_at', 'voided_by'])
 
-        from accounting.services.pos_posting import post_pos_void_journal
+        from accounting.services.pos_posting import post_pos_bahan_reversal, post_pos_void_journal
         post_pos_void_journal(sale, actor=user)
+        post_pos_bahan_reversal(sale, actor=user)
 
         return sale
 

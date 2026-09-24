@@ -19,6 +19,8 @@ User = get_user_model()
 
 class POSPostingTestCase(TestCase):
     def setUp(self):
+        from api.models import Contact as _KontakUji
+        _KontakUji.objects.get_or_create(nomor_wa="081299900001", defaults={"nama": "Pelanggan Uji"})
         self.user = User.objects.create_user(
             username="kasir1", password="password123", role="kasir"
         )
@@ -94,6 +96,7 @@ class POSPostingTestCase(TestCase):
         sale = create_sale(
             user=self.user,
             data={
+                "pelanggan": "081299900001",
                 "status": "paid",
                 "metode_bayar": "Cash",
                 "dibayar": 50000,
@@ -124,6 +127,7 @@ class POSPostingTestCase(TestCase):
         sale = create_sale(
             user=self.user,
             data={
+                "pelanggan": "081299900001",
                 "status": "paid",
                 "metode_bayar": "Cash",
                 "dibayar": 30000,
@@ -139,6 +143,7 @@ class POSPostingTestCase(TestCase):
         sale = create_sale(
             user=self.user,
             data={
+                "pelanggan": "081299900001",
                 "status": "paid",
                 "metode_bayar": "QRIS",
                 "dibayar": 110000,
@@ -166,6 +171,7 @@ class POSPostingTestCase(TestCase):
         sale = create_sale(
             user=self.user,
             data={
+                "pelanggan": "081299900001",
                 "status": "hold",
                 "metode_bayar": "Cash",
                 "items": [{"nama": "Brosur", "harga": 20000, "qty": 1}],
@@ -181,6 +187,7 @@ class POSPostingTestCase(TestCase):
         sale = create_sale(
             user=self.user,
             data={
+                "pelanggan": "081299900001",
                 "status": "paid",
                 "metode_bayar": "QRIS",
                 "dibayar": 200000,
@@ -215,6 +222,7 @@ class POSPostingTestCase(TestCase):
         sale = create_sale(
             user=self.user,
             data={
+                "pelanggan": "081299900001",
                 "status": "paid",
                 "metode_bayar": "Cash",
                 "dibayar": 110000,
@@ -243,6 +251,7 @@ class POSPostingTestCase(TestCase):
         sale = create_sale(
             user=self.user,
             data={
+                "pelanggan": "081299900001",
                 "status": "paid",
                 "metode_bayar": "Custom Cash Bank",
                 "dibayar": 100000,
@@ -257,6 +266,8 @@ class POSHppPostingTestCase(TestCase):
     """T-107: HPP penjualan POS (D HPP / K Persediaan) untuk produk berlacak inventori."""
 
     def setUp(self):
+        from api.models import Contact as _KontakUji
+        _KontakUji.objects.get_or_create(nomor_wa="081299900001", defaults={"nama": "Pelanggan Uji"})
         self.user = User.objects.create_user(
             username="kasir2", password="password123", role="kasir"
         )
@@ -320,6 +331,7 @@ class POSHppPostingTestCase(TestCase):
         sale = create_sale(
             user=self.user,
             data={
+                "pelanggan": "081299900001",
                 "status": "paid",
                 "metode_bayar": "Cash",
                 "dibayar": 60000,
@@ -355,6 +367,7 @@ class POSHppPostingTestCase(TestCase):
         sale = create_sale(
             user=self.user,
             data={
+                "pelanggan": "081299900001",
                 "status": "paid",
                 "metode_bayar": "Cash",
                 "dibayar": 60000,
@@ -372,6 +385,7 @@ class POSHppPostingTestCase(TestCase):
         sale = create_sale(
             user=self.user,
             data={
+                "pelanggan": "081299900001",
                 "status": "paid",
                 "metode_bayar": "Cash",
                 "dibayar": 25000,

@@ -20,6 +20,8 @@ from accounting.models import (
 
 class POSSaleJournalLogApiTestCase(TestCase):
     def setUp(self):
+        from api.models import Contact as _KontakUji
+        _KontakUji.objects.get_or_create(nomor_wa="081299900001", defaults={"nama": "Pelanggan Uji"})
         user_model = get_user_model()
         self.owner = user_model.objects.create_user(
             username="pos_log_owner",
@@ -75,6 +77,7 @@ class POSSaleJournalLogApiTestCase(TestCase):
         return create_sale(
             user=self.owner,
             data={
+                "pelanggan": "081299900001",
                 "status": "paid",
                 "metode_bayar": "Cash",
                 "dibayar": 100000,
@@ -86,6 +89,7 @@ class POSSaleJournalLogApiTestCase(TestCase):
         sale = create_sale(
             user=self.owner,
             data={
+                "pelanggan": "081299900001",
                 "status": "paid",
                 "metode_bayar": "Cash",
                 "dibayar": 100000,
