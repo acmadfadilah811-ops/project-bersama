@@ -21,6 +21,9 @@ export const MENU_FEATURES = [
   { id: 'accounting-internal', label: 'Akuntansi Internal', path: '/accounting-internal' },
   { id: 'finance-dashboard', label: 'Dashboard Finance', path: '/finance-dashboard' },
   { id: 'laporan-kerja-keuangan', label: 'Laporan Kerja Harian (Finance)', path: '/laporan-kerja-keuangan' },
+  { id: 'laporan', label: 'Laporan & Pembukuan', path: '/laporan' },
+  { id: 'rekap-harian', label: 'Rekap Harian Penjualan', path: '/rekap-harian' },
+  { id: 'ringkasan-shift', label: 'Ringkasan Shift', path: '/ringkasan-shift' },
   { id: 'wa-bot-config', label: 'Pengaturan WA Bot', path: '/pengaturan-wa-bot' },
   { id: 'permintaan-bahan', label: 'Permintaan Bahan', path: '/permintaan-bahan' },
 ];
@@ -36,6 +39,7 @@ export const DEFAULT_PERMISSIONS = {
     'payroll',
     'announcements',
     'reports',
+    'laporan',
     'product-inventory',
     'customer-supplier',
     'inventory',
@@ -55,6 +59,7 @@ export const DEFAULT_PERMISSIONS = {
     'payroll',
     'announcements',
     'reports',
+    'laporan',
     'product-inventory',
     'customer-supplier',
     'inventory',
@@ -92,7 +97,13 @@ export const DEFAULT_PERMISSIONS = {
   // api/permissions.py IsStrictOwnerOrManager). SPV Finance cuma dapat
   // accounting-internal (baca laporan) -- perannya supervisi/agregat,
   // bukan pelaksana transaksi harian, jadi TIDAK dapat buku-besar.
-  admin_finance: ['finance-dashboard', 'buku-besar', 'accounting-internal', 'laporan-kerja-keuangan'],
+  // 2026-09-24: tugas Admin Finance -- rekap penjualan hari sebelumnya, laporan
+  // penjualan, ringkasan shift, produk & inventori, pelanggan & supplier
+  // (pembelian sudah lewat buku-besar). Backend-nya baca-saja untuk data POS/shift.
+  admin_finance: [
+    'finance-dashboard', 'buku-besar', 'accounting-internal', 'laporan-kerja-keuangan',
+    'laporan', 'rekap-harian', 'ringkasan-shift', 'product-inventory', 'customer-supplier',
+  ],
   spv_finance: ['finance-dashboard', 'accounting-internal', 'laporan-kerja-keuangan'],
 };
 
@@ -199,7 +210,9 @@ export function getFeatureIdByPath(path) {
   // HARUS sebelum '/laporan' generik di bawah -- kalau tidak, prefix
   // '/laporan' bikin ini salah dipetakan ke 'reports'.
   if (path.startsWith('/laporan-kerja-keuangan')) return 'laporan-kerja-keuangan';
-  if (path.startsWith('/laporan')) return 'reports';
+  if (path.startsWith('/laporan')) return 'laporan';
+  if (path.startsWith('/rekap-harian')) return 'rekap-harian';
+  if (path.startsWith('/ringkasan-shift')) return 'ringkasan-shift';
   if (path.startsWith('/marketing')) return 'customers';
   if (path.startsWith('/users')) return 'employees';
   if (path.startsWith('/dashboard-eksekutif')) return 'dashboard';

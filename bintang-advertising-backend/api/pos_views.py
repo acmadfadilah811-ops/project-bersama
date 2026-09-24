@@ -17,7 +17,9 @@ from . import stock_fifo
 from . import uom
 from . import pos_settings
 from . import spk
-from .permissions import IsOwnerManagerAdminOrKasir, scoped_by_unit_bisnis
+from .permissions import (
+    IsOwnerManagerAdminKasirOrFinanceReadOnly, IsOwnerManagerAdminOrKasir, scoped_by_unit_bisnis,
+)
 from .throttles import PasskeyRateThrottle
 from .pos_services import create_sale, void_sale, stok_kritis_warnings
 from .services.pos_receipt_whatsapp import (
@@ -27,7 +29,7 @@ from .services.pos_receipt_whatsapp import (
 class POSSaleViewSet(viewsets.ModelViewSet):
     queryset = POSSale.objects.all().order_by('-created_at')
     serializer_class = POSSaleSerializer
-    permission_classes = [IsOwnerManagerAdminOrKasir]
+    permission_classes = [IsOwnerManagerAdminKasirOrFinanceReadOnly]
     http_method_names = ['get', 'post', 'head', 'options']
 
     def get_queryset(self):

@@ -35,6 +35,8 @@ import ProductInventoryApp from './features/inventory/pages/ProductInventoryApp'
 import CustomerSupplierApp from './features/customerSupplier/pages/CustomerSupplierApp';
 import TransaksiApp from './features/transaksi/pages/TransaksiApp';
 import LaporanApp from './features/laporan/pages/LaporanApp';
+import PosRekapHarian from './features/kasir/pages/PosRekapHarian';
+import RingkasanShiftFinance from './features/dashboard/pages/RingkasanShiftFinance';
 import MarketingApp from './features/marketing/pages/MarketingApp';
 import KasirApp from './features/kasir/pages/KasirApp';
 import PengaturanWaBotPage from './features/waBotConfig/pages/PengaturanWaBotPage';
@@ -181,6 +183,8 @@ function App() {
 
                 {/* Laporan dan Pembukuan (full-screen, topbar sendiri) */}
                 <Route path="/laporan/*" element={<LaporanApp />} />
+                <Route path="/rekap-harian" element={<PosRekapHarian />} />
+                <Route path="/ringkasan-shift" element={<RingkasanShiftFinance />} />
                 <Route path="/accounting-internal/*" element={<AccountingInternalApp />} />
 
                 {/* Tim */}

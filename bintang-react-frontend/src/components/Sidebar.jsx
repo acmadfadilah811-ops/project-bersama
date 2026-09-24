@@ -177,6 +177,28 @@ const menuFinance = [
       { path: '/transaksi/pendapatan-pengeluaran', label: 'Pendapatan/Pengeluaran', icon: ArrowLeftRight },
     ],
   },
+  {
+    id: 'produk_inventori_finance',
+    label: 'Produk & Inventori',
+    icon: Boxes,
+    isGroup: true,
+    submenus: [
+      { path: '/product-inventory/product', label: 'Produk', icon: Package },
+      { path: '/product-inventory/inventory', label: 'Inventori', icon: Package },
+    ],
+  },
+  { path: '/customer-supplier', label: 'Pelanggan & Supplier', icon: Users, isGroup: false },
+  {
+    id: 'laporan_finance',
+    label: 'Laporan & Rekap',
+    icon: History,
+    isGroup: true,
+    submenus: [
+      { path: '/rekap-harian', label: 'Rekap Penjualan Harian', icon: CalendarClock },
+      { path: '/ringkasan-shift', label: 'Ringkasan Shift', icon: Wallet },
+      { path: '/laporan/laporan', label: 'Laporan Penjualan', icon: BarChart3 },
+    ],
+  },
   { path: '/accounting-internal', label: 'Akuntansi Internal', icon: BookOpen, isGroup: false },
   { path: '/profile', label: 'Profil', icon: User, isGroup: false },
 ];
@@ -277,6 +299,9 @@ export default function Sidebar() {
     // mati yang membingungkan). Disamakan dengan utils/permissions.js.
     if (path.startsWith('/transaksi')) return 'buku-besar';
     if (path.startsWith('/laporan-kerja-keuangan')) return 'laporan-kerja-keuangan';
+    if (path.startsWith('/laporan')) return 'laporan';
+    if (path.startsWith('/rekap-harian')) return 'rekap-harian';
+    if (path.startsWith('/ringkasan-shift')) return 'ringkasan-shift';
     return null;
   };
 

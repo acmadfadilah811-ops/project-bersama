@@ -74,7 +74,7 @@ class ExportContactsView(APIView):
 
 class ExportCustomersView(APIView):
     """GET /api/export/customers/ — ekspor data Customer (Pelanggan & Supplier > Pelanggan)."""
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [CanExportFinanceData]
 
     def get(self, request):
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
@@ -128,7 +128,7 @@ class ExportCustomersView(APIView):
 
 
 class ExportOrdersView(APIView):
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [CanExportFinanceData]
 
     def get(self, request):
         start_date_str = request.query_params.get('start_date')
@@ -213,7 +213,7 @@ class ExportOrdersView(APIView):
 
 
 class ExportInventoryView(APIView):
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [CanExportFinanceData]
 
     def get(self, request):
         response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
@@ -466,7 +466,7 @@ class ExportStaffPerformanceView(APIView):
 
 
 class ExportStockMovementView(APIView):
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [CanExportFinanceData]
 
     def get(self, request):
         start_date_str = request.query_params.get('start_date')
@@ -629,7 +629,7 @@ class ExportStockMovementView(APIView):
 
 
 class ExportProductsView(APIView):
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [CanExportFinanceData]
 
     def get(self, request):
         import csv
@@ -758,7 +758,7 @@ class ExportProductsView(APIView):
 
 
 class ExportCustomerNotesView(APIView):
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [CanExportFinanceData]
     content_negotiation_class = IgnoreFormatContentNegotiation
 
     def get(self, request):
@@ -1119,7 +1119,7 @@ class ExportSalesItemsByBrandView(APIView):
     GET /api/export/sales-items-by-brand/?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
     Mengekspor laporan Item Penjualan Berdasarkan Brand (27 kolom legacy format).
     """
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [CanExportFinanceData]
 
     def get(self, request):
         from api.pos_models import POSSaleItem
@@ -1226,7 +1226,7 @@ class ExportSalesDetailsView(APIView):
     GET /api/export/sales-details/?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
     Mengekspor laporan Rincian Penjualan (48 kolom legacy format).
     """
-    permission_classes = [IsOwnerOrManager]
+    permission_classes = [CanExportFinanceData]
 
     def get(self, request):
         from api.pos_models import POSSale

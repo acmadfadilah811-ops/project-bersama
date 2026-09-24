@@ -139,6 +139,23 @@ class IsOwnerManagerAdminOrKasir(BasePermission):
             getattr(request.user, 'role', '') in ['owner', 'manager', 'admin', 'kasir']
         )
 
+class IsOwnerManagerAdminKasirOrFinanceReadOnly(BasePermission):
+    """Perilaku IsOwnerManagerAdminOrKasir (owner/manager/admin/kasir, semua
+    method) DITAMBAH Admin Finance & SPV Finance khusus BACA (GET/HEAD/OPTIONS)
+    (2026-09-24, tugas Admin Finance: rekap penjualan hari sebelumnya,
+    laporan penjualan, ringkasan shift). Aksi tulis (buka/tutup shift, buat &
+    void transaksi) tetap hanya untuk role lama. Class BARU -- sengaja TIDAK
+    mengubah IsOwnerManagerAdminOrKasir (god node, R2)."""
+    def has_permission(self, request, view):
+        user = request.user
+        if not (user and user.is_authenticated):
+            return False
+        role = getattr(user, 'role', '')
+        if role in ('owner', 'manager', 'admin', 'kasir'):
+            return True
+        return role in ('admin_finance', 'spv_finance') and request.method in SAFE_METHODS
+
+
 class CanAccessFinanceVerification(BasePermission):
     """Owner/Manager/Admin/Kasir (perilaku lama RingkasanShiftViewSet &
     CashTransactionViewSet tetap sama) DITAMBAH Admin Finance & SPV Finance
@@ -155,7 +172,13 @@ class CanAccessFinanceVerification(BasePermission):
 
 
 class CanExportFinanceData(BasePermission):
-    """Khusus ExportCashTransactionsView (2026-09-24 fix) --
+    """Export data yang relevan bagi keuangan (kas, penjualan, pelanggan,
+    produk & stok) -- 2026-09-24: dipakai ExportCashTransactionsView dan,
+    sesuai tugas Admin Finance, export orders/inventori/pergerakan stok/
+    produk/pelanggan/catatan pelanggan/penjualan per brand & detail. Export
+    data pribadi/SDM (kontak, absensi, kinerja staff, jobs) tetap owner/manager.
+
+    Riwayat awal class ini (ExportCashTransactionsView, 2026-09-24 fix) --
     CanAccessFinanceVerification sebelumnya dipasang di sini juga, tapi
     class itu SENGAJA menyertakan kasir (supaya CashTransactionViewSet/
     RingkasanShiftViewSet tetap bisa diakses kasir seperti perilaku lama)

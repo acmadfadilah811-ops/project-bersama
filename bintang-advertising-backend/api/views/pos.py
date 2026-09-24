@@ -14,7 +14,7 @@ from ..serializers import (
     POSPaymentMethodSerializer,
 )
 from ..permissions import (
-    IsOwnerManagerAdminOrReadOnly, IsOwnerManagerAdminOrKasir,
+    IsOwnerManagerAdminOrReadOnly, IsOwnerManagerAdminOrKasir, IsOwnerManagerAdminKasirOrFinanceReadOnly,
     CanAccessFinanceVerification, IsAdminFinanceOrOwnerManager,
 )
 from ..services.shift_summary import calculate_shift_cash_summary
@@ -36,7 +36,7 @@ class POSAntrianDeviceViewSet(viewsets.ModelViewSet):
 class SaldoKasHarianViewSet(viewsets.ModelViewSet):
     queryset = SaldoKasHarian.objects.all().order_by('-tanggal', '-id')
     serializer_class = SaldoKasHarianSerializer
-    permission_classes = [IsAuthenticated, IsOwnerManagerAdminOrKasir]
+    permission_classes = [IsAuthenticated, IsOwnerManagerAdminKasirOrFinanceReadOnly]
     http_method_names = ['get', 'post', 'head', 'options']
 
     def create(self, request, *args, **kwargs):
