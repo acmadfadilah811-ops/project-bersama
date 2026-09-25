@@ -20,6 +20,7 @@ import { useAuth } from '../context/AuthContext';
 import { useDynamicIsland } from '../context/DynamicIslandContext';
 import { useState, useEffect, useRef } from 'react';
 import apiClient from '../api/apiClient';
+import NotifikasiKeuanganBell from './NotifikasiKeuanganBell';
 
 const PAGE_TITLES = {
   '/dashboard': 'Dashboard',
@@ -359,6 +360,7 @@ export default function Topbar() {
 
       {/* Kanan: Notifikasi + Online Staff Dropdown + Profil */}
       <div className="flex items-center gap-3 md:gap-4">
+        <NotifikasiKeuanganBell role={userRole} />
         {/* Live Digital Clock */}
         <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 shadow-inner border border-slate-700 select-none">
           <span

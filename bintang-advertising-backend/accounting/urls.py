@@ -1,5 +1,6 @@
 from django.urls import path
 
+from .views.notifikasi import NotifikasiKeuanganBacaView, NotifikasiKeuanganListView
 from .views.payroll import (
     PayrollBayarView,
     PayrollKoreksiView,
@@ -199,6 +200,8 @@ urlpatterns = [
     path("periods/<int:pk>/detail/", AccountingPeriodDetailView.as_view(), name="accounting-period-detail"),
     path("periods/<int:pk>/close/", AccountingPeriodCloseView.as_view(), name="accounting-period-close-detail"),
     path("close-period/", AccountingPeriodCloseView.as_view(), name="accounting-close-period"),
+    path("notifikasi/", NotifikasiKeuanganListView.as_view(), name="accounting-notifikasi"),
+    path("notifikasi/baca/", NotifikasiKeuanganBacaView.as_view(), name="accounting-notifikasi-baca"),
     path("payroll/pratinjau/", PayrollPratinjauView.as_view(), name="accounting-payroll-pratinjau"),
     path("payroll/posting/", PayrollPostingView.as_view(), name="accounting-payroll-posting"),
     path("payroll/koreksi/", PayrollKoreksiView.as_view(), name="accounting-payroll-koreksi"),

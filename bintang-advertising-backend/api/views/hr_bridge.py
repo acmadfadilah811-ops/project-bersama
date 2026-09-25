@@ -331,3 +331,39 @@ class KinerjaStaffView(APIView):
             return Response({'error': "Rentang 'tahun' (2000-2100) atau 'bulan' (1-12) tidak valid."}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(hitung_kinerja_bulanan(tahun, bulan))
+
+
+
+class NotifikasiKeuanganBridgeView(APIView):
+    """POST /api/bridge/notifikasi-keuangan/ (dari HR, X-Api-Key)
+
+    Body: {kunci, jenis: payroll_final|reimbursement, judul, pesan?, tautan?, data?}
+    Idempoten per `kunci`: kiriman ulang yang sama tidak menggandakan notifikasi."""
+
+    permission_classes = [AllowAny]
+    throttle_classes = [HRBridgeThrottle]
+
+    def post(self, request, *args, **kwargs):
+        auth_error = _cek_hr_bridge_api_key(request)
+        if auth_error:
+            return auth_error
+        from accounting.models import NotifikasiKeuangan
+
+        d = request.data
+        kunci = str(d.get("kunci") or "").strip()[:120]
+        jenis = str(d.get("jenis") or "")
+        judul = str(d.get("judul") or "").strip()[:200]
+        if not kunci or not judul or jenis not in NotifikasiKeuangan.Jenis.values:
+            return Response({"error": "kunci, jenis, dan judul wajib diisi dengan benar."}, status=400)
+        data = d.get("data") if isinstance(d.get("data"), dict) else {}
+        obj, dibuat = NotifikasiKeuangan.objects.get_or_create(
+            kunci=kunci,
+            defaults={
+                "jenis": jenis,
+                "judul": judul,
+                "pesan": str(d.get("pesan") or "")[:2000],
+                "tautan": str(d.get("tautan") or "")[:200],
+                "data": data,
+            },
+        )
+        return Response({"id": obj.id, "baru": dibuat}, status=201 if dibuat else 200)
