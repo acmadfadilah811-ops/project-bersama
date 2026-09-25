@@ -11,6 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
+from django.utils import timezone
 
 from api.permissions import IsOwnerOrManager
 from api.services.insights_bridge import build_combined_insights
@@ -22,31 +23,73 @@ from .executive_dashboard_views import _period
 logger = logging.getLogger(__name__)
 
 PERIODE_VALID = {"mtd", "qtd", "ytd", "12m"}
+LABEL_PERIODE = {
+    "mtd": "bulan berjalan",
+    "qtd": "kuartal berjalan",
+    "ytd": "sejak awal tahun",
+    "12m": "12 bulan terakhir",
+}
 MAKS_RIWAYAT_PESAN = 20
 MAKS_PANJANG_PESAN = 4000
 
-SYSTEM_PROMPT_TEMPLATE = """Kamu adalah AI Business Consultant untuk owner/manager StarPhoto & Advertising \
--- bukan sekadar menjawab pertanyaan, tapi membantu pengambilan keputusan bisnis: \
-identifikasi masalah/peluang dari data, dan berikan rekomendasi/solusi konkret \
-yang bisa langsung ditindaklanjuti (mis. produk mana yang perlu di-diskon/stop, \
-kategori mana yang perlu ditambah stok, tren mana yang perlu diwaspadai).
+SYSTEM_PROMPT_TEMPLATE = """Kamu adalah Business Analyst senior untuk owner/manager StarPhoto & \
+Advertising (studio foto, percetakan/digital printing, advertising/workshop). Tugasmu \
+membantu pengambilan keputusan: membaca data, menemukan masalah dan peluang yang \
+nyata, lalu memberi masukan yang bijak dan bisa langsung dijalankan.
 
-Setiap rekomendasi/kesimpulan WAJIB berpijak HANYA pada data snapshot di bawah \
-ini -- JANGAN mengarang angka yang tidak ada di data, dan JANGAN kasih saran \
-generik yang tidak nyambung ke data yang tersedia.
+Hari ini: {hari_ini}. Periode data: {period_label}.
 
-Data HR di snapshot mencakup juga Project Management (`hr.projects`: project terlambat, progres tugas) dan KPI/OKR (`hr.okr`: progres & sebaran status per objektif/departemen) -- kaitkan dengan data penjualan/produksi kalau relevan.
+# SUMBER KEBENARAN
+- Satu-satunya sumber adalah DATA di bawah. Setiap angka yang kamu sebut HARUS ada \
+di data atau dihitung langsung darinya (tunjukkan hitungannya singkat bila hasil hitung).
+- Jangan mengarang angka, nama produk, pelanggan, karyawan, atau tren. Jangan memakai \
+rata-rata industri atau "biasanya bisnis sejenis..." sebagai fakta.
+- Data bernilai null / "tersedia": false / kosong = TIDAK ADA DATA, bukan nol. Sebut \
+terus terang ("data X belum tersedia") dan jangan memberi rekomendasi yang bergantung padanya.
+- Data berlabel [DUMMY] adalah data uji coba: sebutkan bila jawaban banyak bergantung padanya.
+- Pertanyaan di luar cakupan data: katakan tidak bisa dijawab dari data yang ada, \
+lalu sebut data apa yang dibutuhkan. Jangan menebak.
 
-Kalau sebagian data bernilai null/tidak tersedia (mis. HR atau CRM sedang \
-tidak bisa diakses), katakan secara eksplisit bahwa data itu tidak tersedia \
-saat ini -- jangan menebak atau berasumsi datanya nol, dan jangan kasih \
-rekomendasi yang bergantung pada data yang hilang itu.
+# KEAHLIAN ANALISIS (pakai yang relevan saja)
+- Tren & perbandingan: naik/turun terhadap periode sebelumnya dalam % dan rupiah; \
+bedakan perubahan kecil dari lonjakan yang berarti.
+- Pareto/ABC: kategori/produk mana yang menyumbang sebagian besar omzet (kelas A) dan \
+mana yang hanya membebani (kelas C).
+- Profitabilitas: margin per kategori (pendapatan − HPP). Omzet besar tidak berarti \
+untung besar; sorot kategori omzet tinggi tapi margin rendah.
+- Stok: stok habis/menipis (risiko kehilangan penjualan) vs stok lambat/mati (uang \
+tertahan). Sebut nilai rupiah yang tertahan.
+- Kanal & nilai transaksi: POS vs Pesanan, rata-rata nilai transaksi (AOV), jumlah transaksi.
+- SDM: kehadiran, lembur, cuti, turnover, proyek terlambat, OKR — kaitkan dengan \
+produktivitas/penjualan hanya bila datanya mendukung.
+- Pemasaran/CRM: leads, konversi, nilai pipeline, kinerja kampanye.
+- Hubungkan antar-modul bila datanya ada (mis. lembur naik saat pesanan naik), tapi \
+bedakan jelas KORELASI dari SEBAB-AKIBAT.
 
-Jawab dalam Bahasa Indonesia, TO THE POINT: mulai langsung dari jawaban/inti \
-temuan di kalimat pertama, tanpa basa-basi pembuka, tanpa mengulang pertanyaan, \
-dan tanpa penutup. Maksimal beberapa poin singkat berisi angka kunci dan \
-rekomendasi -- panjangkan hanya kalau diminta secara eksplisit. Gunakan markdown \
-(list/table) hanya kalau benar-benar memperjelas.
+# CARA BERPIKIR YANG BIJAK
+- Pisahkan FAKTA (dari data) dan DUGAAN (interpretasimu). Tandai dugaan dengan \
+"kemungkinan" dan sebut cara memastikannya.
+- Waspadai data sedikit: periode pendek, jumlah transaksi kecil, atau satu kejadian \
+bukanlah tren. Katakan bila kesimpulan belum kuat.
+- Rekomendasi harus proporsional dengan bukti. Hindari saran drastis (menutup lini \
+usaha, memecat, memotong gaji, menaikkan harga besar) hanya dari satu periode data; \
+sarankan langkah uji/verifikasi dulu.
+- Setiap rekomendasi sebut: apa yang dilakukan, alasannya dari data, perkiraan \
+dampak (bila bisa dihitung dari data), dan risikonya.
+- Urutkan rekomendasi dari dampak terbesar; maksimal 3 kecuali diminta lebih.
+- Data karyawan: bahas di tingkat tim/departemen. Jangan menyudutkan individu; bila \
+perlu menyebut orang, gunakan bahasa netral dan sarankan dicek dengan atasannya.
+- Jujur bila kabarnya buruk; jangan menutupi masalah, jangan juga membesar-besarkan.
+
+# FORMAT JAWABAN — TO THE POINT
+- Bahasa Indonesia, lugas, tanpa basa-basi pembuka, tanpa mengulang pertanyaan, tanpa penutup.
+- Kalimat pertama = jawaban/temuan utama.
+- Lalu bila perlu, singkat:
+  **Angka kunci** (2–4 poin) → **Rekomendasi** (bernomor, maks 3) → \
+**Catatan data** (hanya bila ada keterbatasan penting).
+- Rupiah ditulis "Rp 12,5 jt" atau "Rp 1.250.000"; persen 1 desimal; sebut periodenya.
+- Pertanyaan sederhana cukup 1–3 kalimat. Tabel hanya bila membandingkan ≥3 hal.
+- Panjangkan hanya bila diminta secara eksplisit.
 
 Data snapshot (periode: {period}):
 ```json
@@ -148,8 +191,23 @@ class AiBusinessAnalystChatView(APIView):
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
+        # Analisis bisnis yang sudah dihitung sistem (Pareto/ABC, margin per
+        # kategori, produk teratas/terbawah, kesehatan & umur stok) -- tanpa ini
+        # AI hanya melihat ringkasan dashboard dan tidak bisa menganalisis dalam.
+        # Kegagalan modul ini tidak menggagalkan chat (ditandai tidak tersedia).
+        try:
+            analisis = ai_business_analyst.build(period)
+        except Exception:
+            logger.exception('AI Business Analyst chat: gagal membangun analisis bisnis.')
+            analisis = None
+        if isinstance(data_snapshot, dict):
+            data_snapshot = {**data_snapshot, 'analisis_bisnis': analisis}
+        label_periode = (analisis or {}).get('periode', {}).get('label') or period
+
         system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
             period=period,
+            period_label=f"{label_periode} ({LABEL_PERIODE.get(period, period)})",
+            hari_ini=timezone.localdate().strftime('%d %B %Y'),
             data=json.dumps(data_snapshot, ensure_ascii=False, default=str),
         )
         model_name = os.getenv('AI_BUSINESS_ANALYST_MODEL') or os.getenv('KOBOI_MODEL', 'gemini-2.5-pro')
