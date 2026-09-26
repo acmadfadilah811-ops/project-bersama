@@ -738,7 +738,7 @@ class KonfirmasiOrderKonkurenTest(TransactionTestCase):
     def tearDown(self):
         cache.clear()
 
-    def _kirim(self, isi, msg_id):
+    def _post(self, isi, msg_id):
         payload = {
             "event": "messages.upsert",
             "data": {
@@ -747,15 +747,35 @@ class KonfirmasiOrderKonkurenTest(TransactionTestCase):
                 "message": {"conversation": isi},
             },
         }
-        with patch.dict(os.environ, {"EVOLUTION_API_KEY": "TestKey123"}), \
-             patch("api.whatsapp_client.whatsapp_client.send_text_message") as mock_send, \
-             patch("api.whatsapp_client.whatsapp_client.send_presence", return_value=None), \
-             patch("time.sleep", return_value=None):
-            mock_send.return_value = {"status": "sent"}
-            return Client().post(
-                "/api/webhook/evolution/", payload, content_type="application/json",
-                HTTP_APIKEY="TestKey123",
-            )
+        return Client().post(
+            "/api/webhook/evolution/", payload, content_type="application/json",
+            HTTP_APIKEY="TestKey123",
+        )
+
+    def _mock_wa(self):
+        """Mock dipasang SEKALI dari thread utama. mock.patch tidak thread-safe:
+        dulu tiap thread memasang & melepas patch sendiri, sehingga thread yang
+        selesai duluan mencabut mock milik thread lain (tes goyah ~50%)."""
+        from contextlib import ExitStack
+
+        stack = ExitStack()
+        stack.enter_context(patch.dict(os.environ, {"EVOLUTION_API_KEY": "TestKey123"}))
+        mock_send = stack.enter_context(patch("api.whatsapp_client.whatsapp_client.send_text_message"))
+        mock_send.return_value = {"status": "sent"}
+        stack.enter_context(patch("api.whatsapp_client.whatsapp_client.send_presence", return_value=None))
+        # Jeda dipersingkat, BUKAN dihilangkan: kunci per-nomor menunggu dengan
+        # polling time.sleep(0.2); sleep yang langsung kembali membuat thread
+        # penunggu berputar tanpa jeda dan memonopoli CPU sehingga thread yang
+        # memegang kunci ikut lambat (> 15 detik).
+        import time as _time
+
+        tidur_asli = _time.sleep
+        stack.enter_context(patch("time.sleep", side_effect=lambda detik: tidur_asli(min(detik, 0.01))))
+        return stack
+
+    def _kirim(self, isi, msg_id):
+        with self._mock_wa():
+            return self._post(isi, msg_id)
 
     def test_konfirmasi_sesuai_dobel_hampir_bersamaan_cuma_bikin_1_order(self):
         form = (
@@ -770,11 +790,13 @@ class KonfirmasiOrderKonkurenTest(TransactionTestCase):
         self.assertFalse(Order.objects.filter(nomor_wa="628222000999").exists())
 
         import threading
-        results = []
+        results, galat = [], []
 
         def kirim_sesuai(msg_id):
-            res = self._kirim("sesuai", msg_id)
-            results.append(res.status_code)
+            try:
+                results.append(self._post("sesuai", msg_id).status_code)
+            except Exception as exc:  # noqa: BLE001 -- dicatat agar tidak hilang diam-diam di thread
+                galat.append(repr(exc))
 
         # message_id BEDA supaya tidak tertangkap anti-duplikasi inbound
         # (itu mekanisme LAIN, bukan yang diuji di sini) -- yang diuji
@@ -783,11 +805,14 @@ class KonfirmasiOrderKonkurenTest(TransactionTestCase):
             threading.Thread(target=kirim_sesuai, args=(f"MSG_SESUAI_{i}",))
             for i in range(2)
         ]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join(timeout=15)
+        with self._mock_wa():
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(timeout=15)
 
+        self.assertEqual(galat, [])
+        self.assertFalse(any(t.is_alive() for t in threads), "Request konfirmasi macet (> 15 detik).")
         self.assertEqual(sorted(results), [200, 200])
         self.assertEqual(
             Order.objects.filter(nomor_wa="628222000999").count(), 1,
