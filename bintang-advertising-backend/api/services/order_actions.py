@@ -247,15 +247,19 @@ def buat_order_dari_items(nomor_wa, nama_kontak, nama_order, items, raw_detail='
             # baru terpotong saat staff menyimpan item di Antrean WA
             # (/order-items/ -> services/order_stock.py), dan resep BoM baru
             # bisa ketemu saat pekerjaan produksinya selesai.
+            # `product` (instance Product, opsional): produk sudah dipilih pasti
+            # oleh pemanggil (mis. Sales di CRM memilih dari katalog), jadi
+            # tidak perlu dicocokkan dari teks. `harga_jual` (int, opsional)
+            # = total baris yang sudah dihitung server dari katalog.
             order_item = OrderItem.objects.create(
                 order=order,
-                product=_cocokkan_produk_persis(jenis_produk),
+                product=item_data.get('product') or _cocokkan_produk_persis(jenis_produk),
                 jenis_produk=jenis_produk,
                 qty=qty,
                 panjang=float(item_data.get('panjang') or 0),
                 lebar=float(item_data.get('lebar') or 0),
                 bahan=bahan,
-                harga_jual=0,
+                harga_jual=int(item_data.get('harga_jual') or 0),
                 detail=detail_json,
                 keterangan_detail=str(item_data.get('keterangan') or ''),
                 gdrive_customer_link=str(item_data.get('gdrive_link') or ''),
@@ -273,6 +277,8 @@ def buat_order_dari_items(nomor_wa, nama_kontak, nama_order, items, raw_detail='
                     status_pekerjaan='antrean',
                 )
 
+        # Hanya bila ada harga dari server (order CRM); jalur bot WA/agent
+        # tetap persis seperti sebelumnya (harga 0, tanpa simpan ulang).
+        if any(int(i.get('harga_jual') or 0) for i in items):
+            order.save()  # hitung ulang total & sisa tagihan dari item
     return order_id, order
-
-    return order

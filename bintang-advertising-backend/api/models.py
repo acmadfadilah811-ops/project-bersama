@@ -236,6 +236,7 @@ class Order(models.Model):
         choices=(
             ('wa', 'WhatsApp'), ('pos', 'POS Terminal'), ('manual', 'Input Manual'),
             ('staff', 'Dibantu Staff'), ('agent', 'AI Agent Eksternal'),
+            ('crm', 'CRM / Sales'),
         ),
         default='manual',
         db_index=True
@@ -1214,11 +1215,12 @@ def sync_contact_for_whatsapp(nomor_wa):
 
         # Otomatis sinkronkan juga ke Master Data Pelanggan (Customer)
         try:
-            from .customer_models import Customer
-            cust, cust_created = Customer.objects.get_or_create(
-                handphone=nomor_wa,
-                defaults={'nama': nama}
-            )
+            # Cocokkan nomor yang sudah dinormalisasi (08.. == 628..), bukan persis,
+            # supaya pelanggan lama tidak terduplikasi (services/pelanggan_nomor.py).
+            from .services.pelanggan_nomor import dapatkan_atau_buat_customer
+            cust, cust_created = dapatkan_atau_buat_customer(nomor_wa, nama)
+            if contact.customer_id is None:
+                Contact.objects.filter(pk=contact.pk).update(customer=cust)
             if cust.nama != nama and nama:
                 cust.nama = nama
                 cust.save(update_fields=['nama', 'updated_at'])
@@ -1475,3 +1477,6 @@ from .laporan_keuangan_models import *
 # Model Permintaan Bahan (Material Requisition) -- alur Kordiv/SPV -> gudang,
 # tidak mengubah stok/jurnal (lihat requisition_models.py).
 from .requisition_models import *
+
+# Order yang dibuat Sales dari CRM (jembatan CRM -> Bintang, 2026-09-26).
+from .crm_order_models import *
