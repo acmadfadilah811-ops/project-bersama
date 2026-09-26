@@ -44,8 +44,16 @@ export default function PembelianItemsTable({
     );
   }
 
+  const adaJasa = items.some((it) => it.is_jasa);
+
   return (
     <div className="overflow-x-auto text-slate-700">
+      {adaJasa && (
+        <div className="mb-3 px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-600">
+          Pembelian ini berisi <b>produk jasa</b>. Item bertanda <b>Jasa</b> tidak menambah stok saat diterima;
+          biayanya otomatis dicatat ke akun HPP, bukan Persediaan. Item jasa juga tidak bisa diretur lewat retur barang.
+        </div>
+      )}
       <table className="w-full text-left text-xs border-collapse">
         <thead>
           <tr className="border-b border-slate-200 text-slate-700 font-bold bg-slate-50/50">
@@ -73,7 +81,17 @@ export default function PembelianItemsTable({
                       📦
                     </div>
                     <div>
-                      <span className="font-bold text-slate-800 block">{item.product_nama}</span>
+                      <span className="font-bold text-slate-800 block">
+                        {item.product_nama}
+                        {item.is_jasa && (
+                          <span
+                            className="ml-1.5 align-middle px-1.5 py-0.5 rounded border border-slate-300 text-[10px] font-semibold text-slate-600"
+                            title="Produk jasa: tidak menambah stok, biayanya dicatat ke HPP"
+                          >
+                            Jasa
+                          </span>
+                        )}
+                      </span>
                       {item.product_sku && (
                         <span className="text-[10px] text-slate-400 font-mono block">
                           SKU: {item.product_sku}

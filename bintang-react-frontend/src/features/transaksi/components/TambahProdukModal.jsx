@@ -170,13 +170,24 @@ export default function TambahProdukModal({ isOpen, onClose, onAdd }) {
                     }}
                     className="w-full text-left px-3 py-2 hover:bg-slate-50 text-slate-700 cursor-pointer block"
                   >
-                    <span className="font-semibold block">{p.nama}</span>
+                    <span className="font-semibold block">
+                      {p.nama}
+                      {p.lacak_inventori === false && (
+                        <span className="ml-1.5 px-1.5 py-0.5 rounded border border-slate-300 text-[10px] font-semibold text-slate-600">Jasa</span>
+                      )}
+                    </span>
                     {p.sku && <span className="text-[10px] text-slate-400 font-mono">SKU: {p.sku}</span>}
                   </button>
                 ))}
               </div>
             )}
           </div>
+
+          {selectedProduct?.lacak_inventori === false && (
+            <p className="text-[11px] text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+              <b>{selectedProduct.nama}</b> adalah produk jasa: tidak menambah stok saat diterima, biayanya dicatat ke HPP.
+            </p>
+          )}
 
           {/* Satuan (UOM) — hanya bila multi satuan aktif & produk punya satuan alternatif */}
           {unitOptions.length > 0 && (

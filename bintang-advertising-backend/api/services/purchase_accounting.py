@@ -10,7 +10,7 @@ from accounting.services.journal import create_journal_entry
 from accounting.services.purchase_accounts import get_purchase_account_mappings
 
 
-def post_stock_journal(document, actor, *, direction="in"):
+def post_stock_journal(document, actor, *, direction="in", biaya_jasa=Decimal("0"), qty_jasa=Decimal("0")):
     """Post stok Pembelian dan aplikasi DP secara idempoten per dokumen stok.
 
     PENTING: hitung `amount` dari `document.movements` (ProductStockMovement,
@@ -43,6 +43,10 @@ def post_stock_journal(document, actor, *, direction="in"):
             (Decimal(str(mv.hpp_total or 0)) for mv in document.movements.all()),
             Decimal("0"),
         ).quantize(Decimal("1"))
+    # Item jasa (services/produk_jasa.py) tidak punya mutasi stok; nilainya
+    # ikut dihitung di sini lalu didebit ke HPP, bukan Persediaan.
+    biaya_jasa = Decimal(str(biaya_jasa or 0)) if direction == "in" else Decimal("0")
+    amount += biaya_jasa.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
     if amount <= 0:
         return None
 
@@ -75,7 +79,7 @@ def post_stock_journal(document, actor, *, direction="in"):
         net_target = ring["subtotal"] - ring["diskon"]
         if ring["diskon"] > 0 and net_target > 0:
             toleransi = sum(
-                (Decimal(str(mv.qty or 0)) for mv in document.movements.all()), Decimal("0"),
+                (Decimal(str(mv.qty or 0)) for mv in document.movements.all()), Decimal(str(qty_jasa or 0)),
             ) * Decimal("0.005") + 1
             if abs(amount - net_target) <= toleransi:
                 amount = net_target.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
@@ -114,8 +118,32 @@ def post_stock_journal(document, actor, *, direction="in"):
         },
     ]
 
+    # Pisahkan porsi jasa dari Persediaan (selisih pembulatan tetap di Persediaan,
+    # kecuali dokumen hanya berisi jasa).
+    baris_kredit = lines[1]
+    porsi_jasa = min(biaya_jasa.quantize(Decimal("1"), rounding=ROUND_HALF_UP), amount)
+    if porsi_jasa > 0:
+        from api.services.produk_jasa import akun_biaya_jasa
+
+        try:
+            akun_jasa = akun_biaya_jasa()
+        except DjangoValidationError as exc:
+            raise ValidationError(getattr(exc, "messages", [str(exc)])) from exc
+        if porsi_jasa >= amount:
+            lines[0]["account"] = akun_jasa
+            lines[0]["description"] = f"Biaya jasa {document.nomor}"
+        else:
+            lines[0]["debit"] = amount - porsi_jasa
+            lines.insert(1, {
+                "account": akun_jasa,
+                "debit": porsi_jasa,
+                "kredit": 0,
+                "description": f"Biaya jasa {document.nomor}",
+                "external_document_no": document.nomor,
+            })
+
     if pajak_doc > 0:
-        lines[1]["kredit"] = amount + pajak_doc
+        baris_kredit["kredit"] = amount + pajak_doc
         lines.insert(1, {
             "account": ppn_masukan,
             "debit": pajak_doc,

@@ -266,6 +266,11 @@ class PurchaseItemSerializer(serializers.ModelSerializer):
     product_satuan = serializers.ReadOnlyField(source='product.satuan')
     variant_nama = serializers.ReadOnlyField(source='variant.nama_varian')
     subtotal = serializers.ReadOnlyField()
+    is_jasa = serializers.SerializerMethodField()
+
+    def get_is_jasa(self, obj):
+        from .services.produk_jasa import adalah_jasa
+        return adalah_jasa(obj.product, obj.variant)
 
     class Meta:
         model = PurchaseItem

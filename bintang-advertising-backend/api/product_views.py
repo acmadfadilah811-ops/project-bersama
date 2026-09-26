@@ -45,6 +45,7 @@ from .models import BillOfMaterials, BoMItem
 from .customer_models import Supplier
 from . import production_costing
 from . import stock_fifo
+from .services.produk_jasa import adalah_jasa, pesan_tanpa_stok
 from . import uom
 from .services.opname_selisih import harga_beli_owner
 from .services.purchase_accounting import post_stock_journal
@@ -64,7 +65,21 @@ def post_stock_in_document(document, actor):
     if not document.items.exists():
         raise ValidationError('Tambahkan minimal satu produk sebelum posting.')
 
+    # Produk jasa tidak punya stok (services/produk_jasa.py). Dari Pembelian:
+    # biayanya ke HPP lewat post_stock_journal. Stok Masuk manual: ditolak.
+    biaya_jasa, qty_jasa = Decimal('0'), Decimal('0')
+    jasa_ids = set()
     for item in document.items.select_related('product', 'variant'):
+        if adalah_jasa(item.product, item.variant):
+            if not document.purchase_id:
+                raise ValidationError(pesan_tanpa_stok(item.product, item.variant))
+            biaya_jasa += item.qty * (item.harga_beli or 0)
+            qty_jasa += item.qty
+            jasa_ids.add(item.id)
+
+    for item in document.items.select_related('product', 'variant'):
+        if item.id in jasa_ids:
+            continue
         product = Product.objects.select_for_update().get(pk=item.product_id)
         variant = (ProductVariant.objects.select_for_update().get(pk=item.variant_id)
                    if item.variant_id else None)
@@ -99,7 +114,7 @@ def post_stock_in_document(document, actor):
 
     document.status = 'selesai'
     document.save()
-    post_stock_journal(document, actor, direction='in')
+    post_stock_journal(document, actor, direction='in', biaya_jasa=biaya_jasa, qty_jasa=qty_jasa)
     if document.purchase_id:
         # Pembelian yang sudah lunas + diterima otomatis pindah ke Telah Diproses
         # begitu Stok Masuk-nya diposting (instruksi user 2026-09-24).
@@ -1913,6 +1928,8 @@ class StockInDocumentViewSet(viewsets.ModelViewSet):
             return Response({'error': 'qty harus lebih besar dari 0'}, status=status.HTTP_400_BAD_REQUEST)
 
         product = get_object_or_404(Product, pk=product_id)
+        if adalah_jasa(product) and not document.purchase_id:
+            return Response({'error': pesan_tanpa_stok(product)}, status=status.HTTP_400_BAD_REQUEST)
         rak = (request.data.get('rak') or '').strip()
         u = uom.resolve(product, request.data.get('uom_kode'), qty, harga_beli)
         item = StockInDocumentItem.objects.create(
@@ -2486,6 +2503,13 @@ class PurchaseViewSet(viewsets.ModelViewSet):
         if not retur.items.exists():
             return Response({'error': 'Tidak ada produk untuk diretur.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        jasa = [it for it in retur.items.select_related('product', 'variant') if adalah_jasa(it.product, it.variant)]
+        if jasa:
+            return Response({'error': 'Retur barang tidak berlaku untuk item jasa: '
+                             + ', '.join(it.product.nama for it in jasa)
+                             + '. Hapus item jasa dari retur ini; koreksi biaya jasa dilakukan lewat jurnal penyesuaian.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
         exchange = _parse_bool_flag(request.data.get('exchange_new'))
         with transaction.atomic():
             # Porsi diskon & PPN pembelian asal yang ikut dikembalikan disimpan di
@@ -2535,10 +2559,17 @@ class PurchaseViewSet(viewsets.ModelViewSet):
                 status='selesai', dibuat_oleh=request.user, purchase=purchase,
             )
             faktor = faktor_biaya_bersih(purchase)
+            biaya_jasa, qty_jasa = Decimal('0'), Decimal('0')
             for it in purchase.items.select_related('product', 'variant'):
                 if not getattr(it, 'jadikan_stok_keluar', True):
                     continue
                 harga_bersih = (it.harga_beli * faktor).quantize(Decimal('0.01'))
+                # Jasa (lacak_inventori=False): tidak punya stok/lapisan; biayanya
+                # dicatat ke HPP oleh post_stock_journal (lihat services/produk_jasa.py).
+                if adalah_jasa(it.product, it.variant):
+                    biaya_jasa += it.qty * harga_bersih
+                    qty_jasa += it.qty
+                    continue
                 if it.variant_id:
                     owner = ProductVariant.objects.select_for_update().get(pk=it.variant_id)
                 else:
@@ -2559,7 +2590,7 @@ class PurchaseViewSet(viewsets.ModelViewSet):
                     sumber_tipe='purchase', sumber_nomor=purchase.nomor,
                     tanggal_kadaluwarsa=it.tanggal_kadaluwarsa,
                 )
-            post_stock_journal(doc, request.user, direction='in')
+            post_stock_journal(doc, request.user, direction='in', biaya_jasa=biaya_jasa, qty_jasa=qty_jasa)
             return None
 
         # direction == 'out'
@@ -2640,6 +2671,8 @@ class StockOutDocumentViewSet(viewsets.ModelViewSet):
         variant = None
         if variant_id:
             variant = get_object_or_404(ProductVariant, pk=variant_id, product=product)
+        if adalah_jasa(product, variant):
+            return Response({'error': pesan_tanpa_stok(product, variant)}, status=status.HTTP_400_BAD_REQUEST)
 
         u = uom.resolve(product, request.data.get('uom_kode'), qty, None, variant)
         item = StockOutDocumentItem.objects.create(
@@ -2867,6 +2900,8 @@ class StockProductionDocumentViewSet(viewsets.ModelViewSet):
         variant = None
         if variant_id:
             variant = get_object_or_404(ProductVariant, pk=variant_id, product=product)
+        if adalah_jasa(product, variant):
+            return Response({'error': pesan_tanpa_stok(product, variant)}, status=status.HTTP_400_BAD_REQUEST)
 
         item = StockProductionDocumentItem.objects.create(document=document, product=product, variant=variant, qty=qty)
         return Response(StockProductionDocumentItemSerializer(item).data, status=status.HTTP_201_CREATED)
@@ -3123,6 +3158,8 @@ class StockOpnameDocumentViewSet(viewsets.ModelViewSet):
         if variant_id:
             variant = get_object_or_404(ProductVariant, pk=variant_id, product=product)
             owner = variant
+        if adalah_jasa(product, variant):
+            return Response({'error': pesan_tanpa_stok(product, variant)}, status=status.HTTP_400_BAD_REQUEST)
 
         jam_opname = (request.data.get('jam_opname') or '').strip()
         rak = (request.data.get('rak') or '').strip()
