@@ -1,5 +1,9 @@
 from django.urls import path
 
+from .views.payroll_persetujuan import (
+    PengajuanGajiAkunKasView, PengajuanGajiBayarView, PengajuanGajiListView, PengajuanGajiOtorisasiView,
+    PengajuanGajiTolakView, PengajuanGajiVerifikasiView,
+)
 from .views.notifikasi import NotifikasiKeuanganBacaView, NotifikasiKeuanganListView
 from .views.payroll import (
     PayrollBayarView,
@@ -202,6 +206,12 @@ urlpatterns = [
     path("close-period/", AccountingPeriodCloseView.as_view(), name="accounting-close-period"),
     path("notifikasi/", NotifikasiKeuanganListView.as_view(), name="accounting-notifikasi"),
     path("notifikasi/baca/", NotifikasiKeuanganBacaView.as_view(), name="accounting-notifikasi-baca"),
+    path("payroll/pengajuan/", PengajuanGajiListView.as_view(), name="accounting-payroll-pengajuan"),
+    path("payroll/pengajuan/akun-kas/", PengajuanGajiAkunKasView.as_view(), name="accounting-payroll-pengajuan-akun-kas"),
+    path("payroll/pengajuan/<int:pk>/verifikasi/", PengajuanGajiVerifikasiView.as_view(), name="accounting-payroll-pengajuan-verifikasi"),
+    path("payroll/pengajuan/<int:pk>/otorisasi/", PengajuanGajiOtorisasiView.as_view(), name="accounting-payroll-pengajuan-otorisasi"),
+    path("payroll/pengajuan/<int:pk>/tolak/", PengajuanGajiTolakView.as_view(), name="accounting-payroll-pengajuan-tolak"),
+    path("payroll/pengajuan/<int:pk>/bayar/", PengajuanGajiBayarView.as_view(), name="accounting-payroll-pengajuan-bayar"),
     path("payroll/pratinjau/", PayrollPratinjauView.as_view(), name="accounting-payroll-pratinjau"),
     path("payroll/posting/", PayrollPostingView.as_view(), name="accounting-payroll-posting"),
     path("payroll/koreksi/", PayrollKoreksiView.as_view(), name="accounting-payroll-koreksi"),

@@ -221,6 +221,17 @@ class AccountingSettings(models.Model):
         Account, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
         help_text="Akun Beban iuran perusahaan (mis. BPJS) -- hanya wajib bila ada iuran perusahaan.",
     )
+    # Persetujuan pencairan gaji 5 tahap (services/payroll_persetujuan.py).
+    payroll_batas_selisih_persen = models.DecimalField(
+        max_digits=5, decimal_places=2, default=10,
+        help_text="Total gaji bersih berubah lebih dari persen ini dibanding periode "
+        "sebelumnya = ditandai saat verifikasi.",
+    )
+    payroll_batas_otorisasi_owner = models.DecimalField(
+        max_digits=16, decimal_places=2, null=True, blank=True,
+        help_text="Total gaji bersih di atas nominal ini wajib diotorisasi Owner (Manager "
+        "tidak cukup). Kosong = Owner maupun Manager boleh berapa pun.",
+    )
     shift_cash_variance_auto_post_enabled = models.BooleanField(
         default=False,
         help_text="Posting otomatis selisih kas kasir (kas fisik vs sistem) ke jurnal saat shift "

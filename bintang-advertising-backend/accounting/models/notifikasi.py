@@ -10,6 +10,7 @@ class NotifikasiKeuangan(models.Model):
     class Jenis(models.TextChoices):
         PAYROLL_FINAL = "payroll_final", "Gaji siap diposting"
         REIMBURSEMENT = "reimbursement", "Reimbursement disetujui"
+        PERSETUJUAN_GAJI = "persetujuan_gaji", "Persetujuan pencairan gaji"
 
     # Kunci dari pengirim -- kiriman ulang dengan kunci sama tidak menggandakan.
     kunci = models.CharField(max_length=120, unique=True)

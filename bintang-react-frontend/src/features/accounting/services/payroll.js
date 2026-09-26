@@ -28,3 +28,27 @@ export const hapusPemetaanGaji = async (id) => apiClient.delete(`/accounting/pay
 
 export const ambilAkunGaji = async () =>
   daftar(await apiClient.get('/accounting/accounts/', { params: { semua_akun: true } })).filter((a) => a.is_active);
+
+// Persetujuan pencairan gaji 5 tahap (accounting/services/payroll_persetujuan.py).
+export const ambilPengajuanGaji = async () =>
+  (await apiClient.get('/accounting/payroll/pengajuan/')).data?.results || [];
+
+export const ambilAkunKasPengajuan = async () =>
+  (await apiClient.get('/accounting/payroll/pengajuan/akun-kas/')).data || [];
+
+export const verifikasiPengajuanGaji = async (id) =>
+  (await apiClient.post(`/accounting/payroll/pengajuan/${id}/verifikasi/`)).data;
+
+export const otorisasiPengajuanGaji = async (id) =>
+  (await apiClient.post(`/accounting/payroll/pengajuan/${id}/otorisasi/`)).data;
+
+export const tolakPengajuanGaji = async (id, alasan) =>
+  (await apiClient.post(`/accounting/payroll/pengajuan/${id}/tolak/`, { alasan })).data;
+
+export const bayarPengajuanGaji = async (id, { akunKas, tanggal, bukti }) => {
+  const form = new FormData();
+  form.append('akun_kas', akunKas);
+  if (tanggal) form.append('tanggal', tanggal);
+  form.append('bukti', bukti);
+  return (await apiClient.post(`/accounting/payroll/pengajuan/${id}/bayar/`, form)).data;
+};

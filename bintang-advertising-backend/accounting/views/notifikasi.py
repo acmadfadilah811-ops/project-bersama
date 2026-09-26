@@ -3,9 +3,17 @@
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.permissions import IsStrictOwnerManagerOrSpvFinance
+from rest_framework.permissions import BasePermission, IsAuthenticated
 
 from ..models import NotifikasiKeuangan
+
+
+class BolehLihatNotifikasiKeuangan(BasePermission):
+    """Owner, Manager, SPV Finance, Admin Finance (Admin Finance membayar gaji, tahap 4)."""
+
+    def has_permission(self, request, view):
+        return (getattr(request.user, "role", "") or "").lower() in {
+            "owner", "manager", "spv_finance", "admin_finance"}
 
 
 def _bentuk(n, user_id):
@@ -23,7 +31,7 @@ def _bentuk(n, user_id):
 class NotifikasiKeuanganListView(APIView):
     """GET /api/accounting/notifikasi/ -- 30 terbaru + jumlah belum dibaca."""
 
-    permission_classes = [IsStrictOwnerManagerOrSpvFinance]
+    permission_classes = [IsAuthenticated, BolehLihatNotifikasiKeuangan]
 
     def get(self, request):
         qs = NotifikasiKeuangan.objects.prefetch_related("dibaca_oleh")
@@ -37,7 +45,7 @@ class NotifikasiKeuanganListView(APIView):
 class NotifikasiKeuanganBacaView(APIView):
     """POST /api/accounting/notifikasi/baca/ {ids: [..]} atau {semua: true}."""
 
-    permission_classes = [IsStrictOwnerManagerOrSpvFinance]
+    permission_classes = [IsAuthenticated, BolehLihatNotifikasiKeuangan]
 
     def post(self, request):
         qs = NotifikasiKeuangan.objects.all()

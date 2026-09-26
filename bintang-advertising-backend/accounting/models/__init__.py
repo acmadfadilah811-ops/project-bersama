@@ -8,6 +8,7 @@ from .bank_statement import BankStatementLine
 from .assets import FixedAsset
 from .payroll import PayrollComponentMapping, PayrollPosting
 from .notifikasi import NotifikasiKeuangan
+from .payroll_persetujuan import PengajuanGaji, PengajuanGajiLog
 
 __all__ = [
     "AccountingSettings",
@@ -31,4 +32,6 @@ __all__ = [
     "PayrollComponentMapping",
     "PayrollPosting",
     "NotifikasiKeuangan",
+    "PengajuanGaji",
+    "PengajuanGajiLog",
 ]

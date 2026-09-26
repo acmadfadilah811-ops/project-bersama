@@ -366,4 +366,13 @@ class NotifikasiKeuanganBridgeView(APIView):
                 "data": data,
             },
         )
+        if jenis == NotifikasiKeuangan.Jenis.PAYROLL_FINAL and data.get("tahun") and data.get("bulan"):
+            # Tahap 1 persetujuan pencairan gaji: buat pengajuan untuk diverifikasi SPV Finance.
+            try:
+                from accounting.services.payroll_persetujuan import ajukan
+
+                tahun, bulan = int(data.get("tahun")), int(data.get("bulan"))
+                ajukan(tahun, bulan)
+            except Exception:
+                logger.exception("Gagal membuat pengajuan gaji dari notifikasi HR.")
         return Response({"id": obj.id, "baru": dibuat}, status=201 if dibuat else 200)

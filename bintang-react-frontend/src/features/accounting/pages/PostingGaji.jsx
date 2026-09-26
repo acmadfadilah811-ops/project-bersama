@@ -2,6 +2,7 @@ import { RefreshCw } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import AksiPostingGaji from '../components/payroll/AksiPostingGaji';
 import PemetaanKomponenGaji from '../components/payroll/PemetaanKomponenGaji';
+import PersetujuanGaji from '../components/payroll/PersetujuanGaji';
 import PratinjauJurnalGaji from '../components/payroll/PratinjauJurnalGaji';
 import RiwayatPostingGaji from '../components/payroll/RiwayatPostingGaji';
 import { usePostingGaji } from '../hooks/usePostingGaji';
@@ -27,9 +28,10 @@ export default function PostingGaji() {
         <div>
           <h1 className="text-xl font-bold text-slate-900">Riwayat Posting Gaji</h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Gaji final dari HR (Horilla) yang sudah dicatat sebagai jurnal ke Finance. Pratinjau dan aksi posting hanya bisa dilakukan Owner/Manager.
+            Gaji final dari HR (Horilla) yang sudah dicatat sebagai jurnal ke Finance. Admin Finance mencatat pembayaran gaji yang sudah diotorisasi (dengan bukti transfer).
           </p>
         </div>
+        <PersetujuanGaji />
         {g.memuat && <p className="text-sm text-slate-400">Memuat...</p>}
         <RiwayatPostingGaji riwayat={g.riwayat} />
       </div>
@@ -53,6 +55,8 @@ export default function PostingGaji() {
           </button>
         </div>
       </div>
+
+      <PersetujuanGaji />
 
       {g.memuat && !g.pratinjau && <p className="text-sm text-slate-400">Memuat...</p>}
       {g.galat && (

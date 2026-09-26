@@ -45,16 +45,16 @@ class NotifikasiKeuanganTests(TestCase):
     def test_jenis_tidak_dikenal_ditolak(self):
         self.assertEqual(self._kirim(jenis="lain").status_code, 400)
 
-    def test_tiga_peran_melihat_peran_lain_tidak(self):
+    def test_peran_keuangan_melihat_peran_lain_tidak(self):
         self._kirim()
-        for u in (self.owner, self.spv_fin, self.manager):
+        # 2026-09-26: Admin Finance ikut melihat (pelaku pembayaran gaji, tahap 4).
+        for u in (self.owner, self.spv_fin, self.manager, self.admin_fin):
             self.client.force_authenticate(u)
             res = self.client.get(LIST, secure=True)
             self.assertEqual(res.status_code, 200, u.role)
             self.assertEqual(res.data["belum_dibaca"], 1)
-        for u in (self.kasir, self.admin_fin):
-            self.client.force_authenticate(u)
-            self.assertEqual(self.client.get(LIST, secure=True).status_code, 403, u.role)
+        self.client.force_authenticate(self.kasir)
+        self.assertEqual(self.client.get(LIST, secure=True).status_code, 403)
 
     def test_tandai_dibaca_per_pengguna(self):
         self._kirim()
