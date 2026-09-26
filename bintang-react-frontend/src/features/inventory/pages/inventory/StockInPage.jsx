@@ -548,6 +548,20 @@ export function StockInPage({ onToggleCreate, viewState: propViewState }) {
     }
   };
 
+  // Penerimaan parsial: isi qty yang benar-benar datang; sisa pembelian bisa
+  // diterima di kedatangan berikutnya (tombol "Terima Sisa" di Pembelian).
+  const handleUpdateQty = async (item, nilai) => {
+    const qtyBaru = Number(nilai);
+    if (!qtyBaru || qtyBaru === Number(item.qty)) return;
+    try {
+      const res = await apiClient.post(`/stock-in-documents/${activeDetailDoc.id}/update-item/`, { item_id: item.id, qty: qtyBaru });
+      setActiveDetailDoc(res.data);
+      setValidationError('');
+    } catch (err) {
+      setValidationError(err.response?.data?.error || 'Gagal mengubah qty.');
+    }
+  };
+
   const handleRemoveItem = async (itemId) => {
     try {
       const res = await apiClient.post(`/stock-in-documents/${activeDetailDoc.id}/remove-item/`, { item_id: itemId });
@@ -1939,7 +1953,22 @@ export function StockInPage({ onToggleCreate, viewState: propViewState }) {
                           <td style={{ padding: '10px 20px', color: '#1e293b' }}>{item.product_nama}{item.product_sku ? ` (${item.product_sku})` : ''}</td>
                           <td style={{ padding: '10px 20px', color: '#334155' }}>{item.rak || '-'}</td>
                           <td style={{ padding: '10px 20px', color: '#334155' }}>{formatCurrencyRp(item.harga_beli)}</td>
-                          <td style={{ padding: '10px 20px', color: '#334155' }}>{item.qty} {item.product_satuan}</td>
+                          <td style={{ padding: '10px 20px', color: '#334155' }}>
+                            {activeDetailDoc.status === 'draft' ? (
+                              <input
+                                key={`${item.id}-${item.qty}`}
+                                type="number"
+                                min="0.01"
+                                step="any"
+                                defaultValue={Number(item.qty)}
+                                onBlur={(e) => handleUpdateQty(item, e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                                title={item.purchase_item ? 'Ubah bila barang yang datang kurang; sisanya diterima di kedatangan berikutnya' : 'Ubah qty'}
+                                style={{ width: '80px', padding: '4px 6px', border: '1px solid #cbd5e1', borderRadius: '6px' }}
+                              />
+                            ) : Number(item.qty)}{' '}
+                            {item.product_satuan}
+                          </td>
                           <td style={{ padding: '10px 20px', color: '#334155', fontWeight: '600' }}>{formatCurrencyRp(Number(item.harga_beli) * Number(item.qty))}</td>
                           {activeDetailDoc.status === 'draft' && (
                             <td style={{ padding: '10px 20px' }}>

@@ -77,7 +77,7 @@ export default function PenerimaanCard({ doc, isDraft, onSaved }) {
               onClick={bukaFormPenerimaan}
               className="text-xs font-bold text-blue-600 hover:text-blue-800 cursor-pointer"
             >
-              {doc.receive_status === 'diterima' ? 'Lanjut ke Stok Masuk' : 'Terima'}
+              {doc.receive_status === 'diterima' ? 'Lanjut ke Stok Masuk' : doc.receive_status === 'sebagian' ? 'Terima Sisa' : 'Terima'}
             </button>
           )}
           {isEditing && (

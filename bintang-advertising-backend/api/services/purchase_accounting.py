@@ -85,6 +85,19 @@ def post_stock_journal(document, actor, *, direction="in", biaya_jasa=Decimal("0
                 amount = net_target.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
         if ring["pajak"] > 0 and net_target > 0:
             pajak_doc = (ring["pajak"] * amount / net_target).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        # Penerimaan parsial (2026-09-26): kedatangan yang MELENGKAPI pembelian
+        # menutup sisa nilai & PPN, sehingga total hutang semua kedatangan tepat
+        # sama dengan total pembelian (tanpa selisih pembulatan antar-kedatangan).
+        from api.services import penerimaan_parsial
+
+        sebelumnya = penerimaan_parsial.dokumen_sebelumnya(document)
+        if (sebelumnya and net_target > 0 and all(d.nilai_bersih > 0 for d in sebelumnya)
+                and penerimaan_parsial.lengkap(purchase_doc)):
+            amount = (net_target - sum(d.nilai_bersih for d in sebelumnya)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+            pajak_doc = max(Decimal("0"), (ring["pajak"] - sum(d.nilai_pajak for d in sebelumnya)).quantize(
+                Decimal("1"), rounding=ROUND_HALF_UP))
+            if amount <= 0:
+                return None
     # Retur (2026-09-24): porsi PPN pembelian asal yang dikembalikan sudah
     # disimpan di dokumen retur (lihat post_retur / purchase_retur_ppn) -> dibalik
     # dari PPN Masukan; hutang berkurang sebesar nilai barang + PPN.
@@ -163,16 +176,25 @@ def post_stock_journal(document, actor, *, direction="in", biaya_jasa=Decimal("0
         })
 
     purchase = getattr(document, "purchase", None)
+    advance_amount = Decimal("0")
     if direction == "in" and purchase:
-        from api.product_models import PurchasePayment
+        from api.product_models import PurchasePayment, StockInDocument
 
-        advance_amount = sum(
+        total_dp = sum(
             (payment.nominal for payment in PurchasePayment.objects.filter(
                 purchase=purchase,
                 jenis=PurchasePayment.Jenis.ADVANCE,
             )),
             Decimal("0"),
-        ).quantize(Decimal("1"))
+        )
+        # DP yang sudah dipakai kedatangan sebelumnya tidak dipakai lagi, dan DP
+        # hanya melunasi hutang kedatangan ini (penerimaan parsial 2026-09-26).
+        sudah_dipakai = sum(
+            (d.dp_diterapkan for d in StockInDocument.objects.filter(purchase=purchase, status="selesai")
+             .exclude(pk=document.pk)),
+            Decimal("0"),
+        )
+        advance_amount = min(total_dp - sudah_dipakai, amount + pajak_doc).quantize(Decimal("1"))
         if advance_amount > 0:
             lines.extend([
                 {
@@ -192,7 +214,7 @@ def post_stock_journal(document, actor, *, direction="in", biaya_jasa=Decimal("0
             ])
 
     try:
-        return create_journal_entry(
+        jurnal = create_journal_entry(
             date=document.tanggal,
             lines=lines,
             description=f"{label} {document.nomor}",
@@ -202,3 +224,8 @@ def post_stock_journal(document, actor, *, direction="in", biaya_jasa=Decimal("0
         )
     except DjangoValidationError as exc:
         raise ValidationError(getattr(exc, "messages", [str(exc)])) from exc
+    if direction == "in" and purchase:
+        type(document).objects.filter(pk=document.pk).update(
+            nilai_bersih=amount, nilai_pajak=pajak_doc, dp_diterapkan=max(advance_amount, Decimal("0")),
+        )
+    return jurnal

@@ -45,7 +45,7 @@ const matchesPaymentFilter = (row, label) => {
 // (lihat api/views/purchase_workflow.py) — bukan sekadar mengubah label status.
 // Kelayakan bulk di bawah ini mengikuti guard yang sama persis di backend.
 const canPost = (row) => row.status === 'draft' && row.receive_status === 'diterima';
-const canBatalkan = (row) => row.status === 'draft' && row.receive_status !== 'diterima';
+const canBatalkan = (row) => row.status === 'draft' && !['diterima', 'sebagian'].includes(row.receive_status);
 const canBayar = (row) => row.payment_status !== 'lunas';
 
 export default function Pembelian() {

@@ -344,6 +344,11 @@ class StockInDocument(models.Model):
     # Tautan ke dokumen Pembelian bila stok-masuk ini lahir dari penerimaan PO.
     # Null untuk stok-masuk manual biasa (menu Inventory).
     purchase = models.ForeignKey('Purchase', on_delete=models.SET_NULL, null=True, blank=True, related_name='stock_in_documents')
+    # Penerimaan parsial (2026-09-26): nilai yang dijurnal per kedatangan, dipakai
+    # kedatangan terakhir untuk menutup selisih pembulatan & membatasi aplikasi DP.
+    nilai_bersih = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    nilai_pajak = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    dp_diterapkan = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -355,6 +360,9 @@ class StockInDocument(models.Model):
 
 class StockInDocumentItem(models.Model):
     document = models.ForeignKey(StockInDocument, on_delete=models.CASCADE, related_name='items')
+    # Baris pembelian asal (penerimaan parsial 2026-09-26); kosong untuk Stok Masuk manual.
+    purchase_item = models.ForeignKey('PurchaseItem', on_delete=models.SET_NULL, null=True, blank=True,
+                                      related_name='stock_in_items')
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='stock_in_items')
     variant = models.ForeignKey(ProductVariant, on_delete=models.CASCADE, null=True, blank=True, related_name='stock_in_items')
     harga_beli = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
@@ -559,6 +567,7 @@ class Purchase(models.Model):
     ]
     RECEIVE_CHOICES = [
         ('tunda', 'Tunda'),        # barang belum sampai
+        ('sebagian', 'Diterima Sebagian'),  # sebagian qty sudah masuk stok (2026-09-26, UAT INV-05)
         ('diterima', 'Diterima'),  # barang sampai -> stok bertambah
     ]
     DELIVERY_CHOICES = [

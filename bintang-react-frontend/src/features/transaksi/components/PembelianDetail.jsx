@@ -177,7 +177,7 @@ export default function PembelianDetail({ docId, detailMode = 'butuh-diproses', 
   const getDropdownStatusValue = () => {
     if (doc.status === 'batal') return 'Batal';
     if (doc.status === 'selesai') return 'Selesai';
-    if (doc.receive_status === 'diterima') return 'Diterima';
+    if (doc.receive_status === 'diterima' || doc.receive_status === 'sebagian') return 'Diterima';
     if (doc.delivery_status === 'terkirim') return 'Terkirim';
     if (doc.delivery_status === 'dikirim') return 'Dikirim';
     return 'Tunda';

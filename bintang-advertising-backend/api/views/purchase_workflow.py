@@ -13,6 +13,7 @@ from ..permissions import IsOwnerManagerAdminFinanceOrReadOnly
 from ..product_models import Purchase, StockInDocument, StockInDocumentItem
 from ..product_serializers import PurchaseSerializer, StockInDocumentSerializer
 from ..purchase_workflow_models import PurchaseActivityLog, catat_purchase
+from ..services import penerimaan_parsial
 from ..product_views import _next_document_number, _parse_bool_flag, post_stock_in_document
 from ..services.purchase_completion import selesaikan_otomatis_jika_siap
 from ..services.purchase_retur_ppn import faktor_biaya_bersih
@@ -36,7 +37,8 @@ def _catat_penerimaan(purchase, user, *, tanggal, no_terima, lanjut_tambah_stok,
     stok tidak pernah bertambah. Mengembalikan (dokumen_stok_masuk | None, dibuat_baru)."""
     purchase.tanggal_diterima = tanggal
     purchase.no_terima = no_terima
-    purchase.receive_status = 'diterima'
+    # Kedatangan berikutnya dari penerimaan parsial tetap 'sebagian' sampai lengkap.
+    purchase.receive_status = 'sebagian' if penerimaan_parsial.sudah_ada_posting(purchase) else 'diterima'
     purchase.penerima_nama = penerima_nama
     purchase.lanjut_tambah_stok = lanjut_tambah_stok
     purchase.save(update_fields=['tanggal_diterima', 'no_terima', 'receive_status', 'penerima_nama', 'lanjut_tambah_stok', 'updated_at'])
@@ -63,12 +65,15 @@ def _catat_penerimaan(purchase, user, *, tanggal, no_terima, lanjut_tambah_stok,
         nama_penerima=penerima_nama,
         supplier=purchase.supplier, dibuat_oleh=user, purchase=purchase,
     )
-    for item in purchase.items.all():
+    # Hanya sisa yang belum diterima (penerimaan parsial, 2026-09-26).
+    for item, sisa in penerimaan_parsial.sisa_per_item(purchase):
+        uom_qty = item.uom_qty if sisa == item.qty else (
+            (sisa / item.uom_konverter).quantize(Decimal('0.01')) if item.uom_konverter else None)
         StockInDocumentItem.objects.create(
-            document=doc, product=item.product, variant=item.variant, qty=item.qty,
+            document=doc, purchase_item=item, product=item.product, variant=item.variant, qty=sisa,
             harga_beli=(item.harga_beli * faktor).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP),
             tanggal_kadaluwarsa=item.tanggal_kadaluwarsa,
-            uom_kode=item.uom_kode, uom_konverter=item.uom_konverter, uom_qty=item.uom_qty,
+            uom_kode=item.uom_kode, uom_konverter=item.uom_konverter, uom_qty=uom_qty,
         )
     catat_purchase(purchase, user, 'STOCK_DRAFT', f'Stok masuk {doc.nomor} dibuat sebagai draft dengan nomor penerimaan {no_terima}. Status penerimaan menjadi Diterima.')
     return doc, True
@@ -131,12 +136,12 @@ class PurchaseWorkflowView(APIView):
         # Sudah ditandai Diterima (mis. lewat dropdown status atau klik Terima
         # sebelumnya): jangan ditolak -- arahkan ke Stok Masuk yang sudah ada,
         # atau buatkan kalau belum pernah dibuat.
-        if purchase.receive_status == 'diterima':
+        if purchase.receive_status in ('diterima', 'sebagian'):
             draft_doc = purchase.stock_in_documents.filter(status='draft').first()
             if draft_doc:
                 return Response({'stock_document': StockInDocumentSerializer(draft_doc).data})
-            if purchase.stock_in_documents.exclude(status='batal').exists():
-                return Response({'error': 'Barang sudah diterima dan stok masuk sudah diposting.'}, status=status.HTTP_400_BAD_REQUEST)
+            if penerimaan_parsial.sudah_ada_posting(purchase) and penerimaan_parsial.lengkap(purchase):
+                return Response({'error': 'Semua barang sudah diterima dan stok masuk sudah diposting.'}, status=status.HTTP_400_BAD_REQUEST)
             if not lanjut_tambah_stok:
                 return Response({'error': 'Penerimaan sudah dicatat. Aktifkan "Lanjut tambah stok masuk" bila stok ingin ditambahkan.'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -168,7 +173,7 @@ class PurchaseWorkflowView(APIView):
     def batalkan(self, request, purchase):
         user = _get_user(request)
         purchase = Purchase.objects.select_for_update().get(pk=purchase.pk)
-        if purchase.status != 'draft' or purchase.receive_status == 'diterima':
+        if purchase.status != 'draft' or purchase.receive_status in ('diterima', 'sebagian'):
             return Response({'error': 'Pembelian yang sudah diterima tidak dapat dibatalkan tanpa proses retur.'}, status=status.HTTP_400_BAD_REQUEST)
         purchase.status = 'batal'
         purchase.save(update_fields=['status', 'updated_at'])

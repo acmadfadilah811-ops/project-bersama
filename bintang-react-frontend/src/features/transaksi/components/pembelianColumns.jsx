@@ -15,6 +15,7 @@ export const receiveBadge = (row) => {
   const val = row.status === 'batal' ? 'batal' : row.receive_status;
   const map = {
     tunda: ['Tunda', 'bg-orange-50 text-orange-600 border-orange-100'],
+    sebagian: ['Diterima Sebagian', 'bg-amber-50 text-amber-600 border-amber-100'],
     diterima: ['Diterima', 'bg-emerald-50 text-emerald-600 border-emerald-100'],
     batal: ['Batal', 'bg-rose-50 text-rose-600 border-rose-100'],
   };

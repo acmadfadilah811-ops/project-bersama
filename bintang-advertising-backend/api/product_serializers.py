@@ -267,6 +267,12 @@ class PurchaseItemSerializer(serializers.ModelSerializer):
     variant_nama = serializers.ReadOnlyField(source='variant.nama_varian')
     subtotal = serializers.ReadOnlyField()
     is_jasa = serializers.SerializerMethodField()
+    qty_diterima = serializers.SerializerMethodField()
+
+    def get_qty_diterima(self, obj):
+        from django.db.models import Sum
+        q = obj.stock_in_items.filter(document__status='selesai').aggregate(t=Sum('qty'))['t']
+        return q or 0
 
     def get_is_jasa(self, obj):
         from .services.produk_jasa import adalah_jasa

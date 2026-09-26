@@ -92,6 +92,11 @@ export default function PembelianItemsTable({
                           </span>
                         )}
                       </span>
+                      {Number(item.qty_diterima || 0) > 0 && Number(item.qty_diterima) < qty && (
+                        <span className="text-[10px] font-semibold text-amber-700 block">
+                          Diterima {Number(item.qty_diterima)} dari {qty} · sisa {qty - Number(item.qty_diterima)}
+                        </span>
+                      )}
                       {item.product_sku && (
                         <span className="text-[10px] text-slate-400 font-mono block">
                           SKU: {item.product_sku}

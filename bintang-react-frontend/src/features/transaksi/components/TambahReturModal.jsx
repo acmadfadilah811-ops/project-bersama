@@ -29,7 +29,7 @@ export default function TambahReturModal({ onClose, onSave }) {
       try {
         const res = await apiClient.get('/purchases/');
         const rows = res.data.results || res.data || [];
-        setEligible(rows.filter((r) => !r.is_retur && r.receive_status === 'diterima'));
+        setEligible(rows.filter((r) => !r.is_retur && ['diterima', 'sebagian'].includes(r.receive_status)));
       } catch (err) {
         console.error(err);
       } finally {

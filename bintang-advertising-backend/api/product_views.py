@@ -46,6 +46,7 @@ from .customer_models import Supplier
 from . import production_costing
 from . import stock_fifo
 from .services.produk_jasa import adalah_jasa, pesan_tanpa_stok
+from .services import penerimaan_parsial
 from . import uom
 from .services.opname_selisih import harga_beli_owner
 from .services.purchase_accounting import post_stock_journal
@@ -64,6 +65,12 @@ def post_stock_in_document(document, actor):
         return document
     if not document.items.exists():
         raise ValidationError('Tambahkan minimal satu produk sebelum posting.')
+
+    # Penerimaan parsial: qty per baris pembelian tidak boleh melebihi sisa.
+    try:
+        penerimaan_parsial.validasi_qty_dokumen(document)
+    except DjangoValidationError as exc:
+        raise ValidationError(exc.messages[0])
 
     # Produk jasa tidak punya stok (services/produk_jasa.py). Dari Pembelian:
     # biayanya ke HPP lewat post_stock_journal. Stok Masuk manual: ditolak.
@@ -116,6 +123,7 @@ def post_stock_in_document(document, actor):
     document.save()
     post_stock_journal(document, actor, direction='in', biaya_jasa=biaya_jasa, qty_jasa=qty_jasa)
     if document.purchase_id:
+        penerimaan_parsial.perbarui_status(document.purchase)
         # Pembelian yang sudah lunas + diterima otomatis pindah ke Telah Diproses
         # begitu Stok Masuk-nya diposting (instruksi user 2026-09-24).
         from .services.purchase_completion import selesaikan_otomatis_jika_siap
@@ -2073,6 +2081,32 @@ class StockInDocumentViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Item tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
         return Response(StockInDocumentSerializer(document).data)
 
+    @action(detail=True, methods=['post'], url_path='update-item')
+    def update_item(self, request, pk=None):
+        """Ubah qty baris draft -- dipakai penerimaan parsial: gudang mengisi qty
+        yang benar-benar datang; sisanya bisa diterima di kedatangan berikutnya."""
+        document = self.get_object()
+        if document.status != 'draft':
+            return Response({'error': 'Dokumen tidak dalam status draft.'}, status=status.HTTP_400_BAD_REQUEST)
+        item = StockInDocumentItem.objects.filter(document=document, id=request.data.get('item_id')).select_related('purchase_item').first()
+        if not item:
+            return Response({'error': 'Item tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            qty = _to_decimal(request.data.get('qty'), 'qty')
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        if qty <= 0:
+            return Response({'error': 'qty harus lebih besar dari 0. Hapus baris bila barang belum datang.'}, status=status.HTTP_400_BAD_REQUEST)
+        if item.purchase_item_id:
+            sisa = item.purchase_item.qty - penerimaan_parsial.qty_diterima(document.purchase).get(item.purchase_item_id, Decimal('0'))
+            if qty > sisa:
+                return Response({'error': f'Qty melebihi sisa pembelian yang belum diterima ({sisa:g}).'}, status=status.HTTP_400_BAD_REQUEST)
+        item.qty = qty
+        if item.uom_konverter:
+            item.uom_qty = (qty / item.uom_konverter).quantize(Decimal('0.01'))
+        item.save(update_fields=['qty', 'uom_qty'])
+        return Response(StockInDocumentSerializer(document).data)
+
     @action(detail=True, methods=['post'], url_path='post-document')
     @transaction.atomic
     def post_document(self, request, pk=None):
@@ -2464,7 +2498,7 @@ class PurchaseViewSet(viewsets.ModelViewSet):
         source = self.get_object()
         if source.is_retur:
             return Response({'error': 'Tidak bisa meretur dokumen retur.'}, status=status.HTTP_400_BAD_REQUEST)
-        if source.receive_status != 'diterima':
+        if source.receive_status not in ('diterima', 'sebagian'):
             return Response({'error': 'Retur hanya untuk pembelian yang sudah Diterima.'}, status=status.HTTP_400_BAD_REQUEST)
 
         konfirmasi_kerusakan = (request.data.get('konfirmasi_kerusakan') or '').strip()
@@ -2509,6 +2543,14 @@ class PurchaseViewSet(viewsets.ModelViewSet):
                              + ', '.join(it.product.nama for it in jasa)
                              + '. Hapus item jasa dari retur ini; koreksi biaya jasa dilakukan lewat jurnal penyesuaian.'},
                             status=status.HTTP_400_BAD_REQUEST)
+
+        if retur.retur_ref_id and penerimaan_parsial.sudah_ada_posting(retur.retur_ref):
+            diterima = penerimaan_parsial.qty_diterima_produk(retur.retur_ref)
+            for it in retur.items.select_related('product'):
+                batas = diterima.get((it.product_id, it.variant_id), Decimal('0'))
+                if it.qty > batas:
+                    return Response({'error': f'Qty retur "{it.product.nama}" ({it.qty:g}) melebihi qty yang sudah diterima ({batas:g}).'},
+                                    status=status.HTTP_400_BAD_REQUEST)
 
         exchange = _parse_bool_flag(request.data.get('exchange_new'))
         with transaction.atomic():
