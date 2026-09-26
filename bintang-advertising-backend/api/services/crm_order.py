@@ -13,12 +13,13 @@ Keputusan user:
 
 import logging
 import os
+import datetime
 import re
 from decimal import Decimal
 
 import requests
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Q, Sum
 from django.utils import timezone
 
 from ..crm_order_models import OrderAsalCRM
@@ -190,6 +191,52 @@ def status_order(order_ids=None, crm_opportunity_id=None, crm_user_id=None, semu
     return [
         {**bentuk_order(a.order), 'sales_nama': a.sales_nama, 'crm_opportunity_id': a.crm_opportunity_id}
         for a in qs[:100]
+    ]
+
+
+MAKS_HARI_REKAP = 1100
+
+
+def _tanggal(x, nama):
+    try:
+        return datetime.date.fromisoformat(str(x or ''))
+    except ValueError:
+        raise CrmOrderError(f'Tanggal {nama} tidak valid (format YYYY-MM-DD).')
+
+
+def rekap_sales(mulai, selesai, crm_user_ids=None):
+    """Realisasi per Sales CRM untuk target (UAT SLS-06).
+
+    Order dihitung bila dibuat (Order.waktu) dalam periode dan tidak batal.
+    Nilai yang mengejar target = total order yang sudah lunas; nilai order
+    yang belum lunas dilaporkan terpisah.
+    """
+    mulai, selesai = _tanggal(mulai, 'mulai'), _tanggal(selesai, 'selesai')
+    if mulai > selesai:
+        raise CrmOrderError('Tanggal mulai harus sebelum tanggal selesai.')
+    if (selesai - mulai).days > MAKS_HARI_REKAP:
+        raise CrmOrderError('Periode rekap maksimal 3 tahun.')
+    qs = (OrderAsalCRM.objects
+          .filter(crm_user_id__isnull=False, order__waktu__date__gte=mulai, order__waktu__date__lte=selesai)
+          .exclude(order__status_global='batal'))
+    if crm_user_ids:
+        qs = qs.filter(crm_user_id__in=crm_user_ids[:200])
+    lunas = Q(order__total_harga__gt=0, order__sisa_tagihan=0)
+    rows = qs.values('crm_user_id').annotate(
+        jumlah_order=Count('id'),
+        jumlah_lunas=Count('id', filter=lunas),
+        nilai_lunas=Sum('order__total_harga', filter=lunas),
+        nilai_belum_lunas=Sum('order__total_harga', filter=~lunas),
+    ).order_by('crm_user_id')
+    return [
+        {
+            'crm_user_id': r['crm_user_id'],
+            'jumlah_order': r['jumlah_order'],
+            'jumlah_lunas': r['jumlah_lunas'],
+            'nilai_lunas': int(r['nilai_lunas'] or 0),
+            'nilai_belum_lunas': int(r['nilai_belum_lunas'] or 0),
+        }
+        for r in rows
     ]
 
 

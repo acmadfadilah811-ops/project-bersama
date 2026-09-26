@@ -6,7 +6,8 @@ fail-closed bila belum dikonfigurasi. Aturan bisnis: services/crm_order.py.
 
 - GET  /api/bridge/crm/produk/?q=      cari katalog produk aktif (maks 20)
 - POST /api/bridge/crm/order/          buat order draft dari CRM (idempoten per `kunci`)
-- GET  /api/bridge/crm/order-status/   ?order_ids=a,b | ?crm_opportunity_id= | ?crm_user_id=
+- GET  /api/bridge/crm/order-status/   ?order_ids=a,b | ?crm_opportunity_id= | ?crm_user_id= | ?semua=1
+- GET  /api/bridge/crm/rekap-sales/    ?mulai=&selesai=[&crm_user_ids=1,2]  realisasi target per Sales
 """
 
 import logging
@@ -84,3 +85,12 @@ class CrmOrderStatusView(_Dasar):
         if not (ids or opp or user or semua):
             return Response({'error': 'Isi order_ids, crm_opportunity_id, crm_user_id, atau semua=1.'}, status=400)
         return Response({'hasil': svc.status_order(ids, opp, user, semua)})
+
+
+class CrmRekapSalesView(_Dasar):
+    def get(self, request):
+        if self._auth_error:
+            return self._auth_error
+        q = request.query_params
+        ids = [i for i in (svc._int_atau_none(x) for x in (q.get('crm_user_ids') or '').split(',')) if i]
+        return Response({'hasil': svc.rekap_sales(q.get('mulai'), q.get('selesai'), ids)})

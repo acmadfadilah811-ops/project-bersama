@@ -15,6 +15,7 @@ H = {'HTTP_X_API_KEY': KUNCI}
 PRODUK = '/api/bridge/crm/produk/'
 ORDER = '/api/bridge/crm/order/'
 STATUS = '/api/bridge/crm/order-status/'
+REKAP = '/api/bridge/crm/rekap-sales/'
 
 
 @mock.patch.dict(os.environ, {'CRM_BRIDGE_API_KEY': KUNCI})
@@ -112,6 +113,31 @@ class CrmOrderBridgeTest(APITestCase):
         self.assertEqual(self.client.get(STATUS, {'crm_user_id': 5}, **H).data['hasil'], [])
         semua = self.client.get(STATUS, {'semua': '1'}, **H).data['hasil']
         self.assertEqual([o['id'] for o in semua], [res.data['id']])
+
+    def test_rekap_sales_per_periode(self):
+        a = Order.objects.get(pk=self._order().data['id'])                     # Sales 4, lunas
+        b = Order.objects.get(pk=self._order(kunci='k2').data['id'])            # Sales 4, belum lunas
+        c = Order.objects.get(pk=self._order(kunci='k3').data['id'])            # Sales 4, batal
+        d = Order.objects.get(pk=self._order(kunci='k4', crm_user_id=9).data['id'])  # Sales 9
+        lama = Order.objects.get(pk=self._order(kunci='k5').data['id'])         # di luar periode
+        a.dp_dibayar = a.total_harga
+        a.save()
+        Order.objects.filter(pk=c.pk).update(status_global='batal')
+        Order.objects.filter(pk=lama.pk).update(waktu='2026-01-15T10:00:00+07:00')
+        hari_ini = a.waktu.date().isoformat()
+        res = self.client.get(REKAP, {'mulai': '2026-09-01', 'selesai': hari_ini}, **H)
+        self.assertEqual(res.status_code, 200, res.data)
+        per = {r['crm_user_id']: r for r in res.data['hasil']}
+        self.assertEqual(per[4], {'crm_user_id': 4, 'jumlah_order': 2, 'jumlah_lunas': 1,
+                                  'nilai_lunas': a.total_harga, 'nilai_belum_lunas': b.total_harga})
+        self.assertEqual(per[9]['jumlah_order'], 1)
+        hanya_9 = self.client.get(REKAP, {'mulai': '2026-09-01', 'selesai': hari_ini, 'crm_user_ids': '9'}, **H).data['hasil']
+        self.assertEqual([r['crm_user_id'] for r in hanya_9], [9])
+        self.assertEqual(d.sumber, 'crm')
+        for salah in ({'mulai': 'x', 'selesai': hari_ini}, {'mulai': hari_ini, 'selesai': '2026-01-01'},
+                      {'mulai': '2020-01-01', 'selesai': hari_ini}):
+            self.assertEqual(self.client.get(REKAP, salah, **H).status_code, 400)
+        self.assertEqual(self.client.get(REKAP, {'mulai': '2026-09-01', 'selesai': hari_ini}).status_code, 401)
 
     def test_jalur_bot_wa_tidak_berubah(self):
         from .services.order_actions import buat_order_dari_items
