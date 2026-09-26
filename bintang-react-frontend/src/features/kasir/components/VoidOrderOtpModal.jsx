@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CheckCircle2, Clock, KeyRound, Loader2, Trash2, X, XCircle } from 'lucide-react';
+import RincianStokPengembalian from './RincianStokPengembalian';
 import apiClient from '../../../api/apiClient';
 
 const POLL_MS = 4000;
@@ -33,6 +34,7 @@ export default function VoidOrderOtpModal({ isOpen, onClose, tipe = 'order', tar
 
   const [step, setStep] = useState('alasan'); // 'alasan' | 'menunggu' | 'disetujui'
   const [alasan, setAlasan] = useState('');
+  const [bahanTerpakai, setBahanTerpakai] = useState(false);
   const [voidRequest, setVoidRequest] = useState(null);
   const [loading, setLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -134,6 +136,7 @@ export default function VoidOrderOtpModal({ isOpen, onClose, tipe = 'order', tar
       await apiClient.post(konfirmasiPath, {
         void_request_id: voidRequest.id,
         otp_code: voidRequest.otp_code,
+        ...(isPos ? { bahan_terpakai: bahanTerpakai } : {}),
       });
       onVoided?.();
       onClose();
@@ -230,6 +233,12 @@ export default function VoidOrderOtpModal({ isOpen, onClose, tipe = 'order', tar
                 </span>
               </div>
               <p className="text-[11px] text-slate-400">Kode berlaku 15 menit sejak disetujui.</p>
+              <RincianStokPengembalian
+                url={isPos ? `/pos/sales/${target?.id}/rincian-stok/` : `/orders/${target?.id}/rincian-stok/`}
+                mode={isPos ? 'void_pos' : 'batal'}
+                value={bahanTerpakai}
+                onChange={setBahanTerpakai}
+              />
               <button
                 type="button"
                 disabled={confirming}

@@ -200,7 +200,7 @@ def sync_opening_layers():
     UAT Finance 2026-09-26: impor ber-stok 1000 -> nilai stok Rp 234 miliar).
     """
     from django.utils import timezone
-    hari_ini = timezone.now().date()
+    hari_ini = timezone.localdate()
     dibuat = 0
 
     # Varian yang melacak stok sendiri.

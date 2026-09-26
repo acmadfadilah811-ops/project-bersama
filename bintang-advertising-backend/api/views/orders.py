@@ -1198,6 +1198,16 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         return Response(OrderSerializer(order, context={'request': request}).data, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['get'], url_path='rincian-stok')
+    def rincian_stok(self, request, pk=None):
+        """GET /api/orders/{id}/rincian-stok/ -- barang jadi & bahan terpakai order ini."""
+        from ..services.rincian_pengembalian import rincian_order
+        try:
+            order = Order.objects.get(pk=pk)
+        except Order.DoesNotExist:
+            return Response({'error': 'Pesanan tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(rincian_order(order))
+
     @action(detail=True, methods=['post'], url_path='minta-otp-retur')
     def minta_otp_retur(self, request, pk=None):
         """
@@ -1256,9 +1266,9 @@ class OrderViewSet(viewsets.ModelViewSet):
                 else:
                     tgl_pengembalian = tgl_param
             except ValueError:
-                tgl_pengembalian = timezone.now().date()
+                tgl_pengembalian = timezone.localdate()
         else:
-            tgl_pengembalian = timezone.now().date()
+            tgl_pengembalian = timezone.localdate()
 
         items_json = str(request.data.get('items_json') or '')
         tambahan_json = str(request.data.get('tambahan_json') or '')
@@ -1289,7 +1299,8 @@ class OrderViewSet(viewsets.ModelViewSet):
             catatan=catatan,
             items_json=items_json,
             tambahan_json=tambahan_json,
-            dibuat_oleh=request.user
+            dibuat_oleh=request.user,
+            barang_layak_jual=str(request.data.get('barang_layak_jual', 'true')).lower() not in ('0', 'false', 'tidak'),
         )
 
         # Refund dihitung dari items_json (proporsional per item) kalau

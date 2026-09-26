@@ -3,6 +3,7 @@
 import os
 from unittest import mock
 
+from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from .crm_order_models import OrderAsalCRM
@@ -126,7 +127,7 @@ class CrmOrderBridgeTest(APITestCase):
         a.save()
         Order.objects.filter(pk=c.pk).update(status_global='batal')
         Order.objects.filter(pk=lama.pk).update(waktu='2026-01-15T10:00:00+07:00')
-        hari_ini = a.waktu.date().isoformat()
+        hari_ini = timezone.localtime(a.waktu).date().isoformat()
         res = self.client.get(REKAP, {'mulai': '2026-09-01', 'selesai': hari_ini}, **H)
         self.assertEqual(res.status_code, 200, res.data)
         per = {r['crm_user_id']: r for r in res.data['hasil']}
@@ -177,7 +178,7 @@ class CrmOrderBridgeTest(APITestCase):
         Order.objects.filter(pk='ORD-SARI').update(total_harga=60000, dp_dibayar=60000, sisa_tagihan=0)
         POSSale.objects.create(nomor='POS-L-1', pelanggan_id='6285700001111', total=30000, status='paid')
         POSSale.objects.create(nomor='POS-L-2', total=5000, status='void')
-        hari_ini = crm.waktu.date()
+        hari_ini = timezone.localtime(crm.waktu).date()
         res = self.client.get(LAPORAN, {'mulai': '2026-09-01', 'selesai': hari_ini.isoformat()}, **H)
         self.assertEqual(res.status_code, 200, res.data)
         r = res.data['ringkasan']

@@ -88,9 +88,12 @@ def dokumen_sebelumnya(document):
 
 
 def qty_diterima_produk(purchase):
-    """{(product_id, variant_id): qty} dari Stok Masuk pembelian yang sudah diposting."""
-    from ..product_models import StockInDocumentItem
+    """{(product_id, variant_id): qty} yang benar-benar masuk stok dari pembelian ini.
 
-    rows = (StockInDocumentItem.objects.filter(document__purchase=purchase, document__status='selesai')
+    Dibaca dari mutasi stok 'masuk' (bukan baris Stok Masuk) karena jalur terima
+    lama (PurchaseViewSet.receive) hanya membuat mutasi tanpa baris dokumen."""
+    from ..product_models import ProductStockMovement
+
+    rows = (ProductStockMovement.objects.filter(stock_in_document__purchase=purchase, tipe='masuk')
             .values('product_id', 'variant_id').annotate(q=Sum('qty')))
     return {(r['product_id'], r['variant_id']): r['q'] or ZERO for r in rows}

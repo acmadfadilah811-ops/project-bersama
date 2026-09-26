@@ -369,8 +369,15 @@ class POSSaleViewSet(viewsets.ModelViewSet):
             except PosVoidOtpError as e:
                 return Response({'error': str(e)}, status=status.HTTP_403_FORBIDDEN)
 
-        sale = void_sale(sale_id=pk, user=request.user)
+        sale = void_sale(sale_id=pk, user=request.user,
+                         bahan_terpakai=str(request.data.get('bahan_terpakai', '')).lower() in ('1', 'true', 'ya'))
         return Response(self.get_serializer(sale).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='rincian-stok')
+    def rincian_stok(self, request, pk=None):
+        """GET /api/pos/sales/{id}/rincian-stok/ -- produk & bahan yang terdampak void."""
+        from .services.rincian_pengembalian import rincian_pos
+        return Response(rincian_pos(self.get_object()))
 
     @action(detail=True, methods=['post'], url_path='minta-otp-void')
     def minta_otp_void(self, request, pk=None):

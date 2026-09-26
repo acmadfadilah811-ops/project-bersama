@@ -29,7 +29,7 @@ class PengembalianOrderSerializer(serializers.ModelSerializer):
             'catatan', 'nominal_refund', 'items_json', 'tambahan_json',
             'dibuat_oleh', 'dibuat_oleh_nama',
             'dibuat_pada', 'diperbarui_pada', 'stok_dikembalikan_pada',
-            'stok_dikembalikan_oleh',
+            'stok_dikembalikan_oleh', 'barang_layak_jual',
         ]
         read_only_fields = [
             'id', 'nominal_refund', 'dibuat_pada', 'diperbarui_pada',
@@ -40,6 +40,13 @@ class PengembalianOrderSerializer(serializers.ModelSerializer):
         if not obj.dibuat_oleh:
             return None
         return obj.dibuat_oleh.first_name or obj.dibuat_oleh.username
+
+    def validate_barang_layak_jual(self, value):
+        # Kondisi barang menentukan stok saat retur dikonfirmasi; setelah itu
+        # tidak boleh diubah diam-diam (stok sudah/tidak dikembalikan).
+        if self.instance and self.instance.status == 'Dikonfirmasi' and value != self.instance.barang_layak_jual:
+            raise serializers.ValidationError('Retur sudah dikonfirmasi; kondisi barang tidak bisa diubah.')
+        return value
 
     def update(self, instance, validated_data):
         instance = super().update(instance, validated_data)

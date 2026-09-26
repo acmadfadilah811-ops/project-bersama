@@ -480,7 +480,7 @@ def _sold_qty_map(params):
     ('pos_harga_jual', 'POS - Harga Jual', 'money'), ('total', 'Total', 'money'),
 ])
 def rpt_qty_stok_tanggal(params):
-    as_of = params['end'] or params['start'] or timezone.now().date()
+    as_of = params['end'] or params['start'] or timezone.localdate()
     qty_map = _qty_as_of(as_of)
     rows = []
     t_qty = t_beli = t_ols = t_pos = 0.0
@@ -518,7 +518,7 @@ def rpt_qty_stok_tanggal(params):
 ])
 def rpt_qty_stok_syncron(params):
     """Hasil hitung fisik terakhir (Stok Opname) per produk sampai tanggal terpilih."""
-    as_of = params['end'] or params['start'] or timezone.now().date()
+    as_of = params['end'] or params['start'] or timezone.localdate()
     qs = (StockOpnameDocumentItem.objects
           .select_related('document', 'product', 'variant', 'product__kategori', 'product__brand')
           .filter(document__status='selesai', document__tanggal__lte=as_of)
@@ -642,7 +642,7 @@ def rpt_usia_stok(params):
     """Usia stok = jumlah hari sejak mutasi 'masuk' terakhir (aproksimasi —
     sistem tidak melacak batch/lapisan stok)."""
     sold = _sold_qty_map(params)
-    today = timezone.now().date()
+    today = timezone.localdate()
     last_in = {}
     for m in ProductStockMovement.objects.filter(tipe__in=MASUK_TIPE).only(
         'product_id', 'variant_id', 'tanggal', 'created_at'
@@ -1377,7 +1377,7 @@ def rpt_item_penjualan(params):
     komisi — supaya export memuat data utuh, bukan hanya sebagian kolom."""
     rows = []
     t_qty = t_diskon = t_total = t_modal = 0.0
-    for ln in sorted(_sale_lines(params), key=lambda x: (x['tanggal'] or timezone.now().date()), reverse=True):
+    for ln in sorted(_sale_lines(params), key=lambda x: (x['tanggal'] or timezone.localdate()), reverse=True):
         p, v = ln['product'], ln['variant']
         brand = p.brand if p and p.brand else None
         komisi = 0.0
@@ -2210,7 +2210,7 @@ def rpt_stok_kedaluwarsa(params):
 def rpt_pergerakan_fifo(params):
     """Mutasi stok dengan saldo berjalan, dilihat dari sisi lapisan FIFO."""
     rows = []
-    for m in sorted(_movements_in_range(params), key=lambda x: (_mv_date(x) or timezone.now().date(), x.id)):
+    for m in sorted(_movements_in_range(params), key=lambda x: (_mv_date(x) or timezone.localdate(), x.id)):
         nama = f"{m.product.nama} - {m.variant.nama_varian}" if m.variant else m.product.nama
         if params['search'] and params['search'].lower() not in nama.lower():
             continue

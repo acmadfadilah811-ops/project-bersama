@@ -222,7 +222,7 @@ class CashTransactionViewSet(viewsets.ModelViewSet):
         # dengan accounting/services/journal.py::create_journal_entry.
         obj = None
         for attempt in range(5):
-            nomor = _next_number(f"KAS{timezone.now().date().strftime('%y%m%d')}")
+            nomor = _next_number(f"KAS{timezone.localdate().strftime('%y%m%d')}")
             try:
                 with transaction.atomic():
                     obj = serializer.save(nomor=nomor, arah=tipe.tipe, staff=staff, shift=shift, dibuat_oleh=self.request.user)

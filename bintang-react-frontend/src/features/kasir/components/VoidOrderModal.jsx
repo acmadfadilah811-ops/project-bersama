@@ -1,16 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { Trash2, X } from 'lucide-react';
+import RincianStokPengembalian from './RincianStokPengembalian';
 
 export default function VoidOrderModal({
   isOpen,
   onClose,
   onConfirmVoid,
+  rincianUrl,
+  rincianMode,
 }) {
   const [alasan, setAlasan] = useState('');
+  const [bahanTerpakai, setBahanTerpakai] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setAlasan('');
+      setBahanTerpakai(false);
     }
   }, [isOpen]);
 
@@ -22,7 +27,7 @@ export default function VoidOrderModal({
       alert('Alasan pembatalan pesanan wajib diisi.');
       return;
     }
-    onConfirmVoid(alasan.trim());
+    onConfirmVoid(alasan.trim(), { bahan_terpakai: bahanTerpakai });
     onClose();
   };
 
@@ -66,6 +71,10 @@ export default function VoidOrderModal({
               Apakah alasan pembatalan atau refund pesanan ini?
             </span>
           </div>
+
+          {rincianUrl && (
+            <RincianStokPengembalian url={rincianUrl} mode={rincianMode} value={bahanTerpakai} onChange={setBahanTerpakai} />
+          )}
 
           {/* Action Button SS 2 */}
           <div className="pt-2">

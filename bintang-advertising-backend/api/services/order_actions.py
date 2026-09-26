@@ -51,6 +51,12 @@ def batalkan_order(order, actor, alasan=""):
     order.save()
 
     keterangan_log = f'Status pesanan diubah dari [{old_status}] menjadi [batal]'
+    # Keterangan stok (2026-09-26): bahan produksi yang sudah terpakai (mis. banner
+    # sudah dicetak) tidak dikembalikan; barang jadi yang dilacak dikembalikan.
+    from .rincian_pengembalian import rincian_order, teks
+    _rincian = rincian_order(order)
+    if _rincian['bahan']:
+        keterangan_log += f'. Bahan produksi tidak dikembalikan (sudah terpakai): {teks(_rincian["bahan"])}'
     if alasan:
         keterangan_log += f'. Alasan: {alasan}'
 

@@ -6,6 +6,7 @@ import { formatOrderReference } from './orderReference';
 import TambahPengembalianPesananModal from './return_order/TambahPengembalianPesananModal';
 import PengaturanTambahanModal from './return_order/PengaturanTambahanModal';
 import ReturnOrderItemsTable from './return_order/ReturnOrderItemsTable';
+import RincianStokPengembalian from '../../kasir/components/RincianStokPengembalian';
 
 export default function ReturnOrderDetail({ orderId, onBack, onSaved }) {
   const [order, setOrder] = useState(null);
@@ -34,6 +35,7 @@ export default function ReturnOrderDetail({ orderId, onBack, onSaved }) {
   const [statusOpen, setStatusOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [pengembalianDbId, setPengembalianDbId] = useState(null);
+  const [barangLayakJual, setBarangLayakJual] = useState(true);
 
   const fetchOrderDetail = useCallback(async () => {
     try {
@@ -45,6 +47,7 @@ export default function ReturnOrderDetail({ orderId, onBack, onSaved }) {
         setPengembalianDbId(data.pengembalian_aktif.id);
         setReturnDate(data.pengembalian_aktif.tanggal_pengembalian || '');
         setReturnStatus(data.pengembalian_aktif.status || 'Tunda');
+        setBarangLayakJual(data.pengembalian_aktif.barang_layak_jual !== false);
         setReturnCatatan(data.pengembalian_aktif.catatan || '');
         if (data.pengembalian_aktif.items_json) {
           try {
@@ -89,7 +92,8 @@ export default function ReturnOrderDetail({ orderId, onBack, onSaved }) {
     fetchOrderDetail();
   }, [fetchOrderDetail]);
 
-  const handleSaveReturnData = async (newItems, newTambahan, newStatus, newCatatan, newDate) => {
+  const handleSaveReturnData = async (newItems, newTambahan, newStatus, newCatatan, newDate, newLayak) => {
+    const layakToSave = newLayak !== undefined ? newLayak : barangLayakJual;
     const itemsToSave = newItems !== undefined ? newItems : returnItems;
     const tambahanToSave = newTambahan !== undefined ? newTambahan : tambahan;
     const statusToSave = newStatus !== undefined ? newStatus : returnStatus;
@@ -104,6 +108,7 @@ export default function ReturnOrderDetail({ orderId, onBack, onSaved }) {
           tanggal_pengembalian: dateToSave,
           items_json: JSON.stringify(itemsToSave),
           tambahan_json: JSON.stringify(tambahanToSave),
+          barang_layak_jual: layakToSave,
         });
       } else {
         // Call retur endpoint or patch order
@@ -112,6 +117,7 @@ export default function ReturnOrderDetail({ orderId, onBack, onSaved }) {
           tanggal_pengembalian: dateToSave,
           items_json: JSON.stringify(itemsToSave),
           tambahan_json: JSON.stringify(tambahanToSave),
+          barang_layak_jual: layakToSave,
         });
       }
       await fetchOrderDetail();
@@ -323,6 +329,24 @@ export default function ReturnOrderDetail({ orderId, onBack, onSaved }) {
             {returnCatatan || 'Tidak ada Catatan'}
           </div>
         </div>
+      </div>
+
+      {/* Kondisi barang & rincian stok retur (2026-09-26) */}
+      <div className="mb-4">
+        <RincianStokPengembalian
+          url={`/orders/${orderId}/rincian-stok/`}
+          mode="retur"
+          value={barangLayakJual}
+          onChange={(v) => {
+            if (returnStatus === 'Dikonfirmasi') {
+              alert('Retur sudah dikonfirmasi; kondisi barang tidak bisa diubah lagi.');
+              return;
+            }
+            setBarangLayakJual(v);
+            // Retur belum tersimpan: pilihan ikut terkirim saat retur disimpan.
+            if (pengembalianDbId) handleSaveReturnData(undefined, undefined, undefined, undefined, undefined, v);
+          }}
+        />
       </div>
 
       {/* Section Produk Pesanan Table (SS No 2) */}

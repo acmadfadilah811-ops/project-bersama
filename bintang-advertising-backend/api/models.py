@@ -561,6 +561,10 @@ class PengembalianOrder(models.Model):
     # Stok hanya boleh dikembalikan sekali, ketika status retur dikonfirmasi.
     # Penanda ini membuat PATCH ulang/idempotent tidak menggandakan stok.
     stok_dikembalikan_pada = models.DateTimeField(null=True, blank=True)
+    # Kondisi barang jadi yang diretur (2026-09-26): False = rusak / tidak bisa
+    # dijual lagi -> TIDAK dikembalikan ke stok. Bahan resep order tidak pernah
+    # dikembalikan saat retur (sudah terpakai produksi, mis. banner tercetak).
+    barang_layak_jual = models.BooleanField(default=True)
     stok_dikembalikan_oleh = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

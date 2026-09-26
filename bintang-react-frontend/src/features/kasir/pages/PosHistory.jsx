@@ -287,7 +287,7 @@ export default function PosHistory({ onToggleSidebar }) {
     }
   };
 
-  const handleConfirmVoid = async (alasan) => {
+  const handleConfirmVoid = async (alasan, opsi = {}) => {
     if (!selectedSale) return;
     setVoiding(true);
     try {
@@ -295,7 +295,7 @@ export default function PosHistory({ onToggleSidebar }) {
         await apiClient.post(`/orders/${selectedSale.id}/batalkan/`, { alasan });
         notifySuccess('Berhasil', `Pesanan ${selectedSale.nomor} berhasil dibatalkan.`);
       } else {
-        await apiClient.post(`/pos/sales/${selectedSale.id}/void/`, { alasan });
+        await apiClient.post(`/pos/sales/${selectedSale.id}/void/`, { alasan, bahan_terpakai: !!opsi.bahan_terpakai });
         notifySuccess('Berhasil', `Transaksi ${selectedSale.nomor} berhasil di-void / refund.`);
       }
       fetchSales();
@@ -955,6 +955,10 @@ export default function PosHistory({ onToggleSidebar }) {
           isOpen={showVoidModal}
           onClose={() => setShowVoidModal(false)}
           onConfirmVoid={handleConfirmVoid}
+          rincianUrl={selectedSale.tipe === 'order'
+            ? `/orders/${selectedSale.id}/rincian-stok/`
+            : `/pos/sales/${selectedSale.id}/rincian-stok/`}
+          rincianMode={selectedSale.tipe === 'order' ? 'batal' : 'void_pos'}
         />
       )}
 

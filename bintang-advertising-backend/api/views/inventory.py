@@ -222,9 +222,9 @@ class InventoryItemViewSet(viewsets.ModelViewSet):
         result = []
         for item in items:
             rows = by_item.get(item.id, [])
-            before = [h for h in rows if h.waktu.date() < start_date]
-            during = [h for h in rows if start_date <= h.waktu.date() <= end_date]
-            after = [h for h in rows if h.waktu.date() > end_date]
+            before = [h for h in rows if timezone.localtime(h.waktu).date() < start_date]
+            during = [h for h in rows if start_date <= timezone.localtime(h.waktu).date() <= end_date]
+            after = [h for h in rows if timezone.localtime(h.waktu).date() > end_date]
 
             if before:
                 initial_val = before[-1].stok_akhir

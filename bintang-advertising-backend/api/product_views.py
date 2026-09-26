@@ -640,7 +640,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         if not product.has_variant and product.qty_stok:
             catat_saldo_awal_stok(
                 product, None, product.qty_stok, product.harga_beli,
-                timezone.now().date(), self.request.user,
+                timezone.localdate(), self.request.user,
             )
 
     def perform_update(self, serializer):
@@ -675,7 +675,7 @@ class ProductViewSet(viewsets.ModelViewSet):
             changes.append(f"Mengubah harga jual dari Rp. {old_harga_jual:,.2f} menjadi Rp. {product.harga_jual_toko:,.2f}".replace(",", "."))
 
         if new_qty_stok is not None and old_qty_stok != new_qty_stok:
-            today = timezone.now().date()
+            today = timezone.localdate()
             nomor = _next_document_number(StockOpnameDocument, f"OP{today.strftime('%y%m%d')}")
             doc = StockOpnameDocument.objects.create(
                 nomor=nomor, tanggal=today,
@@ -1095,7 +1095,7 @@ class ProductViewSet(viewsets.ModelViewSet):
                 if is_new and not has_var:
                     catat_saldo_awal_stok(
                         product_obj, None, product_obj.qty_stok, product_obj.harga_beli,
-                        timezone.now().date(), request.user,
+                        timezone.localdate(), request.user,
                     )
 
                 if is_new:
@@ -1151,7 +1151,7 @@ class ProductViewSet(viewsets.ModelViewSet):
                         if variant_is_new:
                             catat_saldo_awal_stok(
                                 product_obj, variant_obj, variant_obj.qty_stok, variant_obj.harga_beli,
-                                timezone.now().date(), request.user,
+                                timezone.localdate(), request.user,
                             )
 
         return Response({
@@ -1348,7 +1348,7 @@ class ProductViewSet(viewsets.ModelViewSet):
             )
 
             # Lapisan biaya FIFO.
-            tgl_layer = tanggal or timezone.now().date()
+            tgl_layer = tanggal or timezone.localdate()
             if tipe == 'masuk':
                 stock_fifo.create_layer(
                     product, variant, qty,
@@ -1522,7 +1522,7 @@ class ProductViewSet(viewsets.ModelViewSet):
 
             # Selaraskan lapisan dengan hasil hitung fisik.
             stock_fifo.recalibrate_layers(
-                product, variant, qty_fisik, tanggal or timezone.now().date(),
+                product, variant, qty_fisik, tanggal or timezone.localdate(),
                 sumber_nomor=f'OPN-{movement.id}',
             )
 
@@ -1550,7 +1550,7 @@ class ProductVariantViewSet(viewsets.ModelViewSet):
         if variant.qty_stok:
             catat_saldo_awal_stok(
                 variant.product, variant, variant.qty_stok, variant.harga_beli,
-                timezone.now().date(), self.request.user,
+                timezone.localdate(), self.request.user,
             )
 
     def perform_update(self, serializer):
@@ -1565,7 +1565,7 @@ class ProductVariantViewSet(viewsets.ModelViewSet):
         variant = serializer.save()
 
         if new_qty_stok is not None and old_qty_stok != new_qty_stok:
-            today = timezone.now().date()
+            today = timezone.localdate()
             nomor = _next_document_number(StockOpnameDocument, f"OP{today.strftime('%y%m%d')}")
             doc = StockOpnameDocument.objects.create(
                 nomor=nomor, tanggal=today,
@@ -1901,7 +1901,7 @@ class StockInDocumentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsOwnerManagerAdminFinanceOrReadOnly]
 
     def perform_create(self, serializer):
-        today = timezone.now().date()
+        today = timezone.localdate()
         nomor = _next_document_number(StockInDocument, f"IN{today.strftime('%y%m%d')}")
         serializer.save(nomor=nomor, dibuat_oleh=self.request.user)
 
@@ -2186,7 +2186,7 @@ class PurchaseViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
-        today = timezone.now().date()
+        today = timezone.localdate()
         nomor = _next_document_number(Purchase, f"PB{today.strftime('%y%m%d')}")
         supplier_ref = self._resolve_supplier(serializer.validated_data.get('supplier'))
         serializer.save(nomor=nomor, dibuat_oleh=self.request.user, supplier_ref=supplier_ref)
@@ -2473,7 +2473,7 @@ class PurchaseViewSet(viewsets.ModelViewSet):
         lanjut_tambah_stok = purchase.lanjut_tambah_stok if lanjut_raw is None else _parse_bool_flag(lanjut_raw)
 
         with transaction.atomic():
-            purchase.tanggal_diterima = request.data.get('tanggal_diterima') or timezone.now().date()
+            purchase.tanggal_diterima = request.data.get('tanggal_diterima') or timezone.localdate()
             purchase.no_terima = (request.data.get('no_terima') or '').strip()
             purchase.lanjut_tambah_stok = lanjut_tambah_stok
             if lanjut_tambah_stok:
@@ -2510,7 +2510,7 @@ class PurchaseViewSet(viewsets.ModelViewSet):
                 ),
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        today = timezone.now().date()
+        today = timezone.localdate()
         with transaction.atomic():
             retur = Purchase.objects.create(
                 nomor=_next_document_number(Purchase, f"RB{today.strftime('%y%m%d')}"),
@@ -2591,7 +2591,7 @@ class PurchaseViewSet(viewsets.ModelViewSet):
     def _apply_purchase_stock(self, purchase, request, direction):
         """direction='in' menambah stok (buat StockInDocument), 'out' mengurangi
         stok (buat StockOutDocument). Return Response error, atau None bila sukses."""
-        today = timezone.now().date()
+        today = timezone.localdate()
         tanggal = purchase.tanggal_diterima or purchase.tanggal or today
 
         if direction == 'in':
@@ -2673,7 +2673,7 @@ class StockOutDocumentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
     def perform_create(self, serializer):
-        today = timezone.now().date()
+        today = timezone.localdate()
         nomor = _next_document_number(StockOutDocument, f"OUT{today.strftime('%y%m%d')}")
         serializer.save(nomor=nomor, dibuat_oleh=self.request.user)
 
@@ -2903,7 +2903,7 @@ class StockProductionDocumentViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
-        today = timezone.now().date()
+        today = timezone.localdate()
         nomor = _next_document_number(StockProductionDocument, f"PR{today.strftime('%y%m%d')}")
         serializer.save(nomor=nomor, dibuat_oleh=self.request.user)
 
@@ -3102,7 +3102,7 @@ class StockOpnameDocumentViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
-        today = timezone.now().date()
+        today = timezone.localdate()
         nomor = _next_document_number(StockOpnameDocument, f"OP{today.strftime('%y%m%d')}")
         document = serializer.save(nomor=nomor, dibuat_oleh=self.request.user)
         catat_opname(document, self.request.user, 'CREATED', f"Dokumen opname {nomor} dibuat oleh {_nama_user(self.request.user)}.")

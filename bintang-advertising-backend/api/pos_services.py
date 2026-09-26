@@ -65,6 +65,22 @@ def _potong_bahan_baku_bom(product, variant, qty_base, sale, user):
             catatan_stok=f"Pemakaian bahan resep | {marker} | {bom.nama}",
         )
 
+def _catat_bahan_tidak_dikembalikan(sale, user):
+    """Void POS dengan produk yang sudah dicetak/dibuat: bahan resep TIDAK
+    dikembalikan, tetapi jejaknya dicatat di riwayat bahan (delta 0)."""
+    from .models import InventoryItem, RestockHistory
+
+    for riwayat in RestockHistory.objects.filter(
+        keterangan__startswith=f"Pemakaian BoM otomatis | POS {sale.nomor} - Produk #", delta__lt=0,
+    ).select_related('item'):
+        item = InventoryItem.objects.get(pk=riwayat.item_id)
+        RestockHistory.objects.create(
+            item=item, user=user, delta=0, stok_awal=item.stok, stok_akhir=item.stok,
+            keterangan=(f"Pembatalan POS (Void) {sale.nomor} | {-riwayat.delta:g} {item.satuan} "
+                        "TIDAK dikembalikan: produk sudah dicetak/dibuat, bahan terpakai"),
+        )
+
+
 def _pulihkan_bahan_baku_bom(sale, user):
     """Kembalikan bahan resep yang terpakai saat transaksi POS ini dibuat (dipanggil
     dari void_sale, 2026-09-24): stok bahan (InventoryItem) + stok Product sumbernya
@@ -794,7 +810,7 @@ def stok_kritis_warnings(pairs):
     return warnings
 
 
-def void_sale(*, sale_id, user):
+def void_sale(*, sale_id, user, bahan_terpakai=False):
     with transaction.atomic():
         sale = POSSale.objects.select_for_update().prefetch_related('items').get(pk=sale_id)
         if sale.status == 'void':
@@ -899,7 +915,10 @@ def void_sale(*, sale_id, user):
                         pos_sale=sale, catatan=f"Pembatalan POS (Void) Addon '{addon_link.nama_snapshot}' {sale.nomor}",
                         tanggal=timezone.localdate(),
                     )
-            _pulihkan_bahan_baku_bom(sale, user)
+            if bahan_terpakai:
+                _catat_bahan_tidak_dikembalikan(sale, user)
+            else:
+                _pulihkan_bahan_baku_bom(sale, user)
         # Lepas No. Seri yang tadinya ditandai terjual di transaksi ini,
         # supaya bisa dipilih lagi di transaksi lain — independen dari
         # setelan `pos_mengurangi_stok()` (No. Seri bukan soal qty stok).
@@ -940,7 +959,9 @@ def void_sale(*, sale_id, user):
 
         from accounting.services.pos_posting import post_pos_bahan_reversal, post_pos_void_journal
         post_pos_void_journal(sale, actor=user)
-        post_pos_bahan_reversal(sale, actor=user)
+        # Bahan yang sudah terpakai (produk sudah dicetak/dibuat) tetap jadi HPP.
+        if not bahan_terpakai:
+            post_pos_bahan_reversal(sale, actor=user)
 
         return sale
 

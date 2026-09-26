@@ -16,8 +16,14 @@ def _stock_items(retur):
 
 
 def restore_stock_for_confirmed_return(*, retur, actor):
-    """Kembalikan stok seluruh item inventori untuk satu retur yang disetujui."""
+    """Kembalikan stok seluruh item inventori untuk satu retur yang disetujui.
+
+    Barang yang ditandai tidak layak jual (rusak) tidak dikembalikan ke stok;
+    keputusan & rincian dicatat di log aktivitas order."""
     if retur.stok_dikembalikan_pada:
+        return
+    _catat_keterangan_retur(retur, actor)
+    if not retur.barang_layak_jual:
         return
 
     for item in _stock_items(retur):
@@ -85,3 +91,16 @@ def reverse_stock_for_unconfirmed_return(*, retur, actor):
     retur.stok_dikembalikan_pada = None
     retur.stok_dikembalikan_oleh = None
     retur.save(update_fields=['stok_dikembalikan_pada', 'stok_dikembalikan_oleh', 'diperbarui_pada'])
+
+
+def _catat_keterangan_retur(retur, actor):
+    from ..models import OrderActivityLog
+    from .rincian_pengembalian import rincian_order, teks
+
+    r = rincian_order(retur.order)
+    produk = (f"dikembalikan ke stok: {teks(r['produk'])}" if retur.barang_layak_jual
+              else f"TIDAK dikembalikan ke stok (rusak/tidak layak jual): {teks(r['produk'])}")
+    ket = f"Retur #{retur.id} dikonfirmasi. Barang jadi {produk}."
+    if r['bahan']:
+        ket += f" Bahan produksi tidak dikembalikan (sudah terpakai): {teks(r['bahan'])}."
+    OrderActivityLog.objects.create(order=retur.order, user=actor, tindakan='RETUR_STOK', keterangan=ket[:2000])
