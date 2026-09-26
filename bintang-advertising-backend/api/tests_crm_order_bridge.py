@@ -124,3 +124,61 @@ class PelangganNomorTest(APITestCase):
         buat_order_dari_items('6281299998888', 'Ani', 'Ani', [{'jenis_produk': 'Banner', 'qty': 1}])
         self.assertEqual(Customer.objects.filter(handphone__endswith='299998888').count(), 1)
         self.assertEqual(Contact.objects.get(nomor_wa='6281299998888').customer_id, lama.id)
+
+
+class OrderLunasKeCrmTest(APITestCase):
+    """Order asal CRM lunas -> CRM diminta menandai Opportunity Closed Won."""
+
+    def setUp(self):
+        env = mock.patch.dict(os.environ, {'CRM_BRIDGE_API_KEY': KUNCI, 'CRM_BRIDGE_URL': 'http://crm.uji/api/bridge/bintang-sale/'})
+        env.start()
+        self.addCleanup(env.stop)
+        TahapProses.objects.create(nama='Cetak', divisi=Divisi.objects.create(nama='Produksi CRM'), urutan=1)
+        banner = Product.objects.create(nama='Banner Flexi 280gr', harga_beli=10000, harga_jual_toko=25000)
+        res = self.client.post(ORDER, {
+            'kunci': 'opp-7-1', 'crm_user_id': 4, 'crm_opportunity_id': 7,
+            'pelanggan': {'nama': 'Budi', 'nomor_hp': '081234567890'},
+            'items': [{'product_id': banner.id, 'qty': 2}],
+        }, format='json', **H)
+        self.order = Order.objects.get(pk=res.data['id'])
+
+    def _bayar(self, jumlah):
+        self.order.refresh_from_db()
+        self.order.dp_dibayar = jumlah
+        with self.captureOnCommitCallbacks(execute=True):
+            self.order.save()
+
+    @mock.patch('api.services.crm_order.requests.post')
+    def test_lunas_dikirim_sekali(self, post):
+        post.return_value = mock.Mock(status_code=200)
+        self._bayar(10000)
+        post.assert_not_called()
+        self._bayar(50000)
+        post.assert_called_once()
+        self.assertEqual(post.call_args.args[0], 'http://crm.uji/api/bridge/bintang-order-lunas/')
+        self.assertEqual(post.call_args.kwargs['json'],
+                         {'crm_opportunity_id': 7, 'order_id': self.order.id, 'total_harga': 50000})
+        self.assertEqual(post.call_args.kwargs['headers']['X-Api-Key'], KUNCI)
+        self.assertIsNotNone(OrderAsalCRM.objects.get(order=self.order).crm_won_terkirim)
+        self._bayar(50000)
+        post.assert_called_once()
+
+    @mock.patch('api.services.crm_order.requests.post')
+    def test_crm_gagal_dicoba_lagi_saat_simpan_berikutnya(self, post):
+        post.return_value = mock.Mock(status_code=502)
+        self._bayar(50000)
+        self.assertIsNone(OrderAsalCRM.objects.get(order=self.order).crm_won_terkirim)
+        post.return_value = mock.Mock(status_code=200)
+        self._bayar(50000)
+        self.assertEqual(post.call_count, 2)
+        self.assertIsNotNone(OrderAsalCRM.objects.get(order=self.order).crm_won_terkirim)
+
+    @mock.patch('api.services.crm_order.requests.post')
+    def test_order_bukan_crm_atau_batal_tidak_dikirim(self, post):
+        lain = Order.objects.create(id='ORD-LAIN', nomor_wa='6281', nama='Lain', status_global='proses')
+        lain.dp_dibayar = lain.total_harga
+        with self.captureOnCommitCallbacks(execute=True):
+            lain.save()
+        Order.objects.filter(pk=self.order.pk).update(status_global='batal')
+        self._bayar(50000)
+        post.assert_not_called()

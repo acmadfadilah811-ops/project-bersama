@@ -11,11 +11,15 @@ Keputusan user:
   dengan bot WA (order_actions.buat_order_dari_items).
 """
 
+import logging
+import os
 import re
 from decimal import Decimal
 
+import requests
 from django.db import transaction
 from django.db.models import Q
+from django.utils import timezone
 
 from ..crm_order_models import OrderAsalCRM
 from ..models import Contact, Order
@@ -25,7 +29,10 @@ from .pelanggan_nomor import dapatkan_atau_buat_customer
 from .pos_receipt_whatsapp import normalisasi_nomor_whatsapp
 from .product_pricing import HargaProdukError, hitung_harga
 
+logger = logging.getLogger(__name__)
+
 MAKS_ITEM = 50
+TIMEOUT_LUNAS = 5
 MAKS_QTY = 100000
 
 
@@ -183,3 +190,48 @@ def status_order(order_ids=None, crm_opportunity_id=None, crm_user_id=None):
         {**bentuk_order(a.order), 'sales_nama': a.sales_nama, 'crm_opportunity_id': a.crm_opportunity_id}
         for a in qs[:100]
     ]
+
+
+def _url_order_lunas():
+    """Endpoint CRM untuk order lunas. Default diturunkan dari CRM_BRIDGE_URL
+    (endpoint penjualan POS) supaya cukup satu konfigurasi host."""
+    from .crm_bridge import DEFAULT_CRM_BRIDGE_URL
+
+    url = os.getenv('CRM_BRIDGE_ORDER_LUNAS_URL')
+    if url:
+        return url
+    dasar = os.getenv('CRM_BRIDGE_URL', DEFAULT_CRM_BRIDGE_URL)
+    return dasar.rstrip('/').rsplit('/', 1)[0] + '/bintang-order-lunas/'
+
+
+def kirim_order_lunas_ke_crm(order_id):
+    """Minta CRM menandai Opportunity asal order ini Closed Won. Aman dipanggil
+    berulang: order yang sudah dikonfirmasi CRM dilewati, CRM juga idempoten.
+    Kegagalan ditelan (log saja) agar pembayaran di kasir tidak terganggu."""
+    asal = (OrderAsalCRM.objects.select_related('order')
+            .filter(order_id=order_id, crm_won_terkirim__isnull=True, crm_opportunity_id__isnull=False)
+            .first())
+    if asal is None:
+        return
+    order = asal.order
+    if order.status_global == 'batal' or not order.total_harga or order.sisa_tagihan:
+        return
+    kunci = os.getenv('CRM_BRIDGE_API_KEY')
+    if not kunci:
+        logger.warning('CRM_BRIDGE_API_KEY belum dikonfigurasi -- order lunas %s tidak dikirim ke CRM.', order_id)
+        return
+    try:
+        r = requests.post(
+            _url_order_lunas(),
+            json={'crm_opportunity_id': asal.crm_opportunity_id, 'order_id': order.id,
+                  'total_harga': int(order.total_harga)},
+            headers={'X-Api-Key': kunci, 'X-Forwarded-Proto': 'https'},
+            timeout=TIMEOUT_LUNAS,
+        )
+    except requests.RequestException as exc:
+        logger.warning('Kirim order lunas %s ke CRM gagal: %s', order_id, exc)
+        return
+    if r.status_code != 200:
+        logger.warning('CRM menjawab %s untuk order lunas %s.', r.status_code, order_id)
+        return
+    OrderAsalCRM.objects.filter(pk=asal.pk).update(crm_won_terkirim=timezone.now())
