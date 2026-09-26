@@ -107,6 +107,11 @@ class CrmOrderBridgeTest(APITestCase):
         by_id = self.client.get(STATUS, {'order_ids': f"{res.data['id']},ORD-LAIN"}, **H).data['hasil']
         self.assertEqual([o['id'] for o in by_id], [res.data['id']])
         self.assertEqual(self.client.get(STATUS, **H).status_code, 400)
+        by_user = self.client.get(STATUS, {'crm_user_id': 4}, **H).data['hasil']
+        self.assertEqual([o['sales_nama'] for o in by_user], ['Tim Sales'])
+        self.assertEqual(self.client.get(STATUS, {'crm_user_id': 5}, **H).data['hasil'], [])
+        semua = self.client.get(STATUS, {'semua': '1'}, **H).data['hasil']
+        self.assertEqual([o['id'] for o in semua], [res.data['id']])
 
     def test_jalur_bot_wa_tidak_berubah(self):
         from .services.order_actions import buat_order_dari_items

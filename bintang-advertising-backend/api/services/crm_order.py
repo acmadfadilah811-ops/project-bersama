@@ -175,8 +175,9 @@ def bentuk_order(order):
     }
 
 
-def status_order(order_ids=None, crm_opportunity_id=None, crm_user_id=None):
-    """Status order asal CRM saja -- CRM tidak bisa membaca order kanal lain."""
+def status_order(order_ids=None, crm_opportunity_id=None, crm_user_id=None, semua=False):
+    """Status order asal CRM saja -- CRM tidak bisa membaca order kanal lain.
+    semua=True: seluruh order asal CRM (halaman SPV), 100 terbaru."""
     qs = OrderAsalCRM.objects.select_related('order').prefetch_related('order__items')
     if order_ids:
         qs = qs.filter(order_id__in=order_ids[:100])
@@ -184,7 +185,7 @@ def status_order(order_ids=None, crm_opportunity_id=None, crm_user_id=None):
         qs = qs.filter(crm_opportunity_id=crm_opportunity_id)
     elif crm_user_id:
         qs = qs.filter(crm_user_id=crm_user_id)
-    else:
+    elif not semua:
         return []
     return [
         {**bentuk_order(a.order), 'sales_nama': a.sales_nama, 'crm_opportunity_id': a.crm_opportunity_id}

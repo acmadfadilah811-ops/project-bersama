@@ -80,6 +80,7 @@ class CrmOrderStatusView(_Dasar):
         ids = [x.strip() for x in (q.get('order_ids') or '').split(',') if x.strip()]
         opp = svc._int_atau_none(q.get('crm_opportunity_id'))
         user = svc._int_atau_none(q.get('crm_user_id'))
-        if not (ids or opp or user):
-            return Response({'error': 'Isi order_ids, crm_opportunity_id, atau crm_user_id.'}, status=400)
-        return Response({'hasil': svc.status_order(ids, opp, user)})
+        semua = q.get('semua') == '1'
+        if not (ids or opp or user or semua):
+            return Response({'error': 'Isi order_ids, crm_opportunity_id, crm_user_id, atau semua=1.'}, status=400)
+        return Response({'hasil': svc.status_order(ids, opp, user, semua)})
