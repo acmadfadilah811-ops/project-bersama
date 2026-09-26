@@ -193,13 +193,18 @@ def sync_opening_layers():
     produk/varian yang punya stok tapi belum punya lapisan sama sekali.
 
     Idempoten — dijalankan berulang tidak menggandakan lapisan.
+
+    Produk/varian dengan lacak_inventori=False (jasa, paket) DILEWATI: stoknya
+    tidak dikonsumsi saat terjual, jadi lapisan untuknya tidak pernah habis dan
+    menggelembungkan nilai Persediaan yang dicocokkan saat Tutup Buku (temuan
+    UAT Finance 2026-09-26: impor ber-stok 1000 -> nilai stok Rp 234 miliar).
     """
     from django.utils import timezone
     hari_ini = timezone.now().date()
     dibuat = 0
 
     # Varian yang melacak stok sendiri.
-    for v in ProductVariant.objects.select_related('product').all():
+    for v in ProductVariant.objects.select_related('product').filter(lacak_inventori=True):
         if _dec(v.qty_stok) <= 0:
             continue
         if StockLayer.objects.filter(product=v.product, variant=v).exists():
@@ -209,7 +214,7 @@ def sync_opening_layers():
             dibuat += 1
 
     # Produk tanpa varian.
-    for p in Product.objects.all():
+    for p in Product.objects.filter(lacak_inventori=True):
         if p.variants.exists():
             continue
         if _dec(p.qty_stok) <= 0:
