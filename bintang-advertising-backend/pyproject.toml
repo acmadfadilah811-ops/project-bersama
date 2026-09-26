@@ -26,3 +26,8 @@ dependencies = [
     "requests>=2.31.0",
     "reportlab>=4.2.0",
 ]
+
+[dependency-groups]
+dev = [
+    "tblib>=3.2.2",
+]
