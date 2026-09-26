@@ -4,9 +4,14 @@ import { Bell, CheckCheck } from 'lucide-react';
 import apiClient from '../api/apiClient';
 import { useDynamicIsland } from '../context/DynamicIslandContext';
 
-// Notifikasi keuangan dari HR (gaji siap diposting, reimbursement disetujui)
-// untuk Owner, Manager, dan SPV Finance. Data: /accounting/notifikasi/.
-const PERAN = ['owner', 'manager', 'spv_finance'];
+// Lonceng notifikasi gabungan:
+// - keuangan dari HR (gaji, reimbursement): Owner, Manager, SPV Finance -> /accounting/notifikasi/
+// - stok minimum produk & bahan baku (2026-09-26, UAT INV-06): peran yang mengurus
+//   inventori/pengadaan -> /notifikasi-stok/
+const SUMBER = {
+  keuangan: { url: '/accounting/notifikasi/', peran: ['owner', 'manager', 'spv_finance'] },
+  stok: { url: '/notifikasi-stok/', peran: ['owner', 'manager', 'admin', 'spv_finance', 'admin_finance'] },
+};
 const INTERVAL_MS = 60000;
 
 function waktuRelatif(iso) {
@@ -24,24 +29,39 @@ export default function NotifikasiKeuanganBell({ role }) {
   const [data, setData] = useState({ belum_dibaca: 0, hasil: [] });
   const sudahDilihat = useRef(null);
   const wadah = useRef(null);
-  const boleh = PERAN.includes((role || '').toLowerCase());
+  const peran = (role || '').toLowerCase();
+  const sumberAktif = Object.keys(SUMBER).filter((k) => SUMBER[k].peran.includes(peran));
+  const boleh = sumberAktif.length > 0;
+  const kunciSumber = sumberAktif.join(',');
 
   const muat = useCallback(async () => {
     try {
-      const res = await apiClient.get('/accounting/notifikasi/');
-      const baru = res.data || { belum_dibaca: 0, hasil: [] };
-      const idBelum = (baru.hasil || []).filter((n) => !n.dibaca).map((n) => n.id);
+      const daftar = kunciSumber ? kunciSumber.split(',') : [];
+      const hasilPerSumber = await Promise.all(daftar.map(async (sumber) => {
+        try {
+          const res = await apiClient.get(SUMBER[sumber].url);
+          const d = res.data || { belum_dibaca: 0, hasil: [] };
+          return { belum: d.belum_dibaca || 0, hasil: (d.hasil || []).map((n) => ({ ...n, sumber, kunci: `${sumber}-${n.id}` })) };
+        } catch {
+          return { belum: 0, hasil: [] };
+        }
+      }));
+      const baru = {
+        belum_dibaca: hasilPerSumber.reduce((a, x) => a + x.belum, 0),
+        hasil: hasilPerSumber.flatMap((x) => x.hasil).sort((a, b) => new Date(b.dibuat) - new Date(a.dibuat)).slice(0, 40),
+      };
+      const idBelum = (baru.hasil || []).filter((n) => !n.dibaca).map((n) => n.kunci);
       // Pop-up hanya untuk notifikasi yang muncul SETELAH halaman dibuka.
       if (sudahDilihat.current && triggerNotification) {
-        const muncul = (baru.hasil || []).find((n) => !n.dibaca && !sudahDilihat.current.has(n.id));
+        const muncul = (baru.hasil || []).find((n) => !n.dibaca && !sudahDilihat.current.has(n.kunci));
         if (muncul) triggerNotification({ type: 'announcement', title: muncul.judul, message: muncul.pesan });
       }
-      sudahDilihat.current = new Set([...(sudahDilihat.current || []), ...idBelum, ...(baru.hasil || []).map((n) => n.id)]);
+      sudahDilihat.current = new Set([...(sudahDilihat.current || []), ...idBelum, ...(baru.hasil || []).map((n) => n.kunci)]);
       setData(baru);
     } catch {
       // diam: lonceng tidak boleh mengganggu halaman bila API sedang gagal
     }
-  }, [triggerNotification]);
+  }, [triggerNotification, kunciSumber]);
 
   useEffect(() => {
     if (!boleh) return undefined;
@@ -59,9 +79,10 @@ export default function NotifikasiKeuanganBell({ role }) {
 
   if (!boleh) return null;
 
-  const tandai = async (body) => {
+  const tandai = async (sumber, body) => {
     try {
-      await apiClient.post('/accounting/notifikasi/baca/', body);
+      const tujuan = sumber ? [sumber] : sumberAktif;
+      await Promise.all(tujuan.map((k) => apiClient.post(`${SUMBER[k].url}baca/`, body)));
       await muat();
     } catch {
       /* abaikan */
@@ -69,7 +90,7 @@ export default function NotifikasiKeuanganBell({ role }) {
   };
 
   const bukaItem = async (n) => {
-    if (!n.dibaca) await tandai({ ids: [n.id] });
+    if (!n.dibaca) await tandai(n.sumber, { ids: [n.id] });
     setBuka(false);
     if (n.tautan) navigate(n.tautan);
   };
@@ -80,8 +101,8 @@ export default function NotifikasiKeuanganBell({ role }) {
         type="button"
         onClick={() => setBuka((v) => !v)}
         className="relative p-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-        title="Notifikasi keuangan"
-        aria-label="Notifikasi keuangan"
+        title="Notifikasi"
+        aria-label="Notifikasi"
       >
         <Bell size={18} />
         {data.belum_dibaca > 0 && (
@@ -93,9 +114,9 @@ export default function NotifikasiKeuanganBell({ role }) {
       {buka && (
         <div className="absolute right-0 mt-2 w-80 max-w-[90vw] bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-            <span className="text-sm font-semibold text-slate-800">Notifikasi Keuangan</span>
+            <span className="text-sm font-semibold text-slate-800">Notifikasi</span>
             {data.belum_dibaca > 0 && (
-              <button type="button" onClick={() => tandai({ semua: true })} className="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1">
+              <button type="button" onClick={() => tandai(null, { semua: true })} className="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1">
                 <CheckCheck size={14} /> Tandai semua dibaca
               </button>
             )}
@@ -107,7 +128,7 @@ export default function NotifikasiKeuanganBell({ role }) {
               data.hasil.map((n) => (
                 <button
                   type="button"
-                  key={n.id}
+                  key={n.kunci}
                   onClick={() => bukaItem(n)}
                   className={`w-full text-left px-4 py-3 border-b border-slate-100 hover:bg-slate-50 ${n.dibaca ? '' : 'bg-slate-50'}`}
                 >

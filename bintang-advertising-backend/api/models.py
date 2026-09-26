@@ -1480,3 +1480,6 @@ from .requisition_models import *
 
 # Order yang dibuat Sales dari CRM (jembatan CRM -> Bintang, 2026-09-26).
 from .crm_order_models import *
+
+# Notifikasi stok minimum (2026-09-26, UAT INV-06).
+from .notifikasi_stok_models import *
