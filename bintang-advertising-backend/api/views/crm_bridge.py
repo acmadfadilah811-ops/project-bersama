@@ -8,6 +8,7 @@ fail-closed bila belum dikonfigurasi. Aturan bisnis: services/crm_order.py.
 - POST /api/bridge/crm/order/          buat order draft dari CRM (idempoten per `kunci`)
 - GET  /api/bridge/crm/order-status/   ?order_ids=a,b | ?crm_opportunity_id= | ?crm_user_id= | ?semua=1
 - GET  /api/bridge/crm/riwayat-pelanggan/?nomor=  semua transaksi Bintang satu pelanggan
+- GET  /api/bridge/crm/laporan-penjualan/?mulai=&selesai=  omzet per kanal/bulan + pertumbuhan pelanggan
 - GET  /api/bridge/crm/rekap-sales/    ?mulai=&selesai=[&crm_user_ids=1,2]  realisasi target per Sales
 """
 
@@ -22,6 +23,7 @@ from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 
 from ..services import crm_order as svc
+from ..services.crm_laporan import laporan_penjualan
 from ..services.crm_riwayat import riwayat_pelanggan
 
 logger = logging.getLogger(__name__)
@@ -103,3 +105,11 @@ class CrmRiwayatPelangganView(_Dasar):
         if self._auth_error:
             return self._auth_error
         return Response(riwayat_pelanggan(request.query_params.get('nomor')))
+
+
+class CrmLaporanPenjualanView(_Dasar):
+    def get(self, request):
+        if self._auth_error:
+            return self._auth_error
+        q = request.query_params
+        return Response(laporan_penjualan(q.get('mulai'), q.get('selesai')))

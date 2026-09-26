@@ -17,6 +17,7 @@ ORDER = '/api/bridge/crm/order/'
 STATUS = '/api/bridge/crm/order-status/'
 REKAP = '/api/bridge/crm/rekap-sales/'
 RIWAYAT = '/api/bridge/crm/riwayat-pelanggan/'
+LAPORAN = '/api/bridge/crm/laporan-penjualan/'
 
 
 @mock.patch.dict(os.environ, {'CRM_BRIDGE_API_KEY': KUNCI})
@@ -160,6 +161,36 @@ class CrmOrderBridgeTest(APITestCase):
         self.assertTrue(wa['batal'])
         self.assertEqual(self.client.get(RIWAYAT, {'nomor': '12'}, **H).status_code, 400)
         self.assertEqual(self.client.get(RIWAYAT, {'nomor': '081234567890'}).status_code, 401)
+
+    def test_laporan_penjualan_sama_dengan_dashboard_eksekutif(self):
+        from datetime import date
+
+        from . import executive_dashboard
+        from .pos_models import POSSale
+
+        crm = Order.objects.get(pk=self._order().data['id'])          # pelanggan baru, belum dibayar
+        Order.objects.create(id='ORD-WA-B', nomor_wa='6281234567890', nama='Budi', status_global='batal', sumber='wa')
+        # Order.save() menghitung ulang total dari item; order uji tanpa item diisi lewat update().
+        Order.objects.create(id='ORD-LAMA', nomor_wa='085700001111', nama='Sari', status_global='selesai', sumber='wa')
+        Order.objects.filter(pk='ORD-LAMA').update(waktu='2026-01-10T10:00:00+07:00', total_harga=40000, dp_dibayar=40000)
+        Order.objects.create(id='ORD-SARI', nomor_wa='6285700001111', nama='Sari', status_global='proses', sumber='wa')
+        Order.objects.filter(pk='ORD-SARI').update(total_harga=60000, dp_dibayar=60000, sisa_tagihan=0)
+        POSSale.objects.create(nomor='POS-L-1', pelanggan_id='6285700001111', total=30000, status='paid')
+        POSSale.objects.create(nomor='POS-L-2', total=5000, status='void')
+        hari_ini = crm.waktu.date()
+        res = self.client.get(LAPORAN, {'mulai': '2026-09-01', 'selesai': hari_ini.isoformat()}, **H)
+        self.assertEqual(res.status_code, 200, res.data)
+        r = res.data['ringkasan']
+        self.assertEqual(r['omzet'], crm.total_harga + 60000 + 30000)
+        self.assertEqual(r['omzet'], int(executive_dashboard._pendapatan(date(2026, 9, 1), hari_ini)))
+        self.assertEqual((r['dibayar'], r['belum_dibayar']), (90000, crm.total_harga))
+        self.assertEqual((r['pelanggan_aktif'], r['pelanggan_baru'], r['pelanggan_kembali']), (2, 1, 1))
+        per_kanal = {k['kanal']: k for k in res.data['per_kanal']}
+        self.assertEqual(per_kanal['CRM / Sales']['transaksi'], 1)
+        self.assertEqual(per_kanal['Kasir (POS)']['omzet'], 30000)
+        self.assertEqual(sum(b['pelanggan_baru'] for b in res.data['per_bulan']), 1)
+        self.assertEqual(self.client.get(LAPORAN, {'mulai': 'x', 'selesai': 'y'}, **H).status_code, 400)
+        self.assertEqual(self.client.get(LAPORAN, {'mulai': '2026-09-01', 'selesai': '2026-09-30'}).status_code, 401)
 
     def test_jalur_bot_wa_tidak_berubah(self):
         from .services.order_actions import buat_order_dari_items
