@@ -16,6 +16,7 @@ PRODUK = '/api/bridge/crm/produk/'
 ORDER = '/api/bridge/crm/order/'
 STATUS = '/api/bridge/crm/order-status/'
 REKAP = '/api/bridge/crm/rekap-sales/'
+RIWAYAT = '/api/bridge/crm/riwayat-pelanggan/'
 
 
 @mock.patch.dict(os.environ, {'CRM_BRIDGE_API_KEY': KUNCI})
@@ -138,6 +139,27 @@ class CrmOrderBridgeTest(APITestCase):
                       {'mulai': '2020-01-01', 'selesai': hari_ini}):
             self.assertEqual(self.client.get(REKAP, salah, **H).status_code, 400)
         self.assertEqual(self.client.get(REKAP, {'mulai': '2026-09-01', 'selesai': hari_ini}).status_code, 401)
+
+    def test_riwayat_pelanggan_semua_kanal(self):
+        from .pos_models import POSSale
+
+        crm = Order.objects.get(pk=self._order().data['id'])
+        crm.dp_dibayar = crm.total_harga
+        crm.save()
+        Order.objects.create(id='ORD-WA-1', nomor_wa='081234567890', nama='Budi', status_global='batal', sumber='wa')
+        Order.objects.create(id='ORD-LAIN', nomor_wa='6289999999999', nama='Lain', status_global='proses')
+        POSSale.objects.create(nomor='POS-UJI-1', pelanggan=Contact.objects.get(nomor_wa='6281234567890'),
+                               total=30000, status='paid')
+        res = self.client.get(RIWAYAT, {'nomor': '+62 812-3456-7890'}, **H)
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(sorted(e['id'] for e in res.data['riwayat']), sorted([crm.id, 'ORD-WA-1', 'POS-UJI-1']))
+        self.assertEqual(res.data['jumlah_transaksi'], 2)
+        self.assertEqual(res.data['total_belanja_lunas'], crm.total_harga + 30000)
+        self.assertTrue(res.data['terdaftar'])
+        wa = next(e for e in res.data['riwayat'] if e['id'] == 'ORD-WA-1')
+        self.assertTrue(wa['batal'])
+        self.assertEqual(self.client.get(RIWAYAT, {'nomor': '12'}, **H).status_code, 400)
+        self.assertEqual(self.client.get(RIWAYAT, {'nomor': '081234567890'}).status_code, 401)
 
     def test_jalur_bot_wa_tidak_berubah(self):
         from .services.order_actions import buat_order_dari_items

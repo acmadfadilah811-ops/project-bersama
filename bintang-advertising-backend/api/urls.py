@@ -11,7 +11,7 @@ from . import customer_views
 from .views.external_bot import ExternalBotToolView, ExternalBotBuatOrderView
 from .views.hr_bridge import HRBridgeCreateAccountView, HRBridgeSetStatusView, AbsensiStatusView, KinerjaStaffView, NotifikasiKeuanganBridgeView
 from .views.chatbotx_bridge import ChatbotXToolCallView, ChatbotXToolSchemasView
-from .views.crm_bridge import CrmOrderStatusView, CrmOrderView, CrmProdukView, CrmRekapSalesView
+from .views.crm_bridge import CrmOrderStatusView, CrmOrderView, CrmProdukView, CrmRekapSalesView, CrmRiwayatPelangganView
 from . import finance_views
 from .report_views import ReportDataView, ReportExportView
 from .views.purchase_workflow import PurchaseWorkflowView
@@ -204,6 +204,7 @@ urlpatterns = [
     path('bridge/crm/order/', CrmOrderView.as_view(), name='crm-bridge-order'),
     path('bridge/crm/order-status/', CrmOrderStatusView.as_view(), name='crm-bridge-order-status'),
     path('bridge/crm/rekap-sales/', CrmRekapSalesView.as_view(), name='crm-bridge-rekap-sales'),
+    path('bridge/crm/riwayat-pelanggan/', CrmRiwayatPelangganView.as_view(), name='crm-bridge-riwayat-pelanggan'),
     path('bridge/chatbotx-tool/', ChatbotXToolCallView.as_view(), name='chatbotx-bridge-tool-call'),
     path('bridge/chatbotx-tool-schemas/', ChatbotXToolSchemasView.as_view(), name='chatbotx-bridge-tool-schemas'),
 
