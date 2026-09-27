@@ -824,10 +824,17 @@ class ContactSerializer(serializers.ModelSerializer):
 # --- 7. Inventory Serializer ---
 class RestockHistorySerializer(serializers.ModelSerializer):
     user_nama = serializers.ReadOnlyField(source='user.username')
+    # Nama lengkap pelaku untuk log riwayat bahan (2026-09-26).
+    user_nama_lengkap = serializers.SerializerMethodField()
+
+    def get_user_nama_lengkap(self, obj):
+        if not obj.user_id:
+            return 'Sistem'
+        return obj.user.get_full_name() or obj.user.username
 
     class Meta:
         model = RestockHistory
-        fields = ['id', 'delta', 'stok_awal', 'stok_akhir', 'keterangan', 'waktu', 'user_nama']
+        fields = ['id', 'delta', 'stok_awal', 'stok_akhir', 'keterangan', 'waktu', 'user_nama', 'user_nama_lengkap']
 
 class InventoryItemSerializer(serializers.ModelSerializer):
     # id auto-generate di backend, tidak perlu dikirim client
@@ -841,6 +848,15 @@ class InventoryItemSerializer(serializers.ModelSerializer):
 
     def get_nilai_stok(self, obj):
         return round(obj.stok * obj.cost_per_unit, 2)
+
+    def validate(self, attrs):
+        # Bahan tertaut produk: stok mengikuti produk sumber, tidak diedit langsung
+        # (2026-09-26, lihat views/inventory.py::pesan_bahan_tertaut).
+        inst = self.instance
+        if inst is not None and inst.product_id and 'stok' in attrs and float(attrs['stok']) != float(inst.stok):
+            from .views.inventory import pesan_bahan_tertaut
+            raise serializers.ValidationError({'stok': pesan_bahan_tertaut(inst)})
+        return attrs
 
     class Meta:
         model  = InventoryItem

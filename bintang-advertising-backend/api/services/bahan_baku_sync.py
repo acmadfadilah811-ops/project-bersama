@@ -26,16 +26,19 @@ ZERO = Decimal('0')
 
 
 def cerminkan_mutasi_ke_bahan_baku(movement):
-    if getattr(movement, '_lewati_cermin_bahan', False) or movement.variant_id:
+    if getattr(movement, '_lewati_cermin_bahan', False):
         return
     delta = Decimal(movement.stok_akhir) - Decimal(movement.stok_awal)
     if delta == ZERO:
         return
-    if not InventoryItem.objects.filter(product_id=movement.product_id).exists():
+    # Bahan dari varian hanya ikut mutasi varian itu; bahan dari produk tanpa
+    # varian hanya ikut mutasi level produk (2026-09-26).
+    tertaut = InventoryItem.objects.filter(product_id=movement.product_id, variant_id=movement.variant_id)
+    if not tertaut.exists():
         return
 
     with transaction.atomic():
-        for item in InventoryItem.objects.select_for_update().filter(product_id=movement.product_id):
+        for item in tertaut.select_for_update():
             stok_awal = float(item.stok)
             stok_akhir = max(0.0, round(stok_awal + float(delta), 4))
             RestockHistory.objects.create(

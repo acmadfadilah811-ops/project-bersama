@@ -101,28 +101,39 @@ def kurangi_stok_produk_sumber(inventory_item, qty, *, user, catatan):
     if qty_dec <= 0:
         return None
 
-    product = Product.objects.select_for_update().get(pk=inventory_item.product_id)
-    # Produk bervarian menyimpan stok di level varian, bukan qty_stok produk.
-    if not product.lacak_inventori or product.has_variant:
-        return None
+    from ..product_models import ProductVariant
 
-    stok_awal = product.qty_stok
+    product = Product.objects.select_for_update().get(pk=inventory_item.product_id)
+    variant = None
+    if inventory_item.variant_id:
+        # Bahan dari varian: stok ada di level varian (2026-09-26).
+        variant = ProductVariant.objects.select_for_update().get(pk=inventory_item.variant_id)
+        if not variant.lacak_inventori:
+            return None
+        owner = variant
+    else:
+        # Produk bervarian menyimpan stok di level varian, bukan qty_stok produk.
+        if not product.lacak_inventori or product.has_variant:
+            return None
+        owner = product
+
+    stok_awal = owner.qty_stok
     qty_dec = min(qty_dec, max(stok_awal, Decimal('0')))
     if qty_dec <= 0:
         return None
 
-    product.qty_stok = stok_awal - qty_dec
-    product.save(update_fields=['qty_stok'])
+    owner.qty_stok = stok_awal - qty_dec
+    owner.save(update_fields=['qty_stok'])
     movement = ProductStockMovement(
-        product=product, variant=None, user=user, tipe='keluar', qty=qty_dec,
-        stok_awal=stok_awal, stok_akhir=product.qty_stok,
+        product=product, variant=variant, user=user, tipe='keluar', qty=qty_dec,
+        stok_awal=stok_awal, stok_akhir=owner.qty_stok,
         catatan=catatan, tanggal=timezone.localdate(),
     )
     # Stok bahan sudah dipotong oleh alur pemakaian ini sendiri -- jangan
     # dicerminkan lagi oleh sinyal sinkron stok produk (services/bahan_baku_sync).
     movement._lewati_cermin_bahan = True
     movement.save()
-    stock_fifo.consume_layers(product, None, qty_dec, movement=movement)
+    stock_fifo.consume_layers(product, variant, qty_dec, movement=movement)
     return movement
 
 
@@ -267,6 +278,14 @@ class InventoryItemViewSet(viewsets.ModelViewSet):
         return Response(result)
 
 
+def pesan_bahan_tertaut(item):
+    sumber = item.product.nama + (f' - {item.variant.nama_varian}' if item.variant_id else '')
+    return (f'"{item.nama}" tertaut ke produk "{sumber}", jadi stoknya mengikuti stok produk itu. '
+            'Tambah stok lewat Pembelian atau Stok Masuk, bahan rusak/terbuang lewat Stok Keluar '
+            '(alasan Rusak/Kadaluarsa), dan koreksi jumlah lewat Stok Opname -- agar nilai persediaan '
+            'dan jurnal ikut benar.')
+
+
 class InventoryRestockView(APIView):
     """POST /api/inventory/<pk>/restock/ — Tambah/kurangi stok dan catat history."""
     permission_classes = [IsOwnerManagerOrAdmin]
@@ -292,6 +311,8 @@ class InventoryRestockView(APIView):
         # mencegah race condition ketika ada 2+ request bersamaan mengubah stok
         with transaction.atomic():
             item = InventoryItem.objects.select_for_update().get(pk=pk)
+            if item.product_id:
+                return Response({'error': pesan_bahan_tertaut(item)}, status=status.HTTP_400_BAD_REQUEST)
             stok_awal  = item.stok
             stok_akhir = max(0.0, item.stok + delta)
 
@@ -498,7 +519,7 @@ class BillOfMaterialsViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-def _get_or_create_inventory_item_for_product(product):
+def _get_or_create_inventory_item_for_product(product, variant=None):
     """Cari/buat InventoryItem yang mewakili `product` sebagai bahan baku resep.
 
     Bahan baku (mis. kertas Ivory) dikelola sebagai Product biasa di katalog
@@ -508,7 +529,7 @@ def _get_or_create_inventory_item_for_product(product):
     ada (dipakai logic potong stok produksi di views/jobs.py), item
     InventoryItem disinkron otomatis dari Product saat pertama kali dipilih.
     """
-    existing = InventoryItem.objects.filter(product=product).first()
+    existing = InventoryItem.objects.filter(product=product, variant=variant).first()
     if existing:
         return existing
     kategori_nama = product.kategori.nama if product.kategori_id else 'Bahan Baku'
@@ -521,11 +542,12 @@ def _get_or_create_inventory_item_for_product(product):
     # yang dicerminkan ke Product (`kurangi_stok_produk_sumber`); stok masuk
     # Product / restock InventoryItem tetap dua stok terpisah (known gap).
     return InventoryItem.objects.create(
-        nama=product.nama,
+        nama=product.nama + (f' - {variant.nama_varian}' if variant is not None else ''),
         satuan=product.satuan or 'pcs',
         kategori=kategori_nama,
-        stok=float(product.qty_stok or 0),
+        stok=float((variant.qty_stok if variant is not None else product.qty_stok) or 0),
         product=product,
+        variant=variant,
     )
 
 
@@ -562,8 +584,19 @@ class BoMItemViewSet(viewsets.ModelViewSet):
         except (Product.DoesNotExist, ValueError, TypeError):
             return Response({'error': 'Produk bahan baku tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
 
+        variant_obj = None
+        variant_id = request.data.get('variant_id')
+        if variant_id:
+            from ..product_models import ProductVariant
+            variant_obj = ProductVariant.objects.filter(pk=variant_id, product=product_obj).first()
+            if variant_obj is None:
+                return Response({'error': 'Varian bahan tidak ditemukan pada produk ini.'}, status=status.HTTP_404_NOT_FOUND)
+        elif product_obj.has_variant:
+            return Response({'error': f'"{product_obj.nama}" punya varian -- pilih varian bahan yang dipakai.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
         with transaction.atomic():
-            inv_item = _get_or_create_inventory_item_for_product(product_obj)
+            inv_item = _get_or_create_inventory_item_for_product(product_obj, variant_obj)
             bom_item_obj, created = BoMItem.objects.get_or_create(
                 bom=bom_obj,
                 inventory_item=inv_item,

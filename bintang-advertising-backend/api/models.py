@@ -1098,6 +1098,8 @@ class InventoryItem(models.Model):
     # di menu "Bahan Baku"), supaya item yang sama tidak dibuat dobel setiap
     # kali dipilih ulang.
     product       = models.ForeignKey('Product', null=True, blank=True, on_delete=models.SET_NULL, related_name='inventory_items')
+    # Bahan resep dari varian produk (2026-09-26): stok disinkron dengan varian ini.
+    variant       = models.ForeignKey('ProductVariant', null=True, blank=True, on_delete=models.SET_NULL, related_name='inventory_items')
 
     class Meta:
         indexes = [

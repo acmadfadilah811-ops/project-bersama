@@ -73,7 +73,20 @@ export default function ProductBahanResepTab({ product, onUpdated, storeName }) 
       try {
         const res = await apiClient.get(`/products/?search=${encodeURIComponent(materialSearch)}`);
         const items = res.data.results || res.data || [];
-        setMaterialResults(items);
+        // Produk bervarian dipecah per varian (2026-09-26): bahan resep ditautkan
+        // ke varian tertentu dan stoknya ikut stok varian itu.
+        setMaterialResults(items.flatMap((p) => (
+          p.has_variant && (p.variants || []).length > 0
+            ? p.variants.map((v) => ({
+              ...p,
+              key: `${p.id}-v${v.id}`,
+              variant_id: v.id,
+              nama: `${p.nama} - ${v.nama_varian}`,
+              qty_stok: v.qty_stok,
+              sku: v.sku || p.sku,
+            }))
+            : [{ ...p, key: String(p.id), variant_id: null }]
+        )));
       } catch (err) {
         console.error('[BahanResepTab] Error searching products:', err);
       } finally {
@@ -160,6 +173,7 @@ export default function ProductBahanResepTab({ product, onUpdated, storeName }) 
       await apiClient.post('/bom-items/create-from-product/', {
         bom: bomId,
         product_id: selectedMaterial.id,
+        variant_id: selectedMaterial.variant_id || undefined,
         qty_required_per_unit: parsedQty
       });
 
@@ -669,7 +683,7 @@ export default function ProductBahanResepTab({ product, onUpdated, storeName }) 
                     ) : (
                       materialResults.map((item) => (
                         <div
-                          key={item.id}
+                          key={item.key || item.id}
                           onClick={() => {
                             setSelectedMaterial(item);
                             setMaterialDropdownOpen(false);

@@ -108,9 +108,11 @@ def _pulihkan_bahan_baku_bom(sale, user):
         tipe='keluar', catatan__startswith=f"Pemakaian bahan resep | {penanda}",
     ).order_by('id'):
         product = Product.objects.select_for_update().get(pk=asal.product_id)
-        start = product.qty_stok
-        product.qty_stok = start + asal.qty
-        product.save(update_fields=['qty_stok'])
+        owner = (ProductVariant.objects.select_for_update().get(pk=asal.variant_id)
+                 if asal.variant_id else product)
+        start = owner.qty_stok
+        owner.qty_stok = start + asal.qty
+        owner.save(update_fields=['qty_stok'])
         restored_hpp = Decimal('0')
         for konsumsi in asal.layer_consumptions.select_related('layer').all():
             restored_hpp += konsumsi.qty * konsumsi.harga_beli
@@ -119,8 +121,9 @@ def _pulihkan_bahan_baku_bom(sale, user):
                 lapisan.sisa_qty += konsumsi.qty
                 lapisan.save(update_fields=['sisa_qty'])
         balik = ProductStockMovement(
-            product=product, variant=None, user=user, tipe='pengembalian', qty=asal.qty,
-            stok_awal=start, stok_akhir=product.qty_stok, hpp_total=restored_hpp,
+            product=product, variant=owner if asal.variant_id else None, user=user,
+            tipe='pengembalian', qty=asal.qty,
+            stok_awal=start, stok_akhir=owner.qty_stok, hpp_total=restored_hpp,
             catatan=f"Pembatalan POS (Void) bahan resep {sale.nomor}", tanggal=timezone.localdate(),
         )
         # Stok bahan sudah dipulihkan di atas -- jangan dicerminkan lagi oleh sinyal.

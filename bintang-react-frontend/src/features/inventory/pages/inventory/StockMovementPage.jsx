@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import RiwayatBahanModal from './RiwayatBahanModal';
 import { Calendar, Download, ChevronsUpDown, ChevronDown } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
 import { Select } from '../components/PageShell';
@@ -21,6 +22,7 @@ export function StockMovementPage() {
   // (/inventory/summary/ vs /product-stock-movements/summary/) tapi
   // bentuk responsnya sengaja disamakan supaya tabel yang sama bisa dipakai.
   const [sourceTab, setSourceTab] = useState('produk'); // 'produk' | 'bahan-baku'
+  const [riwayatBahanId, setRiwayatBahanId] = useState(null);
   const [searchVal, setSearchVal] = useState('');
   const [isAutocomplete, setIsAutocomplete] = useState(true);
 
@@ -537,7 +539,18 @@ export function StockMovementPage() {
               paginatedList.map((row) => (
                 <tr key={row.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                   <td style={{ padding: '14px 20px', fontSize: '13px', color: '#475569', fontWeight: '500' }}>{row.group}</td>
-                  <td style={{ padding: '14px 20px', fontSize: '13px', color: '#1e293b', fontWeight: 'bold' }}>{row.product}</td>
+                  <td style={{ padding: '14px 20px', fontSize: '13px', color: '#1e293b', fontWeight: 'bold' }}>
+                    {sourceTab === 'bahan-baku' ? (
+                      <button
+                        type="button"
+                        onClick={() => setRiwayatBahanId(row.sku)}
+                        title="Lihat log riwayat stok: siapa, kapan, dan keterangannya"
+                        style={{ background: 'none', border: 0, padding: 0, color: '#0369a1', fontWeight: 'bold', cursor: 'pointer', textAlign: 'left' }}
+                      >
+                        {row.product}
+                      </button>
+                    ) : row.product}
+                  </td>
                   <td style={{ padding: '14px 20px', fontSize: '13px', color: '#334155', textAlign: 'left' }}>{row.initial}</td>
                   <td style={{ padding: '14px 20px', fontSize: '13px', color: '#16a34a', fontWeight: '500' }}>{row.in > 0 ? `+${row.in}` : 0}</td>
                   <td style={{ padding: '14px 20px', fontSize: '13px', color: '#334155' }}>{row.returnStock}</td>
@@ -550,6 +563,8 @@ export function StockMovementPage() {
           </tbody>
         </table>
       </div>
+
+      {riwayatBahanId && <RiwayatBahanModal itemId={riwayatBahanId} onClose={() => setRiwayatBahanId(null)} />}
 
       {/* Pagination Footer — format sama seperti Halaman Produk (instruksi user 2026-09-05) */}
       {totalCount > 0 && (
