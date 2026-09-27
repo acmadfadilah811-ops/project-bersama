@@ -15,6 +15,7 @@ data yang salah/setengah gagal ditampilkan sebagai sukses.
 
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 
@@ -32,10 +33,26 @@ logger = logging.getLogger(__name__)
 # HR belum. Lewat domain publik sekalian menghindari kerapuhan itu di
 # kedua sisi, dengan trade-off round-trip lewat Cloudflare (dampaknya
 # kecil -- endpoint ini dipanggil per buka dashboard, bukan per request).
-DEFAULT_HR_INSIGHTS_URL = "https://hr.starphotoadvertising.com/api/insights/hr/"
-DEFAULT_CRM_INSIGHTS_URL = "https://crm.starphotoadvertising.com/api/insights/crm/"
+#
+# Revisi 2026-09-27 (dashboard owner lambat ~24 detik): lewat Cloudflare tiap
+# panggilan 1-8 detik dan kadang gagal ("Network is unreachable" -- DNS
+# mengembalikan IPv6 dulu, VPS tidak punya rute IPv6). Container HR & CRM
+# ternyata sudah tergabung ke jaringan docker `bintang_default`, jadi kini
+# default-nya lewat hostname internal (0,05-0,3 detik) dengan header Host =
+# domain publik, sehingga ALLOWED_HOSTS HR/CRM tetap terpenuhi tanpa diubah.
+DEFAULT_HR_INSIGHTS_URL = "http://horilla-hr-web-1:8000/api/insights/hr/"
+DEFAULT_CRM_INSIGHTS_URL = "http://horilla-crm-web-1:8000/api/insights/crm/"
+DEFAULT_HR_INSIGHTS_HOST = "hr.starphotoadvertising.com"
+DEFAULT_CRM_INSIGHTS_HOST = "crm.starphotoadvertising.com"
 
-TIMEOUT = 10
+TIMEOUT = 5
+
+
+def _host(base_url_env):
+    """Header Host untuk sistem tujuan (domain publik yang ada di ALLOWED_HOSTS)."""
+    if base_url_env.startswith("HR_"):
+        return os.getenv("HR_INSIGHTS_HOST", DEFAULT_HR_INSIGHTS_HOST)
+    return os.getenv("CRM_INSIGHTS_HOST", DEFAULT_CRM_INSIGHTS_HOST)
 
 
 def _get(base_url_env, default_base_url, path):
@@ -48,7 +65,7 @@ def _get(base_url_env, default_base_url, path):
 
     base_url = os.getenv(base_url_env, default_base_url)
     url = base_url.rstrip("/") + "/" + path.lstrip("/")
-    headers = {"X-Api-Key": api_key, "X-Forwarded-Proto": "https"}
+    headers = {"X-Api-Key": api_key, "X-Forwarded-Proto": "https", "Host": _host(base_url_env)}
     try:
         response = requests.get(url, headers=headers, timeout=TIMEOUT)
         response.raise_for_status()
@@ -113,23 +130,27 @@ def build_combined_insights(period="ytd"):
     docstring modul ini."""
     from api.executive_dashboard import build as build_bintang_dashboard
 
-    return {
-        "bintang": build_bintang_dashboard(period),
-        "hr": {
-            "headcount": get_hr_headcount(),
-            "attendance": get_hr_attendance(),
-            "leave_trend": get_hr_leave_trend(),
-            "overtime_trend": get_hr_overtime_trend(),
-            "turnover": get_hr_turnover(),
-            # Project Management & KPI/OKR (modul HR project/pms) -- bahan
-            # analisis AI: "Kirim data hasil project untuk dianalisis" di
-            # diagram WORKFLOW SISTEM ERP.
-            "projects": get_hr_projects(),
-            "okr": get_hr_okr(),
-        },
-        "crm": {
-            "leads": get_crm_leads(),
-            "pipeline": get_crm_pipeline(),
-            "campaigns": get_crm_campaigns(),
-        },
+    # Panggilan HR/CRM saling bebas -> dijalankan paralel (2026-09-27), jadi
+    # waktu tunggu = panggilan terlama, bukan jumlah semuanya. Thread hanya
+    # melakukan HTTP, tidak menyentuh database.
+    sumber = {
+        ("hr", "headcount"): get_hr_headcount,
+        ("hr", "attendance"): get_hr_attendance,
+        ("hr", "leave_trend"): get_hr_leave_trend,
+        ("hr", "overtime_trend"): get_hr_overtime_trend,
+        ("hr", "turnover"): get_hr_turnover,
+        # Project Management & KPI/OKR (modul HR project/pms) -- bahan
+        # analisis AI: "Kirim data hasil project untuk dianalisis" di
+        # diagram WORKFLOW SISTEM ERP.
+        ("hr", "projects"): get_hr_projects,
+        ("hr", "okr"): get_hr_okr,
+        ("crm", "leads"): get_crm_leads,
+        ("crm", "pipeline"): get_crm_pipeline,
+        ("crm", "campaigns"): get_crm_campaigns,
     }
+    with ThreadPoolExecutor(max_workers=len(sumber)) as pool:
+        berjalan = {kunci: pool.submit(fungsi) for kunci, fungsi in sumber.items()}
+        hasil = {"bintang": build_bintang_dashboard(period), "hr": {}, "crm": {}}
+        for (sistem, nama), future in berjalan.items():
+            hasil[sistem][nama] = future.result()
+    return hasil

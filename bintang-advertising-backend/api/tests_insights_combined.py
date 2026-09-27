@@ -69,6 +69,22 @@ class InsightsBridgeServiceTests(APITestCase):
         self.assertEqual(get_crm_leads(), {"months": []})
 
     @mock.patch.dict("os.environ", {"INSIGHTS_BRIDGE_API_KEY": "kunci-uji"})
+    @mock.patch("api.services.insights_bridge.requests.get")
+    def test_jalur_internal_kirim_host_domain_publik(self, mock_get):
+        """Lewat jaringan docker internal, tapi header Host tetap domain
+        publik supaya lolos ALLOWED_HOSTS HR/CRM (2026-09-27)."""
+        from api.services.insights_bridge import get_crm_leads, get_hr_headcount
+
+        get_hr_headcount()
+        get_crm_leads()
+        (url_hr,), kw_hr = mock_get.call_args_list[0]
+        (url_crm,), kw_crm = mock_get.call_args_list[1]
+        self.assertTrue(url_hr.startswith("http://horilla-hr-web-1:8000/"))
+        self.assertEqual(kw_hr["headers"]["Host"], "hr.starphotoadvertising.com")
+        self.assertTrue(url_crm.startswith("http://horilla-crm-web-1:8000/"))
+        self.assertEqual(kw_crm["headers"]["Host"], "crm.starphotoadvertising.com")
+
+    @mock.patch.dict("os.environ", {"INSIGHTS_BRIDGE_API_KEY": "kunci-uji"})
     @mock.patch("api.services.insights_bridge.get_hr_okr")
     @mock.patch("api.services.insights_bridge.get_hr_projects")
     @mock.patch("api.services.insights_bridge.get_crm_campaigns")
