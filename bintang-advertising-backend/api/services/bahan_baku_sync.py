@@ -25,6 +25,27 @@ from ..models import InventoryItem, RestockHistory
 ZERO = Decimal('0')
 
 
+def _sumber(movement):
+    """Nama sumber mutasi yang bisa dicocokkan user di menu Stok / Pembelian.
+
+    Dulu hanya `#<id mutasi>`, yang mirip nomor dokumen padahal bukan
+    (2026-09-27): user mengira stok masuk manual adalah pembelian."""
+    teks = movement.get_tipe_display()
+    dok = (movement.stock_in_document or movement.stock_out_document
+           or movement.stock_production_document or movement.stock_opname_document)
+    if dok is not None and dok.nomor:
+        teks = f"{teks} {dok.nomor}"
+        purchase = getattr(dok, 'purchase', None)
+        teks += f" (Pembelian {purchase.nomor})" if purchase is not None else ""
+        if purchase is None and movement.stock_in_document_id:
+            teks += " (manual)"
+    elif movement.order_id:
+        teks = f"{teks} Order {movement.order_id}"
+    elif movement.pos_sale_id:
+        teks = f"{teks} POS #{movement.pos_sale_id}"
+    return teks
+
+
 def cerminkan_mutasi_ke_bahan_baku(movement):
     if getattr(movement, '_lewati_cermin_bahan', False):
         return
@@ -44,7 +65,7 @@ def cerminkan_mutasi_ke_bahan_baku(movement):
             RestockHistory.objects.create(
                 item=item, user=movement.user, delta=round(stok_akhir - stok_awal, 4),
                 stok_awal=stok_awal, stok_akhir=stok_akhir,
-                keterangan=f"Sinkron stok produk sumber | {movement.get_tipe_display()} #{movement.id}",
+                keterangan=f"Sinkron stok produk sumber | {_sumber(movement)}",
             )
             item.stok = stok_akhir
             item.save(update_fields=['stok'])

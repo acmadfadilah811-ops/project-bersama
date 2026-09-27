@@ -66,6 +66,8 @@ class BahanBakuSinkronStokProdukTests(APITestCase):
         rh = RestockHistory.objects.filter(item=self.bahan).latest('id')
         self.assertEqual(rh.delta, -10.0)
         self.assertIn('Sinkron stok produk sumber', rh.keterangan)
+        # Nomor dokumen tertulis, bukan id mutasi yang mirip nomor dokumen.
+        self.assertIn('OP-SINKRON-90', rh.keterangan)
 
     def test_opname_surplus_menambah_stok_bahan(self):
         self._opname(120)
@@ -126,3 +128,20 @@ class BahanBakuSinkronStokProdukTests(APITestCase):
         self._opname(90)
         bahan_lepas.refresh_from_db()
         self.assertEqual(bahan_lepas.stok, 50.0)
+
+
+class LabelSumberRiwayatBahanTests(APITestCase):
+    """Riwayat bahan membedakan stok masuk manual dan dari pembelian (2026-09-27)."""
+
+    def test_label_manual_dan_pembelian(self):
+        from api.product_models import ProductStockMovement, Purchase
+        from api.services.bahan_baku_sync import _sumber
+
+        produk = Product.objects.create(nama='Tempe Label', harga_jual_toko=1000)
+        manual = StockInDocument.objects.create(nomor='IN-MANUAL-1', tanggal=date(2026, 9, 27))
+        beli = Purchase.objects.create(nomor='PB-LABEL-1', tanggal=date(2026, 9, 27))
+        dari_beli = StockInDocument.objects.create(nomor='IN-BELI-1', tanggal=date(2026, 9, 27), purchase=beli)
+        mv = ProductStockMovement(product=produk, tipe='masuk', qty=1, stock_in_document=manual)
+        self.assertEqual(_sumber(mv), 'Stok Masuk IN-MANUAL-1 (manual)')
+        mv.stock_in_document = dari_beli
+        self.assertEqual(_sumber(mv), 'Stok Masuk IN-BELI-1 (Pembelian PB-LABEL-1)')

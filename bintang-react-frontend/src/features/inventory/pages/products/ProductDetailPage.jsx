@@ -318,6 +318,8 @@ export default function ProductDetailPage({ product, onBack, onUpdated, categori
   const [onHoldQtyEdit, setOnHoldQtyEdit] = useState(0);
   const [satuanEdit, setSatuanEdit] = useState('pcs');
   const [stokKosongEdit, setStokKosongEdit] = useState(false);
+  const [qtyStokEdit, setQtyStokEdit] = useState('0');
+  const [qtyFastMovingEdit, setQtyFastMovingEdit] = useState('0');
 
   // Pengiriman section edit states
   const [butuhPengirimanEdit, setButuhPengirimanEdit] = useState(true);
@@ -656,6 +658,8 @@ export default function ProductDetailPage({ product, onBack, onUpdated, categori
     setOnHoldQtyEdit(product.on_hold_qty !== null && product.on_hold_qty !== undefined ? product.on_hold_qty : 0);
     setSatuanEdit(product.satuan || 'pcs');
     setStokKosongEdit(!!stokKosong);
+    setQtyStokEdit(String(Number(product.qty_stok || 0)));
+    setQtyFastMovingEdit(String(Number(product.qty_fast_moving || 0)));
     setEditingSection('inventori');
   };
 
@@ -671,10 +675,18 @@ export default function ProductDetailPage({ product, onBack, onUpdated, categori
       };
 
       if (!hasVariant) {
-        if (stokKosongEdit) {
-          payload.qty_stok = 0;
+        // Qty Stok hanya dikirim bila berubah: server mencatatnya sebagai
+        // Stok Opname otomatis (pergerakan stok + jurnal penyesuaian).
+        const qtyBaru = stokKosongEdit ? 0 : (parseFloat(qtyStokEdit) || 0);
+        if (qtyBaru < 0) {
+          alert('Qty Stok tidak boleh minus.');
+          return;
+        }
+        if (qtyBaru !== Number(product.qty_stok || 0)) {
+          payload.qty_stok = qtyBaru;
         }
         payload.on_hold_qty = parseFloat(onHoldQtyEdit) || 0;
+        payload.qty_fast_moving = parseFloat(qtyFastMovingEdit) || 0;
       }
 
       await apiClient.patch(`/products/${product.id}/`, payload);
@@ -1861,13 +1873,58 @@ export default function ProductDetailPage({ product, onBack, onUpdated, categori
                   />
                 </div>
 
+                {/* Qty Stok: perubahan dicatat server sebagai Stok Opname otomatis. */}
+                <div style={{ padding: '8px 0 10px 0' }}>
+                  <div style={{ fontSize: 13, color: '#64748b', marginBottom: 6 }}>
+                    Qty Stok <span style={{ fontWeight: 400 }}>(perubahan dicatat sebagai Stok Opname otomatis; selisih masuk akun Penyesuaian. Barang datang dari supplier catat lewat Pembelian / Stok Masuk)</span>
+                  </div>
+                  {hasVariant ? (
+                    <InfoBox text="Refer Ke varian" />
+                  ) : (
+                    <input
+                      type="number"
+                      min="0"
+                      value={stokKosongEdit ? '0' : qtyStokEdit}
+                      disabled={stokKosongEdit}
+                      onChange={(e) => setQtyStokEdit(e.target.value)}
+                      style={{
+                        width: '100%',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: 6,
+                        padding: '8px 12px',
+                        fontSize: 13,
+                        color: '#334155',
+                        boxSizing: 'border-box',
+                        outline: 'none',
+                        background: '#fff'
+                      }}
+                    />
+                  )}
+                </div>
+
                 {/* Qty Fast Moving */}
                 <div style={{ padding: '8px 0 10px 0' }}>
                   <div style={{ fontSize: 13, color: '#64748b', marginBottom: 6 }}>Qty Fast Moving</div>
                   {hasVariant ? (
                     <InfoBox text="Refer Ke varian" />
                   ) : (
-                    <InfoBox text={String(product.qty_fast_moving || 0)} />
+                    <input
+                      type="number"
+                      min="0"
+                      value={qtyFastMovingEdit}
+                      onChange={(e) => setQtyFastMovingEdit(e.target.value)}
+                      style={{
+                        width: '100%',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: 6,
+                        padding: '8px 12px',
+                        fontSize: 13,
+                        color: '#334155',
+                        boxSizing: 'border-box',
+                        outline: 'none',
+                        background: '#fff'
+                      }}
+                    />
                   )}
                 </div>
 
