@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Plus, ShoppingBag, RotateCcw, Printer } from 'lucide-react';
+import { ArrowLeft, Plus, ShoppingBag, RotateCcw, Printer, XCircle, CheckCircle2, CircleDot } from 'lucide-react';
 import TambahProdukModal from './TambahProdukModal';
 import PembelianInfoCards from './PembelianInfoCards';
 import PembelianItemsTable from './PembelianItemsTable';
@@ -216,7 +216,7 @@ export default function PembelianDetail({ docId, detailMode = 'butuh-diproses', 
       ) : isCancelled ? (
         <div className="flex items-center justify-between px-5 py-3 rounded-xl text-white shadow-2xs bg-rose-600">
           <div className="flex items-center gap-2 font-bold text-xs">
-            <span>❌ Pembelian Dibatalkan</span>
+            <XCircle size={14} /><span>Pembelian Dibatalkan</span>
           </div>
           <span className="text-[11px] font-semibold opacity-90">Dokumen read-only</span>
         </div>
@@ -225,7 +225,8 @@ export default function PembelianDetail({ docId, detailMode = 'butuh-diproses', 
           isPaidLabel ? 'bg-emerald-600' : doc.payment_status === 'sebagian' ? 'bg-amber-500' : 'bg-rose-600'
         }`}>
           <div className="flex items-center gap-2 font-bold text-xs">
-            <span>{isPaidLabel ? '✔️ Sudah Dibayar' : doc.payment_status === 'sebagian' ? '◐ Bayar Sebagian' : '❌ Belum Dibayar'}</span>
+            {isPaidLabel ? <CheckCircle2 size={14} /> : doc.payment_status === 'sebagian' ? <CircleDot size={14} /> : <XCircle size={14} />}
+            <span>{isPaidLabel ? 'Sudah Dibayar' : doc.payment_status === 'sebagian' ? 'Bayar Sebagian' : 'Belum Dibayar'}</span>
           </div>
 
           {/* Toggle Switch di sebelah kanan (posisi bekas nominal) */}

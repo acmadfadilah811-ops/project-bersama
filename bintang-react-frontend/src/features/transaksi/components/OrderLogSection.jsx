@@ -157,7 +157,7 @@ export default function OrderLogSection({
             onClick={onCancelOrder}
             className="text-xs font-bold text-red-500 hover:text-red-600 transition-colors cursor-pointer"
           >
-            🗑️ Batalkan orderan
+            <Trash2 size={14} className="inline mr-1.5 align-middle" />Batalkan orderan
           </button>
         </div>
       )}

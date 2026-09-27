@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Minus, Plus } from 'lucide-react';
+import { Minus, Plus, Package } from 'lucide-react';
 
 /**
  * Modal Pop-Up "Pengembalian Pesanan" — Presisi SS No. 1
@@ -146,7 +146,7 @@ export default function TambahPengembalianPesananModal({
                           className="accent-blue-600 w-4 h-4 cursor-pointer rounded"
                         />
                         <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center border border-slate-200 text-sm">
-                          📦
+                          <Package size={14} className="text-slate-400" />
                         </div>
                         <span className="font-bold text-slate-800">{item.jenis_produk || item.nama}</span>
                       </label>

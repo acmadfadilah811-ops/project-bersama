@@ -1,4 +1,4 @@
-import { Edit2, X, Settings } from 'lucide-react';
+import { Edit2, X, Settings, Inbox, Package } from 'lucide-react';
 
 /**
  * Tabel Produk Pesanan & Summary Footer — Presisi SS No. 2
@@ -38,7 +38,7 @@ export default function ReturnOrderItemsTable({
       {returnItems.length === 0 ? (
         <div className="flex flex-col items-center justify-center min-h-[180px] text-center">
           <div className="mb-3 text-slate-300">
-            <span className="text-5xl select-none">🐻‍❄️</span>
+            <Inbox size={40} className="mx-auto" />
           </div>
           <span className="text-xs font-bold text-slate-400 block">Tidak ada pengembalian pesanan</span>
         </div>
@@ -67,7 +67,7 @@ export default function ReturnOrderItemsTable({
                     <td className="py-3.5 px-3">
                       <div className="flex items-center gap-2.5">
                         <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center border border-slate-200 text-xs text-slate-400">
-                          📦
+                          <Package size={14} />
                         </div>
                         <div>
                           <span className="font-bold text-slate-800 block">{it.nama}</span>

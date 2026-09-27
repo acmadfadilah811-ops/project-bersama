@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Search, Copy, Download, ChevronRight, Calendar, GripVertical, Trash2, ArrowLeft, X, CloudUpload } from 'lucide-react';
+import { Plus, Search, Copy, Download, ChevronRight, Calendar, GripVertical, Trash2, ArrowLeft, X, CloudUpload, Camera } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import DataTable from '../components/DataTable';
 import { StatusBadge } from '../components/PageShell';
@@ -858,7 +858,7 @@ export function PackagesPage({ onToggleCreate }) {
                   <label 
                     style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '6px 14px', fontSize: '12px', fontWeight: '600', color: '#64748b', cursor: 'pointer', display: 'inline-block' }}
                   >
-                    📷 Ganti Foto
+                    <Camera size={14} style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: 6 }} />Ganti Foto
                     <input 
                       type="file" 
                       accept="image/*" 
@@ -1528,7 +1528,7 @@ export function PackagesPage({ onToggleCreate }) {
                 <label 
                   style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '6px 14px', fontSize: '12px', fontWeight: '600', color: '#64748b', cursor: 'pointer', display: 'inline-block' }}
                 >
-                  📷 Upload Foto
+                  <Camera size={14} style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: 6 }} />Upload Foto
                   <input 
                     type="file" 
                     accept="image/*" 

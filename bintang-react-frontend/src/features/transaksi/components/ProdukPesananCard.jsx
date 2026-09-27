@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Upload, Edit3, Check, X, Trash2, Percent } from 'lucide-react';
+import { Plus, Upload, Edit3, Check, X, Trash2, Percent, Inbox } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import ImportOrderItemsModal from './ImportOrderItemsModal';
 import TambahProdukPesananModal from './TambahProdukPesananModal';
@@ -178,7 +178,7 @@ export default function ProdukPesananCard({ orderId, order, items, canEdit = fal
               <tr>
                 <td colSpan={canEdit ? 8 : 7} className="py-8 text-center">
                   <div className="flex flex-col items-center justify-center text-center">
-                    <span className="text-5xl select-none mb-2">🐻‍❄️</span>
+                    <Inbox size={40} className="text-slate-300 mb-2" />
                     <span className="text-xs font-bold text-slate-700 block">Tidak ada pesanan</span>
                   </div>
                 </td>

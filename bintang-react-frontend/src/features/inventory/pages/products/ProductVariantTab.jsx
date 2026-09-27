@@ -1,5 +1,5 @@
 import { useState, useEffect, Fragment } from 'react';
-import { Plus, Trash2, Search, X, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, Search, X, ChevronRight, GripVertical, Image as ImageIcon } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
 import { PriceInput } from './VariantModal';
 
@@ -878,7 +878,7 @@ export default function ProductVariantTab({ product, onUpdated, storeName }) {
                     </td>
                     {/* Reorder cross icon */}
                     <td style={{ padding: '10px 14px', color: '#94a3b8', fontSize: 16, cursor: 'grab', userSelect: 'none' }}>
-                      ✥
+                      <GripVertical size={16} />
                     </td>
                     {/* Thumbnail box */}
                     <td style={{ padding: '10px 14px' }}>
@@ -906,7 +906,7 @@ export default function ProductVariantTab({ product, onUpdated, storeName }) {
                           justifyContent: 'center',
                           color: '#cbd5e1'
                         }}>
-                          🖼️
+                          <ImageIcon size={16} />
                         </div>
                       )}
                     </td>

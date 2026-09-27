@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Eye } from 'lucide-react';
 import { formatCurrency } from '../productInventoryData';
 import apiClient from '../../../../api/apiClient';
 import { PriceInput } from './VariantModal';
@@ -181,7 +181,7 @@ function ReferVarianCard({ label, aggregate, showEye, onEyeClick }) {
       <div style={{ fontSize: 11, color: '#334155', fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>{label}</span>
         {showEye && (
-          <span style={{ cursor: 'pointer', color: '#94a3b8', fontSize: 13 }} onClick={onEyeClick}>👁️</span>
+          <span style={{ cursor: 'pointer', color: '#94a3b8', fontSize: 13 }} onClick={onEyeClick} title="Lihat"><Eye size={14} /></span>
         )}
       </div>
       <div style={{ background: '#eff6ff', color: '#0284c7', fontSize: 11, padding: '4px 8px', borderRadius: 4, border: '1px solid #bfdbfe', fontWeight: 600, textAlign: 'center' }}>
@@ -202,7 +202,7 @@ function PlainCard({ label, value, showEye, onEyeClick }) {
       <div style={{ fontSize: 11, color: '#334155', fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>{label}</span>
         {showEye && (
-          <span style={{ cursor: 'pointer', color: '#94a3b8', fontSize: 13 }} onClick={onEyeClick}>👁️</span>
+          <span style={{ cursor: 'pointer', color: '#94a3b8', fontSize: 13 }} onClick={onEyeClick} title="Lihat"><Eye size={14} /></span>
         )}
       </div>
       <div style={{ background: '#e2e8f0', color: '#475569', fontSize: 13, fontWeight: 500, padding: '6px 8px', borderRadius: 6, border: '1px solid #cbd5e1' }}>

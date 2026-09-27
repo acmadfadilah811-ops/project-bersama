@@ -26,6 +26,8 @@ import {
   CreditCard,
   Save,
   UserCheck,
+  Ruler,
+  CalendarPlus,
 } from 'lucide-react';
 import OrderInputForm from '../components/OrderInputForm';
 import KomplainModal from '../components/KomplainModal';
@@ -1251,7 +1253,7 @@ export default function Orders() {
                             className="w-full bg-[#714B67]/8 hover:bg-[#714B67]/15 text-[#714B67] border border-[#714B67]/25 text-[10px] font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                           >
                             <Search size={12} />
-                            🔍 Pilih dari Daftar Harga Resmi
+                            Pilih dari Daftar Harga Resmi
                           </button>
                         </div>
 
@@ -1260,7 +1262,7 @@ export default function Orders() {
                           <div className="text-[9px] font-bold text-slate-400 uppercase mb-1.5">Hasil Kalkulasi Otomatis</div>
                           <div className="text-[9.5px] text-slate-300 mb-2">
                             {item.is_meteran !== false
-                              ? <>📐 {item.panjang || 0}m × {item.lebar || 0}m = <span className="text-white font-bold">{((parseFloat(item.panjang) || 0) * (parseFloat(item.lebar) || 0)).toFixed(2)} m²</span> &nbsp;×&nbsp; {formatRupiah(item.harga_per_m2 || 0)}/m² &nbsp;×&nbsp; {item.qty || 1} pcs</>
+                              ? <><Ruler size={12} className="inline mr-1 align-middle" />{item.panjang || 0}m × {item.lebar || 0}m = <span className="text-white font-bold">{((parseFloat(item.panjang) || 0) * (parseFloat(item.lebar) || 0)).toFixed(2)} m²</span> &nbsp;×&nbsp; {formatRupiah(item.harga_per_m2 || 0)}/m² &nbsp;×&nbsp; {item.qty || 1} pcs</>
                               : <>{formatRupiah(item.harga_per_m2 || 0)}/pcs &nbsp;×&nbsp; {item.qty || 1} pcs</>
                             }
                           </div>
@@ -1538,7 +1540,7 @@ export default function Orders() {
                       className="p-3.5 bg-white border border-slate-200 rounded-xl space-y-3 shadow-3xs text-slate-800"
                     >
                       <div className="text-[10px] font-black text-slate-700 uppercase tracking-wider flex items-center gap-1">
-                        <span>📅</span> Jadwalkan Follow-up Baru
+                        <CalendarPlus size={12} /> Jadwalkan Follow-up Baru
                       </div>
                       
                       <div className="grid grid-cols-2 gap-2">

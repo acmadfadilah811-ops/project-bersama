@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Printer, Pencil, Check, X } from 'lucide-react';
+import { ArrowLeft, Printer, Pencil, Check, X, AlertTriangle, Package, Truck, ShoppingBag, MessageSquare } from 'lucide-react';
 
 /**
  * Top Header & 3 Information Cards — Presisi SS No. 1, 2, 3
@@ -59,7 +59,7 @@ export default function ReturPembelianHeaderCards({
       {doc.konfirmasi_kerusakan && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 space-y-1">
           <div className="flex items-center gap-2 text-amber-700 text-xs font-bold">
-            <span>⚠️</span> Konfirmasi Kerusakan Barang (retur sebelum PO Lunas)
+            <AlertTriangle size={14} /> Konfirmasi Kerusakan Barang (retur sebelum PO Lunas)
           </div>
           <p className="text-xs text-amber-800">{doc.konfirmasi_kerusakan}</p>
           <p className="text-[10px] text-amber-600 font-semibold">
@@ -80,7 +80,7 @@ export default function ReturPembelianHeaderCards({
             <ArrowLeft size={18} />
           </button>
           <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-200">
-            📦
+            <Package size={18} />
           </div>
           <div>
             <span className="font-mono font-bold text-slate-800 text-sm block leading-tight">{doc.nomor}</span>
@@ -128,7 +128,7 @@ export default function ReturPembelianHeaderCards({
         {/* Card 1: Supplier */}
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-2">
           <div className="flex items-center gap-2 pb-1 border-b border-slate-100 font-bold text-slate-800">
-            <span>🚚</span> Supplier
+            <Truck size={14} className="text-slate-500" /> Supplier
           </div>
           <div className="space-y-1 text-xs">
             <div className="flex justify-between">
@@ -153,7 +153,7 @@ export default function ReturPembelianHeaderCards({
         {/* Card 2: Pembelian Asli */}
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-2">
           <div className="flex items-center gap-2 pb-1 border-b border-slate-100 font-bold text-slate-800">
-            <span>🛍️</span> Pembelian
+            <ShoppingBag size={14} className="text-slate-500" /> Pembelian
           </div>
           <div className="space-y-1 text-xs">
             <div className="flex justify-between">
@@ -189,7 +189,7 @@ export default function ReturPembelianHeaderCards({
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-2">
           <div className="flex items-center justify-between pb-1 border-b border-slate-100 font-bold text-slate-800">
             <div className="flex items-center gap-2">
-              <span>💬</span> Catatan
+              <MessageSquare size={14} className="text-slate-500" /> Catatan
             </div>
             {!isEditingCatatan && (
               <button

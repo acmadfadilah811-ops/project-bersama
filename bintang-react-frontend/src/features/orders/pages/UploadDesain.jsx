@@ -251,7 +251,7 @@ export default function UploadDesain() {
                 >
                   {orderData.items.map((item) => (
                     <option key={item.id} value={item.id}>
-                      {item.jenis_produk} ({item.bahan}) - Qty: {item.qty} {item.gdrive_customer_link ? '✔️' : '⚠️ Belum Ada'}
+                      {item.jenis_produk} ({item.bahan}) - Qty: {item.qty} {item.gdrive_customer_link ? '· link desain sudah ada' : '· link desain belum ada'}
                     </option>
                   ))}
                 </select>

@@ -272,7 +272,7 @@ export default function PengaturanDiskonModal({ orderId, subtotal, currentPersen
                             : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
                         }`}
                       >
-                        🏷️ {c.kode} ({c.tipe_diskon === 'persen' ? `${c.jumlah_diskon}%` : `Rp ${Number(c.jumlah_diskon).toLocaleString('id-ID')}`})
+                        <Tag size={12} className="inline mr-1 align-middle" />{c.kode} ({c.tipe_diskon === 'persen' ? `${c.jumlah_diskon}%` : `Rp ${Number(c.jumlah_diskon).toLocaleString('id-ID')}`})
                       </button>
                     ))}
                   </div>

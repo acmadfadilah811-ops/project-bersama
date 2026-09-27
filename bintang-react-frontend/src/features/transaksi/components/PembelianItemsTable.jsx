@@ -1,4 +1,4 @@
-import { Settings, X } from 'lucide-react';
+import { Settings, X, Inbox, Package } from 'lucide-react';
 
 /**
  * Tabel Produk Pesanan Pembelian & Ringkasan Keuangan — Presisi 1:1 SS No. 1 (Olsera Style).
@@ -37,7 +37,7 @@ export default function PembelianItemsTable({
     return (
       <div className="flex flex-col items-center justify-center py-10 space-y-3">
         <div className="w-20 h-20 rounded-full bg-slate-50 flex items-center justify-center text-2xl border border-slate-100 shadow-2xs">
-          🐻‍❄️
+          <Inbox size={28} className="text-slate-300" />
         </div>
         <span className="text-xs font-bold text-slate-400">Tidak ada produk</span>
       </div>
@@ -78,7 +78,7 @@ export default function PembelianItemsTable({
                 <td className="py-3 px-3">
                   <div className="flex items-center gap-2">
                     <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 text-xs border border-slate-200">
-                      📦
+                      <Package size={14} />
                     </div>
                     <div>
                       <span className="font-bold text-slate-800 block">
