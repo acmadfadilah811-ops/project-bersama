@@ -89,7 +89,6 @@ const groupedMenuOwnerManager = [
     id: 'transaksi_pembayaran',
     label: 'Transaksi & Pembayaran',
     icon: Wallet,
-    accent: 'emerald',
     isGroup: true,
     submenus: [
       { path: '/transaksi/penjualan', label: 'Penjualan', icon: ShoppingCart },
@@ -168,7 +167,6 @@ const menuFinance = [
     id: 'transaksi_pembayaran_finance',
     label: 'Transaksi & Pembayaran',
     icon: Wallet,
-    accent: 'emerald',
     isGroup: true,
     submenus: [
       { path: '/transaksi/penjualan', label: 'Penjualan', icon: ShoppingCart },
@@ -237,7 +235,6 @@ const menuSpvFinance = [
     id: 'transaksi_pembayaran_spvfin',
     label: 'Transaksi & Pembayaran',
     icon: Wallet,
-    accent: 'emerald',
     isGroup: true,
     submenus: [
       { path: '/transaksi/penjualan', label: 'Penjualan', icon: ShoppingCart },
