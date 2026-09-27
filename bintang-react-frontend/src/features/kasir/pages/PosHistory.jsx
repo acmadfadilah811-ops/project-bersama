@@ -367,8 +367,11 @@ export default function PosHistory({ onToggleSidebar }) {
         : `00000000-0000-4000-8000-${`${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`.replace(/[^a-f0-9]/g, '').padEnd(12, '0').slice(-12)}`;
       await apiClient.post('/orders/checkout-pos/', {
         idempotency_key: idempotencyKey,
-        nama: selectedSale.nama || selectedSale.pelanggan,
-        nomor_wa: selectedSale.nomor_wa,
+        // Baris Riwayat (tipe 'order') menyimpan nama di `pelanggan_name` dan
+        // nomor WA di `pelanggan` -- tidak ada field `nama`/`nomor_wa`, jadi
+        // dulu nomor WA terkirim kosong ("nomor WA tidak valid").
+        nama: selectedSale.pelanggan_name,
+        nomor_wa: selectedSale.pelanggan,
         items,
         jumlah_bayar: jumlahBayar,
         metode_pembayaran: 'tunai',
@@ -1136,8 +1139,9 @@ export default function PosHistory({ onToggleSidebar }) {
         <SpkPublishModal
           judul="Terbitkan SPK Reorder"
           keterangan={`Order reorder dari ${selectedSale.nomor} akan diterbitkan ke divisi/staff berikut.`}
-          wajib
           onTerbitkan={handleReorderTerbitkan}
+          // Reorder belum dibuat sebelum SPK diterbitkan, jadi aman dibatalkan.
+          labelBatal="Batal"
           onClose={() => setShowReorderSpkModal(false)}
         />
       )}

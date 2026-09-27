@@ -17,7 +17,7 @@ import { useAuth } from '../../../context/AuthContext';
  * tertentu adalah wewenang kepala divisi/manager. Pembatasan ini juga
  * ditegakkan backend di api/spk.py — UI hanya menyembunyikan opsinya.
  */
-export default function SpkPublishModal({ judul, keterangan, onTerbitkan, onClose, wajib = false }) {
+export default function SpkPublishModal({ judul, keterangan, onTerbitkan, onClose, wajib = false, labelBatal = 'Nanti saja' }) {
   const { user } = useAuth();
   const bolehPilihStaff = (user?.role || '').toLowerCase() !== 'kasir';
 
@@ -193,7 +193,7 @@ export default function SpkPublishModal({ judul, keterangan, onTerbitkan, onClos
           {!wajib && (
             <button type="button" onClick={onClose}
               style={{ padding: '9px 15px', border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', color: '#475569', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-              Nanti saja
+              {labelBatal}
             </button>
           )}
           <button type="button" onClick={kirim} disabled={!bisaKirim || mengirim || memuat}
