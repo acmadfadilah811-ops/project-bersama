@@ -1446,6 +1446,7 @@ class SaldoKasHarian(models.Model):
 from .product_models import *
 from .purchase_workflow_models import PurchaseActivityLog
 from . import signals_bahan_baku  # noqa: F401  (registrasi sinyal sinkron stok bahan baku)
+from . import signals_hpp_order  # noqa: F401  (jurnal HPP mutasi stok Order)
 
 # Import new models from marketing_models
 from .marketing_models import *

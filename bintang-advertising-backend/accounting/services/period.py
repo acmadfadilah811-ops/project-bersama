@@ -70,9 +70,16 @@ def get_negative_account_balances(as_of_date):
     Akun dengan ignore_minus_closing=True (ditandai manual per akun di Daftar
     Akun, mis. akun transit/kliring yang wajar sementara negatif) dikecualikan
     dari blokir tutup buku.
+
+    Akun Pendapatan & Beban tidak diperiksa (2026-09-28, mengikuti ERPNext
+    Period Closing Voucher): saldonya -- bertanda apa pun, mis. Penyesuaian
+    Barang yang terkredit oleh surplus opname -- dinolkan ke Laba Ditahan oleh
+    jurnal penutup (_zero_out_line), jadi bukan saldo yang terbawa ke periode
+    berikutnya.
     """
     accounts = list(
         Account.objects.filter(is_active=True, ignore_minus_closing=False)
+        .exclude(account_type__in=[Account.AccountType.REVENUE, Account.AccountType.EXPENSE])
         .select_related("classification")
         .order_by("code")
     )
