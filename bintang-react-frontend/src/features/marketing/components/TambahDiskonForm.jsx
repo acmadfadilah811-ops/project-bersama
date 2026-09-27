@@ -4,6 +4,7 @@ import apiClient from '../../../api/apiClient';
 import { extractApiError, formatRibuan, unformatRibuan } from '../format';
 import { Toggle } from './Common';
 import TagPicker from './TagPicker';
+import { uiConfirm } from '../../../utils/dialog';
 
 /** Form "Tambah/Ubah Diskon Penjualan" dengan layout premium split-card matching Detail view */
 export default function TambahDiskonForm({ initial, onCancel, onSaved }) {
@@ -55,7 +56,7 @@ export default function TambahDiskonForm({ initial, onCancel, onSaved }) {
   };
 
   const handleDelete = async () => {
-    if (!window.confirm('Hapus diskon penjualan ini?')) return;
+    if (!(await uiConfirm('Hapus diskon penjualan ini?'))) return;
     setDeleting(true);
     try {
       await apiClient.delete(`/sales-discounts/${initial.id}/`);

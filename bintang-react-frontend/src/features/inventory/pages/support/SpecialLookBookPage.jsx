@@ -3,6 +3,7 @@ import DataTable from '../components/DataTable';
 import { Button, PageHeader, Toolbar, StatusBadge } from '../components/PageShell';
 import { productRows } from '../productInventoryData';
 import { X, Plus, Trash2, Edit, Image as ImageIcon } from 'lucide-react';
+import { uiConfirm } from '../../../../utils/dialog';
 
 export function SpecialLookBookPage() {
   const [lookbooks, setLookbooks] = useState(() => {
@@ -71,8 +72,8 @@ export function SpecialLookBookPage() {
     setShowModal(true);
   };
 
-  const handleDelete = (id) => {
-    if (window.confirm('Apakah Anda yakin ingin menghapus lookbook ini?')) {
+  const handleDelete = async (id) => {
+    if ((await uiConfirm('Apakah Anda yakin ingin menghapus lookbook ini?'))) {
       setLookbooks(prev => prev.filter(lb => lb.id !== id));
     }
   };

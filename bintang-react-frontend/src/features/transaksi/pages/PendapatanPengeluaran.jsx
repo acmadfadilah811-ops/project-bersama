@@ -17,6 +17,7 @@ import TambahTransaksiModal from '../components/TambahTransaksiModal';
 import TambahTipeTransaksiForm from '../components/TambahTipeTransaksiForm';
 import ImportTipeTransaksiModal from '../components/ImportTipeTransaksiModal';
 import apiClient from '../../../api/apiClient';
+import { uiConfirm } from '../../../utils/dialog';
 
 const fmtRp = (n) => `Rp ${Number(n || 0).toLocaleString('id-ID')}`;
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '-');
@@ -184,7 +185,7 @@ export default function PendapatanPengeluaran({ initialDirection = null }) {
   };
 
   const handleDeleteTransaksi = async (id) => {
-    if (!window.confirm('Hapus transaksi ini?')) return;
+    if (!(await uiConfirm('Hapus transaksi ini?'))) return;
     try {
       await apiClient.delete(`/cash-transactions/${id}/`);
       fetchTransaksi();
@@ -204,7 +205,7 @@ export default function PendapatanPengeluaran({ initialDirection = null }) {
   };
 
   const handleDeleteTipe = async (id) => {
-    if (!window.confirm('Hapus tipe transaksi ini?')) return;
+    if (!(await uiConfirm('Hapus tipe transaksi ini?'))) return;
     try {
       await apiClient.delete(`/cash-transaction-types/${id}/`);
       fetchTipe();

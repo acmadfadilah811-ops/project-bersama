@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { uiConfirm } from '../../../../utils/dialog';
 
 const JENIS = {
   kewajiban: { label: 'Kewajiban ke pihak ketiga (BPJS, pajak)', tipeAkun: 'liability' },
@@ -69,7 +70,7 @@ export default function PemetaanKomponenGaji({ komponenHr, pemetaan, akun, sedan
                 {p.akun_iuran_perusahaan_display ? ` · iuran: ${p.akun_iuran_perusahaan_display}` : ''}
               </span>
               <button type="button" disabled={sedangProses}
-                onClick={() => window.confirm(`Hapus pemetaan "${p.judul}"?`) && onHapus(p.id)}
+                onClick={async () => (await uiConfirm(`Hapus pemetaan "${p.judul}"?`)) && onHapus(p.id)}
                 className="text-red-600 hover:underline">
                 Hapus
               </button>

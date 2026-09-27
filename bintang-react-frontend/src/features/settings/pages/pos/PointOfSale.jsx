@@ -27,6 +27,7 @@ import {
   X,
 } from 'lucide-react';
 import { useTransaksiCrumb } from '../../../transaksi/components/TransaksiContext';
+import { uiConfirm } from '../../../../utils/dialog';
 
 const POS_TABS = [
   { id: 'pengaturan', label: 'Pengaturan' },
@@ -233,7 +234,7 @@ export default function PointOfSale() {
   }, [activeMenu]);
 
   const handleRevokeDevice = async (id, label) => {
-    if (!window.confirm(`Cabut akses perangkat "${label}"? Pengguna akan otomatis logout.`)) return;
+    if (!(await uiConfirm(`Cabut akses perangkat "${label}"? Pengguna akan otomatis logout.`))) return;
     try {
       await apiClient.delete(`/security/sessions/${id}/`);
       await fetchDevices();
@@ -649,7 +650,7 @@ export default function PointOfSale() {
   };
 
   const handleDeleteShiftTiming = async (id) => {
-    if (!window.confirm('Apakah Anda yakin ingin menghapus shift timing ini?')) return;
+    if (!(await uiConfirm('Apakah Anda yakin ingin menghapus shift timing ini?'))) return;
     try {
       await apiClient.delete(`/shift-timing/${id}/`);
       triggerToast('Shift Timing berhasil dihapus!');
@@ -716,7 +717,7 @@ export default function PointOfSale() {
   };
 
   const handleDeleteAntrianDevice = async (id) => {
-    if (!window.confirm('Apakah Anda yakin ingin menghapus perangkat antrian ini?')) return;
+    if (!(await uiConfirm('Apakah Anda yakin ingin menghapus perangkat antrian ini?'))) return;
     try {
       await apiClient.delete(`/pos-antrian-device/${id}/`);
       triggerToast('Perangkat Antrian berhasil dihapus!');
@@ -808,7 +809,7 @@ export default function PointOfSale() {
   };
 
   const handleDeleteKasHarian = async (id) => {
-    if (!window.confirm('Apakah Anda yakin ingin menghapus catatan saldo kas harian ini?')) return;
+    if (!(await uiConfirm('Apakah Anda yakin ingin menghapus catatan saldo kas harian ini?'))) return;
     try {
       await apiClient.delete(`/saldo-kas-harian/${id}/`);
       triggerToast('Saldo Kas Harian berhasil dihapus!');

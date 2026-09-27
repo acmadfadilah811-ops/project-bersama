@@ -6,6 +6,7 @@ import { extractApiError } from '../format';
 import PromoDetailsForm from './PromoDetailsForm';
 import PromoRulesForm from './PromoRulesForm';
 import PromoTargetsForm from './PromoTargetsForm';
+import { uiConfirm } from '../../../utils/dialog';
 
 const PROMO_DAY_KEYS = ['min', 'sen', 'sel', 'rab', 'kam', 'jum', 'sab'];
 
@@ -111,7 +112,7 @@ export default function TambahPromosiForm({ initial, onCancel, onSaved }) {
   };
 
   const handleDelete = async () => {
-    if (!window.confirm(`Hapus promosi "${judul}"?`)) return;
+    if (!(await uiConfirm(`Hapus promosi "${judul}"?`))) return;
     setDeleting(true);
     try {
       await apiClient.delete(`/pos-promotions/${initial.id}/`);

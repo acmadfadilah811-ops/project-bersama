@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Plus, Search, ChevronRight, GripVertical, Trash2, X, UploadCloud } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
+import { uiConfirm } from '../../../../utils/dialog';
 
 export function CategoriesPage() {
   const [categories, setCategories] = useState([]);
@@ -133,7 +134,7 @@ export function CategoriesPage() {
   };
 
   const handleDelete = async () => {
-    if (!window.confirm(`Apakah Anda yakin ingin menghapus kategori "${editingCategory.nama}"?`)) return;
+    if (!(await uiConfirm(`Apakah Anda yakin ingin menghapus kategori "${editingCategory.nama}"?`))) return;
     setSaving(true);
     try {
       await apiClient.delete(`/product-categories/${editingCategory.id}/`);

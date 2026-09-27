@@ -10,6 +10,7 @@ import ProductTerkaitTab from './ProductTerkaitTab';
 import ProductSeriTab from './ProductSeriTab';
 import ProductSpesifikasiTab from './ProductSpesifikasiTab';
 import ProductSatuanTab from './ProductSatuanTab';
+import { uiConfirm } from '../../../../utils/dialog';
 
 const DETAIL_TABS = [
   { id: 'profil', label: 'Profil' },
@@ -891,7 +892,7 @@ export default function ProductDetailPage({ product, onBack, onUpdated, categori
   };
 
   const handleDeleteProduct = async () => {
-    if (!window.confirm('Apakah Anda yakin ingin menghapus produk ini?')) return;
+    if (!(await uiConfirm('Apakah Anda yakin ingin menghapus produk ini?'))) return;
     try {
       await apiClient.delete(`/products/${product.id}/`);
       alert('Produk berhasil dihapus!');

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Plus, Trash2, Search, X, AlertCircle, Barcode, ChevronLeft, ChevronRight } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
+import { uiConfirm } from '../../../../utils/dialog';
 
 export default function ProductSeriTab({ product, onUpdated, storeName }) {
   // Serial numbers are stored in product.serial_numbers as an array of objects
@@ -92,7 +93,7 @@ export default function ProductSeriTab({ product, onUpdated, storeName }) {
   };
 
   const handleDelete = async (serialId) => {
-    if (!window.confirm('Apakah Anda yakin ingin menghapus nomor seri ini?')) {
+    if (!(await uiConfirm('Apakah Anda yakin ingin menghapus nomor seri ini?'))) {
       return;
     }
 

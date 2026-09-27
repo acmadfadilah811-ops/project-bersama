@@ -30,6 +30,7 @@ import PaymentProcessModal from '../components/PaymentProcessModal';
 import PaymentSuccessModal from '../components/PaymentSuccessModal';
 import ReceiptPrint from '../components/ReceiptPrint';
 import SpkPublishModal from '../components/SpkPublishModal';
+import { uiConfirm } from '../../../utils/dialog';
 
 const makeCheckoutKey = () => {
   if (window.crypto?.randomUUID) return window.crypto.randomUUID();
@@ -524,8 +525,8 @@ export default function PosTerminal({ onToggleSidebar }) {
     setShowEditModal(true);
   };
 
-  const handleDeleteCustomerProfile = (customer) => {
-    if (window.confirm(`Hapus/lepas pelanggan ${customer?.nama || ''}?`)) {
+  const handleDeleteCustomerProfile = async (customer) => {
+    if ((await uiConfirm(`Hapus/lepas pelanggan ${customer?.nama || ''}?`))) {
       if (selectedContact?.nomor_wa && selectedContact.nomor_wa === customer?.nomor_wa) {
         setSelectedContact(null);
       }

@@ -36,6 +36,7 @@ import {
   Image,
   Pencil,
 } from 'lucide-react';
+import { uiConfirm } from '../../../utils/dialog';
 
 // ─── Helper ───────────────────────────────────────────────
 function formatWaktu(dateStr) {
@@ -1208,11 +1209,11 @@ export default function Settings() {
                 <h3 className="font-semibold text-slate-800">Manajemen Hak Akses Fitur & Menu</h3>
               </div>
               <button
-                onClick={() => {
+                onClick={async () => {
                   if (
-                    window.confirm(
+                    (await uiConfirm(
                       'Apakah Anda yakin ingin menyetel ulang semua hak akses ke default?'
-                    )
+                    ))
                   ) {
                     setPermissions(DEFAULT_PERMISSIONS);
                     savePermissions(DEFAULT_PERMISSIONS);

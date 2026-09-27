@@ -13,6 +13,7 @@ import ProductDetailPage from './ProductDetailPage';
 import StockDetailModal from './StockDetailModal';
 import AvailabilityModal from './AvailabilityModal';
 import ProductLogModal from './ProductLogModal';
+import { uiConfirm } from '../../../../utils/dialog';
 
 const rowMenuItemStyle = {
   display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '9px 14px',
@@ -159,7 +160,7 @@ export default function ProductsPage() {
 
   const handleDeleteRow = async (product) => {
     setRowMenu(null);
-    if (!window.confirm(`Hapus produk "${product.nama}"?`)) return;
+    if (!(await uiConfirm(`Hapus produk "${product.nama}"?`))) return;
     try {
       await apiClient.delete(`/products/${product.id}/`);
       await fetchProducts();

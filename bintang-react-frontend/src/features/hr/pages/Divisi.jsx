@@ -16,6 +16,7 @@ import {
   ArrowLeft,
   Building2,
 } from 'lucide-react';
+import { uiConfirm } from '../../../utils/dialog';
 
 export default function Divisi() {
   const { user } = useAuth();
@@ -110,9 +111,9 @@ export default function Divisi() {
 
   const hapusDivisi = async (id, nama) => {
     if (
-      !window.confirm(
+      !(await uiConfirm(
         `Hapus divisi "${nama}"?\n\nSemua tahap proses di divisi ini juga akan terhapus.`
-      )
+      ))
     )
       return;
     try {
@@ -157,7 +158,7 @@ export default function Divisi() {
   };
 
   const hapusTahap = async (id, nama) => {
-    if (!window.confirm(`Hapus tahap "${nama}"?`)) return;
+    if (!(await uiConfirm(`Hapus tahap "${nama}"?`))) return;
     try {
       await apiClient.delete(`/tahap-proses/${id}/`);
       fetchData();

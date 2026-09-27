@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useTransaksiCrumb } from '../../transaksi/components/TransaksiContext';
 import apiClient from '../../../api/apiClient';
+import { uiConfirm } from '../../../utils/dialog';
 
 const MODES = [
   {
@@ -134,7 +135,7 @@ export default function SistemStok() {
   };
 
   const handleSync = async () => {
-    if (!window.confirm('Sinkronkan stok produk ke lapisan FIFO? Produk yang belum punya lapisan akan dibuatkan saldo awal.')) return;
+    if (!(await uiConfirm('Sinkronkan stok produk ke lapisan FIFO? Produk yang belum punya lapisan akan dibuatkan saldo awal.'))) return;
     setSyncing(true);
     try {
       const res = await apiClient.post('/stock-fifo/sync/');

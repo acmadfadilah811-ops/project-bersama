@@ -6,6 +6,7 @@ import TambahProdukPesananModal from './TambahProdukPesananModal';
 import TambahPaketModal from './TambahPaketModal';
 import RingkasanPesananCard from './RingkasanPesananCard';
 import PengaturanDiskonModal from './PengaturanDiskonModal';
+import { uiConfirm } from '../../../utils/dialog';
 
 /**
  * Baris item produk pesanan. Kolom: No | Deskripsi | Seri | Qty | Harga (IDR)
@@ -121,7 +122,7 @@ export default function ProdukPesananCard({ orderId, order, items, canEdit = fal
   };
 
   const handleDelete = async (item, namaProduk) => {
-    if (!window.confirm(`Hapus "${namaProduk}" dari pesanan ini?`)) return;
+    if (!(await uiConfirm(`Hapus "${namaProduk}" dari pesanan ini?`))) return;
     setBusyId(item.id);
     try {
       await apiClient.delete(`/order-items/${item.id}/`);

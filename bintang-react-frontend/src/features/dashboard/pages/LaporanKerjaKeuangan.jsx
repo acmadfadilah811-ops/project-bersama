@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ClipboardList, Download, Trash2, RefreshCw, AlertTriangle } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import { useAuth } from '../../../context/AuthContext';
+import { uiConfirm } from '../../../utils/dialog';
 
 const FILTER_OPTIONS = [
   { id: 'harian', label: 'Hari Ini' },
@@ -114,7 +115,7 @@ export default function LaporanKerjaKeuangan() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Hapus laporan ini?')) return;
+    if (!(await uiConfirm('Hapus laporan ini?'))) return;
     try {
       await apiClient.delete(`/laporan-keuangan/target/${id}/`);
       await fetchAll();

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import apiClient from '../../../../api/apiClient';
 import { notify, notifyApiError } from '../../../../utils/notify';
+import { uiConfirm } from '../../../../utils/dialog';
 
 // Post/Batal Post dokumen stok (Stok Masuk/Keluar/Opname): hanya dokumen draft
 // yang bisa diproses — post-document mengubah draft->selesai (stok+jurnal
@@ -28,7 +29,7 @@ export default function useAccountingStockBulkActions(endpoint, documents, reloa
       notify({ type: 'info', title: 'Tidak ada data yang dapat diproses', message: 'Pilih dokumen berstatus Belum Terposting.' });
       return;
     }
-    if (action === 'cancel' && !window.confirm(`Batalkan ${eligible.length} dokumen terpilih?`)) return;
+    if (action === 'cancel' && !(await uiConfirm(`Batalkan ${eligible.length} dokumen terpilih?`))) return;
 
     setActionLoading(true);
     const results = await Promise.allSettled(eligible.map((doc) => apiClient.post(`${endpoint}${doc.id}/${action}/`)));

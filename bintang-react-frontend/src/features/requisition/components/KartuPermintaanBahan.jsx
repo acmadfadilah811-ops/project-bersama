@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import PanelAksiPermintaan from './PanelAksiPermintaan';
+import { uiConfirm } from '../../../utils/dialog';
 
 const WARNA_STATUS = {
   diajukan: 'bg-amber-100 text-amber-800',
@@ -24,9 +25,9 @@ const waktu = (iso) => (iso ? new Date(iso).toLocaleString('id-ID', { dateStyle:
 export default function KartuPermintaanBahan({ permintaan: p, sibuk, onAksi }) {
   const [panel, setPanel] = useState(null);
 
-  const klik = (nama) => {
+  const klik = async (nama) => {
     if (LABEL_AKSI[nama].panel) setPanel(nama);
-    else if (nama !== 'batalkan' || window.confirm('Batalkan permintaan ini?')) onAksi(p.id, nama, {});
+    else if (nama !== 'batalkan' || (await uiConfirm('Batalkan permintaan ini?'))) onAksi(p.id, nama, {});
   };
 
   const konfirmasi = async (body) => {

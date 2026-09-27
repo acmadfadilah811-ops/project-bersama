@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Plus, Trash2, Search, X, AlertCircle, Package } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
+import { uiConfirm } from '../../../../utils/dialog';
 
 export default function ProductTerkaitTab({ product, onUpdated, storeName }) {
   const relatedDetails = Array.isArray(product.related_products_details) 
@@ -90,7 +91,7 @@ export default function ProductTerkaitTab({ product, onUpdated, storeName }) {
   };
 
   const handleDelete = async (targetId) => {
-    if (!window.confirm('Apakah Anda yakin ingin menghapus produk ini dari daftar produk terkait?')) {
+    if (!(await uiConfirm('Apakah Anda yakin ingin menghapus produk ini dari daftar produk terkait?'))) {
       return;
     }
 

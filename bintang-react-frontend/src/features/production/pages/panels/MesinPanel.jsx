@@ -3,6 +3,7 @@ import {
   RefreshCw, Plus, X, Wrench, AlertTriangle, Loader2, Trash2, History,
 } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
+import { uiConfirm } from '../../../../utils/dialog';
 
 // Saran default di form -- BUKAN batasan. Backend `tipe` sekarang teks bebas
 // (lihat api/machine_models.py) supaya owner bisa daftarkan tipe mesin baru
@@ -437,7 +438,7 @@ export default function MesinPanel({ divisions }) {
   useEffect(() => { fetchMesin(); }, []);
 
   const handleDelete = async (mesin) => {
-    if (!window.confirm(`Hapus mesin "${mesin.nama}"? Log penggunaan yang tercatat tetap tersimpan.`)) return;
+    if (!(await uiConfirm(`Hapus mesin "${mesin.nama}"? Log penggunaan yang tercatat tetap tersimpan.`))) return;
     try {
       await apiClient.delete(`/mesin/${mesin.id}/`);
       fetchMesin();

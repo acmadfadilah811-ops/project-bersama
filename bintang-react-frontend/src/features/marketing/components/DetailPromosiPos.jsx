@@ -4,6 +4,7 @@ import apiClient from '../../../api/apiClient';
 import { fmtDate } from '../format';
 import { StatusToggle } from './Common';
 import DetailPromoTargets from './DetailPromoTargets';
+import { uiConfirm } from '../../../utils/dialog';
 
 const DAY_LABELS = {
   min: 'Minggu',
@@ -38,7 +39,7 @@ export default function DetailPromosiPos({ row, onCancel, onEdit, onSaved }) {
   };
 
   const handleDelete = async () => {
-    if (!window.confirm(`Hapus promosi "${row.judul}"?`)) return;
+    if (!(await uiConfirm(`Hapus promosi "${row.judul}"?`))) return;
     setDeleting(true);
     try {
       await apiClient.delete(`/pos-promotions/${row.id}/`);

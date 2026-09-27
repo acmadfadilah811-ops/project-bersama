@@ -5,6 +5,7 @@ import { extractApiError, formatRibuan, unformatRibuan } from '../format';
 import KuponRulesForm from './KuponRulesForm';
 import KuponFeaturesForm from './KuponFeaturesForm';
 import KuponDetailsForm from './KuponDetailsForm';
+import { uiConfirm } from '../../../utils/dialog';
 
 const randomKode = () => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -111,7 +112,7 @@ export default function TambahKuponForm({ initial, onCancel, onSaved }) {
   };
 
   const handleDelete = async () => {
-    if (!window.confirm(`Hapus kupon "${kode}"?`)) return;
+    if (!(await uiConfirm(`Hapus kupon "${kode}"?`))) return;
     setDeleting(true);
     try {
       await apiClient.delete(`/discount-coupons/${initial.id}/`);

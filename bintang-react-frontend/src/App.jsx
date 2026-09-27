@@ -4,6 +4,7 @@ import { AlertCircle, CheckCircle, Info, X } from 'lucide-react';
 import { AuthProvider } from './context/AuthContext';
 
 import { DynamicIslandProvider } from './context/DynamicIslandContext';
+import ConfirmDialogHost from './components/ConfirmDialogHost';
 import ProtectedRoute from './components/ProtectedRoute';
 import IdleLogoutGuard from './components/IdleLogoutGuard';
 import Layout from './components/Layout';
@@ -210,6 +211,8 @@ function App() {
       </DynamicIslandProvider>
 
       {/* Premium Enterprise Custom Alert Modal */}
+      <ConfirmDialogHost />
+
       {customAlert.open && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 max-w-sm w-full p-6 relative flex flex-col items-center text-center transform scale-100 transition-all duration-300 shadow-indigo-500/10">

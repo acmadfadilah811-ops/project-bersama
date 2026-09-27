@@ -11,6 +11,7 @@ import { notify } from '../../../utils/notify';
 import { fetchAllPages } from '../../../utils/paginatedApi';
 import apiClient from '../../../api/apiClient';
 import { notifyApiError } from '../../../utils/notify';
+import { uiConfirm } from '../../../utils/dialog';
 
 const getTodayStr = () => new Date().toISOString().split('T')[0];
 
@@ -101,7 +102,7 @@ export default function SemuaHutang() {
   }, [statusFilter, dateFrom, dateTo, dateLabel]);
 
   const handleDelete = async (row) => {
-    if (!window.confirm(`Hapus pembelian ${row.txNo}? Hanya pembelian draft yang dapat dihapus.`)) return;
+    if (!(await uiConfirm(`Hapus pembelian ${row.txNo}? Hanya pembelian draft yang dapat dihapus.`))) return;
     try {
       await apiClient.delete(`/purchases/${row.id}/`);
       notify({ type: 'success', title: 'Pembelian Dihapus', message: `${row.txNo} telah dihapus.` });

@@ -22,6 +22,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
+import { uiConfirm } from '../../../utils/dialog';
 
 export default function Payroll() {
   const { user } = useAuth();
@@ -123,9 +124,9 @@ export default function Payroll() {
   // --- Handlers Penggajian ---
   const handleGeneratePayroll = async () => {
     if (generatingPayroll) return;
-    const confirmGen = window.confirm(
+    const confirmGen = (await uiConfirm(
       `Apakah Anda yakin ingin menghitung dan membuat Slip Gaji untuk semua staf aktif di periode ${bulan}/${tahun}?\n\nJika slip untuk bulan tersebut sudah ada, nominal akan diperbarui dengan hitungan terbaru.`
-    );
+    ));
     if (!confirmGen) return;
 
     try {
@@ -142,9 +143,9 @@ export default function Payroll() {
   };
 
   const handlePaySlip = async (id) => {
-    const confirmPay = window.confirm(
+    const confirmPay = (await uiConfirm(
       'Konfirmasi pembayaran slip gaji ini?\n\nStatus akan berubah menjadi LUNAS dan jurnal pengeluaran kas (double-entry) akan otomatis dicatat ke Buku Besar.'
-    );
+    ));
     if (!confirmPay) return;
 
     try {
@@ -234,9 +235,9 @@ export default function Payroll() {
   };
 
   const handleDeleteBom = async (id, name) => {
-    const confirmDel = window.confirm(
+    const confirmDel = (await uiConfirm(
       `Apakah Anda yakin ingin menghapus Bill of Materials "${name}"?\n\nTindakan ini bersifat permanen.`
-    );
+    ));
     if (!confirmDel) return;
 
     try {

@@ -2,6 +2,7 @@ import { useState, useEffect, Fragment } from 'react';
 import { Plus, Trash2, Search, X, ChevronRight, GripVertical, Image as ImageIcon } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
 import { PriceInput } from './VariantModal';
+import { uiConfirm } from '../../../../utils/dialog';
 
 function Section({ title, headerRight, children }) {
   return (
@@ -315,7 +316,7 @@ export default function ProductVariantTab({ product, onUpdated, storeName }) {
 
   // Delete variant
   const handleDeleteVariant = async (variantId) => {
-    if (!window.confirm('Apakah Anda yakin ingin menghapus varian ini?')) return;
+    if (!(await uiConfirm('Apakah Anda yakin ingin menghapus varian ini?'))) return;
     try {
       setSaving(true);
       await apiClient.delete(`/product-variants/${variantId}/`);
@@ -337,7 +338,7 @@ export default function ProductVariantTab({ product, onUpdated, storeName }) {
   // Batch delete selected variants
   const handleBatchDelete = async () => {
     if (selectedVariantIds.length === 0) return;
-    if (!window.confirm(`Apakah Anda yakin ingin menghapus ${selectedVariantIds.length} varian terpilih?`)) return;
+    if (!(await uiConfirm(`Apakah Anda yakin ingin menghapus ${selectedVariantIds.length} varian terpilih?`))) return;
 
     try {
       setSaving(true);

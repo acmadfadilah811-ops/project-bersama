@@ -3,6 +3,7 @@ import { Play, CheckCircle, Save, Trash, ChevronLeft, Download, RefreshCw, Plus,
 import apiClient from '../../../../api/apiClient';
 import KomplainModal from '../../../orders/components/KomplainModal';
 import DeadlineBadge from '../../components/DeadlineBadge';
+import { uiConfirm } from '../../../../utils/dialog';
 
 const MESIN_FORM_KOSONG = {
   mesinId: '', lembarColor: '', lembarMono: '', ukuranKertas: '', jenisKertas: '', gramasiKertas: '',
@@ -131,7 +132,7 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
   };
 
   const handleHapusMesinLog = async (entryId) => {
-    if (!window.confirm('Hapus catatan penggunaan mesin ini?')) return;
+    if (!(await uiConfirm('Hapus catatan penggunaan mesin ini?'))) return;
     try {
       await apiClient.delete(`/penggunaan-mesin/${entryId}/`);
       await fetchMesinLogs();

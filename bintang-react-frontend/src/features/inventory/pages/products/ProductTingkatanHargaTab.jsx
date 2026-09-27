@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Plus, Trash2, Edit2, X, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
 import { PriceInput } from './VariantModal';
+import { uiConfirm } from '../../../../utils/dialog';
 
 export default function ProductTingkatanHargaTab({ product, onUpdated, storeName }) {
   // Price tiers are stored in product.tiers as an array of objects
@@ -148,7 +149,7 @@ export default function ProductTingkatanHargaTab({ product, onUpdated, storeName
   };
 
   const handleDelete = async (tierId) => {
-    if (!window.confirm('Apakah Anda yakin ingin menghapus tingkatan harga ini?')) {
+    if (!(await uiConfirm('Apakah Anda yakin ingin menghapus tingkatan harga ini?'))) {
       return;
     }
 

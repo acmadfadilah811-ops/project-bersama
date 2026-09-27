@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { FileBarChart2, Download, Trash2, RefreshCw, AlertTriangle } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
+import { uiConfirm } from '../../../utils/dialog';
 
 const FILTER_OPTIONS = [
   { id: 'harian', label: 'Hari Ini' },
@@ -112,7 +113,7 @@ export default function LaporanProduksiSpvPanel() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Hapus laporan ini?')) return;
+    if (!(await uiConfirm('Hapus laporan ini?'))) return;
     try {
       await apiClient.delete(`/laporan-produksi/target/${id}/`);
       await fetchAll();

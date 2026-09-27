@@ -7,6 +7,7 @@ import ReturPenjualanDateModal from '../components/pos/ReturPenjualanDateModal';
 import ReturPembelianDetail from '../components/return/ReturPembelianDetail';
 import HeaderFilterDropdown from '../components/HeaderFilterDropdown';
 import useAccountingReturnList from '../hooks/useAccountingReturnList';
+import { uiConfirm } from '../../../utils/dialog';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const ago = (days) => {
@@ -68,7 +69,7 @@ export default function ReturPembelian() {
       notify({ type: 'info', title: 'Tidak ada data yang dapat diproses', message: `Pilih return berstatus Tunda untuk ${actionName}.` });
       return;
     }
-    if (action === 'cancel' && !window.confirm(`Batalkan post ${eligible.length} return pembelian?`)) return;
+    if (action === 'cancel' && !(await uiConfirm(`Batalkan post ${eligible.length} return pembelian?`))) return;
 
     setActionLoading(true);
     const results = await Promise.allSettled(eligible.map((row) => apiClient.post(`/purchases/${row.id}/${action}/`, action === 'post-retur' ? { exchange_new: row.exchange_new } : {})));

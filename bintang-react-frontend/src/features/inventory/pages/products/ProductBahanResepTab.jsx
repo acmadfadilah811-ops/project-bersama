@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Plus, Trash2, Search, X, ChevronDown, ChevronRight, Edit2, Upload, AlertCircle } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
 import ImportRecipeModal from './ImportRecipeModal';
+import { uiConfirm } from '../../../../utils/dialog';
 
 export default function ProductBahanResepTab({ product, onUpdated, storeName }) {
   const [boms, setBoms] = useState([]);
@@ -226,7 +227,7 @@ export default function ProductBahanResepTab({ product, onUpdated, storeName }) 
   };
 
   const handleDeleteItem = async (itemId) => {
-    if (!window.confirm('Apakah Anda yakin ingin menghapus bahan ini dari resep?')) {
+    if (!(await uiConfirm('Apakah Anda yakin ingin menghapus bahan ini dari resep?'))) {
       return;
     }
     try {

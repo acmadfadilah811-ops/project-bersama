@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { Pencil, Trash2, Check } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
+import { uiConfirm } from '../../../utils/dialog';
 
 /** Tampilan detail untuk Kupon Diskon, didesain persis seperti tangkapan layar */
 export default function DetailKuponDiskon({ row, onCancel, onEdit, onSaved }) {
   const [deleting, setDeleting] = useState(false);
 
   const handleDelete = async () => {
-    if (!window.confirm(`Hapus kupon "${row.kode}"?`)) return;
+    if (!(await uiConfirm(`Hapus kupon "${row.kode}"?`))) return;
     setDeleting(true);
     try {
       await apiClient.delete(`/discount-coupons/${row.id}/`);

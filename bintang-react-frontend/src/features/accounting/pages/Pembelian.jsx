@@ -8,6 +8,7 @@ import HeaderFilterDropdown from '../components/HeaderFilterDropdown';
 import useAccountingReturnList from '../hooks/useAccountingReturnList';
 import apiClient from '../../../api/apiClient';
 import { notify, notifyApiError } from '../../../utils/notify';
+import { uiConfirm } from '../../../utils/dialog';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const ago = (days) => {
@@ -117,8 +118,8 @@ export default function Pembelian() {
     'belum melalui langkah Diterima',
   );
 
-  const handleBatalPost = () => {
-    if (!window.confirm(`Batalkan ${selectedRows.filter(canBatalkan).length} pembelian terpilih?`)) return;
+  const handleBatalPost = async () => {
+    if (!(await uiConfirm(`Batalkan ${selectedRows.filter(canBatalkan).length} pembelian terpilih?`))) return;
     runBulk(
       selectedRows.filter(canBatalkan), 'Batal Post',
       (row) => apiClient.post(`/purchases/${row.id}/workflow/update-status/`, { status_pembelian: 'Batal' }),

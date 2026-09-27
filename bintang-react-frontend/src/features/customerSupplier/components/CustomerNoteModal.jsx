@@ -3,6 +3,7 @@ import { FileText, Trash2, Plus, History, ChevronRight, AlertCircle } from 'luci
 import apiClient from '../../../api/apiClient';
 import CustomerCombobox from './CustomerCombobox';
 import TagMultiSelect from './TagMultiSelect';
+import { uiConfirm } from '../../../utils/dialog';
 
 const inputCls = 'w-full h-11 rounded-xl border border-slate-200 px-3.5 text-xs text-slate-800 outline-none focus:ring-1 focus:ring-blue-400 focus:border-blue-400 shadow-sm transition-all duration-150';
 const labelCls = 'text-xs font-bold text-slate-700 mb-1.5 block';
@@ -55,7 +56,7 @@ export default function CustomerNoteModal({ note, customers = [], allTags = [], 
   const removeDraftDocument = (idx) => setDraftDocuments((prev) => prev.filter((_, i) => i !== idx));
 
   const deleteExistingDocument = async (doc) => {
-    if (!window.confirm('Hapus dokumen ini?')) return;
+    if (!(await uiConfirm('Hapus dokumen ini?'))) return;
     try {
       await apiClient.delete(`/customer-note-documents/${doc.id}/`);
       setExistingDocuments((prev) => prev.filter((d) => d.id !== doc.id));
@@ -74,7 +75,7 @@ export default function CustomerNoteModal({ note, customers = [], allTags = [], 
   const removeDraftEntry = (idx) => setDraftEntries((prev) => prev.filter((_, i) => i !== idx));
 
   const deleteExistingEntry = async (entry) => {
-    if (!window.confirm('Hapus entri catatan ini?')) return;
+    if (!(await uiConfirm('Hapus entri catatan ini?'))) return;
     try {
       await apiClient.delete(`/customer-note-entries/${entry.id}/`);
       setExistingEntries((prev) => prev.filter((e) => e.id !== entry.id));
@@ -131,7 +132,7 @@ export default function CustomerNoteModal({ note, customers = [], allTags = [], 
   };
 
   const handleDeleteClick = async () => {
-    if (!window.confirm('Hapus catatan ini beserta seluruh entri dan dokumen?')) return;
+    if (!(await uiConfirm('Hapus catatan ini beserta seluruh entri dan dokumen?'))) return;
     try {
       await apiClient.delete(`/customer-notes/${note.id}/`);
       onSaved?.();

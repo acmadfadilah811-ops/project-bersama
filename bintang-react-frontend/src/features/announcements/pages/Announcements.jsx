@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import apiClient from '../../../api/apiClient';
 import { Bell, Plus, Trash2, X, Users, MessageSquare } from 'lucide-react';
 import dayjs from 'dayjs';
+import { uiConfirm } from '../../../utils/dialog';
 
 export default function Announcements() {
   const [announcements, setAnnouncements] = useState([]);
@@ -117,7 +118,7 @@ export default function Announcements() {
   };
 
   const hapusAnnouncement = async (id) => {
-    if (!window.confirm('Yakin ingin menghapus pengumuman ini?')) return;
+    if (!(await uiConfirm('Yakin ingin menghapus pengumuman ini?'))) return;
     try {
       await apiClient.delete(`/hr/info/${id}/`);
       fetchAnnouncements();

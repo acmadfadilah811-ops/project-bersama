@@ -4,6 +4,7 @@ import ReturPembelianHeaderCards from './ReturPembelianHeaderCards';
 import ReturPembelianItemsTable from './ReturPembelianItemsTable';
 import ProdukReturModal from './ProdukReturModal';
 import PembayaranReturModal from './PembayaranReturModal';
+import { uiConfirm } from '../../../../utils/dialog';
 
 /**
  * Complete Return Purchase Detail View — Presisi 1:1 SS No. 1, 2, 3, 4
@@ -125,7 +126,7 @@ export default function ReturPembelianDetailView({ docId, onBack, onSaved }) {
   };
 
   const handlePostRetur = async () => {
-    if (!window.confirm('Post sekarang retur pembelian ini?')) return;
+    if (!(await uiConfirm('Post sekarang retur pembelian ini?'))) return;
     try {
       await apiClient.post(`/purchases/${docId}/post-retur/`);
       await refreshAll();
@@ -135,7 +136,7 @@ export default function ReturPembelianDetailView({ docId, onBack, onSaved }) {
   };
 
   const handleCancelRetur = async () => {
-    if (!window.confirm('Batalkan retur pembelian ini?')) return;
+    if (!(await uiConfirm('Batalkan retur pembelian ini?'))) return;
     try {
       await apiClient.post(`/purchases/${docId}/cancel/`);
       await refreshAll();

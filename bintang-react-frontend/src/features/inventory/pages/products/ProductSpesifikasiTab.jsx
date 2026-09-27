@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Plus, Trash2, X, AlertCircle, Sliders, ChevronLeft, ChevronRight } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
+import { uiConfirm } from '../../../../utils/dialog';
 
 export default function ProductSpesifikasiTab({ product, onUpdated, storeName }) {
   // Specifications values are passed in product.specifications as an array of objects
@@ -112,7 +113,7 @@ export default function ProductSpesifikasiTab({ product, onUpdated, storeName })
   };
 
   const handleDelete = async (specValueId) => {
-    if (!window.confirm('Apakah Anda yakin ingin menghapus spesifikasi ini?')) {
+    if (!(await uiConfirm('Apakah Anda yakin ingin menghapus spesifikasi ini?'))) {
       return;
     }
 

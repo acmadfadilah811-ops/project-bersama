@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { Pencil, Trash2 } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import { fmtDiskon } from '../format';
+import { uiConfirm } from '../../../utils/dialog';
 
 /** Tampilan detail untuk Diskon Penjualan, didesain persis seperti tangkapan layar */
 export default function DetailDiskonPenjualan({ row, onCancel, onEdit, onSaved }) {
   const [deleting, setDeleting] = useState(false);
 
   const handleDelete = async () => {
-    if (!window.confirm('Hapus diskon penjualan ini?')) return;
+    if (!(await uiConfirm('Hapus diskon penjualan ini?'))) return;
     setDeleting(true);
     try {
       await apiClient.delete(`/sales-discounts/${row.id}/`);

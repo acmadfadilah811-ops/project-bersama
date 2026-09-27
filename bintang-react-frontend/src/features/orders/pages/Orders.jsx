@@ -33,6 +33,7 @@ import OrderInputForm from '../components/OrderInputForm';
 import KomplainModal from '../components/KomplainModal';
 import VoidOrderModal from '../../kasir/components/VoidOrderModal';
 import VoidOrderOtpModal from '../../kasir/components/VoidOrderOtpModal';
+import { uiConfirm } from '../../../utils/dialog';
 
 export default function Orders() {
   const { user, businessSettings } = useAuth();
@@ -542,9 +543,9 @@ export default function Orders() {
   };
 
   const handleDeleteOrder = async (order) => {
-    const konfirmasi = window.confirm(
+    const konfirmasi = (await uiConfirm(
       `Apakah Anda yakin ingin menghapus permanen order ${order.id}?\n\nNama: ${order.nama}\n\nSemua item dan job terkait akan ikut terhapus. Tindakan ini tidak dapat dibatalkan.`
-    );
+    ));
     if (!konfirmasi) return;
     try {
       await apiClient.delete(`/orders/${order.id}/`);

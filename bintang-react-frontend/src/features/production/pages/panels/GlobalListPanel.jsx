@@ -19,6 +19,7 @@ import OrderInputForm from '../../../orders/components/OrderInputForm';
 import { useAuth } from '../../../../context/AuthContext';
 import VoidOrderModal from '../../../kasir/components/VoidOrderModal';
 import VoidOrderOtpModal from '../../../kasir/components/VoidOrderOtpModal';
+import { uiConfirm } from '../../../../utils/dialog';
 
 const STATUS_COLORS = {
   review: 'bg-yellow-100 text-yellow-800 border-yellow-200',
@@ -626,9 +627,9 @@ export default function GlobalListPanel() {
                             onChange={async (e) => {
                               const nextStatus = e.target.value;
                               if (
-                                window.confirm(
+                                (await uiConfirm(
                                   `Ubah status global order ini menjadi "${STATUS_LABEL[nextStatus]}"?`
-                                )
+                                ))
                               ) {
                                 try {
                                   // 'selesai'/'batal' WAJIB lewat endpoint resmi (bukan
@@ -670,9 +671,9 @@ export default function GlobalListPanel() {
                           <button
                             onClick={async () => {
                               if (
-                                window.confirm(
+                                (await uiConfirm(
                                   'Selesaikan order ini? Seluruh pembayaran dan penyerahan barang dianggap selesai.'
-                                )
+                                ))
                               ) {
                                 try {
                                   // Wajib lewat /selesaikan/ (bukan PATCH status_global

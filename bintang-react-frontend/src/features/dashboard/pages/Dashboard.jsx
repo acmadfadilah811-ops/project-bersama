@@ -33,6 +33,7 @@ import {
   Lock,
   LineChart,
 } from 'lucide-react';
+import { uiConfirm, uiPrompt } from '../../../utils/dialog';
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -111,7 +112,7 @@ export default function Dashboard() {
   };
 
   const handleClockOut = async () => {
-    if (!window.confirm('Apakah Anda yakin ingin mengakhiri jam kerja hari ini?')) return;
+    if (!(await uiConfirm('Apakah Anda yakin ingin mengakhiri jam kerja hari ini?'))) return;
     try {
       setActionLoading(true);
       await apiClient.post('/hr/absensi/clock-out/', { catatan: '' });
@@ -267,7 +268,7 @@ export default function Dashboard() {
   };
 
   const handleVoidTolak = async (req) => {
-    const alasanTolak = window.prompt('Alasan menolak permintaan void ini (opsional):', '') || '';
+    const alasanTolak = (await uiPrompt('Alasan menolak permintaan void ini (opsional):', '')) || '';
     setVoidActionLoading(true);
     try {
       await apiClient.post(`${voidEndpoint(req)}${req.id}/tolak/`, { alasan_tolak: alasanTolak });

@@ -10,6 +10,7 @@ import PurchaseWorkflowLog from './PurchaseWorkflowLog';
 import PurchaseAttachmentCard from './PurchaseAttachmentCard';
 import ReturPembelianDetailView from './return/ReturPembelianDetailView';
 import apiClient from '../../../api/apiClient';
+import { uiConfirm } from '../../../utils/dialog';
 
 export default function PembelianDetail({ docId, detailMode = 'butuh-diproses', onBack, onSaved }) {
   const [doc, setDoc] = useState(null);
@@ -100,7 +101,7 @@ export default function PembelianDetail({ docId, detailMode = 'butuh-diproses', 
   };
 
   const handlePostRetur = async () => {
-    if (!window.confirm('Post sekarang dokumen retur ini?')) return;
+    if (!(await uiConfirm('Post sekarang dokumen retur ini?'))) return;
     try {
       await apiClient.post(`/purchases/${docId}/workflow/update-status/`, { status_pembelian: 'Selesai' });
       await refreshAll();

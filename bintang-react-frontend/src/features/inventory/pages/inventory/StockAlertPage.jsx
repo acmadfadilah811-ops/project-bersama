@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
+import { uiConfirm } from '../../../../utils/dialog';
 
 /**
  * Email Peringatan Stok.
@@ -74,7 +75,7 @@ export function StockAlertPage() {
   };
 
   const handleDeleteEmail = async (email) => {
-    if (!window.confirm(`Hapus ${email} dari daftar penerima?`)) return;
+    if (!(await uiConfirm(`Hapus ${email} dari daftar penerima?`))) return;
     await simpanDaftar(emailList.filter((x) => x !== email));
   };
 

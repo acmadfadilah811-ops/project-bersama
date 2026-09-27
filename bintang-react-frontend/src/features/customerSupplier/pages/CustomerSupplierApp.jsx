@@ -26,6 +26,7 @@ import * as XLSX from 'xlsx';
 import SupplierFormPage from '../components/SupplierFormPage';
 import SupplierDetailPage from '../components/SupplierDetailPage';
 import SupplierImportModal from '../components/SupplierImportModal';
+import { uiConfirm } from '../../../utils/dialog';
 
 
 const MONTHS_ID = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
@@ -221,7 +222,7 @@ function CustomerSupplierInner() {
   };
 
   const handleDeleteCustomer = async (cust) => {
-    if (!window.confirm(`Hapus pelanggan "${cust.nama}"?`)) return;
+    if (!(await uiConfirm(`Hapus pelanggan "${cust.nama}"?`))) return;
     try {
       await apiClient.delete(`/customers/${cust.id}/`);
       fetchCustomers();
@@ -401,7 +402,7 @@ function CustomerSupplierInner() {
 
   // eslint-disable-next-line no-unused-vars
   const handleDeleteNote = async (note) => {
-    if (!window.confirm('Hapus catatan ini?')) return;
+    if (!(await uiConfirm('Hapus catatan ini?'))) return;
     try {
       await apiClient.delete(`/customer-notes/${note.id}/`);
       fetchNotes();
@@ -478,7 +479,7 @@ function CustomerSupplierInner() {
   };
 
   const handleDeleteGroup = async (grp) => {
-    if (!window.confirm(`Hapus tipe pelanggan "${grp.nama}"?`)) return;
+    if (!(await uiConfirm(`Hapus tipe pelanggan "${grp.nama}"?`))) return;
     try {
       await apiClient.delete(`/customer-groups/${grp.id}/`);
       fetchGroups();
@@ -533,7 +534,7 @@ function CustomerSupplierInner() {
   };
 
   const handleDeleteReview = async (rev) => {
-    if (!window.confirm('Hapus ulasan ini?')) return;
+    if (!(await uiConfirm('Hapus ulasan ini?'))) return;
     try {
       await apiClient.delete(`/customer-reviews/${rev.id}/`);
       fetchReviews();
@@ -638,7 +639,7 @@ function CustomerSupplierInner() {
   };
 
   const handleDeleteSupplier = async (sup) => {
-    if (!window.confirm(`Hapus supplier "${sup.nama}"?`)) return;
+    if (!(await uiConfirm(`Hapus supplier "${sup.nama}"?`))) return;
     try {
       await apiClient.delete(`/suppliers/${sup.id}/`);
       setActiveSupplier(null);

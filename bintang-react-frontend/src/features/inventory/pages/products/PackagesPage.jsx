@@ -7,6 +7,7 @@ import { formatCurrency } from '../productInventoryData';
 import { useAuth } from '../../../../context/AuthContext';
 import apiClient from '../../../../api/apiClient';
 import { fetchAllPages } from '../../../../utils/paginatedApi';
+import { uiConfirm } from '../../../../utils/dialog';
 
 const getFileSizeStr = (bytes) => {
   if (!bytes) return '0 B';
@@ -146,7 +147,7 @@ export function PackagesPage({ onToggleCreate }) {
   };
 
   const handleCopyPackage = async (pkg) => {
-    if (!window.confirm(`Salin paket produk "${pkg.nama}"?`)) return;
+    if (!(await uiConfirm(`Salin paket produk "${pkg.nama}"?`))) return;
     setSaving(true);
     try {
       const fd = new FormData();
@@ -434,7 +435,7 @@ export function PackagesPage({ onToggleCreate }) {
   };
 
   const handleDeletePackage = async () => {
-    if (!window.confirm(`Apakah Anda yakin ingin menghapus paket produk "${viewingPackage.nama}"?`)) return;
+    if (!(await uiConfirm(`Apakah Anda yakin ingin menghapus paket produk "${viewingPackage.nama}"?`))) return;
     setSaving(true);
     try {
       await apiClient.delete(`/product-packages/${viewingPackage.id}/`);

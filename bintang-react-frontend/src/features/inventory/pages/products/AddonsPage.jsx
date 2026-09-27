@@ -3,6 +3,7 @@ import { Plus, Search, Trash2, ArrowLeft } from 'lucide-react';
 import DataTable from '../components/DataTable';
 import apiClient from '../../../../api/apiClient';
 import { fetchAllPages } from '../../../../utils/paginatedApi';
+import { uiConfirm } from '../../../../utils/dialog';
 
 const formatToIDR = (num) => {
   if (num === null || num === undefined) return 'IDR 0';
@@ -163,7 +164,7 @@ export function AddonsPage({ onToggleCreate }) {
   };
 
   const handleDeleteAddon = async () => {
-    if (!window.confirm(`Apakah Anda yakin ingin menghapus add-on "${viewingAddon.nama}"?`)) return;
+    if (!(await uiConfirm(`Apakah Anda yakin ingin menghapus add-on "${viewingAddon.nama}"?`))) return;
     setSaving(true);
     try {
       await apiClient.delete(`/addons/${viewingAddon.id}/`);

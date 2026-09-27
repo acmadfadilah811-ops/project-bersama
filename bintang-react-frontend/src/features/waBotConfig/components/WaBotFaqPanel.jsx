@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle2, Loader2, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
+import { uiConfirm } from '../../../utils/dialog';
 
 /**
  * Tab "FAQ" di Kasir > Pengaturan WA Bot -- daftar tanya-jawab resmi
@@ -79,7 +80,7 @@ export default function WaBotFaqPanel() {
   };
 
   const hapusFaq = async (pertanyaan) => {
-    if (!window.confirm(`Hapus FAQ "${pertanyaan}"?`)) return;
+    if (!(await uiConfirm(`Hapus FAQ "${pertanyaan}"?`))) return;
     setDeletingKey(pertanyaan);
     setMsg(null);
     try {

@@ -5,6 +5,7 @@ import {
   ambilAkunKasPengajuan, ambilPengajuanGaji, bayarPengajuanGaji,
   otorisasiPengajuanGaji, tolakPengajuanGaji, verifikasiPengajuanGaji,
 } from '../../services/payroll';
+import { uiConfirm, uiPrompt } from '../../../../utils/dialog';
 
 // Persetujuan pencairan gaji 5 tahap. Aturan & peran diperiksa ulang di backend;
 // tombol di sini hanya mengikuti `aksi` yang dikirim server.
@@ -92,7 +93,7 @@ function KartuPengajuan({ p, onUbah }) {
   const r = p.ringkasan || {};
 
   const jalankan = async (fn, pesan, konfirmasi) => {
-    if (konfirmasi && !window.confirm(konfirmasi)) return;
+    if (konfirmasi && !(await uiConfirm(konfirmasi))) return;
     setProses(true);
     try {
       await fn();
@@ -105,8 +106,8 @@ function KartuPengajuan({ p, onUbah }) {
     }
   };
 
-  const tolak = () => {
-    const alasan = window.prompt('Alasan penolakan (wajib, akan dikirim ke HR):');
+  const tolak = async () => {
+    const alasan = (await uiPrompt('Alasan penolakan (wajib, akan dikirim ke HR):'));
     if (alasan === null) return;
     jalankan(() => tolakPengajuanGaji(p.id, alasan), 'Pengajuan ditolak dan HR diberi tahu.');
   };

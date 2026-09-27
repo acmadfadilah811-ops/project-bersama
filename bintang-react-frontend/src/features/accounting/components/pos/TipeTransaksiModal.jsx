@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Plus, Trash2, X } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
 import { notifyApiError } from '../../../../utils/notify';
+import { uiConfirm } from '../../../../utils/dialog';
 
 // Kelola CashTransactionType (master Tipe Transaksi) per arah — real CRUD ke
 // /cash-transaction-types/, dipakai bersama layar Pendapatan & Pengeluaran.
@@ -43,7 +44,7 @@ export default function TipeTransaksiModal({ isOpen, onClose, direction }) {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Hapus tipe transaksi ini?')) return;
+    if (!(await uiConfirm('Hapus tipe transaksi ini?'))) return;
     try {
       await apiClient.delete(`/cash-transaction-types/${id}/`);
       await reload();

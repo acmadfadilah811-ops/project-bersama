@@ -8,6 +8,7 @@ import ReturPenjualanSettingsDrawer from '../components/pos/ReturPenjualanSettin
 import ReturPenjualanDetail from '../components/return/ReturPenjualanDetail';
 import HeaderFilterDropdown from '../components/HeaderFilterDropdown';
 import useAccountingReturnList from '../hooks/useAccountingReturnList';
+import { uiConfirm } from '../../../utils/dialog';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const ago = (days) => {
@@ -72,7 +73,7 @@ export default function ReturPenjualan() {
       notify({ type: 'info', title: 'Tidak ada data yang dapat diproses', message: `Pilih return dengan status yang sesuai untuk ${actionName}.` });
       return;
     }
-    if (nextStatus === 'Tunda' && !window.confirm(`Batalkan post ${eligible.length} return penjualan?`)) return;
+    if (nextStatus === 'Tunda' && !(await uiConfirm(`Batalkan post ${eligible.length} return penjualan?`))) return;
 
     setActionLoading(true);
     const results = await Promise.allSettled(eligible.map((row) => apiClient.patch(`/pengembalian/${row.id}/`, { status: nextStatus })));

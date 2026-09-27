@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { uiConfirm } from '../../../../utils/dialog';
 
 // Tombol aksi sesuai status. Aturan sebenarnya ditegakkan backend; di sini hanya
 // menampilkan tombol yang relevan dan meminta konfirmasi sebelum menulis jurnal.
@@ -14,8 +15,8 @@ export default function AksiPostingGaji({ pratinjau, akun, sedangProses, onPosti
   const bisaBayar = Boolean(aktif) && !aktif.payment_journal_entry;
   const akunKasBank = akun.filter((a) => a.klasifikasi === 'Kas & Bank');
 
-  const konfirmasi = (teks, fn) => () => {
-    if (window.confirm(teks)) fn();
+  const konfirmasi = (teks, fn) => async () => {
+    if ((await uiConfirm(teks))) fn();
   };
 
   const kirimBayar = async () => {

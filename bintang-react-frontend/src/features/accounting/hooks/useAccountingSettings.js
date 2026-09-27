@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import apiClient from '../../../api/apiClient';
 import { notifyApiError } from '../../../utils/notify';
+import { uiConfirm } from '../../../utils/dialog';
 
 const DEFAULT_SETTINGS = {
   id: null,
@@ -107,13 +108,13 @@ export default function useAccountingSettings() {
     }
   };
 
-  const handleToggleActiveState = () => {
+  const handleToggleActiveState = async () => {
     const nextState = !settings.is_active;
     const confirmMsg = nextState
       ? 'Apakah Anda yakin ingin MENGAKTIFKAN kembali modul Akuntansi Internal?'
       : 'Apakah Anda yakin ingin MENGHENTIKAN modul Akuntansi Internal?';
 
-    if (window.confirm(confirmMsg)) {
+    if ((await uiConfirm(confirmMsg))) {
       setSettings((prev) => ({ ...prev, is_active: nextState }));
       patchSettings({ is_active: nextState });
     }

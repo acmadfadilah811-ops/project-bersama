@@ -4,6 +4,7 @@ import apiClient from '../../../../api/apiClient';
 import { notify, notifyApiError } from '../../../../utils/notify';
 import ReturPenjualanDateModal from './ReturPenjualanDateModal';
 import TipeTransaksiModal from './TipeTransaksiModal';
+import { uiConfirm } from '../../../../utils/dialog';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const ago = (days) => {
@@ -121,7 +122,7 @@ export default function CashTransactionPosScreen({ direction, title }) {
       notify({ type: 'info', title: 'Tidak ada data yang dapat diproses', message: 'Pilih transaksi yang sudah Terposting.' });
       return;
     }
-    if (!window.confirm(`Batalkan ${eligible.length} transaksi terposting?`)) return;
+    if (!(await uiConfirm(`Batalkan ${eligible.length} transaksi terposting?`))) return;
     setActionLoading(true);
     const results = await Promise.allSettled(eligible.map((row) => apiClient.post(`/cash-transactions/${row.id}/cancel/`)));
     const successCount = results.filter((r) => r.status === 'fulfilled').length;

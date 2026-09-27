@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Plus, Settings, X, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
+import { uiConfirm } from '../../../../utils/dialog';
 
 export default function ProductSatuanTab({ product, onUpdated, storeName }) {
   // Read properties with safe defaults
@@ -145,7 +146,7 @@ export default function ProductSatuanTab({ product, onUpdated, storeName }) {
 
   // Delete UOM Unit
   const handleDeleteUnit = async (unitId) => {
-    if (!window.confirm('Apakah Anda yakin ingin menghapus satuan ini?')) {
+    if (!(await uiConfirm('Apakah Anda yakin ingin menghapus satuan ini?'))) {
       return;
     }
 

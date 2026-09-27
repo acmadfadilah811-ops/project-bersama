@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Search, ChevronRight, Move, Trash2, X } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
+import { uiConfirm } from '../../../../utils/dialog';
 
 export function BrandsPage() {
   const [brands, setBrands] = useState([]);
@@ -93,7 +94,7 @@ export function BrandsPage() {
 
   const handleDelete = async () => {
     if (!editingBrand || saving) return;
-    if (!window.confirm(`Apakah Anda yakin ingin menghapus brand "${editingBrand.nama}"?`)) return;
+    if (!(await uiConfirm(`Apakah Anda yakin ingin menghapus brand "${editingBrand.nama}"?`))) return;
     setSaving(true);
     try {
       await apiClient.delete(`/brands/${editingBrand.id}/`);
