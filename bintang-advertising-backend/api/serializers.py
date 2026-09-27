@@ -594,6 +594,8 @@ class OrderSerializer(serializers.ModelSerializer):
     diskon_total = serializers.SerializerMethodField()
     kupon_info = serializers.SerializerMethodField()
     dilayani_oleh_nama = serializers.SerializerMethodField()
+    # Nama sales pembuat order dari CRM (2026-09-27), untuk kartu Antrean.
+    crm_sales_nama = serializers.SerializerMethodField()
     kode_pelanggan = serializers.SerializerMethodField()
     unit_bisnis_nama = serializers.ReadOnlyField(source='unit_bisnis.nama')
 
@@ -606,7 +608,7 @@ class OrderSerializer(serializers.ModelSerializer):
             'hpp_bahan', 'margin_persen',
             'kupon_kode', 'diskon_kupon', 'kupon_info',
             'diskon_total',
-            'dilayani_oleh', 'dilayani_oleh_nama',
+            'dilayani_oleh', 'dilayani_oleh_nama', 'crm_sales_nama',
             'unit_bisnis', 'unit_bisnis_nama',
             'metode_diskon', 'diskon_otomatis',
             # Metadata & Pengiriman (T-209 Revisi 2)
@@ -668,6 +670,14 @@ class OrderSerializer(serializers.ModelSerializer):
         contact = self._get_contact(obj.nomor_wa)
         customer = getattr(contact, 'customer', None) if contact else None
         return (getattr(customer, 'kode_pelanggan', '') or '').strip()
+
+    def get_crm_sales_nama(self, obj):
+        if obj.sumber != 'crm':
+            return None
+        asal = getattr(obj, 'asal_crm', None)
+        if asal is None:
+            return None
+        return asal.sales_nama or asal.crm_username or None
 
     def get_dilayani_oleh_nama(self, obj):
         u = obj.dilayani_oleh

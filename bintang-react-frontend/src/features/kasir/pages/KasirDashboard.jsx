@@ -47,7 +47,7 @@ export default function KasirDashboard({ onToggleSidebar }) {
     const load = async () => {
       try {
         const resWa = await apiClient.get('/orders/', {
-          params: { status_global: 'review', sumber: 'wa,staff' },
+          params: { status_global: 'review', sumber: 'wa,staff,crm' },
         });
         setWaCount((resWa.data || []).length);
       } catch (err) {

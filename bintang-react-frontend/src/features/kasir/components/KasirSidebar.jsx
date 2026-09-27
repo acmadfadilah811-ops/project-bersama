@@ -47,7 +47,7 @@ export default function KasirSidebar({ isCollapsed, setIsCollapsed }) {
   const fetchWaOrdersCount = async () => {
     try {
       const response = await apiClient.get('/orders/', {
-        params: { status_global: 'review', sumber: 'wa,staff' },
+        params: { status_global: 'review', sumber: 'wa,staff,crm' },
       });
       const data = response.data || [];
       setWaOrderCount(data.length);

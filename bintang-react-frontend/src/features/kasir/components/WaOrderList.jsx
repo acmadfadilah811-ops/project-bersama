@@ -16,6 +16,7 @@ const SUMBER_LABEL = {
   pos: 'POS Terminal',
   manual: 'Input Manual',
   agent: 'AI Agent',
+  crm: 'CRM (Sales)',
 };
 
 /** Daftar Antrean Online & Offline — grid kartu full layar (redesign
@@ -188,12 +189,24 @@ export default function WaOrderList({
                         Offline
                       </span>
                     )}
+                    {order.sumber === 'crm' && (
+                      <span className="text-[8px] bg-slate-100 text-slate-700 border border-slate-300 px-1 py-0.5 rounded font-black tracking-wider uppercase">
+                        Via CRM
+                      </span>
+                    )}
                   </div>
 
                   {/* Nama pembuat order offline (staff/SPV/Kordiv yang
                       pakai "Buat Order", lihat StaffCreateOrderPanel.jsx) --
                       Order.dilayani_oleh_nama (api/serializers.py). Order
                       WA tidak punya pembuat manusia, tidak ditampilkan. */}
+                  {/* Order dari CRM: nama sales pembuatnya (Order.asal_crm). */}
+                  {order.sumber === 'crm' && order.crm_sales_nama && (
+                    <div className="flex items-center gap-1 text-[9.5px] text-slate-600 font-bold">
+                      <User size={9} className="shrink-0" />
+                      <span className="truncate">Sales CRM: {order.crm_sales_nama}</span>
+                    </div>
+                  )}
                   {order.sumber === 'staff' && order.dilayani_oleh_nama && (
                     <div className="flex items-center gap-1 text-[9.5px] text-amber-700 font-bold">
                       <User size={9} className="shrink-0" />

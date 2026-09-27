@@ -600,9 +600,9 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
             onSelectOrder={handleSelectOrder}
             onRefresh={() => fetchQueueRef.current()}
             judul={judulAntrean}
-            subjudul={sumber.includes(',') ? 'Order dari WhatsApp & dibantu staff, diperbarui otomatis' : sumber === 'staff' ? 'Order dari staff, menunggu diverifikasi kasir' : 'Semua pesanan WA, diperbarui otomatis'}
+            subjudul={sumber.includes(',') ? 'Order dari WhatsApp, staff, & sales CRM, diperbarui otomatis' : sumber === 'staff' ? 'Order dari staff, menunggu diverifikasi kasir' : 'Semua pesanan WA, diperbarui otomatis'}
             judulKosong={sumber.includes(',') ? 'Belum Ada Pesanan' : sumber === 'staff' ? 'Belum Ada Order dari Staff' : 'Belum Ada Pesanan WhatsApp'}
-            pesanKosong={sumber.includes(',') ? 'Pesanan dari WhatsApp maupun yang dibantu staff akan muncul di sini.' : sumber === 'staff' ? 'Order yang dibuatkan staff untuk membantu pelanggan akan muncul di sini.' : 'Pesanan yang dibuat otomatis dari WhatsApp akan muncul di sini.'}
+            pesanKosong={sumber.includes(',') ? 'Pesanan dari WhatsApp, staff, maupun sales CRM akan muncul di sini.' : sumber === 'staff' ? 'Order yang dibuatkan staff untuk membantu pelanggan akan muncul di sini.' : 'Pesanan yang dibuat otomatis dari WhatsApp akan muncul di sini.'}
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
             // Toggle Online/Offline cuma masuk akal kalau halaman ini
