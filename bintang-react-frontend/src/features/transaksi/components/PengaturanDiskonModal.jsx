@@ -99,7 +99,7 @@ export default function PengaturanDiskonModal({ orderId, subtotal, currentPersen
         await apiClient.patch(`/orders/${orderId}/`, {
           diskon_persen: effectivePersen,
           kupon_kode: null,
-          metode_diskon: 'persen'
+          metode_diskon: 'tidak_ada'
         });
       }
       onSaved?.();
@@ -117,7 +117,7 @@ export default function PengaturanDiskonModal({ orderId, subtotal, currentPersen
       await apiClient.patch(`/orders/${orderId}/`, {
         diskon_persen: 0,
         kupon_kode: null,
-        metode_diskon: 'persen'
+        metode_diskon: 'tidak_ada'
       });
       onSaved?.();
     } catch (err) {

@@ -226,7 +226,8 @@ class POSPromotionViewSet(viewsets.ModelViewSet):
         ctx_subtotal = Decimal(str(subtotal or 0))
         if not ctx_subtotal:
             ctx_subtotal = sum((b.subtotal for b in baris), Decimal('0'))
-        konteks = KonteksPromo(baris=baris, subtotal=ctx_subtotal, pelanggan=pelanggan, kanal=KANAL_POS)
+        konteks = KonteksPromo(baris=baris, subtotal=ctx_subtotal, pelanggan=pelanggan, kanal=KANAL_POS,
+                               unit_bisnis_id=getattr(request.user, 'unit_bisnis_id', None))
         hasil = evaluate_promotions(konteks)
         return Response({
             # Nilai uang dikirim sebagai string agar Decimal tidak berubah

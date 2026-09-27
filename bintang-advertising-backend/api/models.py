@@ -354,7 +354,8 @@ class Order(models.Model):
                 )
                 for it in self.items.all()
             ]
-            konteks = KonteksPromo(baris=baris, subtotal=Decimal(str(subtotal or 0)), pelanggan=contact, kanal=KANAL_POS)
+            konteks = KonteksPromo(baris=baris, subtotal=Decimal(str(subtotal or 0)), pelanggan=contact, kanal=KANAL_POS,
+                                   unit_bisnis_id=self.unit_bisnis_id)
             hasil = evaluate_promotions(konteks)
             return int(hasil.diskon)
         except Exception as e:

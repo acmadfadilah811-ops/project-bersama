@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, Trash2 } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import { useAuth } from '../../../context/AuthContext';
@@ -16,6 +16,9 @@ export default function TambahPromosiForm({ initial, onCancel, onSaved }) {
   const accountName = businessSettings?.nama_bisnis || user?.name || user?.email || 'Akun';
 
   const [judul, setJudul] = useState(initial?.judul || '');
+  // Unit bisnis tempat promosi berlaku; '' = semua unit (2026-09-27).
+  const [unitBisnis, setUnitBisnis] = useState(initial?.unit_bisnis ? String(initial.unit_bisnis) : '');
+  const [daftarUnit, setDaftarUnit] = useState([]);
   const [tipe, setTipe] = useState(initial?.tipe_promosi || 'BX');
   const [combineQty, setCombineQty] = useState(initial ? initial.combine_qty : true);
   const [combineQtyValue, setCombineQtyValue] = useState(initial ? String(initial.combine_qty_value) : '1');
@@ -38,6 +41,12 @@ export default function TambahPromosiForm({ initial, onCancel, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState(null);
+
+  useEffect(() => {
+    apiClient.get('/unit-bisnis/')
+      .then((res) => setDaftarUnit((res.data?.results || res.data || []).filter((u) => u.is_active !== false)))
+      .catch(() => setDaftarUnit([]));
+  }, []);
 
   const initialDayKeys = initial?.hari ? initial.hari.split(',') : PROMO_DAY_KEYS;
   const [days, setDays] = useState(() => {
@@ -75,6 +84,7 @@ export default function TambahPromosiForm({ initial, onCancel, onSaved }) {
     const hariStr = PROMO_DAY_KEYS.filter((k) => days[k]).join(',');
     const payload = {
       judul: judul.trim(),
+      unit_bisnis: unitBisnis ? Number(unitBisnis) : null,
       tipe_promosi: tipe,
       combine_qty: combineQty,
       combine_qty_value: parseInt(combineQtyValue, 10) || 1,
@@ -164,6 +174,21 @@ export default function TambahPromosiForm({ initial, onCancel, onSaved }) {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Kolom Kiri & Tengah: Form Inputs */}
         <div className="md:col-span-2 space-y-6">
+          <div className="border border-slate-100 rounded-2xl p-6 bg-slate-50/20 space-y-2">
+            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Unit Bisnis</h3>
+            <select
+              value={unitBisnis}
+              onChange={(e) => setUnitBisnis(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            >
+              <option value="">Semua unit</option>
+              {daftarUnit.map((u) => <option key={u.id} value={String(u.id)}>{u.nama}</option>)}
+            </select>
+            <p className="text-[11px] text-slate-500">
+              Promosi hanya berlaku untuk transaksi kasir/pesanan di unit yang dipilih. Pilih &quot;Semua unit&quot; agar berlaku di semua unit.
+            </p>
+          </div>
+
           <PromoDetailsForm
             judul={judul}
             setJudul={setJudul}

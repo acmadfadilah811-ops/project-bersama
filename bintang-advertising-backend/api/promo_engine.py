@@ -66,6 +66,9 @@ class KonteksPromo:
     pelanggan: object = None
     kanal: str = KANAL_POS
     saat: object = None
+    # Unit bisnis transaksi (kasir / order). Promosi yang dibatasi ke unit lain
+    # tidak berlaku; None = hanya promosi "semua unit" yang berlaku.
+    unit_bisnis_id: object = None
 
     def __post_init__(self):
         if self.saat is None:
@@ -427,6 +430,8 @@ def evaluate_promotions(konteks, promosi=None):
                    .prefetch_related('produk_gratis', 'grup_produk', 'brand', 'pelanggan'))
 
     for promo in promosi:
+        if promo.unit_bisnis_id and promo.unit_bisnis_id != konteks.unit_bisnis_id:
+            continue
         ok, _ = _dalam_jendela_tanggal(promo, konteks.saat)
         if not ok:
             continue

@@ -411,7 +411,9 @@ def create_sale(*, user, data):
             for raw, p, v, conv, qb, pb, lt, item_nama, package, item_addons, pj, lb, fb, sn in prepared
             if p is not None or package is not None
         ]
-        konteks = KonteksPromo(baris=baris_promo, subtotal=subtotal, pelanggan=customer, kanal=KANAL_POS)
+        # Unit transaksi = unit kasir (POSSale.save mengisinya dari kasir yang sama).
+        konteks = KonteksPromo(baris=baris_promo, subtotal=subtotal, pelanggan=customer, kanal=KANAL_POS,
+                               unit_bisnis_id=getattr(user, 'unit_bisnis_id', None))
 
         kupon_obj = None
         coupon_discount = Decimal('0')

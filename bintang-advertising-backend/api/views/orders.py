@@ -218,45 +218,13 @@ class OrderViewSet(viewsets.ModelViewSet):
         order_id = f'ORD-{today}-{short_id}'
         instance = serializer.save(id=order_id, _current_user=self.request.user)
 
-        # Simpan penggunaan kupon HANYA bila kasir memilih metode 'kupon' —
-        # eksplisit lewat selector diskon di frontend (tidak lagi otomatis
-        # dibandingkan diam-diam dengan Diskon Penjualan).
-        kupon_kode = self.request.data.get('kupon_kode')
-        diskon_kupon = self.request.data.get('diskon_kupon', 0)
-        if kupon_kode and instance.metode_diskon == 'kupon':
-            try:
-                from api.marketing_models import DiscountCoupon, CouponUsage
-                from api.models import Contact
-                kupon_obj = DiscountCoupon.objects.filter(kode__iexact=kupon_kode.strip()).first()
-                if not kupon_obj:
-                    raise ValidationError({'kupon_kode': 'Kupon tidak ditemukan atau sudah tidak aktif.'})
-                if kupon_obj:
-                    # Hubungkan kupon dan nilai diskon ke order.
-                    # PENTING: save() TANPA update_fields — Order.save() menghitung
-                    # ulang total_harga/sisa_tagihan dari item+diskon+kupon, tapi
-                    # bila update_fields dibatasi ke ['kupon','diskon_kupon'] saja,
-                    # Django hanya menulis kolom itu ke DB dan total_harga yang
-                    # sudah dihitung ulang di memori TIDAK PERNAH tersimpan (bug lama).
-                    instance.kupon = kupon_obj
-                    instance.diskon_kupon = int(diskon_kupon or 0)
-                    if instance.diskon_kupon < 0:
-                        raise ValidationError({'diskon_kupon': 'Nilai diskon tidak boleh negatif.'})
-                    instance.save()
-
-                    customer = Contact.objects.filter(nomor_wa=instance.nomor_wa).first()
-                    CouponUsage.objects.create(
-                        kupon=kupon_obj,
-                        pelanggan=customer,
-                        order=instance,
-                        nilai_diskon=int(diskon_kupon or 0),
-                        tanggal=timezone.localdate(),
-                        kanal='pos'
-                    )
-                    kupon_obj.penggunaan_count = CouponUsage.objects.filter(kupon=kupon_obj).count()
-                    kupon_obj.save(update_fields=['penggunaan_count'])
-            except Exception:
-                logger.exception("Failed to record CouponUsage for order %s", order_id)
-                raise
+        # Kupon TIDAK diterapkan saat order dibuat (2026-09-27): item belum ada,
+        # jadi potongannya tidak bisa dihitung server. Nilai `diskon_kupon` dari
+        # browser tidak dipercaya (M6). Frontend menerapkan kupon lewat PATCH
+        # setelah item tersimpan -> services/order_kupon.terapkan_kupon_order.
+        if instance.metode_diskon == 'kupon':
+            instance.metode_diskon = 'tidak_ada'
+            instance.save(update_fields=['metode_diskon'])
 
         # Catatan: Diskon Penjualan otomatis TIDAK dievaluasi di sini — order baru
         # dibuat TANPA item (frontend mengirim item lewat POST /order-items/
@@ -592,26 +560,8 @@ class OrderViewSet(viewsets.ModelViewSet):
             kanal=KANAL_POS,
         )
         if metode_diskon == 'kupon':
-            hasil_kupon = evaluate_coupon_code(kupon_kode, konteks_promo)
-            if not hasil_kupon.ok:
-                raise ValidationError({'error': f'Kupon ditolak: {hasil_kupon.alasan}'})
-            order.kupon = hasil_kupon.kupon
-            order.diskon_kupon = int(round(hasil_kupon.diskon))
-            order._current_user = request.user
-            order.save()
-            CouponUsage.objects.create(
-                kupon=hasil_kupon.kupon,
-                pelanggan=customer,
-                order=order,
-                nilai_diskon=hasil_kupon.diskon,
-                tanggal=timezone.localdate(),
-                kanal=KANAL_POS,
-            )
-            hasil_kupon.kupon.penggunaan_count = CouponUsage.objects.filter(kupon=hasil_kupon.kupon).count()
-            hasil_kupon.kupon.save(update_fields=['penggunaan_count'])
-            # Model Order membaca CouponUsage sebagai sumber historis diskon.
-            order._current_user = request.user
-            order.save()
+            from ..services.order_kupon import terapkan_kupon_order
+            terapkan_kupon_order(order, kupon_kode, actor=request.user)
         elif metode_diskon == 'otomatis':
             diskon_otomatis, _aturan = evaluate_sales_discount(konteks_promo)
             order.diskon_otomatis = int(round(diskon_otomatis))
@@ -730,7 +680,15 @@ class OrderViewSet(viewsets.ModelViewSet):
                 ),
             })
         serializer.instance._current_user = self.request.user
-        serializer.save()
+        order = serializer.save()
+        # Kupon dari Pengaturan Diskon (2026-09-27): dulu kode kupon diabaikan.
+        if 'kupon_kode' in self.request.data or 'metode_diskon' in self.request.data:
+            from ..services.order_kupon import lepas_kupon_order, terapkan_kupon_order
+            kode = str(self.request.data.get('kupon_kode') or '').strip()
+            if order.metode_diskon == 'kupon' and kode:
+                terapkan_kupon_order(order, kode, actor=self.request.user)
+            elif order.metode_diskon != 'kupon' or 'kupon_kode' in self.request.data:
+                lepas_kupon_order(order, actor=self.request.user)
 
     def destroy(self, request, *args, **kwargs):
         # Proteksi Keamanan: Hanya Owner dan Manager yang boleh menghapus pesanan

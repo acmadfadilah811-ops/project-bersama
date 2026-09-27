@@ -100,6 +100,10 @@ class POSPromotion(models.Model):
     ]
 
     judul = models.CharField(max_length=255)
+    # Unit bisnis tempat promosi berlaku (2026-09-27): kosong = semua unit
+    # (Star Foto & Star Advertising). Dicocokkan dengan unit kasir / order.
+    unit_bisnis = models.ForeignKey('UnitBisnis', on_delete=models.SET_NULL, null=True, blank=True,
+                                    related_name='pos_promotions')
     tipe_promosi = models.CharField(max_length=5, choices=TIPE_PROMOSI_CHOICES, default='BX')
     combine_qty = models.BooleanField(default=True)
     combine_qty_value = models.IntegerField(default=1)

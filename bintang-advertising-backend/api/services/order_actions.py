@@ -106,6 +106,11 @@ def batalkan_order(order, actor, alasan=""):
     from accounting.services.order_posting import post_order_reversal_journal
     post_order_reversal_journal(order=order, actor=actor, description_prefix="Pembatalan Order")
 
+    # Kuota kupon dikembalikan (sama seperti void POS). Data kupon di order
+    # dibiarkan sebagai catatan riwayat.
+    from .order_kupon import lepas_kupon_order
+    lepas_kupon_order(order, simpan=False)
+
     return order
 
 

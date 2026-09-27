@@ -91,6 +91,8 @@ export default function DetailPromosiPos({ row, onCancel, onEdit, onSaved }) {
             <div>
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">Judul Promosi</div>
               <div className="text-sm font-semibold text-slate-700">{row.judul}</div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-3 mb-0.5">Unit Bisnis</div>
+              <div className="text-xs font-semibold text-slate-700">{row.unit_bisnis_nama || 'Semua unit'}</div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">

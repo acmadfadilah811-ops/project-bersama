@@ -505,9 +505,9 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
         dp_dibayar: parseInt(dp || 0),
         diskon_persen: parseFloat(diskon || 0),
         status_global: 'review',
-        metode_diskon: metodeDiskon,
-        kupon_kode: metodeDiskon === 'kupon' && selectedCoupon ? selectedCoupon.kode : null,
-        diskon_kupon: metodeDiskon === 'kupon' ? getCouponDiscountAmount() : 0,
+        // Kupon diterapkan SETELAH item tersimpan (di bawah), supaya potongannya
+        // dihitung server dari item pesanan, bukan dari angka di layar (M6).
+        metode_diskon: metodeDiskon === 'kupon' ? 'tidak_ada' : metodeDiskon,
         dilayani_oleh: pelayanId || null,
       });
       const orderId = resOrder.data.id;
@@ -526,6 +526,17 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
           // (M6) - payload ini cuma bawa id + qty per addon yang dipilih kasir.
           addons: (it.addonIds || []).map((id) => ({ id, qty: it.addonQty?.[id] || 1 })),
         });
+      }
+      if (metodeDiskon === 'kupon' && selectedCoupon) {
+        try {
+          await apiClient.patch(`/orders/${orderId}/`, { kupon_kode: selectedCoupon.kode, metode_diskon: 'kupon' });
+        } catch (errKupon) {
+          alert(
+            'Order tersimpan, tetapi kupon ditolak: ' +
+              (errKupon.response?.data?.error || errKupon.response?.data?.detail || 'syarat kupon tidak terpenuhi.') +
+              ' Kupon bisa diatur ulang dari detail pesanan.'
+          );
+        }
       }
       setOrderBaru({ id: orderId, nama });
     } catch (err) {
