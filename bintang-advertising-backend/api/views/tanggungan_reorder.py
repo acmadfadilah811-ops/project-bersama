@@ -10,11 +10,12 @@ from decimal import Decimal
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ..reorder_models import TanggunganReorder
+from .hr_bridge import HRBridgeThrottle, _cek_hr_bridge_api_key
 
 PENINJAU = ('owner', 'manager', 'admin', 'admin_finance', 'spv_finance')
 
@@ -119,3 +120,50 @@ class NotaHumanErrorTandaiDipotongView(APIView):
             t.ditandai_dipotong_pada = timezone.now()
             t.save(update_fields=['status', 'ditandai_dipotong_oleh', 'ditandai_dipotong_pada'])
         return Response(_baris(t))
+
+
+# --- Jembatan HR (server-ke-server, X-Api-Key) -------------------------------
+
+def _periode(data):
+    try:
+        tahun, bulan = int(data.get('tahun')), int(data.get('bulan'))
+    except (TypeError, ValueError):
+        return None
+    return (tahun, bulan) if 2000 <= tahun <= 2100 and 1 <= bulan <= 12 else None
+
+
+class TanggunganReorderBridgeView(APIView):
+    """GET /api/bridge/tanggungan-reorder/?tahun=2026&bulan=9 -- dipakai halaman
+    Payroll > Potongan Reorder di HR (lihat services/reorder_human_error.py)."""
+    permission_classes = [AllowAny]
+    throttle_classes = [HRBridgeThrottle]
+
+    def get(self, request):
+        auth_error = _cek_hr_bridge_api_key(request)
+        if auth_error:
+            return auth_error
+        periode = _periode(request.query_params)
+        if not periode:
+            return Response({'error': "Parameter 'tahun' dan 'bulan' tidak valid."}, status=status.HTTP_400_BAD_REQUEST)
+        from ..services.reorder_human_error import rekap_potong_gaji
+        return Response(rekap_potong_gaji(*periode))
+
+
+class TanggunganReorderTandaiBridgeView(APIView):
+    """POST /api/bridge/tanggungan-reorder/tandai/ {tahun, bulan, hr_employee_id}"""
+    permission_classes = [AllowAny]
+    throttle_classes = [HRBridgeThrottle]
+
+    def post(self, request):
+        auth_error = _cek_hr_bridge_api_key(request)
+        if auth_error:
+            return auth_error
+        periode = _periode(request.data)
+        try:
+            hr_employee_id = int(request.data.get('hr_employee_id'))
+        except (TypeError, ValueError):
+            hr_employee_id = None
+        if not periode or not hr_employee_id:
+            return Response({'error': 'tahun, bulan, dan hr_employee_id wajib diisi.'}, status=status.HTTP_400_BAD_REQUEST)
+        from ..services.reorder_human_error import tandai_dipotong_dari_hr
+        return Response({'ditandai': tandai_dipotong_dari_hr(*periode, hr_employee_id)})

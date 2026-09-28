@@ -103,3 +103,55 @@ def catat_tanggungan(order, rencana, alasan, actor):
         alasan=alasan[:2000],
         dibuat_oleh=actor if getattr(actor, 'is_authenticated', False) else None,
     )
+
+
+# --- Jembatan ke HR: potongan gaji otomatis (2026-09-28) --------------------
+
+def _nota_potong_gaji_bulan(tahun, bulan):
+    from datetime import date
+
+    awal = date(tahun, bulan, 1)
+    akhir = date(tahun + (bulan == 12), bulan % 12 + 1, 1)
+    return (TanggunganReorder.objects
+            .filter(metode=TanggunganReorder.Metode.POTONG_GAJI,
+                    status__in=[TanggunganReorder.Status.MENUNGGU_POTONG, TanggunganReorder.Status.SUDAH_DIPOTONG],
+                    dibuat__date__gte=awal, dibuat__date__lt=akhir)
+            .select_related('staff', 'order').order_by('dibuat'))
+
+
+def rekap_potong_gaji(tahun, bulan):
+    """Total tanggungan potong gaji per staff pada bulan itu, untuk halaman
+    Potongan Reorder di Payroll HR. Staff tanpa hr_employee_id dipisah supaya
+    tidak ada tanggungan yang hilang tanpa terlihat."""
+    per_staff = {}
+    for t in _nota_potong_gaji_bulan(tahun, bulan):
+        s = per_staff.setdefault(t.staff_id, {
+            'bintang_user_id': t.staff_id,
+            'hr_employee_id': t.staff.hr_employee_id,
+            'nama': f'{t.staff.first_name} {t.staff.last_name}'.strip() or t.staff.username,
+            'total': Decimal('0'),
+            'nota': [],
+        })
+        s['total'] += t.nominal
+        s['nota'].append({
+            'order_id': t.order_id,
+            'nominal': str(t.nominal),
+            'alasan': t.alasan,
+            'status': t.status,
+            'tanggal': t.dibuat.date().isoformat(),
+        })
+    staff, tanpa_hr = [], []
+    for s in per_staff.values():
+        s['total'] = int(s['total'].quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+        (staff if s['hr_employee_id'] else tanpa_hr).append(s)
+    return {'tahun': tahun, 'bulan': bulan, 'staff': staff, 'staff_tanpa_hr_employee_id': tanpa_hr}
+
+
+def tandai_dipotong_dari_hr(tahun, bulan, hr_employee_id):
+    """Dipanggil HR setelah potongan bulan itu diterapkan ke karyawan: nota
+    potong gaji staff tsb yang masih menunggu ditandai sudah dipotong."""
+    from django.utils import timezone
+
+    return (_nota_potong_gaji_bulan(tahun, bulan)
+            .filter(staff__hr_employee_id=hr_employee_id, status=TanggunganReorder.Status.MENUNGGU_POTONG)
+            .update(status=TanggunganReorder.Status.SUDAH_DIPOTONG, ditandai_dipotong_pada=timezone.now()))

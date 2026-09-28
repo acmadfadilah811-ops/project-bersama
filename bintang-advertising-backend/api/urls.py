@@ -21,7 +21,10 @@ from .views.purchase_reports import PurchaseReportView
 from .views.laporan_produksi import LaporanTargetProduksiViewSet, RingkasanProduksiSpvView, ExportLaporanProduksiView
 from .views.laporan_keuangan import LaporanTargetKeuanganViewSet, RingkasanKeuanganFinanceView, ExportLaporanKeuanganView
 from .views.qz import QZCertificateView, QZSignView
-from .views.tanggungan_reorder import NotaHumanErrorTandaiDipotongView, NotaHumanErrorView
+from .views.tanggungan_reorder import (
+    NotaHumanErrorTandaiDipotongView, NotaHumanErrorView, TanggunganReorderBridgeView,
+    TanggunganReorderTandaiBridgeView,
+)
 from .views.wa_pricelist import (
     WaPricelistListView, WaPricelistDetailView, WaPricelistTemplateView, WaPricelistImportView,
 )
@@ -198,6 +201,8 @@ urlpatterns = [
     path('bridge/hr-employee-status/', HRBridgeSetStatusView.as_view(), name='hr-bridge-set-status'),
     path('bridge/absensi-status/', AbsensiStatusView.as_view(), name='hr-bridge-absensi-status'),
     path('bridge/kinerja-staff/', KinerjaStaffView.as_view(), name='hr-bridge-kinerja-staff'),
+    path('bridge/tanggungan-reorder/', TanggunganReorderBridgeView.as_view(), name='hr-bridge-tanggungan-reorder'),
+    path('bridge/tanggungan-reorder/tandai/', TanggunganReorderTandaiBridgeView.as_view(), name='hr-bridge-tanggungan-reorder-tandai'),
     path('bridge/notifikasi-keuangan/', NotifikasiKeuanganBridgeView.as_view(), name='hr-bridge-notifikasi-keuangan'),
     # Jembatan ChatbotX -> Bintang: bungkus 9 tool AI WA bot yang sudah ada
     # (lihat api/views/chatbotx_bridge.py + services/wa_ai_tools.py).

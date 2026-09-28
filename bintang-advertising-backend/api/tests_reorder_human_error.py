@@ -120,3 +120,53 @@ class ReorderHumanErrorTest(APITestCase):
         self.assertEqual(res.status_code, 200, res.content)
         self.assertEqual(res.json()['status'], 'sudah_dipotong')
         self.assertEqual(self.client.post(f'/api/nota-human-error/{t.id}/tandai-dipotong/').status_code, 400)
+
+
+class TanggunganReorderBridgeTest(APITestCase):
+    """Jembatan ke Payroll HR: rekap potong gaji & penandaan otomatis."""
+    KEY = 'kunci-reorder'
+    HEADERS = {'HTTP_X_API_KEY': 'kunci-reorder', 'HTTP_X_FORWARDED_PROTO': 'https'}
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.budi = User.objects.create_user(username='budi_hr', password='x', role='staff', first_name='Budi',
+                                             hr_employee_id=501)
+        self.tanpa_hr = User.objects.create_user(username='tanpa_hr', password='x', role='staff')
+        n = 0
+        for staff, metode, status, nominal in (
+            (self.budi, 'potong_gaji', 'menunggu_potong', '50000'),
+            (self.budi, 'potong_gaji', 'menunggu_potong', '25000'),
+            (self.budi, 'tunai', 'lunas', '99000'),
+            (self.tanpa_hr, 'potong_gaji', 'menunggu_potong', '10000'),
+        ):
+            n += 1
+            order = Order.objects.create(id=f'ORD-BRIDGE-{n}', nomor_wa='081234567890', nama='Ahmad')
+            TanggunganReorder.objects.create(order=order, staff=staff, nominal=Decimal(nominal), metode=metode,
+                                             status=status, alasan='x')
+        self.periode = {'tahun': timezone.localdate().year, 'bulan': timezone.localdate().month}
+
+    def _env(self):
+        import os
+        return mock.patch.dict(os.environ, {'HR_BRIDGE_API_KEY': self.KEY})
+
+    def test_tanpa_kunci_ditolak(self):
+        with self._env():
+            r = self.client.get('/api/bridge/tanggungan-reorder/', self.periode, HTTP_X_FORWARDED_PROTO='https')
+        self.assertIn(r.status_code, (401, 403))
+
+    def test_rekap_hanya_potong_gaji_per_staff(self):
+        with self._env():
+            r = self.client.get('/api/bridge/tanggungan-reorder/', self.periode, **self.HEADERS)
+        self.assertEqual(r.status_code, 200, r.content)
+        data = r.json()
+        self.assertEqual([(s['hr_employee_id'], s['total'], len(s['nota'])) for s in data['staff']], [(501, 75000, 2)])
+        self.assertEqual([s['total'] for s in data['staff_tanpa_hr_employee_id']], [10000])
+
+    def test_tandai_dari_hr(self):
+        with self._env():
+            r = self.client.post('/api/bridge/tanggungan-reorder/tandai/', {**self.periode, 'hr_employee_id': 501},
+                                 format='json', **self.HEADERS)
+        self.assertEqual((r.status_code, r.json()['ditandai']), (200, 2))
+        self.assertEqual(TanggunganReorder.objects.filter(staff=self.budi, status='sudah_dipotong').count(), 2)
+        self.assertEqual(TanggunganReorder.objects.get(staff=self.tanpa_hr).status, 'menunggu_potong')
