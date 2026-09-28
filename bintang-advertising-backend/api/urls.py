@@ -21,6 +21,7 @@ from .views.purchase_reports import PurchaseReportView
 from .views.laporan_produksi import LaporanTargetProduksiViewSet, RingkasanProduksiSpvView, ExportLaporanProduksiView
 from .views.laporan_keuangan import LaporanTargetKeuanganViewSet, RingkasanKeuanganFinanceView, ExportLaporanKeuanganView
 from .views.qz import QZCertificateView, QZSignView
+from .views.tanggungan_reorder import NotaHumanErrorTandaiDipotongView, NotaHumanErrorView
 from .views.wa_pricelist import (
     WaPricelistListView, WaPricelistDetailView, WaPricelistTemplateView, WaPricelistImportView,
 )
@@ -214,6 +215,8 @@ urlpatterns = [
 
     # Business Settings (mirip OrgSettings di Django CRM)
     path('business-settings/', BusinessSettingsView.as_view(), name='business-settings'),
+    path('nota-human-error/', NotaHumanErrorView.as_view(), name='nota-human-error'),
+    path('nota-human-error/<int:pk>/tandai-dipotong/', NotaHumanErrorTandaiDipotongView.as_view(), name='nota-human-error-tandai'),
     path('wa-pricelist/', WaPricelistListView.as_view(), name='wa-pricelist-list'),
     path('wa-pricelist/<str:slug>/', WaPricelistDetailView.as_view(), name='wa-pricelist-detail'),
     path('wa-pricelist/<str:slug>/template/', WaPricelistTemplateView.as_view(), name='wa-pricelist-template'),

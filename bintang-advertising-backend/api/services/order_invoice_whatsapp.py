@@ -417,6 +417,8 @@ def kirim_invoice_dp_whatsapp(*, order_id, otomatis=False):
         order = (Order.objects.select_for_update()
                  .prefetch_related('items')
                  .get(pk=order_id))
+        if order.reorder_dari_id:
+            return {'ok': False, 'status': 'skipped', 'reason': 'reorder_human_error'}
         if order.dp_dibayar <= 0 or order.sisa_tagihan <= 0:
             return {'ok': False, 'status': 'skipped', 'reason': 'not_dp_order'}
 
@@ -480,6 +482,13 @@ def kirim_invoice_pesanan_whatsapp(*, order_id):
         order = (Order.objects.select_for_update()
                  .prefetch_related('items')
                  .get(pk=order_id))
+        if order.reorder_dari_id:
+            # Reorder human error: tagihannya milik staff (Nota Human Error),
+            # pelanggan hanya menerima invoice nota awal (2026-09-28).
+            return {
+                'ok': False, 'status': 'skipped', 'reason': 'reorder_human_error',
+                'detail': 'Nota reorder human error tidak dikirim ke pelanggan. Kirim invoice nota awal.',
+            }
         destination = normalisasi_nomor_whatsapp(order.nomor_wa)
         if not destination:
             _catat_hasil(

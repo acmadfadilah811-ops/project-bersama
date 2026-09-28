@@ -383,6 +383,17 @@ class OrderViewSet(viewsets.ModelViewSet):
                 return Response({'error': 'Catatan alasan reorder wajib diisi.'},
                                 status=status.HTTP_400_BAD_REQUEST)
 
+        # Reorder human error (2026-09-28): 50% nota awal ditanggung staff yang
+        # salah, dihitung server dari item nota awal; pelanggan & diskon tidak
+        # diambil dari klien. Lihat services/reorder_human_error.py.
+        rencana_reorder = None
+        if reorder_dari:
+            from ..services import reorder_human_error
+            rencana_reorder = reorder_human_error.siapkan(request.data, reorder_dari)
+            items_data = rencana_reorder['items']
+            nama, nomor_wa = reorder_dari.nama, reorder_dari.nomor_wa
+            metode_diskon, kupon_kode = 'tidak_ada', ''
+
         order = Order.objects.create(
             id=order_id,
             nama=nama,
@@ -390,7 +401,10 @@ class OrderViewSet(viewsets.ModelViewSet):
             sumber='pos',
             status_global='review',
             catatan_pelanggan=str(request.data.get('catatan') or '')[:2000],
-            metode_pembayaran=str(request.data.get('metode_pembayaran') or 'tunai')[:20],
+            metode_pembayaran=(
+                rencana_reorder['metode_pembayaran'] if rencana_reorder
+                else str(request.data.get('metode_pembayaran') or 'tunai')
+            )[:20],
             diskon_persen=0,
             metode_diskon=metode_diskon,
             jatuh_tempo=due_date,
@@ -570,7 +584,8 @@ class OrderViewSet(viewsets.ModelViewSet):
         order.refresh_from_db()
 
         try:
-            jumlah_bayar = int(request.data.get('jumlah_bayar') or 0)
+            # Reorder: staff selalu menanggung penuh tagihan pesanan pengganti.
+            jumlah_bayar = int(order.sisa_tagihan if rencana_reorder else (request.data.get('jumlah_bayar') or 0))
         except (TypeError, ValueError):
             raise ValidationError({'error': 'Nominal pembayaran tidak valid.'})
         if jumlah_bayar <= 0 or jumlah_bayar > order.sisa_tagihan:
@@ -580,6 +595,9 @@ class OrderViewSet(viewsets.ModelViewSet):
         order._current_user = request.user
         order.save()
         resolve_and_assign_order_payment_method(order, order.metode_pembayaran)
+        if rencana_reorder and rencana_reorder['metode'] == 'potong_gaji':
+            # Potong gaji bukan setoran bank -- tidak ikut antrean settlement.
+            order.settlement_status = 'not_applicable'
         order.save(update_fields=['accounting_payment_method', 'settlement_status'])
         payment_log = OrderActivityLog.objects.create(
             order=order,
@@ -628,10 +646,16 @@ class OrderViewSet(viewsets.ModelViewSet):
             tindakan='TERBITKAN_SPK',
             keterangan=f"SPK POS diterbitkan ke {spk.nama_target(staff, tahap)}.",
         )
-        # Invoice DP harus dikirim setelah seluruh transaksi (termasuk jurnal dan
-        # SPK) committed. Gangguan gateway tidak boleh membatalkan order.
-        from ..services.order_invoice_whatsapp import jadwalkan_invoice_dp_otomatis
-        jadwalkan_invoice_dp_otomatis(order.id)
+        if rencana_reorder:
+            # Nota reorder milik staff penanggung, tidak dikirim ke pelanggan.
+            reorder_human_error.catat_tanggungan(
+                order, rencana_reorder, str(request.data.get('catatan') or ''), request.user,
+            )
+        else:
+            # Invoice DP harus dikirim setelah seluruh transaksi (termasuk jurnal
+            # dan SPK) committed. Gangguan gateway tidak boleh membatalkan order.
+            from ..services.order_invoice_whatsapp import jadwalkan_invoice_dp_otomatis
+            jadwalkan_invoice_dp_otomatis(order.id)
         payload = OrderSerializer(order, context={'request': request}).data
         payload['jobs'] = jobs
         # Peringatan stok menipis (2026-09-24, instruksi user) -- sama

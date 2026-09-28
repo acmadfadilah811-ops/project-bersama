@@ -115,6 +115,11 @@ export default function PosHistory({ onToggleSidebar }) {
   const [reorderCatatan, setReorderCatatan] = useState('');
   const [showReorderSpkModal, setShowReorderSpkModal] = useState(false);
   const [reordering, setReordering] = useState(false);
+  // 50% pesanan pengganti ditanggung staff yang salah (2026-09-28): dibayar
+  // tunai di kasir atau dipotong gaji; notanya tidak dikirim ke pelanggan.
+  const [reorderStaffId, setReorderStaffId] = useState('');
+  const [reorderMetode, setReorderMetode] = useState('tunai');
+  const [daftarStaff, setDaftarStaff] = useState([]);
 
   // Volume transaksi advertising bisa ~100/hari -- filter tanggal (default
   // hari ini) supaya jumlah baris yang ditarik dari server tetap terbatas
@@ -319,13 +324,20 @@ export default function PosHistory({ onToggleSidebar }) {
   const openReorderModal = () => {
     if (!selectedSale) return;
     setReorderCatatan('');
+    setReorderStaffId('');
+    setReorderMetode('tunai');
     setShowActionDropdown(false);
     setShowReorderModal(true);
+    if (daftarStaff.length === 0) {
+      apiClient.get('/pos/sales/staff-list/')
+        .then((res) => setDaftarStaff(Array.isArray(res.data) ? res.data : []))
+        .catch(() => setDaftarStaff([]));
+    }
   };
 
   const handleReorderCatatanSubmit = (e) => {
     e.preventDefault();
-    if (!reorderCatatan.trim()) return;
+    if (!reorderCatatan.trim() || !reorderStaffId) return;
     setShowReorderModal(false);
     setShowReorderSpkModal(true);
   };
@@ -380,8 +392,16 @@ export default function PosHistory({ onToggleSidebar }) {
         spk: spkPayload,
         reorder_dari: selectedSale.id,
         catatan: `Reorder dari ${selectedSale.nomor || selectedSale.id} (human error eksekusi staff): ${reorderCatatan.trim()}`,
+        penanggung_staff_id: Number(reorderStaffId),
+        metode_tanggungan: reorderMetode,
       });
-      notifySuccess('Reorder berhasil', 'Pesanan reorder dibuat, tercatat bayar 50% dan SPK sudah diterbitkan.');
+      const namaStaff = daftarStaff.find((st) => String(st.id) === String(reorderStaffId))?.nama || 'staff';
+      notifySuccess(
+        'Reorder berhasil',
+        reorderMetode === 'tunai'
+          ? `SPK diterbitkan. Tanggungan 50% dibayar tunai oleh ${namaStaff}. Nota tidak dikirim ke pelanggan.`
+          : `SPK diterbitkan. Tanggungan 50% dicatat untuk potong gaji ${namaStaff} (Nota Human Error). Nota tidak dikirim ke pelanggan.`,
+      );
       setShowReorderSpkModal(false);
       setReorderCatatan('');
       fetchSales();
@@ -1100,9 +1120,41 @@ export default function PosHistory({ onToggleSidebar }) {
             <form onSubmit={handleReorderCatatanSubmit} className="p-6 space-y-5 bg-white text-xs font-semibold text-slate-700">
               <p className="text-[11px] text-slate-500 font-semibold -mt-1">
                 Untuk kesalahan eksekusi staff (bukan salah sistem/pelanggan) pada pesanan {selectedSale.nomor}.
-                Order baru dibuat dengan harga 50% dari harga asli, item otomatis sama, dan stok/bahan
-                terpotong otomatis lewat SPK produksi seperti order biasa.
+                Pesanan pengganti dibuat dengan item yang sama. Pelanggan tetap membayar nota awalnya; 50% harga
+                nota awal ditanggung staff yang melakukan kesalahan, dan nota reorder tidak dikirim ke pelanggan.
               </p>
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-2">Staff yang Bertanggung Jawab (wajib)</label>
+                <select
+                  value={reorderStaffId}
+                  onChange={(e) => setReorderStaffId(e.target.value)}
+                  required
+                  className="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-900 focus:outline-none focus:border-indigo-500 bg-slate-50 focus:bg-white"
+                >
+                  <option value="">Pilih staff</option>
+                  {daftarStaff.map((st) => (
+                    <option key={st.id} value={st.id}>{st.nama}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-2">Cara Bayar Tanggungan 50%</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    ['tunai', 'Tunai di kasir', 'Staff membayar sekarang'],
+                    ['potong_gaji', 'Potong gaji', 'Dipotong di slip gaji akhir bulan'],
+                  ].map(([nilai, judul, ket]) => (
+                    <label
+                      key={nilai}
+                      className={`border rounded-xl px-3 py-2 cursor-pointer ${reorderMetode === nilai ? 'border-indigo-500 bg-indigo-50' : 'border-slate-300'}`}
+                    >
+                      <input type="radio" className="mr-2" checked={reorderMetode === nilai} onChange={() => setReorderMetode(nilai)} />
+                      <span className="font-bold text-slate-800">{judul}</span>
+                      <span className="block text-[10px] text-slate-500 font-medium mt-0.5">{ket}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
               <div>
                 <label className="text-xs font-bold text-slate-600 block mb-2">Catatan Alasan Reorder (wajib)</label>
                 <textarea
@@ -1124,7 +1176,7 @@ export default function PosHistory({ onToggleSidebar }) {
                 </button>
                 <button
                   type="submit"
-                  disabled={!reorderCatatan.trim()}
+                  disabled={!reorderCatatan.trim() || !reorderStaffId}
                   className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold shadow-md shadow-indigo-500/20 transition-all cursor-pointer disabled:opacity-50"
                 >
                   Lanjut: Pilih Tujuan SPK

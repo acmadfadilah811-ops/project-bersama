@@ -18,6 +18,7 @@ import LaporanKerjaKeuangan from './features/dashboard/pages/LaporanKerjaKeuanga
 import ExecutiveDashboard from './features/dashboard/pages/ExecutiveDashboard';
 import ExecutiveNav from './features/dashboard/components/ExecutiveNav';
 import AiBusinessAnalyst from './features/dashboard/pages/AiBusinessAnalyst';
+import NotaHumanError from './features/notaHumanError/pages/NotaHumanError';
 import Orders from './features/orders/pages/Orders';
 import SettingsApp from './features/settings/pages/SettingsApp';
 import Profile from './features/settings/pages/Profile';
@@ -198,6 +199,7 @@ function App() {
                 <Route path="/announcements" element={<Announcements />} />
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/profile" element={<Profile />} />
+                <Route path="/nota-human-error" element={<NotaHumanError />} />
                 <Route path="/settings/*" element={<SettingsApp />} />
                 <Route path="/pengaturan-wa-bot" element={<PengaturanWaBotPage />} />
                 <Route path="/permintaan-bahan" element={<PermintaanBahanPage />} />

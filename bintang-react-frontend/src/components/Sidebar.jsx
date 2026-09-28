@@ -39,6 +39,7 @@ import {
   Store,
   Gift,
   Bot,
+  FileWarning,
 } from 'lucide-react';
 
 
@@ -133,6 +134,7 @@ const groupedMenuOwnerManager = [
     ],
   },
   { path: '/pengaturan-wa-bot', label: 'Pengaturan WA Bot', icon: Bot, isGroup: false },
+  { path: '/nota-human-error', label: 'Nota Human Error', icon: FileWarning, isGroup: false },
   { path: '/profile', label: 'Profil', icon: User, isGroup: false },
   PENGATURAN_GROUP,
 ];
@@ -141,6 +143,7 @@ const menuStaff = [
   { path: '/staff-dashboard', label: 'Dashboard', icon: LayoutDashboard, isGroup: false },
   { path: '/produksi', label: 'Papan Kerja (SPK)', icon: Kanban, isGroup: false },
   { path: '/buat-order', label: 'Buat Order', icon: ShoppingCart, isGroup: false },
+  { path: '/nota-human-error', label: 'Nota Human Error', icon: FileWarning, isGroup: false },
   { path: '/profile', label: 'Profil', icon: User, isGroup: false },
 ];
 
@@ -150,6 +153,7 @@ const menuSpvKordiv = [
   { path: '/produksi', label: 'Papan Kerja (SPK)', icon: Kanban, isGroup: false },
   { path: '/permintaan-bahan', label: 'Permintaan Bahan', icon: ClipboardList, isGroup: false },
   { path: '/buat-order', label: 'Buat Order', icon: ShoppingCart, isGroup: false },
+  { path: '/nota-human-error', label: 'Nota Human Error', icon: FileWarning, isGroup: false },
   { path: '/profile', label: 'Profil', icon: User, isGroup: false },
 ];
 
@@ -197,6 +201,7 @@ const menuFinance = [
     ],
   },
   { path: '/accounting-internal', label: 'Akuntansi Internal', icon: BookOpen, isGroup: false },
+  { path: '/nota-human-error', label: 'Nota Human Error', icon: FileWarning, isGroup: false },
   { path: '/profile', label: 'Profil', icon: User, isGroup: false },
 ];
 
@@ -262,6 +267,7 @@ const menuSpvFinance = [
     isGroup: true,
     submenus: [{ path: '/settings/point-of-sale', label: 'Point Of Sale', icon: CreditCard }],
   },
+  { path: '/nota-human-error', label: 'Nota Human Error', icon: FileWarning, isGroup: false },
   { path: '/profile', label: 'Profil', icon: User, isGroup: false },
 ];
 
@@ -274,6 +280,7 @@ const menuKasir = [
   { path: '/kasir/shift', label: 'Shift & Kas', icon: Wallet, isGroup: false },
   { path: '/attendance', label: 'Absensi Kehadiran', icon: CalendarClock, isGroup: false },
   { path: '/kasir/pengaturan-wa', label: 'Pengaturan WA', icon: Settings, isGroup: false },
+  { path: '/nota-human-error', label: 'Nota Human Error', icon: FileWarning, isGroup: false },
   { path: '/profile', label: 'Profil', icon: User, isGroup: false },
 ];
 
@@ -283,6 +290,7 @@ const menuAdmin = [
   { path: '/produksi', label: 'Papan Kerja (SPK)', icon: Kanban, isGroup: false },
   { path: '/permintaan-bahan', label: 'Permintaan Bahan', icon: ClipboardList, isGroup: false },
   { path: '/accounting-internal', label: 'Akuntansi Internal', icon: BookOpen, isGroup: false },
+  { path: '/nota-human-error', label: 'Nota Human Error', icon: FileWarning, isGroup: false },
   { path: '/profile', label: 'Profil', icon: User, isGroup: false },
   PENGATURAN_GROUP,
 ];
