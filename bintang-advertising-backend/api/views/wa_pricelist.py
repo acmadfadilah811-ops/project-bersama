@@ -13,7 +13,7 @@ from ..services import wa_pricelist_admin as svc
 
 class WaPricelistListView(APIView):
     """GET /api/wa-pricelist/ -- semua kategori (teks + data terstruktur kalau ada).
-    POST -- tambah kategori teks baru {label, teks}."""
+    POST -- tambah kategori {label, teks, kalkulator?}."""
     permission_classes = [IsStrictOwnerOrManager]
 
     def get(self, request):
@@ -21,7 +21,9 @@ class WaPricelistListView(APIView):
 
     def post(self, request):
         try:
-            data = svc.tambah_kategori(request.data.get('label'), request.data.get('teks'))
+            data = svc.tambah_kategori(
+                request.data.get('label'), request.data.get('teks'), request.data.get('kalkulator'),
+            )
             return Response(data, status=status.HTTP_201_CREATED)
         except svc.PricelistAdminError as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -39,7 +41,8 @@ class WaPricelistDetailView(APIView):
 
     def patch(self, request, slug):
         try:
-            data = svc.update_kategori(slug, request.data.get('teks'), request.data.get('bahan'))
+            extra = {'kalkulator': request.data.get('kalkulator')} if 'kalkulator' in request.data else {}
+            data = svc.update_kategori(slug, request.data.get('teks'), request.data.get('bahan'), **extra)
             return Response(data)
         except svc.PricelistAdminError as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)

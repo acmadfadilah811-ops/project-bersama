@@ -65,28 +65,26 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "hitung_harga_pricelist",
             "description": (
-                "Hitung TOTAL harga resmi dari pricelist untuk kategori yang datanya terstruktur "
-                "(banner, stiker, kertas_a3, kartu_nama) -- WAJIB dipakai kalau pelanggan sebut "
-                "qty/ukuran spesifik & minta tahu totalnya, JANGAN PERNAH menghitung/menaksir "
-                "sendiri. Utk kategori LAIN di luar 4 ini (brosur, cetak_khusus, merchandise, kaos, "
-                "acrylic, cutting_finishing), harga referensi cukup dari teks daftar_kategori_produk "
-                "-- tool ini akan menolak kategori itu."
+                "Hitung TOTAL harga resmi dari pricelist untuk kategori yang punya kalkulator "
+                "(lihat 'kategori_berkalkulator' dari daftar_kategori_produk) -- WAJIB dipakai kalau "
+                "pelanggan sebut qty/ukuran spesifik & minta tahu totalnya, JANGAN PERNAH "
+                "menghitung/menaksir sendiri. Kategori tanpa kalkulator: harga referensi cukup dari "
+                "teks daftar_kategori_produk -- tool ini akan menolak kategori itu."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "kategori": {
                         "type": "string",
-                        "description": "Salah satu: banner, stiker, kertas_a3, kartu_nama.",
-                        "enum": ["banner", "stiker", "kertas_a3", "kartu_nama"],
+                        "description": "Slug kategori yang ada di kategori_berkalkulator (mis. banner, stiker).",
                     },
                     "qty": {
                         "type": "integer",
-                        "description": "Jumlah lembar/box (stiker/kertas_a3/kartu_nama) atau jumlah lembar cetak (banner). Default 1.",
+                        "description": "Jumlah pesanan dalam satuan kalkulator (lembar/box/pcs), atau jumlah lembar cetak utk kalkulator per m2. Default 1.",
                         "default": 1,
                     },
-                    "panjang": {"type": "number", "description": "WAJIB utk kategori banner: panjang dalam meter."},
-                    "lebar": {"type": "number", "description": "WAJIB utk kategori banner: lebar dalam meter."},
+                    "panjang": {"type": "number", "description": "WAJIB utk kalkulator per m2 (mis. banner): panjang dalam meter."},
+                    "lebar": {"type": "number", "description": "WAJIB utk kalkulator per m2 (mis. banner): lebar dalam meter."},
                 },
                 "required": ["kategori"],
             },
@@ -311,10 +309,18 @@ def daftar_kategori_produk(kategori=None):
 
     kategori = (kategori or '').strip()
     if not kategori:
+        try:
+            berkalkulator = list(json.loads(SystemConfig.objects.get(key='wa_kalkulator_bahan').value).keys())
+        except SystemConfig.DoesNotExist:
+            berkalkulator = []
         return {
             'ok': True,
             'kategori_tersedia': list(data.keys()),
-            'catatan': 'Panggil lagi tool ini dgn parameter kategori (salah satu slug di atas) utk detail harga.',
+            'kategori_berkalkulator': berkalkulator,
+            'catatan': (
+                'Panggil lagi tool ini dgn parameter kategori (salah satu slug di atas) utk detail harga. '
+                'Kategori di kategori_berkalkulator bisa dihitung totalnya lewat hitung_harga_pricelist.'
+            ),
         }
 
     detail = data.get(kategori)
@@ -329,6 +335,8 @@ def _harga_tier(daftar_harga, batas_tier, qty):
     (elemen terakhir = tingkatan di atas semua batas). Sama persis dgn
     versi lama di wa_logic.py sebelum dihapus saat rebuild AI agent --
     logikanya sudah teruji, cuma dipindah jadi tool AI-callable."""
+    if not isinstance(daftar_harga, list):
+        return daftar_harga  # kalkulator per jumlah tanpa tingkatan: satu harga
     for i, batas in enumerate(batas_tier):
         if qty <= batas:
             return daftar_harga[i]
@@ -367,12 +375,14 @@ def hitung_harga_pricelist(kategori=None, qty=1, panjang=None, lebar=None):
             'kategori_tersedia': list(semua.keys()),
         }
 
-    if kategori == 'banner':
+    from .wa_pricelist_admin import mode_kalkulator
+
+    if mode_kalkulator(data) == 'luas':
         try:
             panjang = float(panjang)
             lebar = float(lebar)
         except (TypeError, ValueError):
-            return {'ok': False, 'error': 'Kategori banner wajib diisi panjang & lebar (meter).'}
+            return {'ok': False, 'error': f"Kategori {kategori} dihitung per m2: wajib diisi panjang & lebar (meter)."}
         if panjang <= 0 or lebar <= 0:
             return {'ok': False, 'error': 'panjang & lebar harus lebih dari nol.'}
         luas = panjang * lebar
@@ -385,7 +395,7 @@ def hitung_harga_pricelist(kategori=None, qty=1, panjang=None, lebar=None):
             'rincian': rincian,
         }
 
-    # stiker / kertas_a3 / kartu_nama -- harga bertingkat per qty
+    # Per jumlah (stiker / kertas_a3 / kartu_nama / kategori buatan admin)
     rincian = [
         {'nama': b['nama'], 'harga_per_satuan': _harga_tier(b['harga'], data['tiers'], qty), 'subtotal': _harga_tier(b['harga'], data['tiers'], qty) * qty}
         for b in data['bahan']

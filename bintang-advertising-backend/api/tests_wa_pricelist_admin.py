@@ -197,10 +197,70 @@ class WaPricelistKategoriTambahHapusTests(APITestCase):
         self.assertNotIn('brosur', slugs)
         self.assertIn('banner', slugs)
 
-    def test_kategori_berkalkulator_tidak_bisa_dihapus(self):
+    def _kalkulator_map(self):
+        return json.loads(SystemConfig.objects.get(key='wa_kalkulator_bahan').value)
+
+    def test_kategori_berkalkulator_bisa_dihapus_beserta_kalkulatornya(self):
         res = self.client.delete('/api/wa-pricelist/banner/')
-        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('banner', self._teks_map())
+        self.assertEqual(res.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertNotIn('banner', self._teks_map())
+        self.assertNotIn('banner', self._kalkulator_map())
+
+    def test_tambah_kalkulator_ke_kategori_teks_dan_dipakai_bot(self):
+        from api.services.wa_ai_tools import daftar_kategori_produk, hitung_harga_pricelist
+
+        res = self.client.patch('/api/wa-pricelist/brosur/', {
+            'teks': 'Teks brosur',
+            'kalkulator': {'mode': 'qty', 'satuan': 'rim', 'tiers': [5],
+                           'bahan': [{'nama': 'Brosur A5', 'harga': [300000, 250000]}]},
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK, res.data)
+        self.assertEqual((res.data['terstruktur'], res.data['mode'], res.data['tiers']), (True, 'qty', [5]))
+        self.assertIn('brosur', daftar_kategori_produk()['kategori_berkalkulator'])
+        hasil = hitung_harga_pricelist('brosur', qty=6)
+        self.assertEqual(hasil['rincian'][0]['subtotal'], 1500000)
+
+    def test_tambah_kategori_dengan_kalkulator_luas(self):
+        from api.services.wa_ai_tools import hitung_harga_pricelist
+
+        res = self.client.post('/api/wa-pricelist/', {
+            'label': 'Neon Box', 'teks': 'Neon box per m2',
+            'kalkulator': {'mode': 'luas', 'bahan': [{'nama': 'Neon Box Akrilik', 'harga': 1200000}]},
+        }, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.data)
+        self.assertEqual((res.data['mode'], res.data['satuan']), ('luas', 'm2'))
+        hasil = hitung_harga_pricelist('neon_box', qty=1, panjang=2, lebar=1)
+        self.assertEqual(hasil['rincian'][0]['subtotal'], 2400000)
+
+    def test_kalkulator_per_jumlah_tanpa_tingkatan(self):
+        from api.services.wa_ai_tools import hitung_harga_pricelist
+
+        self.client.post('/api/wa-pricelist/', {
+            'label': 'Pin', 'teks': 'Pin',
+            'kalkulator': {'mode': 'qty', 'satuan': 'pcs', 'tiers': [], 'bahan': [{'nama': 'Pin 44mm', 'harga': 3500}]},
+        }, format='json')
+        self.assertEqual(hitung_harga_pricelist('pin', qty=10)['rincian'][0]['subtotal'], 35000)
+
+    def test_hapus_kalkulator_saja_kategori_tetap(self):
+        res = self.client.patch('/api/wa-pricelist/stiker/', {'teks': 'Teks stiker', 'kalkulator': None}, format='json')
+        self.assertEqual(res.status_code, status.HTTP_200_OK, res.data)
+        self.assertFalse(res.data['terstruktur'])
+        self.assertNotIn('stiker', self._kalkulator_map())
+        self.assertEqual(self._teks_map()['stiker'], 'Teks stiker')
+
+    def test_tingkatan_tidak_naik_atau_satuan_kosong_ditolak(self):
+        for kalk in ({'mode': 'qty', 'satuan': 'pcs', 'tiers': [50, 25], 'bahan': [{'nama': 'A', 'harga': [1, 2, 3]}]},
+                     {'mode': 'qty', 'satuan': '', 'tiers': [], 'bahan': [{'nama': 'A', 'harga': 1}]},
+                     {'mode': 'lain', 'bahan': [{'nama': 'A', 'harga': 1}]}):
+            res = self.client.patch('/api/wa-pricelist/brosur/', {'teks': 'x', 'kalkulator': kalk}, format='json')
+            self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST, kalk)
+        self.assertNotIn('brosur', self._kalkulator_map())
+
+    def test_kalkulator_lama_banner_terbaca_per_luas(self):
+        banner = next(k for k in self.client.get('/api/wa-pricelist/').data['kategori'] if k['slug'] == 'banner')
+        self.assertEqual(banner['mode'], 'luas')
+        stiker = next(k for k in self.client.get('/api/wa-pricelist/').data['kategori'] if k['slug'] == 'stiker')
+        self.assertEqual(stiker['mode'], 'qty')
 
     def test_kasir_tidak_boleh_tambah_hapus(self):
         self.client.force_authenticate(self.kasir)

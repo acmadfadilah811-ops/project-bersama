@@ -3,16 +3,19 @@ Bisnis > sub-tab "Pricelist WA Bot" di frontend, permintaan user 2026-09-18).
 
 Sumber data TETAP SystemConfig 'wa_pricelist_kategori' (teks tampilan per
 kategori, dibaca AI tool daftar_kategori_produk) & 'wa_kalkulator_bahan'
-(data terstruktur 4 kategori, dibaca AI tool hitung_harga_pricelist) --
+(kalkulator harga per kategori, dibaca AI tool hitung_harga_pricelist) --
 lihat api/services/wa_ai_tools.py & api/management/commands/seed_wa_pricelist.py
-untuk skema JSON persis yang HARUS tetap kompatibel (jangan ubah bentuknya
-di sini tanpa menyesuaikan wa_ai_tools.py juga).
+untuk skema JSON yang HARUS tetap kompatibel.
 
-Sebelum modul ini ada, satu-satunya cara update pricelist adalah edit dict
-Python di seed_wa_pricelist.py lalu jalankan ulang command-nya -- modul ini
-memindahkan itu ke UI (form per kategori + import/export CSV utk kategori
-yang datanya terstruktur/tabular), TANPA mengubah cara AI tool membaca data
-(SystemConfig key & bentuk JSON-nya persis sama).
+Sejak 2026-09-28 kalkulator bukan lagi milik 4 kategori tetap: kategori mana
+pun boleh punya kalkulator, dibuat/diubah/dihapus dari UI. Bentuk satu entri
+'wa_kalkulator_bahan':
+    {'mode': 'luas'|'qty', 'satuan': str, 'tiers': [int, ...], 'bahan': [...]}
+- 'luas': harga per m2 (bot minta panjang x lebar), tanpa tingkatan qty.
+- 'qty' : harga per satuan bertingkat; `tiers` = batas ATAS tiap tingkatan,
+  tiap bahan punya len(tiers)+1 harga (tanpa tiers = satu harga).
+Entri lama tanpa 'mode' dibaca 'luas' bila satuannya m2 (banner), selain itu
+'qty' (lihat mode_kalkulator).
 """
 import csv
 import io
@@ -38,52 +41,57 @@ KATEGORI_LABEL = {
 # Urutan tampilan di UI -- sama dengan urutan KATEGORI_PRICELIST di
 # seed_wa_pricelist.py supaya tidak membingungkan saat dibandingkan.
 KATEGORI_ORDER = list(KATEGORI_LABEL.keys())
-# 4 kategori yang punya data terstruktur (wa_kalkulator_bahan) selain teks
-# tampilan -- selebihnya HANYA teks bebas (SATU-SATUNYA sumber datanya).
-TERSTRUKTUR_SLUGS = {'banner', 'stiker', 'kertas_a3', 'kartu_nama'}
+MODE_KALKULATOR = ('luas', 'qty')
+MAKS_TINGKATAN = 10
 
 
 class PricelistAdminError(Exception):
     pass
 
 
-def _load_teks():
+def mode_kalkulator(data):
+    """Mode kalkulator satu entri, termasuk entri lama hasil seed tanpa 'mode'."""
+    mode = (data or {}).get('mode')
+    if mode in MODE_KALKULATOR:
+        return mode
+    return 'luas' if str((data or {}).get('satuan', '')).strip().lower() in ('m2', 'm²') else 'qty'
+
+
+def _load(key):
     try:
-        return json.loads(SystemConfig.objects.get(key='wa_pricelist_kategori').value)
+        return json.loads(SystemConfig.objects.get(key=key).value)
     except SystemConfig.DoesNotExist:
         return {}
+
+
+def _load_teks():
+    return _load('wa_pricelist_kategori')
+
+
+def _load_kalkulator():
+    return _load('wa_kalkulator_bahan')
 
 
 def _load_label():
-    """Label kategori buatan admin (2026-09-28) -- disimpan terpisah supaya
-    bentuk 'wa_pricelist_kategori' (slug -> teks) yang dibaca AI tool tetap."""
-    try:
-        return json.loads(SystemConfig.objects.get(key='wa_pricelist_label').value)
-    except SystemConfig.DoesNotExist:
-        return {}
+    """Label kategori buatan admin -- disimpan terpisah supaya bentuk
+    'wa_pricelist_kategori' (slug -> teks) yang dibaca AI tool tetap."""
+    return _load('wa_pricelist_label')
 
 
 def _simpan(key, data):
     SystemConfig.objects.update_or_create(key=key, defaults={'value': json.dumps(data, ensure_ascii=False)})
 
 
-def _load_kalkulator():
-    try:
-        return json.loads(SystemConfig.objects.get(key='wa_kalkulator_bahan').value)
-    except SystemConfig.DoesNotExist:
-        return {}
-
-
-def _kategori_dict(slug, teks_map, kalkulator_map, label_map=None):
-    terstruktur = slug in TERSTRUKTUR_SLUGS
+def _kategori_dict(slug, teks_map, kalkulator_map, label_map):
+    data = kalkulator_map.get(slug)
     entry = {
         'slug': slug,
-        'label': (label_map or {}).get(slug) or KATEGORI_LABEL.get(slug, slug),
+        'label': label_map.get(slug) or KATEGORI_LABEL.get(slug, slug),
         'teks': teks_map.get(slug, ''),
-        'terstruktur': terstruktur,
+        'terstruktur': bool(data),
     }
-    if terstruktur:
-        data = kalkulator_map.get(slug) or {'satuan': '', 'tiers': [], 'bahan': []}
+    if data:
+        entry['mode'] = mode_kalkulator(data)
         entry['satuan'] = data.get('satuan', '')
         entry['tiers'] = data.get('tiers', [])
         entry['bahan'] = data.get('bahan', [])
@@ -91,21 +99,16 @@ def _kategori_dict(slug, teks_map, kalkulator_map, label_map=None):
 
 
 def get_semua_kategori():
-    """Daftar semua kategori (urutan tetap) + data teks & (kalau ada)
-    terstruktur -- dipakai GET list halaman admin."""
+    """Daftar kategori untuk halaman admin. Kategori bawaan yang sudah dihapus
+    admin tidak dimunculkan lagi; semua bawaan hanya tampil bila pricelist
+    belum pernah diisi sama sekali. Kategori lain (buatan admin / seed manual
+    lama) tampil di akhir."""
     teks_map = _load_teks()
     kalkulator_map = _load_kalkulator()
     label_map = _load_label()
-    # Kategori di SystemConfig tapi tidak ada di KATEGORI_LABEL (buatan admin /
-    # seed manual lama) tampil di akhir. Kategori bawaan yang sudah dihapus
-    # admin tidak dimunculkan lagi; semua bawaan hanya ditampilkan bila
-    # pricelist belum pernah diisi sama sekali.
-    dikenal = set(KATEGORI_ORDER)
-    if teks_map:
-        bawaan = [k for k in KATEGORI_ORDER if k in teks_map or k in TERSTRUKTUR_SLUGS]
-    else:
-        bawaan = KATEGORI_ORDER
-    urutan = bawaan + sorted(k for k in teks_map if k not in dikenal)
+    ada = set(teks_map) | set(kalkulator_map)
+    bawaan = [k for k in KATEGORI_ORDER if k in ada] if ada else KATEGORI_ORDER
+    urutan = bawaan + sorted(k for k in ada if k not in set(KATEGORI_ORDER))
     return [_kategori_dict(slug, teks_map, kalkulator_map, label_map) for slug in urutan]
 
 
@@ -117,55 +120,7 @@ def get_satu_kategori(slug):
     return _kategori_dict(slug, teks_map, kalkulator_map, _load_label())
 
 
-def _slug_dari_label(label):
-    return re.sub(r'[^a-z0-9]+', '_', label.lower()).strip('_')[:50]
-
-
-@transaction.atomic
-def tambah_kategori(label, teks):
-    """Kategori baru berupa teks tampilan (dibaca AI tool daftar_kategori_produk).
-    Kalkulator harga tetap hanya untuk 4 kategori TERSTRUKTUR_SLUGS."""
-    label = (label or '').strip()
-    teks = (teks or '').strip()
-    if not label:
-        raise PricelistAdminError('Nama kategori wajib diisi.')
-    if not teks:
-        raise PricelistAdminError('Teks tampilan tidak boleh kosong.')
-    slug = _slug_dari_label(label)
-    if not slug:
-        raise PricelistAdminError('Nama kategori harus mengandung huruf atau angka.')
-    teks_map = _load_teks()
-    label_map = _load_label()
-    label_dipakai = {(label_map.get(s) or KATEGORI_LABEL.get(s, s)).lower() for s in teks_map}
-    if slug in teks_map or label.lower() in label_dipakai:
-        raise PricelistAdminError(f"Kategori '{label}' sudah ada.")
-    teks_map[slug] = teks
-    label_map[slug] = label
-    _simpan('wa_pricelist_kategori', teks_map)
-    _simpan('wa_pricelist_label', label_map)
-    return get_satu_kategori(slug)
-
-
-@transaction.atomic
-def hapus_kategori(slug):
-    """Hapus kategori teks. Kategori berkalkulator dilindungi: tingkatan qty &
-    satuannya berasal dari seed dan dipakai AI tool hitung_harga_pricelist."""
-    if slug in TERSTRUKTUR_SLUGS:
-        raise PricelistAdminError(
-            'Kategori ini punya kalkulator harga bot dan tidak bisa dihapus. '
-            'Ubah teks atau baris bahannya saja.'
-        )
-    teks_map = _load_teks()
-    if slug not in teks_map:
-        raise PricelistAdminError(f"Kategori '{slug}' tidak ditemukan.")
-    del teks_map[slug]
-    label_map = _load_label()
-    label_map.pop(slug, None)
-    _simpan('wa_pricelist_kategori', teks_map)
-    _simpan('wa_pricelist_label', label_map)
-
-
-def _validasi_bahan(slug, bahan, tiers):
+def _validasi_bahan(bahan, tiers):
     if not isinstance(bahan, list) or not bahan:
         raise PricelistAdminError('Daftar bahan tidak boleh kosong.')
     jumlah_harga_diharapkan = len(tiers) + 1 if tiers else None
@@ -176,10 +131,14 @@ def _validasi_bahan(slug, bahan, tiers):
             raise PricelistAdminError(f'Baris ke-{i}: nama bahan wajib diisi.')
         harga = b.get('harga')
         if jumlah_harga_diharapkan is None:
+            if isinstance(harga, list) and len(harga) == 1:
+                harga = harga[0]
             try:
                 harga_bersih = round(float(harga))
             except (TypeError, ValueError):
                 raise PricelistAdminError(f"Baris ke-{i} ('{nama}'): harga harus angka.")
+            if harga_bersih < 0:
+                raise PricelistAdminError(f"Baris ke-{i} ('{nama}'): harga tidak boleh minus.")
         else:
             if not isinstance(harga, list) or len(harga) != jumlah_harga_diharapkan:
                 raise PricelistAdminError(
@@ -190,17 +149,46 @@ def _validasi_bahan(slug, bahan, tiers):
                 harga_bersih = [round(float(h)) for h in harga]
             except (TypeError, ValueError):
                 raise PricelistAdminError(f"Baris ke-{i} ('{nama}'): semua harga harus angka.")
+            if any(h < 0 for h in harga_bersih):
+                raise PricelistAdminError(f"Baris ke-{i} ('{nama}'): harga tidak boleh minus.")
         hasil.append({'nama': nama, 'harga': harga_bersih})
     return hasil
 
 
+def _validasi_kalkulator(data):
+    """Bersihkan & validasi konfigurasi kalkulator dari UI."""
+    if not isinstance(data, dict):
+        raise PricelistAdminError('Data kalkulator tidak valid.')
+    mode = data.get('mode')
+    if mode not in MODE_KALKULATOR:
+        raise PricelistAdminError("Jenis kalkulator harus 'luas' (per m2) atau 'qty' (per jumlah).")
+    if mode == 'luas':
+        satuan, tiers = 'm2', []
+    else:
+        satuan = str(data.get('satuan') or '').strip()[:30]
+        if not satuan:
+            raise PricelistAdminError('Satuan kalkulator wajib diisi (mis. lembar, box, pcs).')
+        try:
+            tiers = [int(t) for t in (data.get('tiers') or [])]
+        except (TypeError, ValueError):
+            raise PricelistAdminError('Tingkatan qty harus berupa angka bulat.')
+        if len(tiers) > MAKS_TINGKATAN:
+            raise PricelistAdminError(f'Tingkatan qty maksimal {MAKS_TINGKATAN}.')
+        if any(t <= 0 for t in tiers) or any(b <= a for a, b in zip(tiers, tiers[1:])):
+            raise PricelistAdminError('Tingkatan qty harus angka positif yang terus naik, mis. 25, 50, 100.')
+    return {'mode': mode, 'satuan': satuan, 'tiers': tiers, 'bahan': _validasi_bahan(data.get('bahan'), tiers)}
+
+
+_BELUM_DIKIRIM = object()
+
+
 @transaction.atomic
-def update_kategori(slug, teks, bahan=None):
-    """Simpan teks tampilan (semua kategori) + bahan terstruktur (kalau
-    kategori ini termasuk TERSTRUKTUR_SLUGS). `bahan` diabaikan utk
-    kategori non-terstruktur. Tier/satuan TIDAK bisa diubah lewat sini
-    (struktural, ditentukan seed_wa_pricelist.py) -- hanya nama & harga
-    tiap baris bahan."""
+def update_kategori(slug, teks, bahan=None, kalkulator=_BELUM_DIKIRIM):
+    """Simpan teks tampilan + kalkulator kategori.
+
+    `kalkulator`: dict konfigurasi lengkap (buat/ubah kalkulator), None (hapus
+    kalkulator), atau tidak dikirim. `bahan` saja (cara lama) hanya mengganti
+    baris bahan kalkulator yang sudah ada, tingkatan & satuan tetap."""
     slug = (slug or '').strip()
     if not slug:
         raise PricelistAdminError('Slug kategori wajib diisi.')
@@ -210,25 +198,73 @@ def update_kategori(slug, teks, bahan=None):
 
     teks_map = _load_teks()
     teks_map[slug] = teks
-    SystemConfig.objects.update_or_create(
-        key='wa_pricelist_kategori', defaults={'value': json.dumps(teks_map, ensure_ascii=False)},
-    )
+    _simpan('wa_pricelist_kategori', teks_map)
 
-    if slug in TERSTRUKTUR_SLUGS:
-        kalkulator_map = _load_kalkulator()
-        existing = kalkulator_map.get(slug) or {}
-        tiers = existing.get('tiers', [])
-        bahan_bersih = _validasi_bahan(slug, bahan, tiers)
+    kalkulator_map = _load_kalkulator()
+    if kalkulator is None:
+        kalkulator_map.pop(slug, None)
+    elif kalkulator is not _BELUM_DIKIRIM:
+        kalkulator_map[slug] = _validasi_kalkulator(kalkulator)
+    elif slug in kalkulator_map and bahan is not None:
+        existing = kalkulator_map[slug]
         kalkulator_map[slug] = {
-            'satuan': existing.get('satuan', ''),
-            'tiers': tiers,
-            'bahan': bahan_bersih,
+            **existing,
+            'bahan': _validasi_bahan(bahan, existing.get('tiers', [])),
         }
-        SystemConfig.objects.update_or_create(
-            key='wa_kalkulator_bahan', defaults={'value': json.dumps(kalkulator_map, ensure_ascii=False)},
-        )
+    _simpan('wa_kalkulator_bahan', kalkulator_map)
 
     return get_satu_kategori(slug)
+
+
+def _slug_dari_label(label):
+    return re.sub(r'[^a-z0-9]+', '_', label.lower()).strip('_')[:50]
+
+
+@transaction.atomic
+def tambah_kategori(label, teks, kalkulator=None):
+    """Kategori baru: teks tampilan (daftar_kategori_produk) dan, bila
+    diisi, kalkulator harga (hitung_harga_pricelist)."""
+    label = (label or '').strip()
+    teks = (teks or '').strip()
+    if not label:
+        raise PricelistAdminError('Nama kategori wajib diisi.')
+    if not teks:
+        raise PricelistAdminError('Teks tampilan tidak boleh kosong.')
+    slug = _slug_dari_label(label)
+    if not slug:
+        raise PricelistAdminError('Nama kategori harus mengandung huruf atau angka.')
+    teks_map = _load_teks()
+    kalkulator_map = _load_kalkulator()
+    label_map = _load_label()
+    ada = set(teks_map) | set(kalkulator_map)
+    label_dipakai = {(label_map.get(s) or KATEGORI_LABEL.get(s, s)).lower() for s in ada}
+    if slug in ada or label.lower() in label_dipakai:
+        raise PricelistAdminError(f"Kategori '{label}' sudah ada.")
+
+    if kalkulator is not None:
+        kalkulator_map[slug] = _validasi_kalkulator(kalkulator)
+        _simpan('wa_kalkulator_bahan', kalkulator_map)
+    teks_map[slug] = teks
+    label_map[slug] = label
+    _simpan('wa_pricelist_kategori', teks_map)
+    _simpan('wa_pricelist_label', label_map)
+    return get_satu_kategori(slug)
+
+
+@transaction.atomic
+def hapus_kategori(slug):
+    """Hapus kategori beserta kalkulatornya; bot tidak lagi mengenalnya."""
+    teks_map = _load_teks()
+    kalkulator_map = _load_kalkulator()
+    if slug not in teks_map and slug not in kalkulator_map:
+        raise PricelistAdminError(f"Kategori '{slug}' tidak ditemukan.")
+    teks_map.pop(slug, None)
+    kalkulator_map.pop(slug, None)
+    label_map = _load_label()
+    label_map.pop(slug, None)
+    _simpan('wa_pricelist_kategori', teks_map)
+    _simpan('wa_kalkulator_bahan', kalkulator_map)
+    _simpan('wa_pricelist_label', label_map)
 
 
 def _kolom_harga(tiers):
@@ -246,15 +282,18 @@ def _kolom_harga(tiers):
     return kolom
 
 
+def _kalkulator_wajib(slug):
+    data = _load_kalkulator().get(slug)
+    if not data:
+        raise PricelistAdminError(f"Kategori '{slug}' belum punya kalkulator harga.")
+    return data
+
+
 def bahan_ke_csv(slug):
     """CSV kondisi TERKINI (dobel fungsi: template kolom yang benar + data
     yang sudah ada, jadi admin edit nilainya, bukan mulai dari nol)."""
-    if slug not in TERSTRUKTUR_SLUGS:
-        raise PricelistAdminError(f"Kategori '{slug}' tidak punya data terstruktur utk diekspor.")
-    kalkulator_map = _load_kalkulator()
-    data = kalkulator_map.get(slug) or {}
-    tiers = data.get('tiers', [])
-    kolom_harga = _kolom_harga(tiers)
+    data = _kalkulator_wajib(slug)
+    kolom_harga = _kolom_harga(data.get('tiers', []))
 
     buf = io.StringIO()
     writer = csv.writer(buf)
@@ -270,11 +309,7 @@ def csv_ke_bahan(slug, file_obj):
     """Parse CSV upload (header row wajib: nama + N kolom harga sesuai
     jumlah tier kategori ini) jadi list bahan, lalu SIMPAN (replace total
     baris bahan kategori ini, teks tampilan tidak disentuh)."""
-    if slug not in TERSTRUKTUR_SLUGS:
-        raise PricelistAdminError(f"Kategori '{slug}' tidak punya data terstruktur utk diimpor.")
-
-    kalkulator_map = _load_kalkulator()
-    existing = kalkulator_map.get(slug) or {}
+    existing = _kalkulator_wajib(slug)
     tiers = existing.get('tiers', [])
     kolom_diharapkan = ['nama', *_kolom_harga(tiers)]
 
@@ -307,13 +342,7 @@ def csv_ke_bahan(slug, file_obj):
         harga = harga_kolom[0] if jumlah_harga == 1 else list(harga_kolom)
         bahan.append({'nama': nama, 'harga': harga})
 
-    bahan_bersih = _validasi_bahan(slug, bahan, tiers)
-    kalkulator_map[slug] = {
-        'satuan': existing.get('satuan', ''),
-        'tiers': tiers,
-        'bahan': bahan_bersih,
-    }
-    SystemConfig.objects.update_or_create(
-        key='wa_kalkulator_bahan', defaults={'value': json.dumps(kalkulator_map, ensure_ascii=False)},
-    )
+    kalkulator_map = _load_kalkulator()
+    kalkulator_map[slug] = {**existing, 'bahan': _validasi_bahan(bahan, tiers)}
+    _simpan('wa_kalkulator_bahan', kalkulator_map)
     return get_satu_kategori(slug)

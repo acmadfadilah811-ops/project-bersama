@@ -1,35 +1,181 @@
 import { useEffect, useState } from 'react';
-import { AlertCircle, CheckCircle2, Download, Plus, Save, Trash2, Upload } from 'lucide-react';
+import { AlertCircle, Calculator, CheckCircle2, Download, Plus, Save, Trash2, Upload } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import { uiConfirm } from '../../../utils/dialog';
 
 const inputCls =
   'w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all bg-white';
+const tombolCls =
+  'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer';
+
+const KALKULATOR_BARU = { mode: 'qty', satuan: 'pcs', tiers: [], bahan: [{ nama: '', harga: 0 }] };
 
 function labelTierHarga(tiers, index) {
-  if (!tiers || tiers.length === 0) return 'Harga';
+  if (!tiers || tiers.length === 0) return '';
   const bawah = index === 0 ? 1 : tiers[index - 1] + 1;
   const atas = tiers[index];
   return atas === undefined ? `>${tiers[tiers.length - 1]}` : `${bawah}-${atas}`;
 }
 
+/** Sesuaikan jumlah kolom harga tiap bahan dengan jumlah tingkatan baru. */
+function sesuaikanHarga(harga, tiers) {
+  const lama = Array.isArray(harga) ? harga : [harga ?? 0];
+  if (!tiers.length) return Number(lama[0]) || 0;
+  const n = tiers.length + 1;
+  return Array.from({ length: n }, (_, i) => Number(lama[Math.min(i, lama.length - 1)]) || 0);
+}
+
+function kalkulatorDariKategori(k) {
+  if (!k?.terstruktur) return null;
+  return { mode: k.mode || 'qty', satuan: k.satuan || '', tiers: [...(k.tiers || [])], bahan: (k.bahan || []).map((b) => ({ ...b })) };
+}
+
 /**
- * Tab "Pricelist" di Kasir > Pengaturan WA Bot -- form terstruktur (nama
- * bahan + harga per tier qty) utk 4 kategori kalkulator (banner/stiker/
- * kertas_a3/kartu_nama) + teks tampilan bebas utk semua kategori, plus
- * unduh template & impor CSV per kategori terstruktur.
+ * Editor kalkulator harga bot (2026-09-28): jenis (per m2 / per jumlah),
+ * satuan, tingkatan qty, dan baris bahan. Dipakai di kategori yang sudah ada
+ * maupun di form Tambah Kategori.
+ */
+function KalkulatorEditor({ kalk, onChange }) {
+  const [teksTier, setTeksTier] = useState((kalk.tiers || []).join(', '));
+
+  const ubah = (patch) => onChange({ ...kalk, ...patch });
+
+  const terapkanTier = (teks) => {
+    const tiers = teks.split(/[,\s]+/).map((t) => parseInt(t, 10)).filter((t) => Number.isFinite(t) && t > 0);
+    const unik = [...new Set(tiers)].sort((a, b) => a - b);
+    setTeksTier(unik.join(', '));
+    ubah({ tiers: unik, bahan: kalk.bahan.map((b) => ({ ...b, harga: sesuaikanHarga(b.harga, unik) })) });
+  };
+
+  const gantiMode = (mode) => {
+    if (mode === 'luas') {
+      setTeksTier('');
+      ubah({ mode, satuan: 'm2', tiers: [], bahan: kalk.bahan.map((b) => ({ ...b, harga: sesuaikanHarga(b.harga, []) })) });
+    } else {
+      ubah({ mode, satuan: kalk.satuan === 'm2' ? 'pcs' : kalk.satuan });
+    }
+  };
+
+  const ubahBaris = (index, patch) => ubah({ bahan: kalk.bahan.map((b, i) => (i === index ? { ...b, ...patch } : b)) });
+  const tambahBaris = () => ubah({ bahan: [...kalk.bahan, { nama: '', harga: sesuaikanHarga(0, kalk.tiers) }] });
+  const hapusBaris = (index) => ubah({ bahan: kalk.bahan.filter((_, i) => i !== index) });
+
+  const jumlahKolom = kalk.tiers.length ? kalk.tiers.length + 1 : 1;
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-slate-600">Jenis Hitungan</label>
+          <select value={kalk.mode} onChange={(e) => gantiMode(e.target.value)} className={inputCls}>
+            <option value="qty">Per jumlah (lembar/box/pcs)</option>
+            <option value="luas">Per luas (m², panjang × lebar)</option>
+          </select>
+        </div>
+        {kalk.mode === 'qty' && (
+          <>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-slate-600">Satuan</label>
+              <input type="text" value={kalk.satuan} onChange={(e) => ubah({ satuan: e.target.value })} placeholder="lembar / box / pcs" className={inputCls} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-slate-600">Tingkatan Qty (batas atas)</label>
+              <input
+                type="text"
+                value={teksTier}
+                onChange={(e) => setTeksTier(e.target.value)}
+                onBlur={(e) => terapkanTier(e.target.value)}
+                placeholder="mis. 25, 50, 100 (kosong = satu harga)"
+                className={inputCls}
+              />
+            </div>
+          </>
+        )}
+      </div>
+      <p className="text-[11px] text-slate-400">
+        {kalk.mode === 'luas'
+          ? 'Bot meminta panjang & lebar (meter), lalu total = luas × harga per m² × jumlah lembar.'
+          : kalk.tiers.length
+            ? `Harga per ${kalk.satuan || 'satuan'} mengikuti jumlah pesanan: ${kalk.tiers.map((_, i) => labelTierHarga(kalk.tiers, i)).concat(labelTierHarga(kalk.tiers, kalk.tiers.length)).join(' / ')}.`
+            : `Satu harga per ${kalk.satuan || 'satuan'}, total = harga × jumlah.`}
+      </p>
+
+      <div className="flex justify-end">
+        <button type="button" onClick={tambahBaris} className={tombolCls}>
+          <Plus size={13} /> Tambah Baris
+        </button>
+      </div>
+      <div className="overflow-x-auto border border-slate-200 rounded-xl">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-slate-50">
+            <tr>
+              <th className="px-3 py-2 font-semibold text-slate-600 text-xs">Nama Bahan</th>
+              {Array.from({ length: jumlahKolom }, (_, i) => (
+                <th key={i} className="px-3 py-2 font-semibold text-slate-600 text-xs whitespace-nowrap">
+                  {kalk.mode === 'luas' ? 'Harga / m²' : kalk.tiers.length ? `Harga ${labelTierHarga(kalk.tiers, i)}` : `Harga / ${kalk.satuan || 'satuan'}`}
+                </th>
+              ))}
+              <th className="px-2 py-2 w-10" />
+            </tr>
+          </thead>
+          <tbody>
+            {kalk.bahan.map((b, index) => {
+              const daftarHarga = Array.isArray(b.harga) ? b.harga : [b.harga];
+              return (
+                <tr key={index} className="border-t border-slate-100">
+                  <td className="px-3 py-1.5">
+                    <input type="text" value={b.nama} onChange={(e) => ubahBaris(index, { nama: e.target.value })} className={inputCls} />
+                  </td>
+                  {daftarHarga.map((h, tierIndex) => (
+                    <td key={tierIndex} className="px-3 py-1.5">
+                      <input
+                        type="number"
+                        min="0"
+                        value={h}
+                        onChange={(e) => {
+                          const nilai = Number(e.target.value);
+                          ubahBaris(index, {
+                            harga: Array.isArray(b.harga) ? b.harga.map((x, j) => (j === tierIndex ? nilai : x)) : nilai,
+                          });
+                        }}
+                        className={inputCls}
+                      />
+                    </td>
+                  ))}
+                  <td className="px-2 py-1.5 text-center">
+                    <button type="button" onClick={() => hapusBaris(index)} className="text-rose-500 hover:text-rose-700 cursor-pointer">
+                      <Trash2 size={15} />
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <button type="button" onClick={tambahBaris} className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700 cursor-pointer">
+        <Plus size={14} /> Tambah Baris Bahan
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Tab "Pricelist" di Pengaturan WA Bot: teks tampilan per kategori + kalkulator
+ * harga opsional per kategori, tambah/hapus kategori, unduh & impor CSV bahan.
  */
 export default function PricelistWaBotPanel() {
   const [kategoriList, setKategoriList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeSlug, setActiveSlug] = useState(null);
-  const [draft, setDraft] = useState(null); // { teks, bahan }
+  const [draft, setDraft] = useState(null); // { teks, kalk }
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
   const [msg, setMsg] = useState(null);
-  // Form tambah kategori baru (kategori teks, 2026-09-28).
-  const [formBaru, setFormBaru] = useState(null); // { label, teks } | null
+  const [formBaru, setFormBaru] = useState(null); // { label, teks, kalk }
   const [menambah, setMenambah] = useState(false);
+
+  const pasangDraft = (k) => setDraft({ teks: k.teks, kalk: kalkulatorDariKategori(k) });
 
   const fetchList = async (selectSlug) => {
     setLoading(true);
@@ -40,7 +186,10 @@ export default function PricelistWaBotPanel() {
       const target = list.find((k) => k.slug === (selectSlug || activeSlug)) || list[0];
       if (target) {
         setActiveSlug(target.slug);
-        setDraft({ teks: target.teks, bahan: target.bahan ? [...target.bahan] : null });
+        pasangDraft(target);
+      } else {
+        setActiveSlug(null);
+        setDraft(null);
       }
     } catch {
       setMsg({ type: 'error', text: 'Gagal memuat pricelist.' });
@@ -60,62 +209,38 @@ export default function PricelistWaBotPanel() {
     const target = kategoriList.find((k) => k.slug === slug);
     if (!target) return;
     setActiveSlug(slug);
-    setDraft({ teks: target.teks, bahan: target.bahan ? [...target.bahan] : null });
+    pasangDraft(target);
     setMsg(null);
   };
 
-  const ubahHargaBaris = (index, tierIndex, value) => {
-    setDraft((d) => {
-      const bahan = [...d.bahan];
-      const baris = { ...bahan[index] };
-      if (Array.isArray(baris.harga)) {
-        const harga = [...baris.harga];
-        harga[tierIndex] = value;
-        baris.harga = harga;
-      } else {
-        baris.harga = value;
-      }
-      bahan[index] = baris;
-      return { ...d, bahan };
-    });
-  };
-
-  const ubahNamaBaris = (index, value) => {
-    setDraft((d) => {
-      const bahan = [...d.bahan];
-      bahan[index] = { ...bahan[index], nama: value };
-      return { ...d, bahan };
-    });
-  };
-
-  const tambahBaris = () => {
-    setDraft((d) => {
-      const contoh = d.bahan[0];
-      const hargaKosong = Array.isArray(contoh?.harga) ? contoh.harga.map(() => 0) : 0;
-      return { ...d, bahan: [...d.bahan, { nama: '', harga: hargaKosong }] };
-    });
-  };
-
-  const simpanKategoriBaru = async () => {
-    if (!formBaru) return;
-    setMenambah(true);
+  const simpan = async () => {
+    if (!aktif) return;
+    setSaving(true);
     setMsg(null);
     try {
-      const res = await apiClient.post('/wa-pricelist/', { label: formBaru.label, teks: formBaru.teks });
-      setFormBaru(null);
-      await fetchList(res.data.slug);
-      setMsg({ type: 'success', text: `Kategori "${res.data.label}" ditambahkan.` });
+      const res = await apiClient.patch(`/wa-pricelist/${aktif.slug}/`, { teks: draft.teks, kalkulator: draft.kalk });
+      setKategoriList((list) => list.map((k) => (k.slug === aktif.slug ? res.data : k)));
+      pasangDraft(res.data);
+      setMsg({ type: 'success', text: `Pricelist kategori "${aktif.label}" tersimpan.` });
     } catch (err) {
-      setMsg({ type: 'error', text: err.response?.data?.error || 'Gagal menambah kategori.' });
+      setMsg({ type: 'error', text: err.response?.data?.error || 'Gagal menyimpan pricelist.' });
     } finally {
-      setMenambah(false);
+      setSaving(false);
     }
   };
 
-  const hapusKategori = async () => {
-    if (!aktif || aktif.terstruktur) return;
+  const hapusKalkulator = async () => {
     const ok = await uiConfirm(
-      `Hapus kategori "${aktif.label}"? Bot tidak akan lagi menampilkan info harga kategori ini.`,
+      `Hapus kalkulator harga kategori "${aktif.label}"? Bot tidak bisa lagi menghitung total otomatis untuk kategori ini. Perubahan berlaku setelah Simpan.`,
+      { title: 'Hapus Kalkulator', confirmText: 'Hapus', danger: true },
+    );
+    if (ok) setDraft((d) => ({ ...d, kalk: null }));
+  };
+
+  const hapusKategori = async () => {
+    if (!aktif) return;
+    const ok = await uiConfirm(
+      `Hapus kategori "${aktif.label}"${aktif.terstruktur ? ' beserta kalkulator harganya' : ''}? Bot tidak akan lagi mengenal kategori ini.`,
       { title: 'Hapus Kategori', confirmText: 'Hapus', danger: true },
     );
     if (!ok) return;
@@ -130,24 +255,19 @@ export default function PricelistWaBotPanel() {
     }
   };
 
-  const hapusBaris = (index) => {
-    setDraft((d) => ({ ...d, bahan: d.bahan.filter((_, i) => i !== index) }));
-  };
-
-  const simpan = async () => {
-    if (!aktif) return;
-    setSaving(true);
+  const simpanKategoriBaru = async () => {
+    if (!formBaru) return;
+    setMenambah(true);
     setMsg(null);
     try {
-      const payload = { teks: draft.teks };
-      if (aktif.terstruktur) payload.bahan = draft.bahan;
-      const res = await apiClient.patch(`/wa-pricelist/${aktif.slug}/`, payload);
-      setKategoriList((list) => list.map((k) => (k.slug === aktif.slug ? { ...k, ...res.data } : k)));
-      setMsg({ type: 'success', text: `Pricelist kategori "${aktif.label}" tersimpan.` });
+      const res = await apiClient.post('/wa-pricelist/', { label: formBaru.label, teks: formBaru.teks, kalkulator: formBaru.kalk });
+      setFormBaru(null);
+      await fetchList(res.data.slug);
+      setMsg({ type: 'success', text: `Kategori "${res.data.label}" ditambahkan.` });
     } catch (err) {
-      setMsg({ type: 'error', text: err.response?.data?.error || 'Gagal menyimpan pricelist.' });
+      setMsg({ type: 'error', text: err.response?.data?.error || 'Gagal menambah kategori.' });
     } finally {
-      setSaving(false);
+      setMenambah(false);
     }
   };
 
@@ -180,8 +300,8 @@ export default function PricelistWaBotPanel() {
       const res = await apiClient.post(`/wa-pricelist/${aktif.slug}/import/`, form, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      setKategoriList((list) => list.map((k) => (k.slug === aktif.slug ? { ...k, ...res.data } : k)));
-      setDraft((d) => ({ ...d, bahan: res.data.bahan }));
+      setKategoriList((list) => list.map((k) => (k.slug === aktif.slug ? res.data : k)));
+      setDraft((d) => ({ ...d, kalk: kalkulatorDariKategori(res.data) }));
       setMsg({ type: 'success', text: `Berhasil impor ${res.data.bahan.length} baris bahan dari CSV.` });
     } catch (err) {
       setMsg({ type: 'error', text: err.response?.data?.error || 'Gagal mengimpor CSV.' });
@@ -198,13 +318,17 @@ export default function PricelistWaBotPanel() {
     );
   }
 
+  // CSV hanya untuk kalkulator yang sudah tersimpan dengan tingkatan yang sama.
+  const csvTersedia = aktif?.terstruktur && draft?.kalk
+    && JSON.stringify(aktif.tiers || []) === JSON.stringify(draft.kalk.tiers) && aktif.mode === draft.kalk.mode;
+
   return (
     <div className="space-y-5 animate-fade-in">
       <div>
         <h4 className="font-bold text-slate-800 text-base">Pricelist WA Bot</h4>
         <p className="text-xs text-slate-400">
-          Sumber harga & info produk resmi yang dijawab bot WhatsApp (tools "daftar_kategori_produk" &
-          "hitung_harga_pricelist"). Perubahan di sini langsung dipakai bot, tanpa perlu restart.
+          Sumber harga & info produk resmi yang dijawab bot WhatsApp. Kategori dengan kalkulator harga bisa dihitung
+          totalnya otomatis oleh bot. Perubahan langsung dipakai bot, tanpa perlu restart.
         </p>
       </div>
 
@@ -223,25 +347,25 @@ export default function PricelistWaBotPanel() {
             key={k.slug}
             type="button"
             onClick={() => pilihKategori(k.slug)}
-            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer border
+            className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer border
               ${activeSlug === k.slug
                 ? 'bg-indigo-600 text-white border-indigo-600'
                 : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
           >
             {k.label}
-            {k.terstruktur && <span className="ml-1 opacity-70">•</span>}
+            {k.terstruktur && <Calculator size={11} className="opacity-70" />}
           </button>
         ))}
         <button
           type="button"
-          onClick={() => { setFormBaru({ label: '', teks: '' }); setMsg(null); }}
+          onClick={() => { setFormBaru({ label: '', teks: '', kalk: null }); setMsg(null); }}
           className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold border border-dashed border-slate-300 text-slate-600 hover:bg-slate-50 cursor-pointer"
         >
           <Plus size={13} /> Tambah Kategori
         </button>
       </div>
-      <p className="text-[11px] text-slate-400 -mt-3">
-        Tanda • = kategori berkalkulator harga (tidak bisa dihapus). Kategori lain berisi teks info harga.
+      <p className="text-[11px] text-slate-400 -mt-3 inline-flex items-center gap-1">
+        <Calculator size={11} /> = kategori punya kalkulator harga.
       </p>
 
       {formBaru && (
@@ -267,12 +391,21 @@ export default function PricelistWaBotPanel() {
               className={`${inputCls} font-mono text-xs`}
             />
           </div>
+          <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={!!formBaru.kalk}
+              onChange={(e) => setFormBaru((f) => ({ ...f, kalk: e.target.checked ? { ...KALKULATOR_BARU, bahan: [{ nama: '', harga: 0 }] } : null }))}
+            />
+            Tambahkan kalkulator harga (bot bisa menghitung total otomatis)
+          </label>
+          {formBaru.kalk && (
+            <div className="p-3 bg-white border border-slate-200 rounded-xl">
+              <KalkulatorEditor kalk={formBaru.kalk} onChange={(kalk) => setFormBaru((f) => ({ ...f, kalk }))} />
+            </div>
+          )}
           <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setFormBaru(null)}
-              className="px-4 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-600 hover:bg-white cursor-pointer"
-            >
+            <button type="button" onClick={() => setFormBaru(null)} className="px-4 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-600 hover:bg-white cursor-pointer">
               Batal
             </button>
             <button
@@ -305,122 +438,56 @@ export default function PricelistWaBotPanel() {
             />
           </div>
 
-          {aktif.terstruktur && (
-            <div className="space-y-3 pt-2 border-t border-slate-100">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <div>
-                  <p className="text-sm font-bold text-slate-700">Data Kalkulator Harga</p>
-                  <p className="text-[11px] text-slate-400">
-                    Dipakai bot menghitung total otomatis. Satuan: {aktif.satuan || '-'}.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
+          <div className="space-y-3 pt-2 border-t border-slate-100">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <p className="text-sm font-bold text-slate-700">Kalkulator Harga</p>
+                <p className="text-[11px] text-slate-400">
+                  {draft.kalk ? 'Dipakai bot menghitung total otomatis.' : 'Kategori ini belum punya kalkulator; bot hanya mengirim teks di atas.'}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {draft.kalk ? (
+                  <>
+                    {csvTersedia && (
+                      <>
+                        <button type="button" onClick={unduhTemplate} className={tombolCls}>
+                          <Download size={13} /> Unduh CSV
+                        </button>
+                        <label className={tombolCls}>
+                          <Upload size={13} /> {importing ? 'Mengimpor...' : 'Impor CSV'}
+                          <input type="file" accept=".csv" className="hidden" onChange={importCsv} disabled={importing} />
+                        </label>
+                      </>
+                    )}
+                    <button type="button" onClick={hapusKalkulator} className={tombolCls}>
+                      <Trash2 size={13} /> Hapus Kalkulator
+                    </button>
+                  </>
+                ) : (
                   <button
                     type="button"
-                    onClick={tambahBaris}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                    onClick={() => setDraft((d) => ({ ...d, kalk: { ...KALKULATOR_BARU, bahan: [{ nama: '', harga: 0 }] } }))}
+                    className={tombolCls}
                   >
-                    <Plus size={13} /> Tambah Baris
+                    <Calculator size={13} /> Tambah Kalkulator Harga
                   </button>
-                  <button
-                    type="button"
-                    onClick={unduhTemplate}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
-                  >
-                    <Download size={13} /> Unduh CSV
-                  </button>
-                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer">
-                    <Upload size={13} /> {importing ? 'Mengimpor...' : 'Impor CSV'}
-                    <input type="file" accept=".csv" className="hidden" onChange={importCsv} disabled={importing} />
-                  </label>
-                </div>
+                )}
               </div>
-
-              <div className="overflow-x-auto border border-slate-200 rounded-xl">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="px-3 py-2 font-semibold text-slate-600 text-xs">Nama Bahan</th>
-                      {Array.isArray(draft.bahan[0]?.harga) ? (
-                        draft.bahan[0].harga.map((_, i) => (
-                          <th key={i} className="px-3 py-2 font-semibold text-slate-600 text-xs whitespace-nowrap">
-                            Harga {labelTierHarga(aktif.tiers, i)}
-                          </th>
-                        ))
-                      ) : (
-                        <th className="px-3 py-2 font-semibold text-slate-600 text-xs">Harga</th>
-                      )}
-                      <th className="px-2 py-2 w-10" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {draft.bahan.map((b, index) => (
-                      <tr key={index} className="border-t border-slate-100">
-                        <td className="px-3 py-1.5">
-                          <input
-                            type="text"
-                            value={b.nama}
-                            onChange={(e) => ubahNamaBaris(index, e.target.value)}
-                            className={inputCls}
-                          />
-                        </td>
-                        {Array.isArray(b.harga) ? (
-                          b.harga.map((h, tierIndex) => (
-                            <td key={tierIndex} className="px-3 py-1.5">
-                              <input
-                                type="number"
-                                min="0"
-                                value={h}
-                                onChange={(e) => ubahHargaBaris(index, tierIndex, Number(e.target.value))}
-                                className={inputCls}
-                              />
-                            </td>
-                          ))
-                        ) : (
-                          <td className="px-3 py-1.5">
-                            <input
-                              type="number"
-                              min="0"
-                              value={b.harga}
-                              onChange={(e) => ubahHargaBaris(index, 0, Number(e.target.value))}
-                              className={inputCls}
-                            />
-                          </td>
-                        )}
-                        <td className="px-2 py-1.5 text-center">
-                          <button
-                            type="button"
-                            onClick={() => hapusBaris(index)}
-                            className="text-rose-500 hover:text-rose-700 cursor-pointer"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <button
-                type="button"
-                onClick={tambahBaris}
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700 cursor-pointer"
-              >
-                <Plus size={14} /> Tambah Baris Bahan
-              </button>
             </div>
-          )}
+            {draft.kalk && (
+              <KalkulatorEditor key={activeSlug} kalk={draft.kalk} onChange={(kalk) => setDraft((d) => ({ ...d, kalk }))} />
+            )}
+          </div>
 
           <div className="flex justify-between items-center gap-2 pt-4 border-t border-slate-100">
-            {!aktif.terstruktur ? (
-              <button
-                type="button"
-                onClick={hapusKategori}
-                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg border border-slate-300 text-sm font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
-              >
-                <Trash2 size={15} /> Hapus Kategori
-              </button>
-            ) : <span />}
+            <button
+              type="button"
+              onClick={hapusKategori}
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg border border-slate-300 text-sm font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+            >
+              <Trash2 size={15} /> Hapus Kategori
+            </button>
             <button
               type="button"
               onClick={simpan}
