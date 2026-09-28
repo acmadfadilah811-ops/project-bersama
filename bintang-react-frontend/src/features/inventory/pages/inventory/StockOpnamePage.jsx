@@ -449,6 +449,12 @@ export function StockOpnamePage({ onToggleCreate, viewState: propViewState }) {
         ...prev,
         items: prev.items.map((it) => (it.id === itemId ? res.data : it)),
       }));
+      // Ringkasan selisih (ringkasan_selisih) dihitung server per dokumen;
+      // update-item hanya mengembalikan baris itu, jadi dokumen dimuat ulang
+      // supaya ringkasan ikut berubah tanpa menunggu posting (2026-09-28).
+      fetchDocumentDetail(activeDetailDoc.id).catch((e) => {
+        console.error('[StockOpnamePage] muat ulang ringkasan error:', e);
+      });
     } catch (err) {
       console.error('[StockOpnamePage] update item error:', err);
       setValidationError(err.response?.data?.error || 'Gagal menyimpan perubahan item.');
