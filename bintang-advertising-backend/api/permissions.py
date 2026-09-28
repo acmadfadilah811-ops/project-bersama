@@ -387,6 +387,14 @@ class IsClockedIn(BasePermission):
     - Jika sudah check-out (jam_keluar not null), hanya diperbolehkan jika
       workspace_unlocked = True.
     """
+    # Pesan eksplisit (2026-09-28): tanpa ini DRF mengirim pesan generik
+    # "tidak memiliki izin" dan layar hanya menampilkan "Gagal ..." sehingga
+    # SPV/staff tidak tahu penyebabnya adalah absensi Bintang.
+    message = (
+        'Anda belum absen masuk hari ini di Bintang (atau sudah absen pulang). '
+        'Absen masuk dulu di menu Absensi untuk membuka papan kerja.'
+    )
+
     def has_permission(self, request, view):
         user = request.user
         if not user or not user.is_authenticated:

@@ -276,6 +276,13 @@ def buat_order_dari_items(nomor_wa, nama_kontak, nama_order, items, raw_detail='
                 gdrive_customer_link=str(item_data.get('gdrive_link') or ''),
             )
 
+            # Order dari CRM tidak diberi job otomatis (2026-09-28): tahap
+            # pertama global bisa milik unit lain (mis. Operator StarFoto
+            # untuk pesanan Advertising), jadi pesanan yang belum diverifikasi
+            # nyasar ke antrean divisi yang salah. SPK baru dibuat saat kasir
+            # menerbitkannya dari Antrean.
+            if sumber == 'crm':
+                continue
             file_desain_belum = bool(item_data.get('file_desain_belum'))
             if file_desain_belum:
                 tahap_awal = TahapProses.objects.filter(nama__icontains='desain').order_by('urutan').first()

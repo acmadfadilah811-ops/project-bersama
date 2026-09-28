@@ -61,7 +61,8 @@ class CrmOrderBridgeTest(APITestCase):
         self.assertEqual(order.total_harga, 2 * 25000 + 10 * 7500)
         self.assertEqual(sorted(i.harga_jual for i in order.items.all()), [50000, 75000])
         self.assertTrue(all(i.product_id for i in order.items.all()))
-        self.assertEqual(JobBoard.objects.filter(order_item__order=order).count(), 2)
+        # Tanpa SPK otomatis: SPK diterbitkan kasir dari Antrean ke divisi unitnya (2026-09-28).
+        self.assertEqual(JobBoard.objects.filter(order_item__order=order).count(), 0)
         self.assertIn('Tim Sales', order.catatan_pelanggan)
         asal = OrderAsalCRM.objects.get(order=order)
         self.assertEqual((asal.crm_opportunity_id, asal.crm_user_id), (7, 4))

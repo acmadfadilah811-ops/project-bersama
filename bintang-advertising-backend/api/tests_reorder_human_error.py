@@ -170,3 +170,12 @@ class TanggunganReorderBridgeTest(APITestCase):
         self.assertEqual((r.status_code, r.json()['ditandai']), (200, 2))
         self.assertEqual(TanggunganReorder.objects.filter(staff=self.budi, status='sudah_dipotong').count(), 2)
         self.assertEqual(TanggunganReorder.objects.get(staff=self.tanpa_hr).status, 'menunggu_potong')
+
+
+class PesanAbsensiPapanKerjaTest(APITestCase):
+    def test_teruskan_tanpa_absen_memberi_alasan_jelas(self):
+        spv = User.objects.create_user(username='spv_tanpa_absen', password='x', role='spv')
+        self.client.force_authenticate(spv)
+        res = self.client.post('/api/jobs/999999/forward/', {'aksi': 'forward', 'tahap_id': 1}, format='json')
+        self.assertEqual(res.status_code, 403)
+        self.assertIn('belum absen masuk', res.json()['detail'])

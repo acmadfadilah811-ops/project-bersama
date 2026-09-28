@@ -223,7 +223,7 @@ export default function useProductionData() {
     if (gagal.length < jobIds.length) {
       addLocalLog(`${jobIds.length - gagal.length}/${jobIds.length} pekerjaan dalam satu order diklaim oleh Anda.`);
     }
-    const pesanPertama = gagal[0]?.reason?.response?.data?.error || 'Gagal mengklaim pekerjaan.';
+    const pesanPertama = gagal[0]?.reason?.response?.data?.error || gagal[0]?.reason?.response?.data?.detail || 'Gagal mengklaim pekerjaan.';
     return {
       ok: false,
       error: gagal.length === jobIds.length
@@ -245,7 +245,7 @@ export default function useProductionData() {
     if (gagal.length === 0) {
       return { ok: true };
     }
-    const pesanPertama = gagal[0]?.reason?.response?.data?.error || 'Gagal menugaskan staff.';
+    const pesanPertama = gagal[0]?.reason?.response?.data?.error || gagal[0]?.reason?.response?.data?.detail || 'Gagal menugaskan staff.';
     return {
       ok: false,
       error: gagal.length === jobIds.length
@@ -261,7 +261,7 @@ export default function useProductionData() {
       addLocalLog(`Pekerjaan #${jobId} mulai dikerjakan.`);
       return { ok: true, data: res.data };
     } catch (err) {
-      const errorMsg = err.response?.data?.error || 'Gagal memulai pekerjaan.';
+      const errorMsg = err.response?.data?.error || err.response?.data?.detail || 'Gagal memulai pekerjaan.';
       return { ok: false, error: errorMsg };
     }
   };
@@ -274,7 +274,7 @@ export default function useProductionData() {
       addLocalLog(`Pekerjaan #${jobId} selesai dikerjakan.`);
       return { ok: true, data: res.data };
     } catch (err) {
-      const errorMsg = err.response?.data?.error || 'Gagal menyelesaikan pekerjaan.';
+      const errorMsg = err.response?.data?.error || err.response?.data?.detail || 'Gagal menyelesaikan pekerjaan.';
       return { ok: false, error: errorMsg };
     }
   };
@@ -289,7 +289,7 @@ export default function useProductionData() {
       addLocalLog(`Pekerjaan #${jobId} diteruskan ke tahap/divisi lain.`);
       return { ok: true, data: res.data };
     } catch (err) {
-      const errorMsg = err.response?.data?.error || 'Gagal meneruskan pekerjaan.';
+      const errorMsg = err.response?.data?.error || err.response?.data?.detail || 'Gagal meneruskan pekerjaan.';
       return { ok: false, error: errorMsg };
     }
   };
