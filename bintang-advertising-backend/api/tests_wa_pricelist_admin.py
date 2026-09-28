@@ -162,3 +162,47 @@ class WaPricelistAdminViewTests(APITestCase):
         response = self.client.post('/api/wa-pricelist/banner/import/', {'file': upload}, format='multipart')
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
         self.assertEqual(response.data['bahan'], [{'nama': 'Banner 240', 'harga': 22000}])
+
+
+class WaPricelistKategoriTambahHapusTests(APITestCase):
+    """Tambah & hapus kategori dari layar Pengaturan WA Bot (2026-09-28)."""
+
+    def setUp(self):
+        _seed_dasar()
+        self.owner = User.objects.create_user(username='owner_kat', password='secret', role='owner')
+        self.kasir = User.objects.create_user(username='kasir_kat', password='secret', role='kasir')
+        self.client.force_authenticate(self.owner)
+
+    def _teks_map(self):
+        return json.loads(SystemConfig.objects.get(key='wa_pricelist_kategori').value)
+
+    def test_tambah_kategori_teks_dipakai_bot(self):
+        res = self.client.post('/api/wa-pricelist/', {'label': 'Stempel & Cap', 'teks': '*Stempel* mulai 50rb'}, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.data)
+        self.assertEqual((res.data['slug'], res.data['label'], res.data['terstruktur']), ('stempel_cap', 'Stempel & Cap', False))
+        self.assertEqual(self._teks_map()['stempel_cap'], '*Stempel* mulai 50rb')
+        daftar = self.client.get('/api/wa-pricelist/').data['kategori']
+        self.assertEqual(daftar[-1]['label'], 'Stempel & Cap')
+
+    def test_tambah_kategori_dobel_atau_kosong_ditolak(self):
+        self.assertEqual(self.client.post('/api/wa-pricelist/', {'label': 'Brosur', 'teks': 'x'}, format='json').status_code, 400)
+        self.assertEqual(self.client.post('/api/wa-pricelist/', {'label': '', 'teks': 'x'}, format='json').status_code, 400)
+        self.assertEqual(self.client.post('/api/wa-pricelist/', {'label': 'Baru', 'teks': ''}, format='json').status_code, 400)
+
+    def test_hapus_kategori_teks_dan_tidak_muncul_lagi(self):
+        res = self.client.delete('/api/wa-pricelist/brosur/')
+        self.assertEqual(res.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertNotIn('brosur', self._teks_map())
+        slugs = [k['slug'] for k in self.client.get('/api/wa-pricelist/').data['kategori']]
+        self.assertNotIn('brosur', slugs)
+        self.assertIn('banner', slugs)
+
+    def test_kategori_berkalkulator_tidak_bisa_dihapus(self):
+        res = self.client.delete('/api/wa-pricelist/banner/')
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('banner', self._teks_map())
+
+    def test_kasir_tidak_boleh_tambah_hapus(self):
+        self.client.force_authenticate(self.kasir)
+        self.assertEqual(self.client.post('/api/wa-pricelist/', {'label': 'X', 'teks': 'y'}, format='json').status_code, 403)
+        self.assertEqual(self.client.delete('/api/wa-pricelist/brosur/').status_code, 403)

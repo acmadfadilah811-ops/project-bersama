@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle2, Download, Plus, Save, Trash2, Upload } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
+import { uiConfirm } from '../../../utils/dialog';
 
 const inputCls =
   'w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all bg-white';
@@ -26,6 +27,9 @@ export default function PricelistWaBotPanel() {
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
   const [msg, setMsg] = useState(null);
+  // Form tambah kategori baru (kategori teks, 2026-09-28).
+  const [formBaru, setFormBaru] = useState(null); // { label, teks } | null
+  const [menambah, setMenambah] = useState(false);
 
   const fetchList = async (selectSlug) => {
     setLoading(true);
@@ -90,6 +94,40 @@ export default function PricelistWaBotPanel() {
       const hargaKosong = Array.isArray(contoh?.harga) ? contoh.harga.map(() => 0) : 0;
       return { ...d, bahan: [...d.bahan, { nama: '', harga: hargaKosong }] };
     });
+  };
+
+  const simpanKategoriBaru = async () => {
+    if (!formBaru) return;
+    setMenambah(true);
+    setMsg(null);
+    try {
+      const res = await apiClient.post('/wa-pricelist/', { label: formBaru.label, teks: formBaru.teks });
+      setFormBaru(null);
+      await fetchList(res.data.slug);
+      setMsg({ type: 'success', text: `Kategori "${res.data.label}" ditambahkan.` });
+    } catch (err) {
+      setMsg({ type: 'error', text: err.response?.data?.error || 'Gagal menambah kategori.' });
+    } finally {
+      setMenambah(false);
+    }
+  };
+
+  const hapusKategori = async () => {
+    if (!aktif || aktif.terstruktur) return;
+    const ok = await uiConfirm(
+      `Hapus kategori "${aktif.label}"? Bot tidak akan lagi menampilkan info harga kategori ini.`,
+      { title: 'Hapus Kategori', confirmText: 'Hapus', danger: true },
+    );
+    if (!ok) return;
+    setMsg(null);
+    try {
+      await apiClient.delete(`/wa-pricelist/${aktif.slug}/`);
+      const sisa = kategoriList.filter((k) => k.slug !== aktif.slug);
+      await fetchList(sisa[0]?.slug);
+      setMsg({ type: 'success', text: `Kategori "${aktif.label}" dihapus.` });
+    } catch (err) {
+      setMsg({ type: 'error', text: err.response?.data?.error || 'Gagal menghapus kategori.' });
+    }
   };
 
   const hapusBaris = (index) => {
@@ -194,7 +232,60 @@ export default function PricelistWaBotPanel() {
             {k.terstruktur && <span className="ml-1 opacity-70">•</span>}
           </button>
         ))}
+        <button
+          type="button"
+          onClick={() => { setFormBaru({ label: '', teks: '' }); setMsg(null); }}
+          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold border border-dashed border-slate-300 text-slate-600 hover:bg-slate-50 cursor-pointer"
+        >
+          <Plus size={13} /> Tambah Kategori
+        </button>
       </div>
+      <p className="text-[11px] text-slate-400 -mt-3">
+        Tanda • = kategori berkalkulator harga (tidak bisa dihapus). Kategori lain berisi teks info harga.
+      </p>
+
+      {formBaru && (
+        <div className="space-y-3 p-4 border border-slate-200 rounded-xl bg-slate-50">
+          <p className="text-sm font-bold text-slate-700">Kategori Baru</p>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-600">Nama Kategori</label>
+            <input
+              type="text"
+              value={formBaru.label}
+              onChange={(e) => setFormBaru((f) => ({ ...f, label: e.target.value }))}
+              placeholder="Contoh: Stempel & Cap"
+              className={inputCls}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-slate-600">Teks Tampilan ke Pelanggan</label>
+            <textarea
+              rows={5}
+              value={formBaru.teks}
+              onChange={(e) => setFormBaru((f) => ({ ...f, teks: e.target.value }))}
+              placeholder="Info harga yang dikirim bot saat pelanggan menanyakan kategori ini"
+              className={`${inputCls} font-mono text-xs`}
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setFormBaru(null)}
+              className="px-4 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-600 hover:bg-white cursor-pointer"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={simpanKategoriBaru}
+              disabled={menambah || !formBaru.label.trim() || !formBaru.teks.trim()}
+              className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-60 cursor-pointer"
+            >
+              {menambah ? 'Menyimpan...' : 'Simpan Kategori'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {aktif && draft && (
         <div className="space-y-5">
@@ -224,6 +315,13 @@ export default function PricelistWaBotPanel() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={tambahBaris}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                  >
+                    <Plus size={13} /> Tambah Baris
+                  </button>
                   <button
                     type="button"
                     onClick={unduhTemplate}
@@ -313,7 +411,16 @@ export default function PricelistWaBotPanel() {
             </div>
           )}
 
-          <div className="flex justify-end pt-4 border-t border-slate-100">
+          <div className="flex justify-between items-center gap-2 pt-4 border-t border-slate-100">
+            {!aktif.terstruktur ? (
+              <button
+                type="button"
+                onClick={hapusKategori}
+                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg border border-slate-300 text-sm font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+              >
+                <Trash2 size={15} /> Hapus Kategori
+              </button>
+            ) : <span />}
             <button
               type="button"
               onClick={simpan}

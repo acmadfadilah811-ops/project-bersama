@@ -12,15 +12,23 @@ from ..services import wa_pricelist_admin as svc
 
 
 class WaPricelistListView(APIView):
-    """GET /api/wa-pricelist/ -- semua kategori (teks + data terstruktur kalau ada)."""
+    """GET /api/wa-pricelist/ -- semua kategori (teks + data terstruktur kalau ada).
+    POST -- tambah kategori teks baru {label, teks}."""
     permission_classes = [IsStrictOwnerOrManager]
 
     def get(self, request):
         return Response({'kategori': svc.get_semua_kategori()})
 
+    def post(self, request):
+        try:
+            data = svc.tambah_kategori(request.data.get('label'), request.data.get('teks'))
+            return Response(data, status=status.HTTP_201_CREATED)
+        except svc.PricelistAdminError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 
 class WaPricelistDetailView(APIView):
-    """GET/PATCH /api/wa-pricelist/<slug>/"""
+    """GET/PATCH/DELETE /api/wa-pricelist/<slug>/"""
     permission_classes = [IsStrictOwnerOrManager]
 
     def get(self, request, slug):
@@ -33,6 +41,13 @@ class WaPricelistDetailView(APIView):
         try:
             data = svc.update_kategori(slug, request.data.get('teks'), request.data.get('bahan'))
             return Response(data)
+        except svc.PricelistAdminError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, slug):
+        try:
+            svc.hapus_kategori(slug)
+            return Response(status=status.HTTP_204_NO_CONTENT)
         except svc.PricelistAdminError as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
