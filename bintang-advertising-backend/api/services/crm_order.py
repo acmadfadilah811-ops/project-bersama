@@ -140,6 +140,15 @@ def buat_order(data):
         _order_id, order = buat_order_dari_items(
             contact.nomor_wa, contact.nama, nama, items, raw_detail=catatan_order, sumber='crm',
         )
+        # PIC pesanan = profil sales di Bintang (dicari lewat nomor karyawan HR,
+        # 2026-09-28). Tidak ketemu = dibiarkan kosong, kasir memilih manual.
+        sales_hr_id = _int_atau_none(data.get('sales_hr_employee_id'))
+        if sales_hr_id:
+            from ..models import CustomUser
+            pic = CustomUser.objects.filter(hr_employee_id=sales_hr_id, is_active=True).first()
+            if pic:
+                order.dilayani_oleh = pic
+                order.save(update_fields=['dilayani_oleh'])
         asal = OrderAsalCRM.objects.create(
             order=order, kunci=kunci,
             crm_user_id=_int_atau_none(data.get('crm_user_id')),

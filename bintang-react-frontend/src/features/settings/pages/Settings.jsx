@@ -1597,6 +1597,8 @@ export default function Settings() {
                   <option value="spv_finance">SPV Finance</option>
                   <option value="admin">Admin</option>
                   <option value="manager">Manager</option>
+                  {/* Profil tim sales CRM: tanpa login Bintang, hanya untuk PIC pesanan. */}
+                  <option value="sales">Sales (profil CRM, tanpa login)</option>
                   {user?.role?.toLowerCase() === 'owner' && <option value="owner">Owner</option>}
                 </select>
                 {!!editingUser && user?.role?.toLowerCase() !== 'owner' && (

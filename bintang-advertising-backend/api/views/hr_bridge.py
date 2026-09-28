@@ -126,7 +126,10 @@ class HRBridgeCreateAccountView(APIView):
             return Response({'error': "Field 'hr_employee_id' wajib diisi."}, status=status.HTTP_400_BAD_REQUEST)
 
         department = str(request.data.get('department') or '').strip()
-        if department.lower() in DEPARTEMEN_TANPA_AKUN_BINTANG:
+        # Profil tanpa login (tim sales yang bekerja di CRM, 2026-09-28) tetap
+        # dibuat walau departemennya tidak punya akun kerja di Bintang.
+        tanpa_login = bool(request.data.get('tanpa_login'))
+        if department.lower() in DEPARTEMEN_TANPA_AKUN_BINTANG and not tanpa_login:
             return Response({'skipped': True, 'reason': f"Departemen '{department}' tidak bekerja di Bintang."}, status=status.HTTP_200_OK)
 
         first_name = str(request.data.get('first_name') or '').strip()
@@ -134,7 +137,7 @@ class HRBridgeCreateAccountView(APIView):
         email = str(request.data.get('email') or '').strip()
         no_hp = str(request.data.get('no_hp') or '').strip()
         job_position = str(request.data.get('job_position') or '').strip()
-        role = _map_job_position_ke_role(job_position)
+        role = 'sales' if tanpa_login else _map_job_position_ke_role(job_position)
 
         unit_bisnis_nama = DEPARTEMEN_KE_UNIT_BISNIS.get(department.lower())
         unit_bisnis = UnitBisnis.objects.filter(nama=unit_bisnis_nama).first() if unit_bisnis_nama else None
@@ -171,7 +174,7 @@ class HRBridgeCreateAccountView(APIView):
             }, status=status.HTTP_200_OK)
 
         username = _buat_username_unik(first_name, last_name)
-        password_sementara = secrets.token_urlsafe(9)  # ~12 karakter, cukup kuat utk password sementara
+        password_sementara = None if tanpa_login else secrets.token_urlsafe(9)  # ~12 karakter
 
         user = CustomUser(
             username=username,
@@ -185,14 +188,19 @@ class HRBridgeCreateAccountView(APIView):
             hr_employee_id=hr_employee_id,
             atasan=atasan,
         )
-        user.set_password(password_sementara)
+        if tanpa_login:
+            user.set_unusable_password()
+        else:
+            user.set_password(password_sementara)
         user.save()
 
-        return Response({
+        hasil = {
             'id': user.id, 'username': user.username, 'role': user.role,
             'hr_employee_id': user.hr_employee_id, 'created': True,
-            'temp_password': password_sementara,
-        }, status=status.HTTP_201_CREATED)
+        }
+        if password_sementara:
+            hasil['temp_password'] = password_sementara
+        return Response(hasil, status=status.HTTP_201_CREATED)
 
 
 class HRBridgeSetStatusView(APIView):

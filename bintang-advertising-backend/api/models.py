@@ -77,6 +77,10 @@ class CustomUser(AbstractUser):
         # Finance, sesuai Aturan Engineering M2/L2 (jurnal cuma 1 pintu).
         ('admin_finance', 'Admin Finance'),
         ('spv_finance', 'SPV Finance'),
+        # Profil tim sales CRM (2026-09-28): TANPA login Bintang (password
+        # tidak bisa dipakai) & tanpa akses menu; hanya supaya sales bisa
+        # dipilih/terisi otomatis sebagai PIC ("dilayani oleh") pesanan.
+        ('sales', 'Sales (profil CRM, tanpa login)'),
     )
 
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='staff', db_index=True)

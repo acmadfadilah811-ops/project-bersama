@@ -381,7 +381,8 @@ class TimecardView(APIView):
             if staff_id:
                 target_users = CustomUser.objects.filter(pk=staff_id)
             else:
-                target_users = CustomUser.objects.filter(is_active=True).exclude(role="owner")
+                # Profil sales (tanpa login, tidak absen di Bintang) tidak ikut rekap.
+                target_users = CustomUser.objects.filter(is_active=True).exclude(role__in=["owner", "sales"])
         else:
             target_users = CustomUser.objects.filter(pk=user.pk)
 
@@ -1139,7 +1140,7 @@ class SlipGajiViewSet(viewsets.ModelViewSet):
         except Exception:
             biaya_potongan_terlambat = 20000  # Default 20rb per terlambat
 
-        active_staff = CustomUser.objects.filter(is_active=True).exclude(role="owner")
+        active_staff = CustomUser.objects.filter(is_active=True).exclude(role__in=["owner", "sales"])
         generated_count = 0
         
         for member in active_staff:
