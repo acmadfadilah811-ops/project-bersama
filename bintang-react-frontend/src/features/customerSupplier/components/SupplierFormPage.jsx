@@ -1,20 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Image } from 'lucide-react';
+import WILAYAH from '../../../data/wilayahIndonesia.json';
 
-const INDONESIA_PROVINCES = [
-  'DKI Jakarta', 'Jawa Barat', 'Jawa Tengah', 'Jawa Timur', 'Banten',
-  'DI Yogyakarta', 'Bali', 'Sumatera Utara', 'Sumatera Barat', 'Riau',
-  'Kepulauan Riau', 'Sumatera Selatan', 'Lampung', 'Kalimantan Barat',
-  'Kalimantan Timur', 'Kalimantan Selatan', 'Sulawesi Selatan',
-  'Sulawesi Utara', 'Nusa Tenggara Barat', 'Nusa Tenggara Timur', 'Papua'
-];
+// Data wilayah resmi (Kepmendagri No 300.2.2-2138 Tahun 2025): 38 provinsi,
+// 514 kabupaten/kota. Sumber: github.com/cahyadsn/wilayah (MIT). Kolom tetap
+// teks bebas -- saran hanya membantu, nilai lama/alamat luar negeri tetap bisa
+// diketik (2026-09-28: dulu dropdown kaku berisi 21 provinsi & 24 kota).
+const PROVINSI = WILAYAH.map((w) => w.provinsi);
+const SEMUA_KOTA = WILAYAH.flatMap((w) => w.kota);
 
-const INDONESIA_CITIES = [
-  'Jakarta', 'Bandung', 'Semarang', 'Surabaya', 'Yogyakarta', 'Denpasar',
-  'Medan', 'Padang', 'Pekanbaru', 'Batam', 'Palembang', 'Bandar Lampung',
-  'Pontianak', 'Samarinda', 'Banjarmasin', 'Makassar', 'Manado', 'Mataram',
-  'Kupang', 'Jayapura', 'Tangerang', 'Bekasi', 'Depok', 'Bogor'
-];
+function kotaDiProvinsi(provinsi) {
+  const cari = (provinsi || '').trim().toLowerCase();
+  if (!cari) return SEMUA_KOTA;
+  const cocok = WILAYAH.find((w) => w.provinsi.toLowerCase() === cari);
+  return cocok ? cocok.kota : SEMUA_KOTA;
+}
 
 export default function SupplierFormPage({ supplier, onSave, onCancel, saving }) {
   const fileInputRef = React.useRef(null);
@@ -71,6 +71,9 @@ export default function SupplierFormPage({ supplier, onSave, onCancel, saving })
       setPhotoPreviewUrl('');
     }
   }, [supplier]);
+
+  const isIndonesia = (form.negara || '').trim().toLowerCase() === 'indonesia';
+  const daftarKota = useMemo(() => kotaDiProvinsi(form.provinsi), [form.provinsi]);
 
   const handlePhotoClick = () => {
     fileInputRef.current?.click();
@@ -284,45 +287,66 @@ export default function SupplierFormPage({ supplier, onSave, onCancel, saving })
             {/* Negara */}
             <div>
               <label style={labelStyle}>Negara</label>
-              <select
+              <input
+                type="text"
+                list="supplier-negara-list"
                 value={form.negara}
                 onChange={e => setForm(p => ({ ...p, negara: e.target.value }))}
+                placeholder="Ketik atau pilih negara"
                 style={inputStyle}
-              >
-                <option value="Indonesia">Indonesia</option>
-                <option value="Malaysia">Malaysia</option>
-                <option value="Singapura">Singapura</option>
-              </select>
+              />
+              <datalist id="supplier-negara-list">
+                <option value="Indonesia" />
+                <option value="Malaysia" />
+                <option value="Singapura" />
+                <option value="Tiongkok" />
+              </datalist>
             </div>
 
-            {/* Grid for Provinsi & Kota */}
+            {/* Provinsi & Kota/Kabupaten: ketik untuk mencari, atau isi bebas */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <div>
-                <label style={labelStyle}>Propinsi</label>
-                <select
+                <label style={labelStyle}>Provinsi</label>
+                <input
+                  type="text"
+                  list={isIndonesia ? 'supplier-provinsi-list' : undefined}
                   value={form.provinsi}
-                  onChange={e => setForm(p => ({ ...p, provinsi: e.target.value }))}
+                  onChange={e => {
+                    const provinsi = e.target.value;
+                    setForm(p => {
+                      // Kota lama dikosongkan bila bukan bagian provinsi baru.
+                      const daftar = kotaDiProvinsi(provinsi);
+                      const kotaMasih = !p.kota || daftar === SEMUA_KOTA || daftar.includes(p.kota);
+                      return { ...p, provinsi, kota: kotaMasih ? p.kota : '' };
+                    });
+                  }}
+                  placeholder="Ketik nama provinsi"
+                  autoComplete="off"
                   style={inputStyle}
-                >
-                  <option value="">Pilih salah satu</option>
-                  {INDONESIA_PROVINCES.map((prov) => (
-                    <option key={prov} value={prov}>{prov}</option>
+                />
+                <datalist id="supplier-provinsi-list">
+                  {PROVINSI.map((prov) => (
+                    <option key={prov} value={prov} />
                   ))}
-                </select>
+                </datalist>
               </div>
 
               <div>
-                <label style={labelStyle}>Kota</label>
-                <select
+                <label style={labelStyle}>Kota/Kabupaten</label>
+                <input
+                  type="text"
+                  list={isIndonesia ? 'supplier-kota-list' : undefined}
                   value={form.kota}
                   onChange={e => setForm(p => ({ ...p, kota: e.target.value }))}
+                  placeholder="Ketik nama kota/kabupaten"
+                  autoComplete="off"
                   style={inputStyle}
-                >
-                  <option value="">Pilih salah satu</option>
-                  {INDONESIA_CITIES.map((city) => (
-                    <option key={city} value={city}>{city}</option>
+                />
+                <datalist id="supplier-kota-list">
+                  {daftarKota.map((kota) => (
+                    <option key={kota} value={kota} />
                   ))}
-                </select>
+                </datalist>
               </div>
             </div>
 
