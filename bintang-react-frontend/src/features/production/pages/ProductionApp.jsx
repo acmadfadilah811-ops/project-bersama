@@ -163,7 +163,6 @@ export default function ProductionApp() {
     staffList,
     inventory,
     customers,
-    pricelists,
     divisions,
     globalJobs,
     logs,
@@ -174,7 +173,6 @@ export default function ProductionApp() {
     fetchMetadata,
     fetchAdminData,
     fetchCustomers,
-    fetchPricelists,
     fetchDivisions,
     claimJobs,
     assignJobsToStaff,
@@ -344,15 +342,13 @@ export default function ProductionApp() {
     if (!modeInitialized) return;
     if (activeTab === 'customers') {
       fetchCustomers();
-    } else if (activeTab === 'pricelist') {
-      fetchPricelists();
     } else if (activeTab === 'divisions' || activeTab === 'mesin') {
       // 'mesin' juga butuh `divisions` untuk dropdown Divisi di form Tambah/Edit
       // Mesin -- sebelumnya cuma tab 'divisions' yang memicu fetch, jadi dropdown
       // itu selalu kosong dan tidak bisa diisi (bug dilaporkan user 2026-09-09).
       fetchDivisions();
     }
-  }, [activeTab, modeInitialized, fetchCustomers, fetchPricelists, fetchDivisions]);
+  }, [activeTab, modeInitialized, fetchCustomers, fetchDivisions]);
 
   // Handle action triggers
   // Klaim satu order/transaksi sekaligus — jobIds bisa lebih dari satu kalau
@@ -454,7 +450,7 @@ export default function ProductionApp() {
         case 'customers':
           return <CustomerPanel customers={customers} refresh={fetchAdminData} />;
         case 'pricelist':
-          return <PricelistPanel items={pricelists} refresh={fetchAdminData} />;
+          return <PricelistPanel />;
         case 'divisions':
           return (
             <DivisionPanel
