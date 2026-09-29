@@ -7,6 +7,7 @@ import SplitBillPayment from './SplitBillPayment';
 import SplitBillSelection from './SplitBillSelection';
 import useSplitBillPricing from '../hooks/useSplitBillPricing';
 import { notifyError, notifySuccess } from '../../../utils/notify';
+import { getApiErrorMessage } from '../../../utils/apiError';
 import { getPrintErrorMessage, printReceipt } from '../../printing/services/printService';
 
 export default function SplitBillModal({
@@ -192,7 +193,7 @@ export default function SplitBillModal({
       setStep(3);
     } catch (err) {
       console.error('Error split payment:', err);
-      alert('Gagal memproses pembayaran split: ' + (err.response?.data?.error || err.message));
+      alert('Gagal memproses pembayaran split: ' + getApiErrorMessage(err, 'terjadi kesalahan, coba lagi.'));
     } finally {
       setIsSubmitting(false);
     }

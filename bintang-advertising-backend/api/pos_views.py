@@ -334,10 +334,14 @@ class POSSaleViewSet(viewsets.ModelViewSet):
             # penjualan ditolak. Sebelumnya lolos sebagai 500 polos dan kasir
             # cuma melihat "gagal" tanpa penyebab (2026-09-29). Transaksi
             # dibatalkan utuh (create_sale atomic), tidak ada data setengah jadi.
-            return Response(
-                {'error': '; '.join(exc.messages) or 'Transaksi ditolak.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            pesan = '; '.join(exc.messages) or 'Transaksi ditolak.'
+            if 'Tutup Buku' in pesan:
+                # Bahasa kasir, tanpa istilah/kode akuntansi.
+                pesan = (
+                    'Transaksi belum bisa disimpan karena periode pembukuan untuk tanggal ini '
+                    'sudah ditutup. Hubungi Owner atau Finance untuk membukanya.'
+                )
+            return Response({'error': pesan}, status=status.HTTP_400_BAD_REQUEST)
         except IntegrityError:
             # Race sungguhan (2 request idem_key sama nyaris bersamaan lolos
             # cek "existing" di atas keduanya) -- bukan cuma retry berurutan.

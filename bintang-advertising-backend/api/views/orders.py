@@ -10,6 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser
 from rest_framework.exceptions import ValidationError
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.db import transaction
@@ -611,13 +612,24 @@ class OrderViewSet(viewsets.ModelViewSet):
             referensi=order.referensi_pembayaran, idempotency_key=str(checkout_key),
             is_dp=jumlah_bayar < order.total_harga,
         )
-        post_order_payment_journal(
-            order=order,
-            activity_log=payment_log,
-            actor=request.user,
-            jumlah_bayar=Decimal(str(jumlah_bayar)),
-            is_dp=jumlah_bayar < order.total_harga,
-        )
+        try:
+            post_order_payment_journal(
+                order=order,
+                activity_log=payment_log,
+                actor=request.user,
+                jumlah_bayar=Decimal(str(jumlah_bayar)),
+                is_dp=jumlah_bayar < order.total_harga,
+            )
+        except DjangoValidationError as exc:
+            # Mis. periode akuntansi sudah ditutup: sebelumnya 500 polos.
+            # Seluruh checkout dibatalkan (atomic), tidak ada order setengah jadi.
+            pesan = '; '.join(exc.messages)
+            if 'Tutup Buku' in pesan:
+                pesan = (
+                    'Transaksi belum bisa disimpan karena periode pembukuan untuk tanggal ini '
+                    'sudah ditutup. Hubungi Owner atau Finance untuk membukanya.'
+                )
+            raise ValidationError({'error': pesan or 'Pembayaran ditolak.'})
 
         spk_payload = request.data.get('spk')
         if not isinstance(spk_payload, dict):

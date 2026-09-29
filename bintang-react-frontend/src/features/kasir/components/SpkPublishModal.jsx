@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Factory, Loader2, X } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import { useAuth } from '../../../context/AuthContext';
+import { getApiErrorMessage } from '../../../utils/apiError';
 
 /**
  * Modal penerbitan SPK produksi — dipakai bersama oleh alur order (Kasir >
@@ -91,7 +92,7 @@ export default function SpkPublishModal({ judul, keterangan, onTerbitkan, onClos
     try {
       await onTerbitkan(payload);
     } catch (err) {
-      setError(err.response?.data?.error || 'Gagal menerbitkan SPK.');
+      setError(getApiErrorMessage(err, 'Gagal menerbitkan SPK.'));
       setMengirim(false);
     }
   };

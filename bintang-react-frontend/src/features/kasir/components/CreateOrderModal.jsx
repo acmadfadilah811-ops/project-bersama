@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { User, Phone, Plus, Trash2, ShoppingCart, ShoppingBag, Send, FileText, X, AlertTriangle, Search, PackagePlus } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import { fetchAllPages } from '../../../utils/paginatedApi';
+import { getApiErrorMessage } from '../../../utils/apiError';
 import ProductMasterPicker from '../../orders/components/ProductMasterPicker';
 import SpkPublishModal from './SpkPublishModal';
 import NumericInput from '../../../components/NumericInput';
@@ -541,10 +542,7 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
       setOrderBaru({ id: orderId, nama });
     } catch (err) {
       console.error('Gagal membuat order:', err);
-      alert(
-        'Order gagal disimpan: ' +
-          (err.response?.data?.detail || err.response?.data?.error || err.message || 'terjadi kesalahan pada server.')
-      );
+      alert('Order gagal disimpan: ' + getApiErrorMessage(err, 'terjadi kesalahan pada server.'));
     } finally {
       setSaving(false);
     }
