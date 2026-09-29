@@ -53,6 +53,22 @@ apiClient.interceptors.response.use(
 
     const originalRequest = error.config;
 
+    // Gerbang absensi HR (2026-09-29, api/authentication.py backend): staff
+    // belum absen masuk / sudah absen pulang di HR -> seluruh aplikasi
+    // terkunci. Keluarkan dari sesi dan tampilkan alasannya di halaman login
+    // (bukan endpoint login itu sendiri -- di sana pesan ditampilkan form).
+    const urlLogin = /\/auth\/(login|verify-login)\//.test(originalRequest?.url || '');
+    if (error.response?.status === 403 && error.response?.data?.code === 'belum_absen_hr' && !urlLogin) {
+      try {
+        sessionStorage.setItem('pesan_login', error.response.data.detail || 'Absen masuk dulu di HR.');
+      } catch {
+        // sessionStorage tidak tersedia -- tetap logout
+      }
+      authSession.clear();
+      window.location.href = '/login';
+      return Promise.reject(error);
+    }
+
     // 401 dari endpoint autentikasi (salah password / OTP) adalah jawaban biasa, bukan
     // sesi habis: jangan refresh token dan jangan muat ulang halaman, kalau tidak pesan
     // "password salah / akun dikunci" langsung hilang bersama reload.

@@ -225,6 +225,20 @@ class LoginUnlockOtpRequestView(APIView):
         return Response({"detail": "Jika akun ada, kode OTP verifikasi login sudah dikirim ke email terdaftar."})
 
 
+def _tolak_jika_belum_absen_hr(user):
+    """Response 403 kalau `user` wajib absen tapi belum absen masuk di HR
+    (api/services/absensi_hr_gate.py), selain itu None."""
+    from api.services.absensi_hr_gate import KODE, cek_gerbang
+
+    gerbang = cek_gerbang(user, pakai_cache=False)
+    if gerbang.boleh:
+        return None
+    return Response(
+        {"detail": gerbang.pesan, "code": KODE, "status_absen": gerbang.status},
+        status=status.HTTP_403_FORBIDDEN,
+    )
+
+
 class CustomLoginView(TokenObtainPairView):
     """
     POST /api/auth/login/
@@ -322,6 +336,13 @@ class CustomLoginView(TokenObtainPairView):
         # --- Login BERHASIL (Kredensial Valid) ---
         buka_kunci_login(username_input)
         user = serializer.user
+
+        # Gerbang absensi HR (2026-09-29): kredensial benar tapi belum absen
+        # masuk di HR -> token tidak diterbitkan. Cek segar (tanpa cache)
+        # supaya staff yang baru saja absen di HP langsung bisa masuk.
+        ditolak = _tolak_jika_belum_absen_hr(user)
+        if ditolak:
+            return ditolak
 
         # Deteksi Perubahan IP jika User memiliki Email terdaftar (bisa dibypass via env)
         requires_verification = False
@@ -501,6 +522,10 @@ class VerifyLoginView(APIView):
                 {"detail": "User tidak ditemukan."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        ditolak = _tolak_jika_belum_absen_hr(user)
+        if ditolak:
+            return ditolak
 
         # Generate JWT Token sukses
         refresh = RefreshToken.for_user(user)

@@ -89,6 +89,20 @@ export default function Login() {
   const [otpUnlockDikirim, setOtpUnlockDikirim] = useState(false);
   const [otpUnlockLoading, setOtpUnlockLoading] = useState(false);
 
+  // Dikeluarkan paksa oleh gerbang absensi HR (lihat api/apiClient.js):
+  // tampilkan alasannya sekali di sini.
+  useEffect(() => {
+    try {
+      const pesan = sessionStorage.getItem('pesan_login');
+      if (pesan) {
+        setError(pesan);
+        sessionStorage.removeItem('pesan_login');
+      }
+    } catch {
+      // sessionStorage tidak tersedia -- abaikan
+    }
+  }, []);
+
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();

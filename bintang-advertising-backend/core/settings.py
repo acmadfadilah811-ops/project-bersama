@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 
 from pathlib import Path
 import os
+import sys
 from datetime import timedelta
 from corsheaders.defaults import default_headers
 from dotenv import load_dotenv
@@ -288,7 +289,9 @@ NUM_PROXIES = int(os.getenv('NUM_PROXIES', '1' if not DEBUG else '0'))
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        # JWT + gerbang absensi HR (2026-09-29): staff wajib absen masuk di
+        # HR dulu sebelum bisa memakai Bintang -- lihat api/authentication.py.
+        'api.authentication.JWTAuthenticationAbsensiHR',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
@@ -331,6 +334,15 @@ SPECTACULAR_SETTINGS = {
 }
 
 # --- Konfigurasi Simple JWT ---
+# Gerbang absensi HR (2026-09-29, api/services/absensi_hr_gate.py): staff
+# wajib absen masuk di HR sebelum bisa memakai Bintang. Saklar env supaya
+# bisa dimatikan darurat tanpa deploy ulang kode. Selalu MATI saat `manage.py
+# test` (tes gerbang menyalakannya sendiri lewat override_settings) supaya
+# tes lain tidak ikut memanggil HR sungguhan.
+ABSENSI_HR_GATE_AKTIF = os.getenv('ABSENSI_HR_GATE_AKTIF', 'False') == 'True'
+if len(sys.argv) > 1 and sys.argv[1] == 'test':
+    ABSENSI_HR_GATE_AKTIF = False
+
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),

@@ -377,49 +377,48 @@ class IsOwnerManagerAdminSpvFinanceOrReadOnly(BasePermission):
 
 class IsClockedIn(BasePermission):
     """
-    Memvalidasi status clock-in staff.
-    - Owner, Manager, Admin di-bypass (selalu True).
-    - Staff harus mempunyai absensi hari ini dan clock-in.
-    - Pengecualian yang eksplisit: owner/manager dapat menyetujui
-      keterlambatan. Persetujuan itu menandai ``workspace_unlocked`` pada
-      absensi staff, sehingga papan kerja dapat dibuka tanpa mengubah status
-      terlambat menjadi hadir.
-    - Jika sudah check-out (jam_keluar not null), hanya diperbolehkan jika
-      workspace_unlocked = True.
+    Papan kerja produksi hanya untuk yang sedang bekerja menurut absensi HR
+    (2026-09-29, keputusan user: HR satu-satunya sumber absensi). Dulu
+    memakai tombol "Mulai Kerja" Bintang (hr.Absensi) -- sekarang staff
+    cukup absen masuk di HR mobile/web, tidak absen dua kali.
+    - Owner, Manager, Admin selalu boleh.
+    - Manajer tetap bisa membuka kunci manual (Absensi Bintang hari ini
+      workspace_unlocked=True), mis. terlambat atau lembur setelah pulang.
+    Logika ada di api/services/absensi_hr_gate.py (dipakai bersama gerbang
+    login & JWTAuthenticationAbsensiHR).
     """
-    # Pesan eksplisit (2026-09-28): tanpa ini DRF mengirim pesan generik
-    # "tidak memiliki izin" dan layar hanya menampilkan "Gagal ..." sehingga
-    # SPV/staff tidak tahu penyebabnya adalah absensi Bintang.
     message = (
-        'Anda belum absen masuk hari ini di Bintang (atau sudah absen pulang). '
-        'Absen masuk dulu di menu Absensi untuk membuka papan kerja.'
+        'Anda belum absen masuk hari ini di HR (atau sudah absen pulang). '
+        'Absen masuk dulu di aplikasi/web HR untuk membuka papan kerja.'
     )
 
     def has_permission(self, request, view):
         user = request.user
         if not user or not user.is_authenticated:
             return False
-            
-        # Bypass for management roles
         if user.role in ['owner', 'manager', 'admin']:
             return True
-            
-        # Only staff (and potentially other roles, but mainly staff) require clock-in check
-        today = timezone.localdate()
-        absensi = Absensi.objects.filter(staff=user, tanggal=today).first()
+        from .services.absensi_hr_gate import cek_gerbang, gerbang_aktif
+
+        if gerbang_aktif():
+            hasil = cek_gerbang(user)
+            if not hasil.boleh and hasil.pesan:
+                self.message = hasil.pesan
+            return hasil.boleh
+
+        # Gerbang HR dimatikan (ABSENSI_HR_GATE_AKTIF=False): aturan lama --
+        # tombol "Mulai Kerja" Bintang (hr.Absensi hari ini).
+        self.message = (
+            'Anda belum absen masuk hari ini di Bintang (atau sudah absen pulang). '
+            'Absen masuk dulu di menu Absensi untuk membuka papan kerja.'
+        )
+        absensi = Absensi.objects.filter(staff=user, tanggal=timezone.localdate()).first()
         if not absensi:
             return False
-            
-        # Persetujuan keterlambatan adalah otorisasi eksplisit dari
-        # owner/manager. Jangan memaksa jam_masuk diisi sebagai "hadir", karena
-        # catatan kehadirannya tetap harus tercatat sebagai terlambat.
         if not absensi.jam_masuk and not absensi.workspace_unlocked:
             return False
-            
-        # If they clocked out, they cannot access unless the workspace was explicitly unlocked by management
         if absensi.jam_keluar is not None and not absensi.workspace_unlocked:
             return False
-
         return True
 
 
