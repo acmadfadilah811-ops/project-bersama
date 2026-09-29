@@ -1503,3 +1503,5 @@ from .crm_order_models import *
 # Notifikasi stok minimum (2026-09-26, UAT INV-06).
 from .notifikasi_stok_models import *
 from .reorder_models import *  # noqa: F401,F403
+# Pengembalian pekerjaan ke tahap sebelumnya (PRD-05 UAT, 2026-09-29).
+from .pengembalian_job_models import *  # noqa: F401,F403

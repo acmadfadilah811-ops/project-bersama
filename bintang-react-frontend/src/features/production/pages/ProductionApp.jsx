@@ -17,6 +17,7 @@ import {
   Kanban,
   Wrench,
   History,
+  Undo2,
 } from 'lucide-react';
 
 // Staff Modals & Views
@@ -33,6 +34,8 @@ import PricelistPanel from './panels/PricelistPanel';
 import DivisionPanel from './panels/DivisionPanel';
 import ActivityLogsPanel from './panels/ActivityLogsPanel';
 import KanbanGlobalPanel from './panels/KanbanGlobalPanel';
+import PengembalianKanbanPanel from './panels/PengembalianKanbanPanel';
+import KembalikanJobModal from '../components/modals/KembalikanJobModal';
 import PapanKerjaSpkPanel from './panels/PapanKerjaSpkPanel';
 import MesinPanel from './panels/MesinPanel';
 import LogPenggunaanMesinPanel from './panels/LogPenggunaanMesinPanel';
@@ -223,6 +226,8 @@ export default function ProductionApp() {
     setActiveTab(tabId);
   };
   const [selectedForwardJob, setSelectedForwardJob] = useState(null);
+  // Pengembalian SPK ke tahap sebelumnya (PRD-05 UAT).
+  const [kembalikanJob, setKembalikanJob] = useState(null);
   const [savingAction, setSavingAction] = useState(false);
 
   useEffect(() => {
@@ -451,6 +456,8 @@ export default function ProductionApp() {
           return <PapanKerjaSpkPanel />;
         case 'kanban_global':
           return <KanbanGlobalPanel />;
+        case 'pengembalian':
+          return <PengembalianKanbanPanel arah="masuk" />;
         case 'global_list':
           return <GlobalListPanel />;
         case 'inventory':
@@ -491,6 +498,8 @@ export default function ProductionApp() {
           return renderClaimPool();
         case 'kanban_personal':
           return renderKanbanPersonal();
+        case 'pengembalian':
+          return <PengembalianKanbanPanel arah="masuk" />;
         case 'logs':
           return <ActivityLogsPanel logs={logs} />;
         case 'tim_saya':
@@ -506,6 +515,8 @@ export default function ProductionApp() {
           return renderKanbanPersonal();
         case 'log_mesin_saya':
           return <LogPenggunaanMesinPanel mode="staff" currentUser={user} />;
+        case 'pengembalian':
+          return <PengembalianKanbanPanel arah="keluar" />;
         case 'logs':
           return <ActivityLogsPanel logs={logs} />;
         default:
@@ -519,6 +530,7 @@ export default function ProductionApp() {
   if (['owner', 'manager'].includes(roleLower)) {
     menuItems = [
       { id: 'papan_kerja_spk', label: 'Papan Kerja SPK', icon: ClipboardList },
+      { id: 'pengembalian', label: 'Pengembalian SPK', icon: Undo2 },
       { id: 'global_list', label: 'Monitor Pesanan', icon: Globe },
       { id: 'inventory', label: 'Master Inventory', icon: Package },
       { id: 'customers', label: 'Database Konsumen', icon: Users },
@@ -530,6 +542,7 @@ export default function ProductionApp() {
     ];
   } else if (roleLower === 'admin') {
     menuItems = [
+      { id: 'pengembalian', label: 'Pengembalian SPK', icon: Undo2 },
       { id: 'global_list', label: 'Monitor Pesanan', icon: Globe },
       { id: 'inventory', label: 'Master Inventory', icon: Package },
       { id: 'customers', label: 'Database Konsumen', icon: Users },
@@ -544,12 +557,14 @@ export default function ProductionApp() {
       { id: 'tim_saya', label: 'Papan Kerja Tim', icon: Users },
       { id: 'claim_pool', label: 'Antrean Global', icon: Inbox },
       { id: 'kanban_personal', label: 'Pekerjaan Saya', icon: ClipboardList },
+      { id: 'pengembalian', label: 'Pengembalian SPK', icon: Undo2 },
       { id: 'logs', label: 'Log Aktivitas', icon: Bell },
     ];
   } else {
     menuItems = [
       { id: 'claim_pool', label: 'Antrean Global', icon: Inbox },
       { id: 'kanban_personal', label: 'Pekerjaan Saya', icon: ClipboardList },
+      { id: 'pengembalian', label: 'Pengembalian Saya', icon: Undo2 },
       { id: 'log_mesin_saya', label: 'Riwayat Mesin Saya', icon: History },
       { id: 'logs', label: 'Log Aktivitas', icon: Bell },
     ];
@@ -906,6 +921,17 @@ export default function ProductionApp() {
                 <div className="shrink-0 px-1 flex flex-wrap gap-1">
                   <DeadlineBadge deadline={selectedWorkspaceJob.deadline} />
                   <JobMacetBadge job={selectedWorkspaceJob} ambangAntreanJam={ambangAntreanJam} ambangDikerjakanJam={ambangDikerjakanJam} />
+                  {!isAdminMode &&
+                    ['antrean', 'dikerjakan', 'kendala'].includes(selectedWorkspaceJob.status_pekerjaan) && (
+                      <button
+                        type="button"
+                        onClick={() => setKembalikanJob(selectedWorkspaceJob)}
+                        className="ml-auto inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                        title="Kembalikan SPK ini ke tahap sebelumnya (perlu diterima divisi tujuan)"
+                      >
+                        <Undo2 size={11} /> Kembalikan ke Tahap Sebelumnya
+                      </button>
+                    )}
                 </div>
                 <div className="min-h-0 flex-1">
                   <WorkspaceSPK
@@ -1081,6 +1107,18 @@ export default function ProductionApp() {
       </div>
 
       {/* Forward/Complete Dialog */}
+      {kembalikanJob && (
+        <KembalikanJobModal
+          job={kembalikanJob}
+          onClose={() => setKembalikanJob(null)}
+          onSuccess={() => {
+            setKembalikanJob(null);
+            setSelectedWorkspaceJob(null);
+            fetchMyActiveJobs({}, true);
+          }}
+        />
+      )}
+
       {selectedForwardJob && (
         <ForwardJobModal
           job={selectedForwardJob}

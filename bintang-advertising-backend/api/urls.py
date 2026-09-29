@@ -1,6 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
+from .views.pengembalian_job import KembalikanJobView, PengembalianJobListView, KeputusanPengembalianView
 from .views import DashboardView, CreateUserView, AssignOrderView, ForwardJobView, InventoryRestockView, JobMaterialDeductView, EvolutionWebhookView, BusinessSettingsView, StaffPerformanceReportView, HealthCheckView, KomplainViewSet, ContactStatsView, ProductionCustomerLiteView
 from .export_views import ExportOrdersView, ExportInventoryView, ExportJobsView, ExportContactsView, ExportAbsensiView, ExportStaffPerformanceView, ExportStockMovementView, ExportCustomersView, ExportProductsView, ExportCustomerNotesView, ExportCashTransactionsView, ExportSalesItemsByBrandView, ExportSalesDetailsView
 from . import product_views
@@ -143,6 +144,11 @@ urlpatterns = [
     path('orders/<str:order_id>/invoice-whatsapp/', views.OrderInvoiceWhatsAppView.as_view(), name='order-invoice-whatsapp'),
     path('orders/<str:order_id>/assign/', AssignOrderView.as_view(), name='assign_order'),
     path('jobs/<int:job_id>/forward/', ForwardJobView.as_view(), name='forward_job'),
+    # Pengembalian pekerjaan ke tahap sebelumnya (PRD-05 UAT, 2026-09-29).
+    path('jobs/<int:job_id>/kembalikan/', KembalikanJobView.as_view(), name='kembalikan_job'),
+    path('pengembalian-job/', PengembalianJobListView.as_view(), name='pengembalian_job_list'),
+    path('pengembalian-job/<int:pk>/terima/', KeputusanPengembalianView.as_view(aksi='terima'), name='pengembalian_job_terima'),
+    path('pengembalian-job/<int:pk>/tolak/', KeputusanPengembalianView.as_view(aksi='tolak'), name='pengembalian_job_tolak'),
     path('jobs/<int:job_id>/use-materials/', JobMaterialDeductView.as_view(), name='job-use-materials'),
     
     # Export Endpoints

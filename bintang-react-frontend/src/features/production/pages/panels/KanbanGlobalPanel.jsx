@@ -104,8 +104,10 @@ export default function KanbanGlobalPanel() {
       setQueueStartJob(null);
       const orderItemId = typeof job.order_item === 'object' ? job.order_item?.id : job.order_item;
       setWorkspaceJob({ job, orderItemData: orderMap[orderItemId], fromStart: false });
-    } catch {
-      alert('Gagal memulai pekerjaan.');
+    } catch (err) {
+      // Pesan server dipakai apa adanya: mis. PRD-04 "tahap sebelumnya belum selesai".
+      const data = err.response?.data;
+      alert(data?.status_pekerjaan || data?.error || data?.detail || 'Gagal memulai pekerjaan.');
     }
   };
 

@@ -42,6 +42,43 @@ def _catat_aktivitas_order(job, user, tindakan, keterangan):
     )
 
 
+def tahap_sebelumnya_belum_selesai(job):
+    """Job tahap SEBELUM `job` (urutan lebih kecil) pada SPK/item yang sama yang
+    belum tuntas, atau None (PRD-04 UAT, 2026-09-29: Operator hanya bisa
+    memulai setelah tahap Editor selesai). Item yang memang tidak melewati
+    tahap sebelumnya (tidak punya job di sana) tidak terblokir. 'selesai' dan
+    'batal' dianggap tuntas; 'gagal'/'kendala' belum."""
+    if not job.tahap_id:
+        return None
+    if job.order_item_id:
+        saudara = JobBoard.objects.filter(order_item_id=job.order_item_id)
+    elif job.pos_sale_item_id:
+        saudara = JobBoard.objects.filter(pos_sale_item_id=job.pos_sale_item_id)
+    else:
+        return None
+    return (
+        saudara.filter(tahap__urutan__lt=job.tahap.urutan)
+        .exclude(status_pekerjaan__in=['selesai', 'batal'])
+        .select_related('tahap')
+        .order_by('tahap__urutan')
+        .first()
+    )
+
+
+_PESAN_MENUNGGU_PENGEMBALIAN = (
+    "Belum bisa dimulai: pengembalian ke tahap sebelumnya masih menunggu keputusan "
+    "Kordiv/SPV divisi tujuan."
+)
+
+
+def _pesan_tahap_belum_selesai(job_sebelumnya):
+    return (
+        f"Belum bisa dimulai: tahap sebelumnya '{job_sebelumnya.tahap.nama}' "
+        f"belum selesai (status: {job_sebelumnya.get_status_pekerjaan_display()}). "
+        "Tunggu sampai tahap itu selesai dan diteruskan."
+    )
+
+
 def deduct_job_materials_if_needed(job, user):
     """
     Mengurangi stok bahan baku. Prioritas pertama menggunakan sistem Bill of Materials (BoM).
@@ -337,6 +374,18 @@ class JobBoardViewSet(viewsets.ModelViewSet):
             raise DRFValidationError(
                 {"status_pekerjaan": f"Transisi status '{old_status}' → '{new_status}' tidak diizinkan."}
             )
+
+        # PRD-04: mulai mengerjakan hanya setelah tahap sebelumnya selesai.
+        # PRD-05: dan tidak sedang menunggu keputusan pengembalian.
+        if new_status == 'dikerjakan' and old_status != 'dikerjakan':
+            from rest_framework.exceptions import ValidationError as DRFValidationError
+            from ..services.pengembalian_job import menunggu_untuk
+            if menunggu_untuk(old_instance):
+                raise DRFValidationError({"status_pekerjaan": _PESAN_MENUNGGU_PENGEMBALIAN})
+            sebelumnya = tahap_sebelumnya_belum_selesai(old_instance)
+            if sebelumnya:
+                from rest_framework.exceptions import ValidationError as DRFValidationError
+                raise DRFValidationError({"status_pekerjaan": _pesan_tahap_belum_selesai(sebelumnya)})
         
         # Simpan pembaruan
         serializer.instance._current_user = self.request.user
@@ -815,6 +864,13 @@ class JobBoardViewSet(viewsets.ModelViewSet):
                 {'error': f"Transisi status '{job.status_pekerjaan}' → 'dikerjakan' tidak diizinkan. Pekerjaan harus dalam Antrean, Kendala, atau Gagal."},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        from ..services.pengembalian_job import menunggu_untuk
+        if menunggu_untuk(job):
+            return Response({'error': _PESAN_MENUNGGU_PENGEMBALIAN}, status=status.HTTP_400_BAD_REQUEST)
+        sebelumnya = tahap_sebelumnya_belum_selesai(job)
+        if sebelumnya:
+            return Response({'error': _pesan_tahap_belum_selesai(sebelumnya)}, status=status.HTTP_400_BAD_REQUEST)
 
         job.status_pekerjaan = 'dikerjakan'
         job.waktu_mulai = timezone.now()
