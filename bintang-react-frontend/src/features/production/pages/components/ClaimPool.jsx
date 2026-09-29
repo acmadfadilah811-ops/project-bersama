@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Inbox, UserCheck, UserPlus, Ruler, Clipboard, AlertCircle, Layers, ClipboardList } from 'lucide-react';
 import DeadlineBadge from '../../components/DeadlineBadge';
+import JobMacetBadge from '../../components/JobMacetBadge';
 
 /** Antrean Global Divisi -- job unassigned yang bisa diklaim staff di
  * divisinya. Filter & paginasi server sungguhan (fitur redesign kanban
@@ -22,6 +23,7 @@ export default function ClaimPool({
   // ke staff bawahan dari sini, tanpa perlu pindah ke tab "Papan Kerja Tim".
   // Staff biasa tidak dapat kedua prop ini, jadi UI-nya otomatis sembunyi.
   staffOptions = [], onAssignStaff,
+  ambangAntreanJam, ambangDikerjakanJam,
 }) {
   const totalPages = Math.max(1, Math.ceil(claimPoolCount / pageSize));
   const [assignPilihan, setAssignPilihan] = useState({});
@@ -213,6 +215,7 @@ export default function ClaimPool({
                           <span className="text-emerald-600 font-bold">Rp{job.biaya_desain.toLocaleString()}</span>
                         )}
                         <DeadlineBadge deadline={job.deadline} />
+                        <JobMacetBadge job={job} ambangAntreanJam={ambangAntreanJam} ambangDikerjakanJam={ambangDikerjakanJam} />
                         <span className="ml-auto text-slate-300 font-mono shrink-0">#{job.id}</span>
                       </div>
 

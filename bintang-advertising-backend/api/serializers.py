@@ -969,6 +969,12 @@ class BusinessSettingsSerializer(serializers.Serializer):
     # POS Antrian Settings
     pos_antrian_aktif = serializers.BooleanField(required=False, default=False)
 
+    # Peringatan Pekerjaan Macet (PRD-10 UAT): job diam di antrean/dikerjakan
+    # lebih dari sekian jam ditandai di Papan Produksi (lihat JobMacetBadge.jsx
+    # frontend & JobBoard.dibuat_pada backend).
+    job_macet_jam_antrean = serializers.IntegerField(required=False, default=24)
+    job_macet_jam_dikerjakan = serializers.IntegerField(required=False, default=8)
+
     # Metadata: daftar divisi (read-only)
     divisi_list     = serializers.SerializerMethodField()
 
@@ -1035,6 +1041,8 @@ class BusinessSettingsSerializer(serializers.Serializer):
         'pos_stok_transfer_harus_proses_penerima': 'pos_stok_transfer_harus_proses_penerima',
         'pos_stok_posting_otomatis_laba_rugi':   'pos_stok_posting_otomatis_laba_rugi',
         'pos_antrian_aktif':                     'pos_antrian_aktif',
+        'job_macet_jam_antrean':                  'job_macet_jam_antrean',
+        'job_macet_jam_dikerjakan':               'job_macet_jam_dikerjakan',
 
         # Sistem Stok
         'stock_system':                          'stock_system',
@@ -1138,6 +1146,10 @@ class BusinessSettingsSerializer(serializers.Serializer):
             # POS Antrian Defaults
             'pos_antrian_aktif': False,
 
+            # Peringatan Pekerjaan Macet Defaults
+            'job_macet_jam_antrean': 24,
+            'job_macet_jam_dikerjakan': 8,
+
             # Mode stok POS & email peringatan stok
             'pos_stock_mode': 'auto',
             'stock_alert_emails': '',
@@ -1153,7 +1165,7 @@ class BusinessSettingsSerializer(serializers.Serializer):
                 if config_key not in semua_config:
                     raise SystemConfig.DoesNotExist
                 val = semua_config[config_key]
-                if field_name in ['ppn_default', 'payroll_toleransi_menit', 'biaya_potongan_terlambat', 'smtp_port', 'pos_shift_kas_awal']:
+                if field_name in ['ppn_default', 'payroll_toleransi_menit', 'biaya_potongan_terlambat', 'smtp_port', 'pos_shift_kas_awal', 'job_macet_jam_antrean', 'job_macet_jam_dikerjakan']:
                     try:
                         result[field_name] = int(val)
                     except ValueError:

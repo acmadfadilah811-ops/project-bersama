@@ -156,6 +156,8 @@ export default function Settings() {
     payroll_jam_keluar: '17:00',
     payroll_toleransi_menit: 15,
     biaya_potongan_terlambat: 1000,
+    job_macet_jam_antrean: 24,
+    job_macet_jam_dikerjakan: 8,
     r2_bucket_name: '',
     r2_custom_domain: '',
     smtp_host: '',
@@ -299,7 +301,9 @@ export default function Settings() {
       formData.append('payroll_jam_keluar', bisnis.payroll_jam_keluar || '17:00');
       formData.append('payroll_toleransi_menit', bisnis.payroll_toleransi_menit !== undefined ? bisnis.payroll_toleransi_menit : 15);
       formData.append('biaya_potongan_terlambat', bisnis.biaya_potongan_terlambat !== undefined ? bisnis.biaya_potongan_terlambat : 1000);
-      
+      formData.append('job_macet_jam_antrean', bisnis.job_macet_jam_antrean !== undefined ? bisnis.job_macet_jam_antrean : 24);
+      formData.append('job_macet_jam_dikerjakan', bisnis.job_macet_jam_dikerjakan !== undefined ? bisnis.job_macet_jam_dikerjakan : 8);
+
       // API & Integrasi Cloud
       formData.append('r2_bucket_name', bisnis.r2_bucket_name || '');
       formData.append('r2_custom_domain', bisnis.r2_custom_domain || '');
@@ -1032,6 +1036,36 @@ export default function Settings() {
                             onChange={(e) => setBisnis({ ...bisnis, biaya_potongan_terlambat: parseInt(e.target.value) || 0 })}
                             className={inputCls}
                           />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium text-slate-700">
+                            Peringatan Antrean Macet (Jam)
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={bisnis.job_macet_jam_antrean || 0}
+                            onChange={(e) => setBisnis({ ...bisnis, job_macet_jam_antrean: parseInt(e.target.value) || 0 })}
+                            className={inputCls}
+                          />
+                          <p className="text-xs text-slate-400">
+                            SPK diberi tanda "Macet" bila belum diklaim staff selama ini.
+                          </p>
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium text-slate-700">
+                            Peringatan Pengerjaan Macet (Jam)
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={bisnis.job_macet_jam_dikerjakan || 0}
+                            onChange={(e) => setBisnis({ ...bisnis, job_macet_jam_dikerjakan: parseInt(e.target.value) || 0 })}
+                            className={inputCls}
+                          />
+                          <p className="text-xs text-slate-400">
+                            SPK diberi tanda "Macet" bila sudah dikerjakan tanpa selesai selama ini.
+                          </p>
                         </div>
                       </div>
 

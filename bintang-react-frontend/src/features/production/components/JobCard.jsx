@@ -1,14 +1,15 @@
 import { MapPin } from 'lucide-react';
 import DeadlineBadge from './DeadlineBadge';
+import JobMacetBadge from './JobMacetBadge';
 
 /**
  * JobCard — Kartu job minimal di papan kanban staff.
- * Props: job, orderInfo, onOpenWorkspace
+ * Props: job, orderInfo, onOpenWorkspace, ambangAntreanJam, ambangDikerjakanJam
  *
  * BUG FIX: prop bernama `_job` (underscore) → tidak bisa diakses sebagai `job`.
  * Diubah ke `job` agar data status dan tahap bisa ditampilkan.
  */
-export default function JobCard({ job, orderInfo, onOpenWorkspace }) {
+export default function JobCard({ job, orderInfo, onOpenWorkspace, ambangAntreanJam, ambangDikerjakanJam }) {
   return (
     <div
       onClick={onOpenWorkspace}
@@ -32,7 +33,10 @@ export default function JobCard({ job, orderInfo, onOpenWorkspace }) {
           <span className="truncate">{job.tahap_nama}</span>
         </p>
       )}
-      <div className="mt-1"><DeadlineBadge deadline={job?.deadline} /></div>
+      <div className="mt-1 flex flex-wrap gap-1">
+        <DeadlineBadge deadline={job?.deadline} />
+        <JobMacetBadge job={job} ambangAntreanJam={ambangAntreanJam} ambangDikerjakanJam={ambangDikerjakanJam} />
+      </div>
       {orderInfo?.desainSusulan && (
         <div className="mt-2 flex items-center gap-1.5 bg-cyan-50 border border-cyan-150 rounded px-1.5 py-0.5 w-fit">
           <span className="relative flex h-1.5 w-1.5">

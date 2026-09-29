@@ -1021,6 +1021,13 @@ class JobBoard(models.Model):
     
     waktu_mulai = models.DateTimeField(null=True, blank=True)
     waktu_selesai = models.DateTimeField(null=True, blank=True, db_index=True)
+    # Kapan SPK ini dibuat -- dipakai deteksi "pekerjaan macet" (PRD-10 UAT):
+    # job yang diam di status 'antrean' lebih dari job_macet_jam_antrean jam
+    # (lihat BusinessSettingsSerializer & JobMacetBadge.jsx frontend). Baris
+    # lama (sebelum kolom ini ada) diisi waktu migrasi dijalankan -- tidak
+    # akurat untuk job lama, tapi job lama seharusnya sudah 'selesai'/'batal'
+    # dan tidak pernah dicek status macetnya.
+    dibuat_pada = models.DateTimeField(auto_now_add=True, null=True)
 
     class Meta:
         indexes = [

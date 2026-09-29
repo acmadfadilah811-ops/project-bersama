@@ -16,7 +16,7 @@ import FailedReasonModal from '../../components/modals/FailedReasonModal';
 import WorkspaceReviewModal from '../../components/modals/WorkspaceReviewModal';
 
 export default function KanbanGlobalPanel() {
-  const { user } = useAuth();
+  const { user, businessSettings } = useAuth();
   const isManager = ['owner', 'manager', 'admin'].includes(user?.role?.toLowerCase());
 
   // Data & Handlers dari custom hook
@@ -197,6 +197,8 @@ export default function KanbanGlobalPanel() {
                         ]
                       }
                       onOpenWorkspace={() => openWorkspace(job)}
+                      ambangAntreanJam={businessSettings?.job_macet_jam_antrean}
+                      ambangDikerjakanJam={businessSettings?.job_macet_jam_dikerjakan}
                     />
                   ))
                 )}

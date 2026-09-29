@@ -37,6 +37,7 @@ import PapanKerjaSpkPanel from './panels/PapanKerjaSpkPanel';
 import MesinPanel from './panels/MesinPanel';
 import LogPenggunaanMesinPanel from './panels/LogPenggunaanMesinPanel';
 import DeadlineBadge, { getDeadlineTier } from '../components/DeadlineBadge';
+import JobMacetBadge, { getMacetInfo } from '../components/JobMacetBadge';
 
 // SPV/Kordiv: mengawasi & menugaskan job tim, tidak pernah "mengerjakan"
 // job sendiri (lihat JobBoardViewSet.get_queryset() backend) -- dipakai
@@ -137,7 +138,7 @@ function MiniCalendar() {
 }
 
 export default function ProductionApp() {
-  const { user } = useAuth();
+  const { user, businessSettings } = useAuth();
 
   // Sidebar Collapsed States
   const [leftCollapsed, setLeftCollapsed] = useState(false);
@@ -413,6 +414,8 @@ export default function ProductionApp() {
       // Antrean Global, bukan cuma klaim sendiri (instruksi user 2026-09-24).
       staffOptions={isSupervisorRole ? staffList : []}
       onAssignStaff={isSupervisorRole ? assignJobsToStaff : undefined}
+      ambangAntreanJam={businessSettings?.job_macet_jam_antrean}
+      ambangDikerjakanJam={businessSettings?.job_macet_jam_dikerjakan}
     />
   );
 
@@ -563,6 +566,22 @@ export default function ProductionApp() {
       .filter((row) => row.tier && row.tier.priority <= 3)
       .sort((a, b) => a.tier.priority - b.tier.priority || a.tier.daysRemaining - b.tier.daysRemaining);
   }, [isAdminMode, jobs, globalJobs]);
+
+  // Alert Pekerjaan Macet (PRD-10 UAT, 2026-09-29): job yang diam terlalu
+  // lama di 'antrean'/'dikerjakan'/'kendala' -- lihat JobMacetBadge.jsx.
+  // Beda dari Alert Deadline di atas: itu soal tenggat ke pelanggan, ini
+  // soal job yang berhenti bergerak sama sekali tanpa memandang deadline.
+  const ambangAntreanJam = businessSettings?.job_macet_jam_antrean;
+  const ambangDikerjakanJam = businessSettings?.job_macet_jam_dikerjakan;
+  const macetAlertJobs = useMemo(() => {
+    const sumber = isAdminMode
+      ? globalJobs.filter((j) => !['selesai', 'batal'].includes(j.status_pekerjaan))
+      : jobs.filter((j) => ['antrean', 'dikerjakan', 'kendala'].includes(j.status_pekerjaan));
+    return sumber
+      .map((job) => ({ job, info: getMacetInfo(job, ambangAntreanJam, ambangDikerjakanJam) }))
+      .filter((row) => row.info)
+      .sort((a, b) => b.info.jamBerlalu - a.info.jamBerlalu);
+  }, [isAdminMode, jobs, globalJobs, ambangAntreanJam, ambangDikerjakanJam]);
 
   if (error) {
     return (
@@ -879,7 +898,10 @@ export default function ProductionApp() {
           <div className="flex-1 min-h-0">
             {selectedWorkspaceJob ? (
               <div className="flex h-full min-h-0 flex-col gap-2">
-                <div className="shrink-0 px-1"><DeadlineBadge deadline={selectedWorkspaceJob.deadline} /></div>
+                <div className="shrink-0 px-1 flex flex-wrap gap-1">
+                  <DeadlineBadge deadline={selectedWorkspaceJob.deadline} />
+                  <JobMacetBadge job={selectedWorkspaceJob} ambangAntreanJam={ambangAntreanJam} ambangDikerjakanJam={ambangDikerjakanJam} />
+                </div>
                 <div className="min-h-0 flex-1">
                   <WorkspaceSPK
                     job={selectedWorkspaceJob}
@@ -997,6 +1019,44 @@ export default function ProductionApp() {
                   <div className="text-slate-400 text-center py-6 italic text-[10px] flex flex-col items-center gap-1">
                     <span className="text-emerald-500 font-black text-[14px]">✓</span>
                     <span>Tidak ada pekerjaan mendekati deadline.</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Alert Pekerjaan Macet (PRD-10 UAT, 2026-09-29) */}
+            <div className="bg-white border border-[#e2e8f0] rounded-lg p-3 flex flex-col gap-2 shadow-sm flex-1 min-h-[150px]">
+              <div className="text-[8.5px] font-extrabold uppercase tracking-wide text-slate-400 border-b border-slate-100 pb-1.5 flex items-center justify-between">
+                <span>ALERT PEKERJAAN MACET</span>
+                <span className="bg-fuchsia-100 text-fuchsia-700 px-1 rounded font-black text-[7.5px] uppercase">
+                  Alert
+                </span>
+              </div>
+              <div className="flex flex-col gap-1.5 overflow-y-auto max-h-[220px] pr-0.5">
+                {macetAlertJobs.length > 0 ? (
+                  macetAlertJobs.map(({ job, info }) => (
+                    <button
+                      key={job.id}
+                      onClick={() => setSelectedWorkspaceJob(job)}
+                      className={`border-l-[3px] p-2 rounded flex flex-col gap-0.5 text-left cursor-pointer hover:brightness-95 transition-all ${info.alertClassName}`}
+                      style={{ backgroundColor: info.alertBg }}
+                    >
+                      <div className="flex justify-between items-start text-[10px] font-bold text-slate-800 leading-tight gap-2">
+                        <span className="break-words flex-1">{job.nama_produk || job.tahap_nama || `Job #${job.id}`}</span>
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 mt-1 ${info.dotClassName}`} />
+                      </div>
+                      <span className="text-[9px] text-slate-500 font-semibold truncate">
+                        {job.pelanggan_nama || 'Umum'} &middot; {job.tahap_nama}
+                      </span>
+                      <span className="text-[8px] font-extrabold uppercase tracking-wider" style={{ color: 'inherit' }}>
+                        {info.label}
+                      </span>
+                    </button>
+                  ))
+                ) : (
+                  <div className="text-slate-400 text-center py-6 italic text-[10px] flex flex-col items-center gap-1">
+                    <span className="text-emerald-500 font-black text-[14px]">✓</span>
+                    <span>Tidak ada pekerjaan yang macet.</span>
                   </div>
                 )}
               </div>
