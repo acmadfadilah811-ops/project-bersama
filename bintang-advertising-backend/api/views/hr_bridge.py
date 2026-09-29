@@ -173,8 +173,34 @@ class HRBridgeCreateAccountView(APIView):
                 'hr_employee_id': existing.hr_employee_id, 'created': False,
             }, status=status.HTTP_200_OK)
 
-        username = _buat_username_unik(first_name, last_name)
-        password_sementara = None if tanpa_login else secrets.token_urlsafe(9)  # ~12 karakter
+        # Kredensial seragam (2026-09-29): HR menentukan SATU username dan SATU
+        # password awal untuk HR/mobile dan Bintang, lalu mengirimnya di sini
+        # supaya karyawan cukup mengingat satu pasang. Username yang sudah
+        # dipakai dijawab 409 -- HR mencoba kandidat berikutnya. Tanpa kedua
+        # field ini perilaku lama tetap (username otomatis + password acak
+        # yang dikembalikan sebagai temp_password).
+        username_diminta = str(request.data.get('username') or '').strip().lower()
+        password_diminta = str(request.data.get('password') or '')
+        if username_diminta:
+            if not re.fullmatch(r'[a-z0-9.]{3,50}', username_diminta):
+                return Response({'error': 'Format username tidak valid.'}, status=status.HTTP_400_BAD_REQUEST)
+            if CustomUser.objects.filter(username=username_diminta).exists():
+                return Response(
+                    {'username_terpakai': True, 'error': f"Username '{username_diminta}' sudah dipakai di Bintang."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            username = username_diminta
+        else:
+            username = _buat_username_unik(first_name, last_name)
+
+        if tanpa_login:
+            password_sementara = None
+        elif password_diminta:
+            if len(password_diminta) < 8:
+                return Response({'error': 'Password awal minimal 8 karakter.'}, status=status.HTTP_400_BAD_REQUEST)
+            password_sementara = None  # HR sudah tahu; tidak dikembalikan lagi
+        else:
+            password_sementara = secrets.token_urlsafe(9)  # ~12 karakter
 
         user = CustomUser(
             username=username,
@@ -191,7 +217,7 @@ class HRBridgeCreateAccountView(APIView):
         if tanpa_login:
             user.set_unusable_password()
         else:
-            user.set_password(password_sementara)
+            user.set_password(password_diminta or password_sementara)
         user.save()
 
         hasil = {
