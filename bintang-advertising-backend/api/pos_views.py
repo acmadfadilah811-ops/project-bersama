@@ -1,5 +1,6 @@
 import random
 import re
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
 from django.core.cache import cache
 from django.utils import timezone
@@ -328,6 +329,15 @@ class POSSaleViewSet(viewsets.ModelViewSet):
             return Response({'error': error}, status=status.HTTP_400_BAD_REQUEST)
         try:
             sale = create_sale(user=request.user, data=request.data)
+        except DjangoValidationError as exc:
+            # Mis. periode akuntansi sudah ditutup (Tutup Buku) -> jurnal
+            # penjualan ditolak. Sebelumnya lolos sebagai 500 polos dan kasir
+            # cuma melihat "gagal" tanpa penyebab (2026-09-29). Transaksi
+            # dibatalkan utuh (create_sale atomic), tidak ada data setengah jadi.
+            return Response(
+                {'error': '; '.join(exc.messages) or 'Transaksi ditolak.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         except IntegrityError:
             # Race sungguhan (2 request idem_key sama nyaris bersamaan lolos
             # cek "existing" di atas keduanya) -- bukan cuma retry berurutan.

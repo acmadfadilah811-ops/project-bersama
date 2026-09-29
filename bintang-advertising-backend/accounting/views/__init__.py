@@ -62,6 +62,7 @@ from .period import (
     AccountingPeriodCloseView,
     AccountingPeriodDetailView,
     AccountingPeriodListView,
+    AccountingPeriodCurrentView,
 )
 from .lookups import DepartmentListView, JournalTemplateListView
 from .sales import AccountingSalesView
@@ -127,6 +128,7 @@ __all__ = [
     "AccountingLifecycleLogListView",
     "POSPostingSettingsAuditLogListView",
     "AccountingPeriodListView",
+    "AccountingPeriodCurrentView",
     "AccountingPeriodDetailView",
     "AccountingPeriodCloseView",
     "AccountingPeriodCloseAllView",

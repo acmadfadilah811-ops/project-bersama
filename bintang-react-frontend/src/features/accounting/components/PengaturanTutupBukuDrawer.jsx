@@ -13,6 +13,8 @@ import { notify, notifyApiError } from '../../../utils/notify';
 export default function PengaturanTutupBukuDrawer({ isOpen, onClose }) {
   const [accounts, setAccounts] = useState([]);
   const [closingAccount, setClosingAccount] = useState('');
+  // Tanggal potong periode: 0/kosong = bulan kalender, 1-28 = periode berakhir di tanggal itu.
+  const [cutoffDay, setCutoffDay] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -22,6 +24,7 @@ export default function PengaturanTutupBukuDrawer({ isOpen, onClose }) {
     }).catch(() => setAccounts([]));
     apiClient.get('/accounting/settings/').then((res) => {
       setClosingAccount(res.data.closing_account || '');
+      setCutoffDay(res.data.period_cutoff_day ? String(res.data.period_cutoff_day) : '');
     }).catch((err) => notifyApiError(err, 'Gagal memuat pengaturan tutup buku.'));
   }, [isOpen]);
 
@@ -32,8 +35,9 @@ export default function PengaturanTutupBukuDrawer({ isOpen, onClose }) {
     try {
       await apiClient.patch('/accounting/settings/', {
         closing_account: closingAccount || null,
+        period_cutoff_day: cutoffDay === '' ? 0 : Number(cutoffDay),
       });
-      notify({ type: 'success', title: 'Pengaturan Disimpan', message: 'Akun Closing berhasil disimpan.' });
+      notify({ type: 'success', title: 'Pengaturan Disimpan', message: 'Pengaturan tutup buku berhasil disimpan.' });
       onClose();
     } catch (err) {
       notifyApiError(err, 'Gagal menyimpan pengaturan tutup buku.');
@@ -74,6 +78,31 @@ export default function PengaturanTutupBukuDrawer({ isOpen, onClose }) {
                 Akun ekuitas tujuan laba/rugi bersih. Wajib diisi — Tutup Buku akan memposting
                 Jurnal Penutup yang menol-kan akun Pendapatan & Beban dan memindahkan selisihnya
                 (laba/rugi bersih) ke akun ini.
+              </p>
+            </div>
+
+            <div className="space-y-1.5 pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-between pb-1">
+                <span className="font-bold text-[#0088E8] text-xs">Tanggal Potong Periode</span>
+              </div>
+              <label className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                Periode berakhir tanggal
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="28"
+                value={cutoffDay}
+                onChange={(e) => setCutoffDay(e.target.value)}
+                placeholder="Kosong = bulan kalender"
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white outline-none focus:border-[#0088E8] text-xs font-semibold shadow-3xs"
+              />
+              <p className="text-[11px] font-normal text-slate-400 leading-4">
+                Isi 1-28. Mis. <b>25</b>: periode September = 26 Agustus s/d 25 September, dan transaksi
+                tanggal 26 ke atas otomatis masuk periode berikutnya, jadi kasir tetap bisa bertransaksi
+                setelah periode lama ditutup. Kosongkan untuk memakai bulan kalender (1 s/d akhir bulan).
+                Periode yang sudah ditutup tidak berubah. Kalau sudah ada periode berjalan yang bertanggal
+                lain, hubungi admin sistem untuk menyusun ulang periode sebelum mengganti tanggal potong.
               </p>
             </div>
 

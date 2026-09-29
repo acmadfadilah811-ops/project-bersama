@@ -30,4 +30,6 @@ class AccountingPeriod(models.Model):
         verbose_name_plural = "Periode Akuntansi"
 
     def __str__(self):
-        return f"{self.start_date:%b %Y} ({self.get_status_display()})"
+        # Bulan AKHIR periode (periode bertanggal potong 26-25: "Sep 2026" =
+        # 26 Agu s/d 25 Sep); untuk bulan kalender sama dengan start_date.
+        return f"{self.end_date:%b %Y} ({self.get_status_display()})"

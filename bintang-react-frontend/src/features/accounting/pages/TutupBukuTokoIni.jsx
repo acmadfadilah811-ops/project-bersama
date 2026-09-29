@@ -4,17 +4,9 @@ import { notifyApiError, notifySuccess } from '../../../utils/notify';
 import DetailTutupBuku from '../components/DetailTutupBuku';
 import PengaturanTutupBukuDrawer from '../components/PengaturanTutupBukuDrawer';
 import useAccountingPeriods from '../hooks/useAccountingPeriods';
-import { closeAccountingPeriod, closeAllAccountingPeriods } from '../services/periods';
+import { closeAccountingPeriod, closeAllAccountingPeriods, fetchCurrentAccountingPeriod } from '../services/periods';
 
-const MONTH_NAMES = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 const formatDate = (value) => (value ? new Date(`${value}T00:00:00`).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '-');
-const getCurrentPeriod = () => {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  const toApiDate = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-  return { startDate: toApiDate(start), endDate: toApiDate(end), label: `${MONTH_NAMES[now.getMonth()]} ${now.getFullYear()}` };
-};
 
 export default function TutupBukuTokoIni() {
   const [fiscalYear, setFiscalYear] = useState(new Date().getFullYear());
@@ -29,7 +21,12 @@ export default function TutupBukuTokoIni() {
   const menuRef = useRef(null);
   const { periods, loading, reload } = useAccountingPeriods(fiscalYear);
   const sortedPeriods = useMemo(() => [...periods].sort((a, b) => a.start_date.localeCompare(b.start_date)), [periods]);
-  const currentPeriod = useMemo(() => getCurrentPeriod(), []);
+  // Periode berjalan dihitung server (tanggal potong di Pengaturan). Sebelum
+  // terisi, tombol Tutup Buku Periode Berjalan tidak aktif.
+  const [currentPeriod, setCurrentPeriod] = useState(null);
+  useEffect(() => {
+    fetchCurrentAccountingPeriod().then(setCurrentPeriod).catch(() => setCurrentPeriod(null));
+  }, [settingsOpen]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -40,10 +37,11 @@ export default function TutupBukuTokoIni() {
   }, []);
 
   const submitClose = async () => {
+    if (!currentPeriod) return;
     setClosing(true);
     try {
-      await closeAccountingPeriod(currentPeriod.startDate, currentPeriod.endDate);
-      notifySuccess('Tutup buku berhasil', `Periode ${currentPeriod.label} berhasil dikunci.`);
+      await closeAccountingPeriod(currentPeriod.start_date, currentPeriod.end_date);
+      notifySuccess('Tutup buku berhasil', `Periode ${currentPeriod.nama} berhasil dikunci.`);
       setConfirmClose(false);
       await reload();
     } catch (error) {
@@ -81,7 +79,7 @@ export default function TutupBukuTokoIni() {
             </button>
             {menuOpen && (
               <div className="absolute right-0 z-20 mt-1 w-60 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-                <button type="button" onClick={() => { setMenuOpen(false); setConfirmClose(true); }} className="block w-full px-3 py-2 text-left font-semibold text-slate-700 hover:bg-slate-50">Tutup Buku Bulan Ini ({currentPeriod.label})</button>
+                <button type="button" disabled={!currentPeriod} onClick={() => { setMenuOpen(false); setConfirmClose(true); }} className="block w-full px-3 py-2 text-left font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Tutup Buku Periode Berjalan{currentPeriod ? ` (${currentPeriod.nama})` : ''}</button>
                 <button type="button" onClick={() => { setMenuOpen(false); setConfirmCloseAll(true); }} className="block w-full px-3 py-2 text-left font-semibold text-slate-700 hover:bg-slate-50">Tutup Buku Semua Bulan</button>
               </div>
             )}
@@ -99,16 +97,15 @@ export default function TutupBukuTokoIni() {
           </div>
         </div>
         {loading ? <div className="flex min-h-64 flex-col items-center justify-center gap-3 text-slate-400"><Loader2 className="animate-spin text-[#0088E8]" size={28} />Memuat periode...</div> : (
-          <div className="overflow-x-auto"><table className="w-full min-w-[620px] text-left"><thead className="border-b border-slate-200 bg-slate-50 font-bold text-slate-500"><tr><th className="px-4 py-3">Tahun</th><th className="px-4 py-3">Bulan</th><th className="px-4 py-3">Periode</th><th className="px-4 py-3 text-center">Aksi</th></tr></thead>
+          <div className="overflow-x-auto"><table className="w-full min-w-[620px] text-left"><thead className="border-b border-slate-200 bg-slate-50 font-bold text-slate-500"><tr><th className="px-4 py-3">Tahun</th><th className="px-4 py-3">Periode</th><th className="px-4 py-3">Rentang Tanggal</th><th className="px-4 py-3 text-center">Aksi</th></tr></thead>
             <tbody className="divide-y divide-slate-100">{sortedPeriods.length === 0 ? <tr><td colSpan={4} className="px-4 py-16 text-center text-slate-400">Belum ada data periode untuk tahun ini.</td></tr> : sortedPeriods.map((period) => {
-              const month = Number(period.start_date.slice(5, 7)) - 1;
-              return <tr key={period.id} className="hover:bg-slate-50"><td className="px-4 py-3">{period.fiscal_year}</td><td className="px-4 py-3 font-semibold text-slate-900">{MONTH_NAMES[month] || '-'}</td><td className="px-4 py-3">{formatDate(period.start_date)} s/d {formatDate(period.end_date)}</td><td className="px-4 py-3 text-center"><button type="button" onClick={() => setSelectedPeriod(period)} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-bold text-[#0088E8] hover:bg-blue-50"><Eye size={14} />Detail</button></td></tr>;
+              return <tr key={period.id} className="hover:bg-slate-50"><td className="px-4 py-3">{period.fiscal_year}</td><td className="px-4 py-3 font-semibold text-slate-900">{period.nama || '-'}<span className={`ml-2 rounded px-1.5 py-0.5 text-[10px] font-bold ${period.status === 'closed' ? 'bg-slate-100 text-slate-600' : 'bg-emerald-50 text-emerald-700'}`}>{period.status === 'closed' ? 'Ditutup' : 'Terbuka'}</span></td><td className="px-4 py-3">{formatDate(period.start_date)} s/d {formatDate(period.end_date)}</td><td className="px-4 py-3 text-center"><button type="button" onClick={() => setSelectedPeriod(period)} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-bold text-[#0088E8] hover:bg-blue-50"><Eye size={14} />Detail</button></td></tr>;
             })}</tbody>
           </table></div>
         )}
       </section>
 
-      {confirmClose && <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/40 p-4"><div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl"><h2 className="text-sm font-bold text-slate-900">Konfirmasi Tutup Buku</h2><p className="mt-2 leading-5 text-slate-600">Tutup buku periode {currentPeriod.label}? Sistem akan menolak bila masih ada jurnal draft atau saldo akun abnormal negatif.</p><div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setConfirmClose(false)} disabled={closing} className="rounded-lg border border-slate-300 px-3 py-2 font-bold hover:bg-slate-50 disabled:opacity-50">Batal</button><button type="button" onClick={submitClose} disabled={closing} className="rounded-lg bg-[#52C41A] px-3 py-2 font-bold text-white hover:bg-green-600 disabled:opacity-50">{closing ? 'Memproses...' : 'Tutup Buku'}</button></div></div></div>}
+      {confirmClose && currentPeriod && <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/40 p-4"><div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl"><h2 className="text-sm font-bold text-slate-900">Konfirmasi Tutup Buku</h2><p className="mt-2 leading-5 text-slate-600">Tutup buku periode {currentPeriod.nama} ({formatDate(currentPeriod.start_date)} s/d {formatDate(currentPeriod.end_date)})? Sistem akan menolak bila masih ada jurnal draft atau saldo akun abnormal negatif.</p>{currentPeriod.belum_berakhir && <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 leading-5 text-amber-800"><b>Periode ini belum berakhir</b> (berakhir {formatDate(currentPeriod.end_date)}). Setelah ditutup, transaksi bertanggal sampai {formatDate(currentPeriod.end_date)} akan ditolak. Disarankan menutup setelah tanggal itu terlewati.</p>}<div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setConfirmClose(false)} disabled={closing} className="rounded-lg border border-slate-300 px-3 py-2 font-bold hover:bg-slate-50 disabled:opacity-50">Batal</button><button type="button" onClick={submitClose} disabled={closing} className="rounded-lg bg-[#52C41A] px-3 py-2 font-bold text-white hover:bg-green-600 disabled:opacity-50">{closing ? 'Memproses...' : 'Tutup Buku'}</button></div></div></div>}
 
       {confirmCloseAll && <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/40 p-4"><div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl"><h2 className="text-sm font-bold text-slate-900">Konfirmasi Tutup Buku Semua Bulan</h2><p className="mt-2 leading-5 text-slate-600">Semua periode tahun {fiscalYear} yang masih Terbuka dan sudah berakhir akan ditutup satu per satu (bulan berjalan tidak ikut). Bulan yang gagal (mis. saldo negatif) akan dilewati dan dilaporkan, tidak menghentikan bulan lain.</p><div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setConfirmCloseAll(false)} disabled={closingAll} className="rounded-lg border border-slate-300 px-3 py-2 font-bold hover:bg-slate-50 disabled:opacity-50">Batal</button><button type="button" onClick={submitCloseAll} disabled={closingAll} className="rounded-lg bg-[#52C41A] px-3 py-2 font-bold text-white hover:bg-green-600 disabled:opacity-50">{closingAll ? 'Memproses...' : 'Tutup Semua'}</button></div></div></div>}
 

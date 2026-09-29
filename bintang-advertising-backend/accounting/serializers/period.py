@@ -4,11 +4,20 @@ from ..models import AccountingPeriod
 
 class AccountingPeriodSerializer(serializers.ModelSerializer):
     closed_by_username = serializers.ReadOnlyField(source="closed_by.username", default=None)
+    # "Sep 2026" atau "Sep 2026 (26 Agu-25 Sep)" -- bulan AKHIR periode, supaya
+    # layar tidak menamai periode 26 Agu-25 Sep sebagai "Agustus".
+    nama = serializers.SerializerMethodField()
+
+    def get_nama(self, obj):
+        from ..services.period_rules import nama_periode
+
+        return nama_periode(obj.start_date, obj.end_date)
 
     class Meta:
         model = AccountingPeriod
         fields = [
             "id",
+            "nama",
             "fiscal_year",
             "start_date",
             "end_date",

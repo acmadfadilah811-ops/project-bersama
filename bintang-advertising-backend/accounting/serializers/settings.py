@@ -33,6 +33,7 @@ class AccountingSettingsSerializer(serializers.ModelSerializer):
             "closing_account",
             "closing_account_code",
             "closing_account_name",
+            "period_cutoff_day",
             "pos_sales_revenue_account",
             "pos_ppn_output_account",
             "pos_cogs_expense_account",

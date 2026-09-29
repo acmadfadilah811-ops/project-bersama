@@ -1,4 +1,3 @@
-from calendar import monthrange
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
@@ -12,13 +11,16 @@ from ..models import (
     JournalEntry,
     JournalEntryLine,
 )
+from .period_rules import rentang_periode
 
 
 def _get_or_create_period(entry_date):
-    start = entry_date.replace(day=1)
-    end = entry_date.replace(day=monthrange(entry_date.year, entry_date.month)[1])
+    # Batas periode ditentukan period_rules.rentang_periode: bulan kalender
+    # (bawaan) atau mengikuti tanggal potong di Pengaturan Tutup Buku
+    # (2026-09-29), dan periode yang sudah ada dipakai apa adanya.
+    start, end = rentang_periode(entry_date)
     period, _ = AccountingPeriod.objects.get_or_create(
-        start_date=start, end_date=end, defaults={"fiscal_year": entry_date.year},
+        start_date=start, end_date=end, defaults={"fiscal_year": end.year},
     )
     # Lock the period while creating a journal so close-period cannot race a
     # posting request and allow a journal into a just-closed period.

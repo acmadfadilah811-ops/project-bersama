@@ -18,6 +18,13 @@ export async function fetchAccountingPeriodDetail(periodId) {
   return fetchAllPages(`/accounting/periods/${periodId}/detail/`);
 }
 
+// Periode yang memuat hari ini menurut tanggal potong di Pengaturan Tutup Buku
+// (dihitung server, sama dengan yang dipakai posting jurnal).
+export async function fetchCurrentAccountingPeriod() {
+  const { data } = await apiClient.get('/accounting/periods/berjalan/');
+  return data;
+}
+
 export async function closeAccountingPeriod(startDate, endDate) {
   const { data } = await apiClient.post('/accounting/close-period/', {
     start_date: startDate,

@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 from api.pagination import OptionalPageNumberPagination
 from api.permissions import IsStrictOwnerManagerOrSpvFinance
 
@@ -14,6 +15,7 @@ from ..services.period import (
     close_all_open_periods,
     get_period_journal_lines,
 )
+from ..services.period_rules import hari_potong, nama_periode, rentang_periode
 
 
 class AccountingPeriodListView(generics.ListAPIView):
@@ -29,6 +31,29 @@ class AccountingPeriodListView(generics.ListAPIView):
         if fiscal_year:
             qs = qs.filter(fiscal_year=fiscal_year)
         return qs
+
+
+class AccountingPeriodCurrentView(APIView):
+    """
+    GET /api/accounting/periods/berjalan/ — periode yang memuat HARI INI menurut
+    tanggal potong di Pengaturan Tutup Buku (bulan kalender bila tanggal potong
+    kosong). Dipakai tombol "Tutup Buku Periode Berjalan" supaya rentangnya
+    persis sama dengan yang dipakai posting jurnal (period_rules).
+    """
+    permission_classes = [IsAuthenticated, IsStrictOwnerManagerOrSpvFinance]
+
+    def get(self, request):
+        hari_ini = timezone.localdate()
+        mulai, akhir = rentang_periode(hari_ini)
+        ada = AccountingPeriod.objects.filter(start_date=mulai, end_date=akhir).first()
+        return Response({
+            "start_date": mulai,
+            "end_date": akhir,
+            "nama": nama_periode(mulai, akhir),
+            "status": ada.status if ada else AccountingPeriod.Status.OPEN,
+            "belum_berakhir": akhir >= hari_ini,
+            "hari_potong": hari_potong(),
+        })
 
 
 class AccountingPeriodDetailView(APIView):

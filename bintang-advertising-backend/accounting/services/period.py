@@ -8,6 +8,7 @@ from django.utils import timezone
 from ..models import Account, AccountingPeriod, AccountingLifecycleLog, AccountingSettings, JournalEntry, JournalEntryLine
 from .journal import create_journal_entry
 from .ledger import get_account_balances
+from .period_rules import hari_potong, rentang_periode
 
 
 def get_computed_persediaan_value():
@@ -113,9 +114,9 @@ def _validate_sequential_closing(period):
     )
     if earlier_open:
         raise ValidationError(
-            f"Periode {earlier_open.start_date:%B %Y} masih Terbuka dan lebih awal dari periode ini. "
+            f"Periode {earlier_open.end_date:%B %Y} masih Terbuka dan lebih awal dari periode ini. "
             "Tutup buku harus berurutan dari bulan paling lama -- tutup periode itu dulu sebelum "
-            f"periode {period.start_date:%B %Y}."
+            f"periode {period.end_date:%B %Y}."
         )
 
 
@@ -198,7 +199,7 @@ def post_closing_entries(*, period, actor=None):
         debit, kredit, delta = _zero_out_line(account, balance)
         lines.append({
             "account": account, "debit": debit, "kredit": kredit,
-            "description": f"Tutup akun {account.name} periode {period.start_date:%b %Y}",
+            "description": f"Tutup akun {account.name} periode {period.end_date:%b %Y}",
         })
         net_ke_closing += delta
 
@@ -211,18 +212,18 @@ def post_closing_entries(*, period, actor=None):
     if net_ke_closing > 0:
         lines.append({
             "account": closing_account, "debit": Decimal(0), "kredit": net_ke_closing,
-            "description": f"Laba bersih periode {period.start_date:%b %Y} ke Laba Ditahan",
+            "description": f"Laba bersih periode {period.end_date:%b %Y} ke Laba Ditahan",
         })
     elif net_ke_closing < 0:
         lines.append({
             "account": closing_account, "debit": -net_ke_closing, "kredit": Decimal(0),
-            "description": f"Rugi bersih periode {period.start_date:%b %Y} dari Laba Ditahan",
+            "description": f"Rugi bersih periode {period.end_date:%b %Y} dari Laba Ditahan",
         })
 
     return create_journal_entry(
         date=period.end_date,
         lines=lines,
-        description=f"Jurnal Penutup — Tutup Buku {period.start_date:%B %Y}",
+        description=f"Jurnal Penutup — Tutup Buku {period.end_date:%B %Y}",
         source_type=JournalEntry.SourceType.PERIOD_CLOSE,
         source_id=period.id,
         created_by=actor,
@@ -255,7 +256,7 @@ def _reverse_closing_entry(*, period, actor=None):
     reversal = create_journal_entry(
         date=period.end_date,
         lines=lines,
-        description=f"Pembalikan Jurnal Penutup {period.start_date:%B %Y} (Tutup Buku dibuka kembali)",
+        description=f"Pembalikan Jurnal Penutup {period.end_date:%B %Y} (Tutup Buku dibuka kembali)",
         source_type=JournalEntry.SourceType.PERIOD_CLOSE,
         # source_id=None (bukan period.id) -- constraint uniq_je_source_date
         # (source_type, source_id, date) akan bentrok dengan entry asli kalau
@@ -306,18 +307,23 @@ def close_accounting_period(*, period_id=None, start_date=None, end_date=None, a
         if start_date > end_date:
             raise ValidationError("Tanggal mulai tidak boleh lebih besar dari tanggal akhir.")
 
-        is_full_month = (
-            start_date.day == 1
-            and end_date == end_date.replace(day=monthrange(end_date.year, end_date.month)[1])
-            and (start_date.year, start_date.month) == (end_date.year, end_date.month)
-        )
-        if not is_full_month:
+        # Rentang harus sama dengan periode yang dipakai posting jurnal
+        # (period_rules.rentang_periode): bulan kalender, atau mengikuti
+        # tanggal potong di Pengaturan Tutup Buku, atau periode yang sudah ada.
+        hari = hari_potong()
+        mulai_seharusnya, akhir_seharusnya = rentang_periode(end_date)
+        if (start_date, end_date) != (mulai_seharusnya, akhir_seharusnya):
+            if hari:
+                raise ValidationError(
+                    f"Tutup buku mengikuti tanggal potong {hari}: periode yang memuat "
+                    f"{end_date:%d %b %Y} adalah {mulai_seharusnya:%d %b %Y} s/d {akhir_seharusnya:%d %b %Y}."
+                )
             raise ValidationError("Tutup buku saat ini hanya mendukung satu bulan kalender penuh.")
 
         period, _ = AccountingPeriod.objects.select_for_update().get_or_create(
             start_date=start_date,
             end_date=end_date,
-            defaults={"fiscal_year": start_date.year, "status": AccountingPeriod.Status.OPEN},
+            defaults={"fiscal_year": end_date.year, "status": AccountingPeriod.Status.OPEN},
         )
 
     # 1. Idempotency Check: Jika sudah CLOSED, kembalikan langsung
