@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Inbox, UserCheck, UserPlus, Ruler, Clipboard, AlertCircle, Layers, ClipboardList } from 'lucide-react';
+import { Inbox, UserCheck, UserPlus, Ruler, Clipboard, AlertCircle, Layers, ClipboardList, ArrowUpDown } from 'lucide-react';
 import DeadlineBadge from '../../components/DeadlineBadge';
 import JobMacetBadge from '../../components/JobMacetBadge';
 
@@ -24,6 +24,10 @@ export default function ClaimPool({
   // Staff biasa tidak dapat kedua prop ini, jadi UI-nya otomatis sembunyi.
   staffOptions = [], onAssignStaff,
   ambangAntreanJam, ambangDikerjakanJam,
+  // Urutan Antrean Global (SPK-02 UAT, 2026-09-29). Server sungguhan
+  // (JobBoardViewSet.get_queryset) -- bukan sortir client-side -- supaya
+  // tetap benar walau dipaginasi.
+  urutan = '', onUrutanChange,
 }) {
   const totalPages = Math.max(1, Math.ceil(claimPoolCount / pageSize));
   const [assignPilihan, setAssignPilihan] = useState({});
@@ -91,9 +95,26 @@ export default function ClaimPool({
             Pilih tahap produksi untuk memfilter antrean, lalu klaim tugas untuk mulai bekerja.
           </p>
         </div>
-        <span className="bg-indigo-55 text-indigo-700 text-[10.5px] font-extrabold px-3 py-1 rounded-full border border-indigo-150 self-start sm:self-auto shrink-0 shadow-3xs">
-          {claimPoolCount} Total Antrean
-        </span>
+        <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+          {onUrutanChange && (
+            <label className="flex items-center gap-1.5 text-[10.5px] font-extrabold text-slate-500">
+              <ArrowUpDown className="w-3 h-3 text-slate-400" />
+              <select
+                value={urutan}
+                onChange={(e) => onUrutanChange(e.target.value)}
+                className="border border-slate-200 rounded-lg px-2 py-1 text-[10.5px] font-extrabold text-slate-700 bg-white outline-none cursor-pointer"
+                title="Urutkan antrean"
+              >
+                <option value="">Terbaru Masuk</option>
+                <option value="waktu_masuk">Waktu Masuk (Terlama)</option>
+                <option value="deadline">Deadline (Tersegera)</option>
+              </select>
+            </label>
+          )}
+          <span className="bg-indigo-55 text-indigo-700 text-[10.5px] font-extrabold px-3 py-1 rounded-full border border-indigo-150 shadow-3xs whitespace-nowrap">
+            {claimPoolCount} Total Antrean
+          </span>
+        </div>
       </div>
 
       {/* FILTER BAR TAHAP PRODUKSI */}

@@ -71,6 +71,9 @@ export default function useProductionData() {
     try {
       const query = { unassigned: true, status_pekerjaan: 'antrean', page: merged.page, page_size: merged.pageSize };
       if (merged.tahap) query.tahap = merged.tahap;
+      // Urutan Antrean Global (SPK-02 UAT): 'waktu_masuk' (FIFO) atau
+      // 'deadline' (tersegera dulu). Kosong = bawaan (terbaru dulu).
+      if (merged.urutan) query.urutan = merged.urutan;
       const res = await apiClient.get('/jobs/', { params: query });
       const { list, count } = extractList(res.data);
       setClaimPool(list);

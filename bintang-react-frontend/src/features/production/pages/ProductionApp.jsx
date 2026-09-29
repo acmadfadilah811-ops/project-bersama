@@ -185,6 +185,9 @@ export default function ProductionApp() {
   const [claimPoolPage, setClaimPoolPage] = useState(1);
   const [claimPoolPageSize, setClaimPoolPageSize] = useState(30);
   const [claimPoolTahap, setClaimPoolTahap] = useState('');
+  // Urutan Antrean Global (SPK-02 UAT, 2026-09-29): '' = bawaan (terbaru
+  // dulu), 'waktu_masuk' = FIFO, 'deadline' = tersegera dulu.
+  const [claimPoolUrutan, setClaimPoolUrutan] = useState('');
 
   // Kanban Personal -- kategori aktif yang ditampilkan penuh di tengah
   // (redesign navigasi 2026-09-07: sebelumnya 4 kolom sekaligus berdampingan,
@@ -276,7 +279,7 @@ export default function ProductionApp() {
   useEffect(() => {
     if (!modeInitialized || isAdminMode) return;
     if (activeTab === 'claim_pool') {
-      fetchClaimPool({ page: claimPoolPage, pageSize: claimPoolPageSize, tahap: claimPoolTahap });
+      fetchClaimPool({ page: claimPoolPage, pageSize: claimPoolPageSize, tahap: claimPoolTahap, urutan: claimPoolUrutan });
     } else if (activeTab === 'kanban_personal') {
       fetchMyActiveJobs();
       fetchMyDoneJobs({ page: donePage, pageSize: donePageSize, dateFrom: doneDateFrom, dateTo: doneDateTo });
@@ -288,13 +291,13 @@ export default function ProductionApp() {
   // halaman 1 saat tahap berubah, bukan saat page itu sendiri berubah).
   useEffect(() => {
     if (!modeInitialized || isAdminMode || activeTab !== 'claim_pool') return;
-    fetchClaimPool({ page: claimPoolPage, pageSize: claimPoolPageSize, tahap: claimPoolTahap }, true);
+    fetchClaimPool({ page: claimPoolPage, pageSize: claimPoolPageSize, tahap: claimPoolTahap, urutan: claimPoolUrutan }, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [claimPoolPage, claimPoolPageSize, claimPoolTahap]);
+  }, [claimPoolPage, claimPoolPageSize, claimPoolTahap, claimPoolUrutan]);
 
   useEffect(() => {
     setClaimPoolPage(1);
-  }, [claimPoolTahap]);
+  }, [claimPoolTahap, claimPoolUrutan]);
 
   // Filter/halaman kolom Selesai berubah -> refetch.
   useEffect(() => {
@@ -404,6 +407,8 @@ export default function ProductionApp() {
       tahapOptions={tahapList.filter((t) => t.divisi === user?.divisi)}
       tahapFilter={claimPoolTahap}
       onTahapFilterChange={setClaimPoolTahap}
+      urutan={claimPoolUrutan}
+      onUrutanChange={setClaimPoolUrutan}
       page={claimPoolPage}
       pageSize={claimPoolPageSize}
       onPageChange={setClaimPoolPage}

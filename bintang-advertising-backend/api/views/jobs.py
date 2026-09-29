@@ -8,7 +8,7 @@ from rest_framework.exceptions import ValidationError
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.db import transaction
-from django.db.models import Count, Prefetch, Q, Sum
+from django.db.models import Case, Count, Prefetch, Q, Sum, Value, When
 from django.shortcuts import get_object_or_404
 
 from ..models import (
@@ -529,6 +529,20 @@ class JobBoardViewSet(viewsets.ModelViewSet):
             scoped_qs = scoped_qs.filter(waktu_selesai__date__gte=date_from)
         if date_to:
             scoped_qs = scoped_qs.filter(waktu_selesai__date__lte=date_to)
+
+        # Urutan Antrean Global (SPK-02 UAT, 2026-09-29): SPV/Kordiv perlu
+        # mengurutkan job unassigned selain "terbaru dulu" (`-id`, bawaan di
+        # base_qs) -- waktu masuk (FIFO, job tertua diklaim duluan) atau
+        # deadline tersegera. Cuma dipakai kalau parameter dikirim, jadi
+        # tidak mengubah urutan default di layar lain (Kanban Personal, dst).
+        urutan = (self.request.query_params.get('urutan') or '').strip()
+        if urutan == 'waktu_masuk':
+            scoped_qs = scoped_qs.order_by('dibuat_pada', 'id')
+        elif urutan == 'deadline':
+            scoped_qs = scoped_qs.order_by(
+                Case(When(deadline__isnull=True, then=Value(1)), default=Value(0)),
+                'deadline', 'dibuat_pada', 'id',
+            )
 
         return scoped_qs
 
