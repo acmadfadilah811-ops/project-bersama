@@ -4,6 +4,7 @@ import { handleKasirLogout } from '../utils/kasirLogout';
 import {
   LogOut,
   UserCheck,
+  Bell,
   BellRing,
   CreditCard,
   History,
@@ -14,6 +15,7 @@ import {
   LayoutDashboard,
   Package,
   PackageCheck,
+  PackageSearch,
   Menu,
   ArrowLeft,
   Boxes,
@@ -25,6 +27,17 @@ import { useAuth } from '../../../context/AuthContext';
 import { useDynamicIsland } from '../../../context/DynamicIslandContext';
 import { useKasir } from '../context/KasirContext';
 import apiClient from '../../../api/apiClient';
+
+/** Waktu relatif ringkas untuk daftar notifikasi ("5 mnt lalu"). */
+const waktuRelatif = (ts) => {
+  const detik = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (detik < 60) return 'baru saja';
+  const menit = Math.floor(detik / 60);
+  if (menit < 60) return `${menit} mnt lalu`;
+  const jam = Math.floor(menit / 60);
+  if (jam < 24) return `${jam} jam lalu`;
+  return `${Math.floor(jam / 24)} hr lalu`;
+};
 
 const getAvatarUrl = (path) => {
   if (!path) return null;
@@ -40,14 +53,16 @@ export default function KasirTopbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout, businessSettings } = useAuth();
-  const { shiftAktif } = useKasir();
+  const { shiftAktif, riwayatNotifikasi, jumlahBelumDibaca, tandaSemuaDibaca } = useKasir();
   const { activeNotification, dismissNotification } = useDynamicIsland();
 
   const [liveTime, setLiveTime] = useState('');
   const [showProfile, setShowProfile] = useState(false);
+  const [showNotifikasi, setShowNotifikasi] = useState(false);
   const [waOrderCount, setWaOrderCount] = useState(0);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const profileRef = useRef(null);
+  const notifikasiRef = useRef(null);
 
   // Poll count order masuk (status_global=review) dari WA maupun dibantu
   // staff -- satu antrean gabungan "Antrean Online & Offline".
@@ -84,10 +99,23 @@ export default function KasirTopbar() {
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (profileRef.current && !profileRef.current.contains(e.target)) setShowProfile(false);
+      if (notifikasiRef.current && !notifikasiRef.current.contains(e.target)) setShowNotifikasi(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Buka lonceng -> tandai semua sudah dibaca (badge hilang), riwayatnya
+  // tetap tampil sampai polling berikutnya menambah yang baru.
+  const bukaNotifikasi = () => {
+    setShowNotifikasi((v) => {
+      const next = !v;
+      if (next) tandaSemuaDibaca();
+      return next;
+    });
+  };
+
+  const jenisIkon = { siap: PackageCheck, masuk: PackageSearch };
 
   const avatarUrl = getAvatarUrl(user?.foto_profil);
   const userRole = user?.role?.toLowerCase();
@@ -173,6 +201,67 @@ export default function KasirTopbar() {
             <span className="font-mono font-black text-xs tracking-widest leading-none text-blue-200">
               {liveTime}
             </span>
+          </div>
+
+          {/* Lonceng Notifikasi: pesanan siap diambil + pesanan baru masuk
+              antrean (lihat hooks/useNotifikasiSiapDiambil.js). Toast lewat
+              begitu saja -- ini tempat kasir membuka kembali riwayatnya. */}
+          <div className="relative" ref={notifikasiRef}>
+            <button
+              type="button"
+              onClick={bukaNotifikasi}
+              className="relative p-2 rounded-lg text-blue-100 hover:text-white hover:bg-blue-700/40 transition-colors cursor-pointer"
+              title="Notifikasi"
+            >
+              <Bell size={18} />
+              {jumlahBelumDibaca > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-rose-500 text-white text-[9px] font-black leading-none border border-blue-600">
+                  {jumlahBelumDibaca > 9 ? '9+' : jumlahBelumDibaca}
+                </span>
+              )}
+            </button>
+
+            {showNotifikasi && (
+              <div className="absolute right-0 top-12 w-80 max-w-[90vw] bg-white rounded-2xl shadow-xl border border-slate-200 z-50 overflow-hidden animate-scale-up text-slate-800">
+                <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50/50">
+                  <p className="text-xs font-extrabold text-slate-700">Notifikasi</p>
+                </div>
+                <div className="max-h-80 overflow-y-auto">
+                  {riwayatNotifikasi.length === 0 ? (
+                    <p className="px-4 py-6 text-center text-[11px] font-semibold text-slate-400">
+                      Belum ada notifikasi.
+                    </p>
+                  ) : (
+                    riwayatNotifikasi.map((n) => {
+                      const Ikon = jenisIkon[n.jenis] || Bell;
+                      const warna = n.jenis === 'siap' ? 'text-emerald-600 bg-emerald-50' : 'text-blue-600 bg-blue-50';
+                      return (
+                        <button
+                          key={n.id}
+                          type="button"
+                          onClick={() => {
+                            setShowNotifikasi(false);
+                            navigate(n.tautan);
+                          }}
+                          className="w-full flex items-start gap-2.5 px-4 py-2.5 hover:bg-slate-50 transition-colors text-left cursor-pointer border-b border-slate-50 last:border-b-0"
+                        >
+                          <span className={`shrink-0 p-1.5 rounded-lg ${warna}`}>
+                            <Ikon size={13} />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block text-[11px] font-bold text-slate-800">{n.judul}</span>
+                            <span className="block text-[11px] text-slate-500 truncate">{n.pesan}</span>
+                            <span className="block text-[10px] text-slate-400 font-semibold mt-0.5">
+                              {waktuRelatif(n.waktu)}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Divider */}

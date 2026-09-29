@@ -47,3 +47,12 @@ export function pesanNotifikasi(pesananBaru) {
   const sisa = pesananBaru.length > 3 ? ` +${pesananBaru.length - 3} lainnya` : '';
   return `${pesananBaru.length} pesanan siap diambil: ${contoh}${sisa}.`;
 }
+
+/** Bentuk seragam untuk order yang baru masuk antrean (dari WA/staff/CRM). */
+export function gabungPesananMasuk(orders = []) {
+  return orders.map((o) => ({
+    kunci: `masuk:${o.id}`,
+    label: o.id,
+    nama: o.nama || 'Pelanggan',
+  }));
+}

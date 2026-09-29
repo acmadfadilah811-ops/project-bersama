@@ -9,7 +9,13 @@ export function KasirProvider({ children }) {
   const { user } = useAuth();
   // Notifikasi "Proses selesai -> Kasir": badge menu Pesanan + toast saat ada
   // pesanan baru siap diambil, aktif di semua halaman kasir.
-  const { jumlahSiap, muatUlangSiapDiambil } = useNotifikasiSiapDiambil();
+  const {
+    jumlahSiap,
+    muatUlangSiapDiambil,
+    riwayatNotifikasi,
+    jumlahBelumDibaca,
+    tandaSemuaDibaca,
+  } = useNotifikasiSiapDiambil();
   const [shiftAktif, setShiftAktif] = useState(null);
   const [loadingShift, setLoadingShift] = useState(true);
   const [cart, setCart] = useState([]);
@@ -446,6 +452,9 @@ export function KasirProvider({ children }) {
         setCartNotes,
         siapDiambilCount: jumlahSiap,
         muatUlangSiapDiambil,
+        riwayatNotifikasi,
+        jumlahBelumDibaca,
+        tandaSemuaDibaca,
       }}
     >
       {children}
