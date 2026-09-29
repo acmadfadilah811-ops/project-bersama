@@ -2,9 +2,9 @@
 
 Divisi berikutnya (mis. Operator) yang menolak/meminta revisi sebuah SPK
 mengajukan pengembalian dengan alasan. Pengembalian BARU berlaku setelah
-divisi tujuan (mis. Editor) menerimanya -- lewat Kordiv/SPV divisi itu (atau
-owner/manager/admin). Selama menunggu, job pengaju terkunci (tidak bisa
-dimulai). Dipisah dari JobBoard (X2: model besar tidak diberi kolom baru).
+staff tujuan (PIC tahap sebelumnya, mis. staff Editor) menerimanya -- tanpa
+persetujuan Kordiv/SPV (revisi 2026-09-29); Kordiv/SPV/manajemen hanya
+cadangan. Selama menunggu, job pengaju terkunci (tidak bisa dimulai). Dipisah dari JobBoard (X2: model besar tidak diberi kolom baru).
 """
 from django.conf import settings
 from django.db import models

@@ -4,7 +4,7 @@ import apiClient from '../../../../api/apiClient';
 
 /**
  * Ajukan pengembalian SPK ke tahap sebelumnya (PRD-05 UAT). Alasan wajib.
- * Pengembalian baru berlaku setelah Kordiv/SPV divisi tujuan menerimanya
+ * Pengembalian baru berlaku setelah staff tujuan menerimanya
  * (lihat PengembalianKanbanPanel) -- selama menunggu, SPK ini terkunci.
  */
 export default function KembalikanJobModal({ job, onClose, onSuccess }) {
@@ -48,7 +48,7 @@ export default function KembalikanJobModal({ job, onClose, onSuccess }) {
         <div className="p-4 space-y-3">
           <p className="text-[11px] text-slate-500">
             {job.nama_produk || `Job #${job.id}`} &middot; {job.tahap_nama}. Pengembalian menunggu diterima
-            Kordiv/SPV divisi tujuan; selama itu SPK ini tidak bisa dikerjakan.
+            staff tujuan (yang mengerjakan tahap sebelumnya); selama itu SPK ini tidak bisa dikerjakan.
           </p>
           <label className="block text-[11px] font-bold text-slate-600">
             Alasan pengembalian <span className="text-rose-500">*</span>

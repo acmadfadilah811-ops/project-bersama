@@ -3,8 +3,11 @@
 Alur:
   1. Divisi berikutnya (mis. Operator) `ajukan()` -- alasan wajib. Job pengaju
      jadi 'kendala' (terkunci: tidak bisa dimulai selama menunggu).
-  2. Divisi tujuan (mis. Editor) `terima()` atau `tolak()` lewat Kordiv/SPV
-     divisi itu, atau owner/manager/admin.
+  2. Staff tujuan (PIC tahap sebelumnya, mis. staff Editor) `terima()` atau
+     `tolak()` -- TANPA persetujuan Kordiv/SPV (revisi 2026-09-29: terlalu
+     berbelit). Cadangan bila PIC belum ada/berhalangan: staff lain di divisi
+     tujuan (kalau job tujuan tanpa PIC), Kordiv/SPV divisi itu, atau
+     owner/manager/admin.
      - terima: job tahap sebelumnya dibuka lagi ('antrean', alasan masuk ke
        catatan staff) dan job pengaju kembali 'antrean' (tetap tertahan
        aturan PRD-04 sampai tahap sebelumnya selesai lagi).
@@ -13,6 +16,7 @@ Alur:
 Setiap langkah tercatat di log aktivitas order.
 """
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
@@ -65,12 +69,18 @@ def boleh_mengajukan(user, job):
 
 
 def boleh_memutuskan(user, pengembalian):
-    """Penerima: owner/manager/admin, atau SPV/Kordiv yang divisi timnya
-    mencakup divisi tahap tujuan."""
+    """Penerima utama: staff PIC job tahap tujuan. Cadangan: staff divisi
+    tujuan bila job tujuan tanpa PIC; SPV/Kordiv yang divisi timnya mencakup
+    divisi tujuan; owner/manager/admin."""
     if user.role in ROLE_BEBAS:
         return True
+    tujuan = pengembalian.job_tujuan
+    if tujuan.pic_staff_id:
+        if tujuan.pic_staff_id == user.id:
+            return True
+    elif user.role == 'staff' and tujuan.tahap_id and user.divisi_id == tujuan.tahap.divisi_id:
+        return True
     if user.role in ('spv', 'kordiv'):
-        tujuan = pengembalian.job_tujuan
         return bool(tujuan.tahap_id) and tujuan.tahap.divisi_id in get_subordinate_divisi_ids(user)
     return False
 
@@ -82,9 +92,12 @@ def queryset_untuk_penerima(user):
     )
     if user.role in ROLE_BEBAS:
         return qs
+    kondisi = Q(job_tujuan__pic_staff=user)
+    if user.role == 'staff' and user.divisi_id:
+        kondisi |= Q(job_tujuan__pic_staff__isnull=True, job_tujuan__tahap__divisi_id=user.divisi_id)
     if user.role in ('spv', 'kordiv'):
-        return qs.filter(job_tujuan__tahap__divisi_id__in=get_subordinate_divisi_ids(user))
-    return qs.none()
+        kondisi |= Q(job_tujuan__tahap__divisi_id__in=get_subordinate_divisi_ids(user))
+    return qs.filter(kondisi)
 
 
 @transaction.atomic
@@ -124,7 +137,7 @@ def _ambil_menunggu(user, pk):
     if pengembalian.status != PengembalianJob.Status.MENUNGGU:
         raise ValidationError({'error': f"Permintaan ini sudah {pengembalian.get_status_display().lower()}."})
     if not boleh_memutuskan(user, pengembalian):
-        raise PermissionDenied('Hanya Kordiv/SPV divisi tujuan (atau manajemen) yang dapat memutuskan.')
+        raise PermissionDenied('Hanya staff tujuan (PIC tahap sebelumnya) yang dapat memutuskan pengembalian ini.')
     return pengembalian
 
 

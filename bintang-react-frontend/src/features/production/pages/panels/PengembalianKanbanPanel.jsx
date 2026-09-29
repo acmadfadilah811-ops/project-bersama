@@ -5,9 +5,11 @@ import apiClient from '../../../../api/apiClient';
 /**
  * Kanban khusus Pengembalian Pekerjaan (PRD-05 UAT, 2026-09-29).
  *
- * arah='masuk'  : permintaan yang dialamatkan ke divisi saya -- Kordiv/SPV
- *                 (atau manajemen) memutuskan Terima / Tolak + catatan.
- * arah='keluar' : permintaan yang saya ajukan (staff), hanya dipantau.
+ * arah='masuk'  : permintaan yang dialamatkan ke SAYA (staff PIC tahap
+ *                 sebelumnya) -- saya sendiri memutuskan Terima / Tolak +
+ *                 catatan, tanpa persetujuan Kordiv/SPV (revisi 2026-09-29).
+ *                 Kordiv/SPV/manajemen ikut melihatnya sebagai cadangan.
+ * arah='keluar' : permintaan yang saya ajukan, hanya dipantau.
  *
  * Terima  -> tahap sebelumnya dibuka lagi, alasan masuk ke catatan kerjanya.
  * Tolak   -> catatan WAJIB; SPK pengaju kembali ke antrean dan dilanjutkan.
@@ -122,14 +124,15 @@ function Kartu({ item, bisaMemutuskan, onSelesai }) {
       )}
       {item.status === 'menunggu' && !bisaMemutuskan && (
         <p className="text-[10px] font-semibold text-slate-400 border-t border-slate-100 pt-2">
-          Menunggu keputusan Kordiv/SPV divisi {item.divisi_tujuan}.
+          Menunggu keputusan {item.penerima ? `staff ${item.penerima}` : `staff divisi ${item.divisi_tujuan}`}.
         </p>
       )}
     </div>
   );
 }
 
-export default function PengembalianKanbanPanel({ arah = 'masuk' }) {
+export default function PengembalianKanbanPanel({ arahAwal = 'masuk' }) {
+  const [arah, setArah] = useState(arahAwal);
   const [daftar, setDaftar] = useState([]);
   const [memuat, setMemuat] = useState(true);
   const [error, setError] = useState('');
@@ -157,17 +160,34 @@ export default function PengembalianKanbanPanel({ arah = 'masuk' }) {
 
   return (
     <div className="h-full flex flex-col space-y-3 pb-4 max-w-[1400px] mx-auto min-h-0">
-      <div className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between shrink-0 shadow-sm">
+      <div className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between gap-3 shrink-0 shadow-sm">
         <div>
           <h1 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
             <Undo2 size={13} className="text-slate-500" />
-            {bisaMemutuskan ? 'Pengembalian Pekerjaan Masuk' : 'Pengembalian yang Saya Ajukan'}
+            Pengembalian SPK
           </h1>
           <p className="text-[10px] text-slate-500 font-medium">
             {bisaMemutuskan
-              ? 'SPK yang dikembalikan divisi berikutnya ke tahap Anda. Terima untuk membuka ulang, atau tolak dengan catatan.'
-              : 'Pantau keputusan divisi tujuan atas pengembalian yang Anda ajukan.'}
+              ? 'SPK yang dikembalikan tahap berikutnya ke Anda. Terima untuk membuka ulang, atau tolak dengan catatan. Tidak perlu persetujuan Kordiv/SPV.'
+              : 'Pantau keputusan staff tujuan atas pengembalian yang Anda ajukan.'}
           </p>
+        </div>
+        <div className="ml-auto flex items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-[10.5px] font-extrabold">
+          {[
+            { id: 'masuk', label: 'Masuk ke saya' },
+            { id: 'keluar', label: 'Yang saya ajukan' },
+          ].map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setArah(t.id)}
+              className={`px-2.5 py-1 rounded-md cursor-pointer ${
+                arah === t.id ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
         <button
           type="button"

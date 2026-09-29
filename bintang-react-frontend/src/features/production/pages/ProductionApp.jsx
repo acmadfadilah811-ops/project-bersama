@@ -457,7 +457,7 @@ export default function ProductionApp() {
         case 'kanban_global':
           return <KanbanGlobalPanel />;
         case 'pengembalian':
-          return <PengembalianKanbanPanel arah="masuk" />;
+          return <PengembalianKanbanPanel />;
         case 'global_list':
           return <GlobalListPanel />;
         case 'inventory':
@@ -499,7 +499,7 @@ export default function ProductionApp() {
         case 'kanban_personal':
           return renderKanbanPersonal();
         case 'pengembalian':
-          return <PengembalianKanbanPanel arah="masuk" />;
+          return <PengembalianKanbanPanel />;
         case 'logs':
           return <ActivityLogsPanel logs={logs} />;
         case 'tim_saya':
@@ -516,7 +516,7 @@ export default function ProductionApp() {
         case 'log_mesin_saya':
           return <LogPenggunaanMesinPanel mode="staff" currentUser={user} />;
         case 'pengembalian':
-          return <PengembalianKanbanPanel arah="keluar" />;
+          return <PengembalianKanbanPanel />;
         case 'logs':
           return <ActivityLogsPanel logs={logs} />;
         default:
@@ -564,7 +564,7 @@ export default function ProductionApp() {
     menuItems = [
       { id: 'claim_pool', label: 'Antrean Global', icon: Inbox },
       { id: 'kanban_personal', label: 'Pekerjaan Saya', icon: ClipboardList },
-      { id: 'pengembalian', label: 'Pengembalian Saya', icon: Undo2 },
+      { id: 'pengembalian', label: 'Pengembalian SPK', icon: Undo2 },
       { id: 'log_mesin_saya', label: 'Riwayat Mesin Saya', icon: History },
       { id: 'logs', label: 'Log Aktivitas', icon: Bell },
     ];

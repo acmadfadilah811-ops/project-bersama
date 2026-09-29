@@ -1,5 +1,5 @@
 """PRD-05 UAT (2026-09-29): pengembalian pekerjaan ke tahap sebelumnya wajib
-alasan dan baru berlaku setelah diterima Kordiv/SPV divisi tujuan."""
+alasan dan baru berlaku setelah diterima staff tujuan (bukan Kordiv/SPV)."""
 
 from django.urls import reverse
 from django.utils import timezone
@@ -31,8 +31,15 @@ class PengembalianJobTest(APITestCase):
         cls.operator = CustomUser.objects.create_user(
             username='op.op05', password='rahasia123', role='staff', divisi=div_operator, atasan=cls.kordiv_operator,
         )
+        cls.staff_lain_op = CustomUser.objects.create_user(
+            username='staff2.op05', password='rahasia123', role='staff', divisi=div_operator, atasan=cls.kordiv_operator,
+        )
+        cls.staff_editor_lain = CustomUser.objects.create_user(
+            username='staff2.ed05', password='rahasia123', role='staff', divisi=div_editor, atasan=cls.kordiv_editor,
+        )
         cls.manager = CustomUser.objects.create_user(username='mgr.prd05', password='rahasia123', role='manager')
-        for u in (cls.kordiv_editor, cls.kordiv_operator, cls.operator, cls.staff_editor):
+        for u in (cls.kordiv_editor, cls.kordiv_operator, cls.operator, cls.staff_editor,
+                  cls.staff_lain_op, cls.staff_editor_lain):
             Absensi.objects.create(staff=u, tanggal=timezone.localdate(), jam_masuk=timezone.now())
 
         cls.order = Order.objects.create(id='ORD-PRD05', nama='Budi', nomor_wa='628111', sumber='manual')
@@ -90,11 +97,12 @@ class PengembalianJobTest(APITestCase):
     def test_staff_lain_tidak_bisa_mengajukan(self):
         self.assertEqual(self._ajukan(user=self.staff_editor).status_code, 403)
 
-    def test_kordiv_divisi_tujuan_menerima_tahap_sebelumnya_dibuka_lagi(self):
+    def test_staff_tujuan_menerima_tahap_sebelumnya_dibuka_lagi(self):
         pid = self._ajukan().data['id']
-        res = self._putuskan('terima', pid, self.kordiv_editor, 'Siap diperbaiki')
+        res = self._putuskan('terima', pid, self.staff_editor, 'Siap diperbaiki')
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.data['status'], 'diterima')
+        self.assertEqual(res.data['penerima'], 'staff.ed05')
         self.job_editor.refresh_from_db()
         self.job_op.refresh_from_db()
         self.assertEqual(self.job_editor.status_pekerjaan, 'antrean')
@@ -105,7 +113,7 @@ class PengembalianJobTest(APITestCase):
 
     def test_operator_tetap_tertahan_sampai_editor_selesai_lagi(self):
         pid = self._ajukan().data['id']
-        self._putuskan('terima', pid, self.kordiv_editor)
+        self._putuskan('terima', pid, self.staff_editor)
         self.client.force_authenticate(self.operator)
         mulai = self.client.post(reverse('job-start', args=[self.job_op.id]), secure=True)
         self.assertEqual(mulai.status_code, 400)
@@ -113,8 +121,8 @@ class PengembalianJobTest(APITestCase):
 
     def test_tolak_wajib_catatan_dan_job_kembali_ke_antrean(self):
         pid = self._ajukan().data['id']
-        self.assertEqual(self._putuskan('tolak', pid, self.kordiv_editor, '').status_code, 400)
-        res = self._putuskan('tolak', pid, self.kordiv_editor, 'Desain sudah sesuai brief')
+        self.assertEqual(self._putuskan('tolak', pid, self.staff_editor, '').status_code, 400)
+        res = self._putuskan('tolak', pid, self.staff_editor, 'Desain sudah sesuai brief')
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.data['status'], 'ditolak')
         self.job_op.refresh_from_db()
@@ -124,24 +132,47 @@ class PengembalianJobTest(APITestCase):
 
     def test_hanya_penerima_yang_berwenang_memutuskan(self):
         pid = self._ajukan().data['id']
-        # Kordiv Operator (pengaju) dan operator sendiri tidak boleh menerima.
-        self.assertEqual(self._putuskan('terima', pid, self.kordiv_operator).status_code, 403)
+        # Pengaju sendiri, Kordiv pengaju, dan staff divisi lain tidak boleh.
         self.assertEqual(self._putuskan('terima', pid, self.operator).status_code, 403)
-        self.assertEqual(self._putuskan('terima', pid, self.manager).status_code, 200)
+        self.assertEqual(self._putuskan('terima', pid, self.kordiv_operator).status_code, 403)
+        self.assertEqual(self._putuskan('terima', pid, self.staff_lain_op).status_code, 403)
+        # Staff tujuan (PIC) boleh tanpa Kordiv/SPV.
+        self.assertEqual(self._putuskan('terima', pid, self.staff_editor).status_code, 200)
+
+    def test_kordiv_tujuan_dan_manajemen_hanya_cadangan(self):
+        pid1 = self._ajukan().data['id']
+        self.assertEqual(self._putuskan('terima', pid1, self.kordiv_editor).status_code, 200)
+        # Ajukan lagi -> manager juga bisa jadi cadangan.
+        self.job_op.refresh_from_db()
+        self.job_op.status_pekerjaan = 'dikerjakan'
+        self.job_op.save()
+        self.job_editor.status_pekerjaan = 'selesai'
+        self.job_editor.save()
+        pid2 = self._ajukan().data['id']
+        self.assertEqual(self._putuskan('terima', pid2, self.manager).status_code, 200)
+
+    def test_job_tujuan_tanpa_pic_bisa_diputuskan_staff_divisi_tujuan(self):
+        self.job_editor.pic_staff = None
+        self.job_editor.save()
+        pid = self._ajukan().data['id']
+        self.assertEqual(self._putuskan('terima', pid, self.staff_lain_op).status_code, 403)
+        self.assertEqual(self._putuskan('tolak', pid, self.staff_editor_lain, 'Sudah sesuai').status_code, 200)
 
     def test_tidak_bisa_diputuskan_dua_kali(self):
         pid = self._ajukan().data['id']
-        self._putuskan('terima', pid, self.kordiv_editor)
-        self.assertEqual(self._putuskan('tolak', pid, self.kordiv_editor, 'x').status_code, 400)
+        self._putuskan('terima', pid, self.staff_editor)
+        self.assertEqual(self._putuskan('tolak', pid, self.staff_editor, 'x').status_code, 400)
 
-    def test_kanban_masuk_hanya_untuk_divisi_tujuan(self):
+    def test_kanban_masuk_untuk_staff_tujuan_saja(self):
         self._ajukan()
-        self.client.force_authenticate(self.kordiv_editor)
+        self.client.force_authenticate(self.staff_editor)
         masuk = self.client.get(reverse('pengembalian_job_list'), {'arah': 'masuk'}, secure=True)
         self.assertEqual(len(masuk.data), 1)
-        self.client.force_authenticate(self.kordiv_operator)
-        lain = self.client.get(reverse('pengembalian_job_list'), {'arah': 'masuk'}, secure=True)
-        self.assertEqual(len(lain.data), 0)
+        self.assertEqual(masuk.data[0]['penerima'], 'staff.ed05')
+        for lain in (self.kordiv_operator, self.staff_lain_op):
+            self.client.force_authenticate(lain)
+            kosong = self.client.get(reverse('pengembalian_job_list'), {'arah': 'masuk'}, secure=True)
+            self.assertEqual(len(kosong.data), 0)
         self.client.force_authenticate(self.operator)
         keluar = self.client.get(reverse('pengembalian_job_list'), {'arah': 'keluar'}, secure=True)
         self.assertEqual(len(keluar.data), 1)

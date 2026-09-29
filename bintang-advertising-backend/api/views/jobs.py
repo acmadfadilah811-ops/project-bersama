@@ -67,7 +67,7 @@ def tahap_sebelumnya_belum_selesai(job):
 
 _PESAN_MENUNGGU_PENGEMBALIAN = (
     "Belum bisa dimulai: pengembalian ke tahap sebelumnya masih menunggu keputusan "
-    "Kordiv/SPV divisi tujuan."
+    "staff tujuan."
 )
 
 

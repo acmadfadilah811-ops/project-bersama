@@ -3,7 +3,7 @@ Logika ada di api/services/pengembalian_job.py.
 
 POST /api/jobs/{id}/kembalikan/                  {alasan}
 GET  /api/pengembalian-job/?arah=masuk|keluar&status=menunggu|diterima|ditolak|semua
-POST /api/pengembalian-job/{id}/terima/          {catatan?}
+POST /api/pengembalian-job/{id}/terima/          {catatan?}  (staff tujuan, tanpa Kordiv/SPV)
 POST /api/pengembalian-job/{id}/tolak/           {catatan}   (wajib)
 """
 from rest_framework import status
@@ -38,6 +38,7 @@ def _data(p):
         'tahap_asal': job.tahap.nama if job.tahap else None,
         'tahap_tujuan': tujuan.tahap.nama if tujuan.tahap else None,
         'divisi_tujuan': tujuan.tahap.divisi.nama if tujuan.tahap else None,
+        'penerima': tujuan.pic_staff.username if tujuan.pic_staff else None,
         'diajukan_oleh': p.diajukan_oleh.username if p.diajukan_oleh else None,
         'diajukan_pada': p.diajukan_pada,
         'diputuskan_oleh': p.diputuskan_oleh.username if p.diputuskan_oleh else None,
@@ -66,10 +67,11 @@ class PengembalianJobListView(APIView):
         arah = request.query_params.get('arah', 'masuk')
         if arah == 'keluar':
             qs = PengembalianJob.objects.filter(diajukan_oleh=user).select_related(
-                'job__tahap', 'job_tujuan__tahap__divisi', 'diajukan_oleh', 'diputuskan_oleh',
+                'job__tahap', 'job_tujuan__tahap__divisi', 'job_tujuan__pic_staff',
+                'diajukan_oleh', 'diputuskan_oleh',
             )
         else:
-            qs = svc.queryset_untuk_penerima(user).select_related('diputuskan_oleh')
+            qs = svc.queryset_untuk_penerima(user).select_related('job_tujuan__pic_staff', 'diputuskan_oleh')
         status_param = request.query_params.get('status', 'menunggu')
         if status_param in dict(PengembalianJob.Status.choices):
             qs = qs.filter(status=status_param)
@@ -85,6 +87,7 @@ class KeputusanPengembalianView(APIView):
         fungsi = svc.terima if self.aksi == 'terima' else svc.tolak
         p = fungsi(request.user, pk, catatan)
         p = PengembalianJob.objects.select_related(
-            'job__tahap', 'job_tujuan__tahap__divisi', 'diajukan_oleh', 'diputuskan_oleh',
+            'job__tahap', 'job_tujuan__tahap__divisi', 'job_tujuan__pic_staff',
+            'diajukan_oleh', 'diputuskan_oleh',
         ).get(pk=p.pk)
         return Response(_data(p))
