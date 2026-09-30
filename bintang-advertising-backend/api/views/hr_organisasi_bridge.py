@@ -12,7 +12,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ..services import hr_organisasi as svc
-from .hr_bridge import HRBridgeThrottle, _cek_hr_bridge_api_key
+from .hr_bridge import HRBridgeThrottle, _cek_hr_bridge_api_key, _map_job_position_ke_role
 
 
 class HROrganisasiView(APIView):
@@ -41,6 +41,11 @@ class HROrganisasiView(APIView):
                 departemen = str(request.data.get('departemen') or '').strip()
                 if svc.dilewati(departemen):
                     return Response({'skipped': True, 'reason': f"Departemen '{departemen}' tidak bekerja di Bintang."})
+                # Tahap proses = tahap KERJA produksi: hanya untuk jabatan staff. Peran
+                # jabatan milik SPV/Kordiv/Kasir/Manager dst bukan tahap, jadi dilewati.
+                jabatan = str(request.data.get('jabatan') or '').strip()
+                if jabatan and _map_job_position_ke_role(jabatan) != 'staff':
+                    return Response({'skipped': True, 'reason': f"Jabatan '{jabatan}' bukan staff produksi, tidak dibuat tahap."})
                 if not departemen or not request.data.get('departemen_hr_id'):
                     return Response({'error': "Field 'departemen' dan 'departemen_hr_id' wajib diisi."}, status=status.HTTP_400_BAD_REQUEST)
                 tahap = svc.sinkron_peran_jabatan(

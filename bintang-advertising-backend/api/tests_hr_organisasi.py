@@ -3,6 +3,7 @@ dan staff baru otomatis masuk divisi departemennya (2026-09-30)."""
 import os
 from unittest import mock
 
+from django.core.cache import cache
 from rest_framework.test import APITestCase
 
 from .models import CustomUser, Divisi, TahapProses, UnitBisnis
@@ -12,6 +13,7 @@ URL = '/api/bridge/hr-organisasi/'
 
 class HROrganisasiBridgeTests(APITestCase):
     def setUp(self):
+        cache.clear()  # throttle 30/menit dibagi antar tes
         env = mock.patch.dict(os.environ, {'HR_BRIDGE_API_KEY': 'kunci-uji'})
         env.start()
         self.addCleanup(env.stop)
@@ -102,6 +104,12 @@ class HROrganisasiBridgeTests(APITestCase):
         self.assertEqual(TahapProses.objects.filter(hr_job_role_id=9).count(), 1)
         self.assertEqual(TahapProses.objects.get(hr_job_role_id=9).nama, 'Operator Cetak')
 
+    def test_peran_jabatan_milik_spv_kordiv_kasir_tidak_jadi_tahap(self):
+        for hr_id, jabatan in ((40, 'SPV Digital Printing'), (41, 'Kordiv A3'), (42, 'Kasir Foto'), (43, 'Manager')):
+            res = self.peran(hr_id=hr_id, nama=f'Peran {jabatan}', jabatan=jabatan)
+            self.assertTrue(res.data.get('skipped'), jabatan)
+            self.assertFalse(TahapProses.objects.filter(hr_job_role_id=hr_id).exists(), jabatan)
+
     def test_peran_jabatan_departemen_sales_dilewati(self):
         res = self.peran(hr_id=12, nama='Sales', departemen='Sales Marketing & Creative')
         self.assertTrue(res.data.get('skipped'))
@@ -113,6 +121,7 @@ class HROrganisasiBridgeTests(APITestCase):
 
 class StaffMasukDivisiDepartemenTests(APITestCase):
     def setUp(self):
+        cache.clear()  # throttle 30/menit dibagi antar tes
         env = mock.patch.dict(os.environ, {'HR_BRIDGE_API_KEY': 'kunci-uji'})
         env.start()
         self.addCleanup(env.stop)
