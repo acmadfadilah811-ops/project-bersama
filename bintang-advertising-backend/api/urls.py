@@ -2,6 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
 from .views.pengembalian_job import KembalikanJobView, PengembalianJobListView, KeputusanPengembalianView
+from .views.hr_hapus_bridge import HRBridgeHapusAkunView
 from .views.hr_organisasi_bridge import HROrganisasiView
 from .views.insentif import JenisInsentifViewSet, JobInsentifView, InsentifPekerjaanDetailView
 from .views import DashboardView, CreateUserView, AssignOrderView, ForwardJobView, InventoryRestockView, JobMaterialDeductView, EvolutionWebhookView, BusinessSettingsView, StaffPerformanceReportView, HealthCheckView, KomplainViewSet, ContactStatsView, ProductionCustomerLiteView
@@ -210,6 +211,7 @@ urlpatterns = [
     # buat karyawan baru/approve rekrutmen (lihat api/views/hr_bridge.py).
     path('bridge/hr-employee/', HRBridgeCreateAccountView.as_view(), name='hr-bridge-create-account'),
     path('bridge/hr-organisasi/', HROrganisasiView.as_view(), name='hr-bridge-organisasi'),
+    path('bridge/hr-employee-hapus/', HRBridgeHapusAkunView.as_view(), name='hr-bridge-hapus-akun'),
     path('bridge/hr-employee-status/', HRBridgeSetStatusView.as_view(), name='hr-bridge-set-status'),
     path('bridge/absensi-status/', AbsensiStatusView.as_view(), name='hr-bridge-absensi-status'),
     path('bridge/kinerja-staff/', KinerjaStaffView.as_view(), name='hr-bridge-kinerja-staff'),
