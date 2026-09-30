@@ -35,6 +35,9 @@ class Divisi(models.Model):
     unit_bisnis = models.ForeignKey(
         'UnitBisnis', on_delete=models.SET_NULL, null=True, blank=True, related_name='divisi',
     )
+    # Tertaut ke Departemen HR (jembatan HR -> Bintang, 2026-09-30): Departemen
+    # yang dibuat/diganti namanya di HR otomatis membuat/mengubah Divisi ini.
+    hr_department_id = models.IntegerField(null=True, blank=True, unique=True, help_text='ID Departemen di HR (diisi otomatis oleh jembatan HR)')
 
     def __str__(self):
         return self.nama
@@ -46,6 +49,8 @@ class TahapProses(models.Model):
     nama = models.CharField(max_length=100, unique=True) # Misal: Setting Desain, Cetak Spanduk, Finishing Mata Ayam
     divisi = models.ForeignKey(Divisi, on_delete=models.CASCADE, related_name='tahapan')
     urutan = models.IntegerField(default=1, help_text="Urutan jalannya proses (angka kecil didahului, misal 1: Desain, 2: Cetak)")
+    # Tertaut ke Peran Jabatan (Job Role) di HR -- lihat Divisi.hr_department_id.
+    hr_job_role_id = models.IntegerField(null=True, blank=True, unique=True, help_text='ID Peran Jabatan di HR (diisi otomatis oleh jembatan HR)')
 
     class Meta:
         ordering = ['urutan']

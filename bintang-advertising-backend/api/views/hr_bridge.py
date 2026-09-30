@@ -80,6 +80,20 @@ def _buat_username_unik(nama_depan: str, nama_belakang: str) -> str:
     return username
 
 
+def _isi_divisi_dari_departemen(user, departemen):
+    """Staff/Kordiv baru otomatis masuk Divisi yang berasal dari departemennya di
+    HR (lihat services/hr_organisasi.py). Hanya mengisi yang masih kosong -- divisi
+    yang sudah diatur manual tidak ditimpa; SPV/lainnya tidak diberi divisi."""
+    if user.role not in ('staff', 'kordiv') or user.divisi_id:
+        return
+    from ..services.hr_organisasi import divisi_untuk_departemen
+    divisi = divisi_untuk_departemen(departemen)
+    if divisi:
+        user.divisi = divisi
+        if not user.unit_bisnis_id and divisi.unit_bisnis_id:
+            user.unit_bisnis = divisi.unit_bisnis
+
+
 class HRBridgeThrottle(AnonRateThrottle):
     """Rate limit longgar tapi ada -- endpoint ini dipanggil per event
     penambahan/perubahan data kerja karyawan, bukan traffic tinggi."""
@@ -139,7 +153,8 @@ class HRBridgeCreateAccountView(APIView):
         job_position = str(request.data.get('job_position') or '').strip()
         role = 'sales' if tanpa_login else _map_job_position_ke_role(job_position)
 
-        unit_bisnis_nama = DEPARTEMEN_KE_UNIT_BISNIS.get(department.lower())
+        # Unit bisnis dipilih di form Departemen HR; kosong -> pemetaan bawaan.
+        unit_bisnis_nama = str(request.data.get('unit_bisnis') or '').strip() or DEPARTEMEN_KE_UNIT_BISNIS.get(department.lower())
         unit_bisnis = UnitBisnis.objects.filter(nama=unit_bisnis_nama).first() if unit_bisnis_nama else None
 
         # Dicari lewat hr_employee_id atasan (bukan ID Bintang -- HR tidak
@@ -167,6 +182,7 @@ class HRBridgeCreateAccountView(APIView):
             existing.unit_bisnis = unit_bisnis
             if atasan:
                 existing.atasan = atasan
+            _isi_divisi_dari_departemen(existing, department)
             existing.save()
             return Response({
                 'id': existing.id, 'username': existing.username, 'role': existing.role,
@@ -218,6 +234,7 @@ class HRBridgeCreateAccountView(APIView):
             user.set_unusable_password()
         else:
             user.set_password(password_diminta or password_sementara)
+        _isi_divisi_dari_departemen(user, department)
         user.save()
 
         hasil = {
