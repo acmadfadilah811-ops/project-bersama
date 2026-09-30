@@ -134,7 +134,6 @@ export function useJobsData() {
     setSaving(true);
     const payload = {
       status_pekerjaan: formData.status_pekerjaan,
-      insentif: parseInt(formData.insentif || 0),
     };
     // FIX: Sertakan tahap jika diubah (hanya manager)
     if (isManager && formData.tahap) {

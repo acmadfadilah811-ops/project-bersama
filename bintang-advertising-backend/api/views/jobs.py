@@ -387,9 +387,16 @@ class JobBoardViewSet(viewsets.ModelViewSet):
                 from rest_framework.exceptions import ValidationError as DRFValidationError
                 raise DRFValidationError({"status_pekerjaan": _pesan_tahap_belum_selesai(sebelumnya)})
         
+        # Insentif diubah lewat rincian (services/insentif_pekerjaan), bukan
+        # ditimpa langsung -- kalau tidak, baris rincian & total jadi selisih.
+        insentif_baru = serializer.validated_data.pop('insentif', None)
+
         # Simpan pembaruan
         serializer.instance._current_user = self.request.user
         job = serializer.save()
+        if insentif_baru is not None and insentif_baru != old_instance.insentif:
+            from ..services import insentif_pekerjaan
+            insentif_pekerjaan.atur_total(job, insentif_baru, self.request.user)
         new_status = job.status_pekerjaan
         
         # Jalankan logika sinkronisasi jika status berubah
@@ -505,6 +512,7 @@ class JobBoardViewSet(viewsets.ModelViewSet):
                 'penggunaan_mesin',
                 queryset=PenggunaanMesin.objects.select_related('mesin').order_by('-waktu'),
             ),
+            'rincian_insentif',
         ).order_by('-id')
 
         # Owner, Manager & Admin bisa lihat semua job

@@ -53,6 +53,7 @@ const PENGATURAN_GROUP = {
     { path: '/settings/point-of-sale', label: 'Point Of Sale', icon: CreditCard },
     { path: '/settings/notifikasi', label: 'Notifikasi', icon: Bell },
     { path: '/settings/sistem-stok', label: 'Sistem Stok', icon: Boxes },
+    { path: '/settings/insentif', label: 'Jenis Insentif', icon: Gift },
   ],
 };
 

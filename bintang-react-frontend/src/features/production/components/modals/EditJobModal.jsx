@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { STAFF_COLUMNS } from '../jobConstants';
+import InsentifRincian from '../InsentifRincian';
 
 /**
  * EditJobModal — Modal edit info job.
@@ -15,13 +16,13 @@ export default function EditJobModal({
   isManager,
   onSubmit,
   onClose,
+  onInsentifChanged,
 }) {
   // State form lokal
   const [formData, setFormData] = useState({
     status_pekerjaan: job?.status_pekerjaan || 'antrean',
     tahap: job?.tahap || '',
     pic_staff: job?.pic_staff || '',
-    insentif: job?.insentif || 0,
   });
 
   if (!job) return null;
@@ -131,20 +132,8 @@ export default function EditJobModal({
                 </select>
               </div>
 
-              {/* Insentif */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Ubah Insentif (Rp)
-                </label>
-                <input
-                  type="number"
-                  value={formData.insentif}
-                  onChange={(e) => setFormData((f) => ({ ...f, insentif: e.target.value }))}
-                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  placeholder="0"
-                  min="0"
-                />
-              </div>
+              {/* Insentif: rincian per SPK, tersimpan langsung ke server */}
+              <InsentifRincian job={job} editable onChanged={onInsentifChanged} />
             </>
           )}
 

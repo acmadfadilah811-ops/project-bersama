@@ -26,6 +26,7 @@ const LABELS = {
   '/settings/point-of-sale': 'Pengaturan',
   '/settings/notifikasi': 'Pengaturan',
   '/settings/sistem-stok': 'Pengaturan',
+  '/settings/insentif': 'Pengaturan',
   '/settings/cetak': 'Pengaturan',
 };
 

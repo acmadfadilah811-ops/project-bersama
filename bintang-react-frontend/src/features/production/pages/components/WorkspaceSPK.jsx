@@ -353,7 +353,8 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
       await apiClient.patch(`/jobs/${job.id}/`, {
         gdrive_output_link: driveLink,
         catatan_staff: combinedNotes,
-        ...(bolehAturNominal ? { biaya_desain: designFee, insentif: incentive } : {}),
+        ...(bolehAturNominal ? { biaya_desain: designFee } : {}),
+        ...(bolehAturNominal && incentive !== (job?.insentif || 0) ? { insentif: incentive } : {}),
       });
       alert('Draft lembar kerja berhasil disimpan!');
     } catch (err) {
@@ -578,6 +579,21 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
                   />
                 </td>
               </tr>
+              {(job?.rincian_insentif || []).length > 0 && (
+                <tr className="h-7">
+                  <td className="bg-[#f3f3f3] text-center font-bold text-[9px] text-slate-400 border border-[#ccc] select-none w-8">
+                    5a
+                  </td>
+                  <td className="bg-[#f9f9f9] px-2 font-extrabold text-slate-500 border border-[#ccc] uppercase">
+                    RINCIAN INSENTIF
+                  </td>
+                  <td colSpan={3} className="px-2 py-1 text-slate-700 border border-[#ccc] bg-white">
+                    {job.rincian_insentif
+                      .map((r) => `${r.nama} Rp ${Number(r.nominal || 0).toLocaleString('id-ID')}`)
+                      .join('  ·  ')}
+                  </td>
+                </tr>
+              )}
               {(() => {
                 const konsep = getKonsepDesain(item.detail);
                 if (konsep) {

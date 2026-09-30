@@ -235,10 +235,20 @@ class JobBoardSerializer(serializers.ModelSerializer):
     # 'penggunaan_mesin' di JobBoardViewSet.get_queryset() -- JANGAN query
     # ulang di sini (N+1).
     penggunaan_mesin_ringkas = serializers.SerializerMethodField()
+    # Rincian insentif per SPK (master Jenis Insentif, 2026-09-30): dibaca
+    # staff di papan kerjanya, hanya Manager yang mengubah (endpoint terpisah).
+    rincian_insentif = serializers.SerializerMethodField()
 
     class Meta:
         model = JobBoard
         fields = '__all__'
+
+    def get_rincian_insentif(self, obj):
+        return [
+            {'id': r.id, 'jenis': r.jenis_id, 'nama': r.nama, 'nominal': r.nominal,
+             'catatan': r.catatan, 'otomatis': r.otomatis}
+            for r in obj.rincian_insentif.all()
+        ]
 
     def get_penggunaan_mesin_ringkas(self, obj):
         entries = obj.penggunaan_mesin.all() if hasattr(obj, 'penggunaan_mesin') else []
@@ -452,12 +462,14 @@ class OrderItemSerializer(serializers.ModelSerializer):
         if insentif_val is not None or biaya_desain_val is not None:
             jobs = instance.jobs.all()
             if jobs.exists():
+                from .services import insentif_pekerjaan
                 for job in jobs:
-                    if insentif_val is not None:
-                        job.insentif = insentif_val
                     if biaya_desain_val is not None:
                         job.biaya_desain = biaya_desain_val
-                    job.save()
+                        job.save()
+                    # Insentif lewat rincian (baris manual); SPK selesai terkunci.
+                    if insentif_val is not None and job.status_pekerjaan != 'selesai' and job.insentif != insentif_val:
+                        insentif_pekerjaan.atur_total(job, insentif_val, current_user)
             else:
                 from api.models import TahapProses, JobBoard
                 tahap_awal = TahapProses.objects.order_by('urutan').first()

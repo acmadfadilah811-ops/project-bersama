@@ -36,6 +36,14 @@ export default function JobCard({ job, orderInfo, onOpenWorkspace, ambangAntrean
       <div className="mt-1 flex flex-wrap gap-1">
         <DeadlineBadge deadline={job?.deadline} />
         <JobMacetBadge job={job} ambangAntreanJam={ambangAntreanJam} ambangDikerjakanJam={ambangDikerjakanJam} />
+        {job?.insentif > 0 && (
+          <span
+            className="inline-flex items-center rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-bold text-slate-600"
+            title={(job.rincian_insentif || []).map((r) => `${r.nama}: Rp ${Number(r.nominal).toLocaleString('id-ID')}`).join('\n')}
+          >
+            Insentif Rp {Number(job.insentif).toLocaleString('id-ID')}
+          </span>
+        )}
       </div>
       {orderInfo?.desainSusulan && (
         <div className="mt-2 flex items-center gap-1.5 bg-cyan-50 border border-cyan-150 rounded px-1.5 py-0.5 w-fit">

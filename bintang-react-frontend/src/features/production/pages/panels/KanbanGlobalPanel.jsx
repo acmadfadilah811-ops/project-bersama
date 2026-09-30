@@ -238,6 +238,7 @@ export default function KanbanGlobalPanel() {
           else alert(result.error);
         }}
         onClose={() => setEditJob(null)}
+        onInsentifChanged={() => fetchData(true)}
       />
 
       {workspaceJob && (

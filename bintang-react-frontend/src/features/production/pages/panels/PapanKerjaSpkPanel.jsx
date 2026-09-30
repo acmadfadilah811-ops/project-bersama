@@ -509,6 +509,7 @@ export default function PapanKerjaSpkPanel() {
           else alert(result.error);
         }}
         onClose={() => setEditJob(null)}
+        onInsentifChanged={() => fetchData(true)}
       />
     </div>
   );

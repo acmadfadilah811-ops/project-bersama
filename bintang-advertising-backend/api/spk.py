@@ -202,6 +202,12 @@ def terbitkan(items, *, field, tahap, staff, biaya_desain=0, insentif=0, deadlin
                 'waktu_selesai': None,
             },
         )
+        # Rincian insentif: angka manual (kalau ada) + baris otomatis dari master
+        # Jenis Insentif divisi tujuan (lihat services/insentif_pekerjaan.py).
+        from .services import insentif_pekerjaan
+        if insentif:
+            insentif_pekerjaan.set_baris_manual(job, insentif)
+        insentif_pekerjaan.terapkan_otomatis(job)
         dibuat.append({'job_id': job.id, 'item': job.nama_produk, 'created': created})
     return dibuat
 
