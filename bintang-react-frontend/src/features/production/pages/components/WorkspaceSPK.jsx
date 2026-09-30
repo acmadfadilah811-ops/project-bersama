@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Play, CheckCircle, Save, Trash, ChevronLeft, Download, RefreshCw, Plus, Search, AlertTriangle, Check, AlertCircle, X, Settings2, Loader2 } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
+import { useAuth } from '../../../../context/AuthContext';
 import KomplainModal from '../../../orders/components/KomplainModal';
 import DeadlineBadge from '../../components/DeadlineBadge';
 import { uiConfirm } from '../../../../utils/dialog';
@@ -31,6 +32,10 @@ const FREE_ROWS = 20;
 const mkEmpty = () => Array.from({ length: FREE_ROWS }, () => Array(COLS.length).fill(''));
 
 export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving }) {
+  // Nominal insentif & biaya desain hanya ditetapkan Owner/Manager/Admin; staff
+  // hanya melihat (server juga menolak perubahan dari role lain).
+  const { user } = useAuth();
+  const bolehAturNominal = ['owner', 'manager', 'admin'].includes(user?.role?.toLowerCase());
   const [driveLink, setDriveLink] = useState(job?.gdrive_output_link || '');
   const [designFee, setDesignFee] = useState(job?.biaya_desain || 0);
   const [incentive, setIncentive] = useState(job?.insentif || 0);
@@ -348,8 +353,7 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
       await apiClient.patch(`/jobs/${job.id}/`, {
         gdrive_output_link: driveLink,
         catatan_staff: combinedNotes,
-        biaya_desain: designFee,
-        insentif: incentive,
+        ...(bolehAturNominal ? { biaya_desain: designFee, insentif: incentive } : {}),
       });
       alert('Draft lembar kerja berhasil disimpan!');
     } catch (err) {
@@ -557,18 +561,20 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
                     type="number"
                     value={designFee}
                     onChange={(e) => setDesignFee(parseFloat(e.target.value) || 0)}
-                    className="w-full h-full bg-transparent px-2 outline-none font-bold text-slate-800 border border-transparent focus:border-[#107c41] focus:bg-white"
+                    readOnly={!bolehAturNominal}
+                    className={`w-full h-full bg-transparent px-2 outline-none font-bold text-slate-800 border border-transparent ${bolehAturNominal ? 'focus:border-[#107c41] focus:bg-white' : 'cursor-default bg-slate-50'}`}
                   />
                 </td>
                 <td className="bg-[#f9f9f9] px-2 font-extrabold text-slate-500 border border-[#ccc] uppercase">
-                  ESTIMASI INSENTIF (Rp)
+                  {bolehAturNominal ? 'ESTIMASI INSENTIF (Rp)' : 'INSENTIF (ditetapkan Manager)'}
                 </td>
                 <td className="p-0 border border-[#ccc] bg-white">
                   <input
                     type="number"
                     value={incentive}
                     onChange={(e) => setIncentive(parseFloat(e.target.value) || 0)}
-                    className="w-full h-full bg-transparent px-2 outline-none font-bold text-slate-800 border border-transparent focus:border-[#107c41] focus:bg-white"
+                    readOnly={!bolehAturNominal}
+                    className={`w-full h-full bg-transparent px-2 outline-none font-bold text-slate-800 border border-transparent ${bolehAturNominal ? 'focus:border-[#107c41] focus:bg-white' : 'cursor-default bg-slate-50'}`}
                   />
                 </td>
               </tr>

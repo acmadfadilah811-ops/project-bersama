@@ -374,14 +374,16 @@ class OrderItemSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
+        from . import spk
         current_user = validated_data.pop('_current_user', None)
         request = self.context.get('request')
         insentif_val = 0
         biaya_desain_val = 0
         addon_specs = None
         if request and request.data:
-            try: insentif_val = int(request.data.get('insentif', 0) or 0)
-            except (ValueError, TypeError): pass
+            if spk.boleh_menentukan_insentif(request.user):
+                try: insentif_val = int(request.data.get('insentif', 0) or 0)
+                except (ValueError, TypeError): pass
             try: biaya_desain_val = int(request.data.get('biaya_desain', 0) or 0)
             except (ValueError, TypeError): pass
             addon_specs = request.data.get('addons') or request.data.get('addon_ids')
@@ -427,12 +429,13 @@ class OrderItemSerializer(serializers.ModelSerializer):
         return instance
 
     def update(self, instance, validated_data):
+        from . import spk
         current_user = validated_data.pop('_current_user', None)
         request = self.context.get('request')
         insentif_val = None
         biaya_desain_val = None
         if request and request.data:
-            if 'insentif' in request.data:
+            if 'insentif' in request.data and spk.boleh_menentukan_insentif(request.user):
                 try: insentif_val = int(request.data.get('insentif', 0) or 0)
                 except (ValueError, TypeError): pass
             if 'biaya_desain' in request.data:

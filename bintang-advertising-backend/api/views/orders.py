@@ -1568,10 +1568,9 @@ class AssignOrderView(APIView):
             biaya_desain = int(request.data.get('biaya_desain', 0) or 0)
         except (ValueError, TypeError):
             biaya_desain = 0
-        # Insentif tetap wewenang Manager saja -- SPV/Kordiv boleh menugaskan
-        # pekerjaan tapi tidak boleh menentukan nilai insentifnya (batasan
-        # yang sudah disepakati sebelumnya, tidak berubah).
-        if request.user.role in ('spv', 'kordiv'):
+        # Insentif tetap wewenang Manager saja -- SPV/Kordiv/Kasir boleh
+        # menugaskan pekerjaan tapi tidak boleh menentukan nilai insentifnya.
+        if not spk.boleh_menentukan_insentif(request.user):
             insentif = 0
         else:
             try:

@@ -590,6 +590,9 @@ class POSSaleViewSet(viewsets.ModelViewSet):
         except (TypeError, ValueError):
             return Response({'error': 'biaya_desain dan insentif harus berupa angka.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        # Insentif hanya wewenang Owner/Manager/Admin (kasir tidak boleh).
+        if not spk.boleh_menentukan_insentif(request.user):
+            insentif = 0
 
         try:
             with transaction.atomic():

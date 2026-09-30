@@ -141,6 +141,16 @@ def resolve_tahap(tahap_id=None, divisi_id=None, staff=None, pemohon=None):
     return tahap
 
 
+ROLE_PENENTU_INSENTIF = ('owner', 'manager', 'admin')
+
+
+def boleh_menentukan_insentif(user):
+    """Nominal insentif pekerjaan hanya wewenang Owner/Manager/Admin -- BUKAN
+    staff (tidak boleh mengisi insentifnya sendiri), kasir, SPV, maupun Kordiv.
+    Satu pintu supaya semua jalur penerbitan/ubah SPK memakai aturan sama."""
+    return getattr(user, 'role', None) in ROLE_PENENTU_INSENTIF
+
+
 def terbitkan(items, *, field, tahap, staff, biaya_desain=0, insentif=0, deadline=None):
     """Buat/perbarui JobBoard untuk tiap item.
 
