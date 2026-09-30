@@ -45,6 +45,7 @@ def satukan_kredensial(hr_employee_id, username=None, password=None, hanya_lihat
     ubah = ['username']
     if password and user.has_usable_password():
         user.set_password(password)
+        user._tanpa_sinkron_sandi = True  # sandi ini berasal dari HR
         ubah.append('password')
         _cabut_sesi(user)
     user.save(update_fields=ubah)

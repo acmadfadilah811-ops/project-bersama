@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 from . import views
 from .views.pengembalian_job import KembalikanJobView, PengembalianJobListView, KeputusanPengembalianView
 from .views.hr_hapus_bridge import HRBridgeHapusAkunView
+from .views.hr_sandi_bridge import HRBridgeSandiView
 from .views.hr_kredensial_bridge import HRBridgeKredensialView
 from .views.hr_organisasi_bridge import HROrganisasiView
 from .views.insentif import JenisInsentifViewSet, JobInsentifView, InsentifPekerjaanDetailView
@@ -214,6 +215,7 @@ urlpatterns = [
     path('bridge/hr-organisasi/', HROrganisasiView.as_view(), name='hr-bridge-organisasi'),
     path('bridge/hr-employee-hapus/', HRBridgeHapusAkunView.as_view(), name='hr-bridge-hapus-akun'),
     path('bridge/hr-employee-kredensial/', HRBridgeKredensialView.as_view(), name='hr-bridge-kredensial'),
+    path('bridge/hr-employee-sandi/', HRBridgeSandiView.as_view(), name='hr-bridge-sandi'),
     path('bridge/hr-employee-status/', HRBridgeSetStatusView.as_view(), name='hr-bridge-set-status'),
     path('bridge/absensi-status/', AbsensiStatusView.as_view(), name='hr-bridge-absensi-status'),
     path('bridge/kinerja-staff/', KinerjaStaffView.as_view(), name='hr-bridge-kinerja-staff'),
