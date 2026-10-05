@@ -107,7 +107,7 @@ export default function AddCustomerModal({ onClose, onSaved, groups = [], custom
 
   const handleSave = async () => {
     if (!form.nama.trim() || !form.handphone.trim()) {
-      setError('Nama dan Handphone wajib diisi.');
+      setError('Nama dan Nomor WhatsApp wajib diisi.');
       return;
     }
     setSaving(true);
@@ -145,8 +145,10 @@ export default function AddCustomerModal({ onClose, onSaved, groups = [], custom
     } catch (err) {
       console.error('[AddCustomerModal] save error:', err);
       const data = err.response?.data;
+      // Pesan dari server sudah berbahasa Indonesia (mis. nomor WA sudah dipakai
+      // pelanggan lain) -- tampilkan isinya saja tanpa nama field.
       const msg = data && typeof data === 'object'
-        ? Object.entries(data).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(' | ')
+        ? Object.values(data).map((v) => (Array.isArray(v) ? v.join(', ') : v)).join(' | ')
         : 'Gagal menyimpan pelanggan.';
       setError(msg);
     } finally {
@@ -198,7 +200,7 @@ export default function AddCustomerModal({ onClose, onSaved, groups = [], custom
               </select>
             </Field>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Handphone">
+              <Field label="Nomor WhatsApp">
                 <div className="flex">
                   <span className="flex items-center h-9 px-2.5 rounded-l-md border border-r-0 border-slate-300 bg-slate-50 text-xs font-semibold text-slate-500">+62</span>
                   <input value={form.handphone} onChange={set('handphone')} placeholder="812xxxxxxx" className={`${inputCls} rounded-l-none`} />

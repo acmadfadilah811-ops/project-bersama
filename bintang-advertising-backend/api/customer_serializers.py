@@ -26,6 +26,31 @@ class CustomerSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['dibuat_oleh']
 
+    def validate(self, attrs):
+        """Nomor WA = patokan satu pelanggan (2026-10-05). 0812.. / 62812.. / +62 812-..
+        dianggap sama. Hanya diperiksa saat pelanggan baru dibuat atau nomornya diubah,
+        supaya data lama yang sudah dobel tetap bisa disunting tanpa terblokir."""
+        from .services.pelanggan_nomor import cari_customer_per_nomor, pesan_nomor_terpakai
+        from .services.pos_receipt_whatsapp import normalisasi_nomor_whatsapp
+
+        attrs = super().validate(attrs)
+        if self.instance is None or 'handphone' in attrs:
+            mentah = (attrs.get('handphone') or '').strip()
+            if self.instance is None and not mentah:
+                raise serializers.ValidationError({'handphone': 'Nomor WA wajib diisi.'})
+            tersimpan = (self.instance.handphone or '').strip() if self.instance else None
+            baru = normalisasi_nomor_whatsapp(mentah)
+            # Nomor lama yang memang tidak valid boleh dikirim ulang apa adanya.
+            if mentah and mentah != tersimpan and not baru:
+                raise serializers.ValidationError(
+                    {'handphone': 'Nomor WA tidak valid. Gunakan 8-15 digit, mis. 0812xxxx atau 62812xxxx.'}
+                )
+            if baru and baru != normalisasi_nomor_whatsapp(tersimpan):
+                ada = cari_customer_per_nomor(baru, kecuali_id=self.instance.pk if self.instance else None)
+                if ada:
+                    raise serializers.ValidationError({'handphone': pesan_nomor_terpakai(ada)})
+        return attrs
+
 
 class CustomerNoteTagSerializer(serializers.ModelSerializer):
     class Meta:

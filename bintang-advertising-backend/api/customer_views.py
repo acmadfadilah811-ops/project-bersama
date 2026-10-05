@@ -237,15 +237,32 @@ class CustomerViewSet(ToggleStatusMixin, viewsets.ModelViewSet):
                 status=400,
             )
 
+        from .services.pelanggan_nomor import cari_customer_per_nomor, pesan_nomor_terpakai
+        from .services.pos_receipt_whatsapp import normalisasi_nomor_whatsapp
+
         group_cache = {}
         created = 0
         row_errors = []
+        nomor_di_berkas = {}  # nomor WA ternormalisasi -> baris pertama di berkas ini
 
         for idx, row in enumerate(rows, start=2):  # baris 1 adalah header
             nama = (row.get('name') or '').strip()
             if not nama:
                 row_errors.append({'row': idx, 'message': 'Kolom "name" wajib diisi.'})
                 continue
+
+            # Nomor WA = patokan satu pelanggan: baris dengan nomor yang sudah ada
+            # (di sistem atau di baris sebelumnya pada berkas ini) dilewati.
+            nomor = normalisasi_nomor_whatsapp(row.get('phone'))
+            if nomor:
+                ada = cari_customer_per_nomor(nomor)
+                if ada:
+                    row_errors.append({'row': idx, 'message': pesan_nomor_terpakai(ada)})
+                    continue
+                if nomor in nomor_di_berkas:
+                    row_errors.append({'row': idx, 'message': f'Nomor WA sama dengan baris {nomor_di_berkas[nomor]} di berkas ini.'})
+                    continue
+                nomor_di_berkas[nomor] = idx
 
             tipe = (row.get('customer_type') or '').strip()
             group = None

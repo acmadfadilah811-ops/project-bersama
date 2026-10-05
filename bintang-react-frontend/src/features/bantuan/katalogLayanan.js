@@ -621,10 +621,10 @@ export const KATALOG_LAYANAN = [
     judul: 'Data pelanggan',
     ringkas: 'Menambah, mengubah, dan mencari pelanggan.',
     peran: KEUANGAN,
-    kataKunci: ['pelanggan', 'customer', 'konsumen', 'tipe pelanggan'],
+    kataKunci: ['pelanggan', 'customer', 'konsumen', 'tipe pelanggan', 'dobel', 'duplikat', 'nomor wa'],
     langkah: [
       'Buka Pelanggan & Supplier, tab pelanggan, tekan tambah.',
-      'Isi Nama dan Handphone (wajib). Email opsional. Bagian Lainnya dan Alamat boleh dikosongkan.',
+      'Isi Nama dan Nomor WhatsApp (wajib). Satu nomor WA hanya untuk satu pelanggan; nomor yang sudah terdaftar ditolak. Email opsional.',
       'Simpan. Ubah lewat menu baris > Edit.',
     ],
     halaman: '/customer-supplier',

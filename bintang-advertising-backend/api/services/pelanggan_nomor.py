@@ -8,16 +8,28 @@ pelanggan berbeda dan terbuat duplikat."""
 from .pos_receipt_whatsapp import normalisasi_nomor_whatsapp
 
 
-def cari_customer_per_nomor(nomor):
+def cari_customer_per_nomor(nomor, kecuali_id=None):
     from ..customer_models import Customer
 
     target = normalisasi_nomor_whatsapp(nomor)
     if not target:
         return None
-    for c in Customer.objects.filter(handphone__endswith=target[-9:]).order_by('id'):
+    # Kandidat lewat 4 digit terakhir (pemisah spasi/tanda hubung jarang ada di sana),
+    # lalu dicocokkan penuh setelah dinormalisasi.
+    qs = Customer.objects.filter(handphone__endswith=target[-4:]).order_by('id')
+    if kecuali_id:
+        qs = qs.exclude(pk=kecuali_id)
+    for c in qs:
         if normalisasi_nomor_whatsapp(c.handphone) == target:
             return c
     return None
+
+
+def pesan_nomor_terpakai(customer):
+    return (
+        f'Nomor WA ini sudah dipakai pelanggan "{customer.nama}". '
+        'Satu nomor WA hanya untuk satu pelanggan; pilih pelanggan tersebut, jangan buat baru.'
+    )
 
 
 def dapatkan_atau_buat_customer(nomor, nama, email=''):
