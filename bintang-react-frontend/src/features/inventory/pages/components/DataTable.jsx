@@ -1,21 +1,22 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+
+const lebarBawaan = (column) => column.width || (column.key === 'select' ? 50 : 150);
 
 export default function DataTable({ columns, rows, getRowKey, emptyText = 'Tidak ada data' }) {
+  // Hanya lebar yang diubah pengguna (tarik tepi judul) yang disimpan; sisanya
+  // langsung dari column.width. Dulu lebar diisi lewat useEffect setiap kali
+  // `columns` berganti identitas (= setiap render induk): render pertama memakai
+  // 150 px untuk semua kolom lalu tabel digambar ulang & "melompat", dan lebar
+  // hasil tarikan pengguna ter-reset.
   const [widths, setWidths] = useState({});
+  const lebar = (column) => widths[column.key] ?? lebarBawaan(column);
 
-  useEffect(() => {
-    const initialWidths = {};
-    columns.forEach((col) => {
-      initialWidths[col.key] = col.width || (col.key === 'select' ? 50 : 150);
-    });
-    setWidths(initialWidths);
-  }, [columns]);
-
-  const handleResizeStart = (e, colKey) => {
+  const handleResizeStart = (e, column) => {
     e.preventDefault();
     e.stopPropagation();
+    const colKey = column.key;
     const startX = e.clientX;
-    const startWidth = widths[colKey] || 150;
+    const startWidth = lebar(column);
 
     const onMouseMove = (moveEvent) => {
       const deltaX = moveEvent.clientX - startX;
@@ -42,7 +43,7 @@ export default function DataTable({ columns, rows, getRowKey, emptyText = 'Tidak
   for (const column of columns) {
     if (!column.sticky) break;
     posisiKunci[column.key] = kiri;
-    kiri += widths[column.key] || (column.key === 'select' ? 50 : 150);
+    kiri += lebar(column);
   }
   const kunciTerakhir = Object.keys(posisiKunci).pop();
   const kelasKunci = (key) =>
@@ -54,7 +55,7 @@ export default function DataTable({ columns, rows, getRowKey, emptyText = 'Tidak
         <thead>
           <tr>
             {columns.map((column) => {
-              const w = widths[column.key] || (column.key === 'select' ? 50 : 150);
+              const w = lebar(column);
               return (
                 <th
                   key={column.key}
@@ -72,7 +73,7 @@ export default function DataTable({ columns, rows, getRowKey, emptyText = 'Tidak
                   {column.label}
                   {column.key !== 'select' && (
                     <div
-                      onMouseDown={(e) => handleResizeStart(e, column.key)}
+                      onMouseDown={(e) => handleResizeStart(e, column)}
                       style={{
                         position: 'absolute',
                         right: 0,
@@ -101,7 +102,7 @@ export default function DataTable({ columns, rows, getRowKey, emptyText = 'Tidak
             rows.map((row, index) => (
               <tr key={getRowKey ? getRowKey(row) : row.id || index}>
                 {columns.map((column) => {
-                  const w = widths[column.key] || (column.key === 'select' ? 50 : 150);
+                  const w = lebar(column);
                   return (
                     <td
                       key={column.key}
