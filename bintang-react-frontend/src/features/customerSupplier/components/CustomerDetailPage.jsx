@@ -201,9 +201,8 @@ export default function CustomerDetailPage({
           {showMore && (
             <div className="grid gap-x-8 md:grid-cols-2 mt-4 pt-4 border-t border-slate-100">
               <div>
-                <p className="text-[11px] font-bold text-slate-400 uppercase mb-1">Login</p>
+                <p className="text-[11px] font-bold text-slate-400 uppercase mb-1">Kontak</p>
                 <DetailRow label="Email" value={c.email} />
-                <DetailRow label="Kata Sandi" value={c.email ? '••••••••' : '-'} />
               </div>
               <div>
                 <p className="text-[11px] font-bold text-slate-400 uppercase mb-1">Alamat</p>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, Eye, EyeOff, Info, X } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import NumericInput from '../../../components/NumericInput';
 
@@ -9,7 +9,6 @@ const emptyForm = {
   handphone: '',
   jenis_kelamin: 'L',
   email: '',
-  password: '',
   tanggal_lahir: '',
   kode_pelanggan: '',
   batas_kredit: '',
@@ -79,7 +78,6 @@ const toFormState = (c) => (c ? {
   handphone: c.handphone || '',
   jenis_kelamin: c.jenis_kelamin || 'L',
   email: c.email || '',
-  password: '',
   tanggal_lahir: c.tanggal_lahir || '',
   kode_pelanggan: c.kode_pelanggan || '',
   batas_kredit: c.batas_kredit != null ? String(c.batas_kredit) : '',
@@ -100,8 +98,7 @@ const toFormState = (c) => (c ? {
 
 export default function AddCustomerModal({ onClose, onSaved, groups = [], customer = null }) {
   const [form, setForm] = useState(() => toFormState(customer));
-  const [openSections, setOpenSections] = useState({ login: false, lainnya: false, alamat: false });
-  const [showPassword, setShowPassword] = useState(false);
+  const [openSections, setOpenSections] = useState({ lainnya: false, alamat: false });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
@@ -121,7 +118,6 @@ export default function AddCustomerModal({ onClose, onSaved, groups = [], custom
       handphone: form.handphone.trim(),
       jenis_kelamin: form.jenis_kelamin,
       email: form.email.trim(),
-      password: form.password,
       tanggal_lahir: form.tanggal_lahir || null,
       kode_pelanggan: form.kode_pelanggan.trim(),
       batas_kredit: parseFloat(form.batas_kredit) || 0,
@@ -227,37 +223,10 @@ export default function AddCustomerModal({ onClose, onSaved, groups = [], custom
                 </div>
               </Field>
             </div>
-          </div>
-
-          <Section title="Login" isOpen={openSections.login} onToggle={() => toggleSection('login')}>
-            <div className="flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
-              <Info size={14} className="text-blue-500 shrink-0 mt-0.5" />
-              <p className="text-[11px] text-blue-700 leading-relaxed">
-                Email dan password dapat digunakan pelanggan untuk mengakses layanan online toko Anda seperti Toko Online, Pesan Online, dan Mobile App.
-              </p>
-            </div>
-            <Field label="Email">
+            <Field label="Email (opsional)">
               <input type="email" value={form.email} onChange={set('email')} placeholder="email@contoh.com" className={inputCls} />
             </Field>
-            <Field label="Kata Sandi">
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={form.password}
-                  onChange={set('password')}
-                  placeholder={customer ? 'Kosongkan jika tidak diubah' : 'Tidak wajib diisi'}
-                  className={`${inputCls} pr-8`}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((s) => !s)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                >
-                  {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
-                </button>
-              </div>
-            </Field>
-          </Section>
+          </div>
 
           <Section title="Lainnya" isOpen={openSections.lainnya} onToggle={() => toggleSection('lainnya')}>
             <div className="grid grid-cols-2 gap-3">
