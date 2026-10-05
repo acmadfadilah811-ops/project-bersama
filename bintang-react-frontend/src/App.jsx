@@ -44,6 +44,7 @@ import KasirApp from './features/kasir/pages/KasirApp';
 import PengaturanWaBotPage from './features/waBotConfig/pages/PengaturanWaBotPage';
 import PermintaanBahanPage from './features/requisition/pages/PermintaanBahanPage';
 import AccountingInternalApp from './features/accounting/pages/AccountingInternalApp';
+import PusatBantuan from './features/bantuan/PusatBantuan';
 
 let globalAlertTrigger = null;
 
@@ -209,6 +210,8 @@ function App() {
               </Route>
             </Route>
           </Routes>
+          {/* Tombol Bantuan mengambang: tata cara per peran (features/bantuan). */}
+          <PusatBantuan />
         </BrowserRouter>
       </DynamicIslandProvider>
 
