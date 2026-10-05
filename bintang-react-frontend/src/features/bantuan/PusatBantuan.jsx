@@ -66,16 +66,7 @@ function KartuDetail({ layanan, peran, onKembali, onBuka }) {
         </div>
       )}
 
-      {layanan.endpoint.length > 0 && (
-        <>
-          <p className="text-[11px] font-bold text-slate-500 uppercase mt-3 mb-1">Endpoint</p>
-          <ul className="space-y-0.5">
-            {layanan.endpoint.map((e) => (
-              <li key={e} className="font-mono text-[10.5px] text-slate-700 break-all">{e}</li>
-            ))}
-          </ul>
-        </>
-      )}
+      {/* Endpoint tetap dicatat di katalog (acuan perawatan), sengaja tidak ditampilkan ke pengguna. */}
 
       {layanan.uat.length > 0 && (
         <>
