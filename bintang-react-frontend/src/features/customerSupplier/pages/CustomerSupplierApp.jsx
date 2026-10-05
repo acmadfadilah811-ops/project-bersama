@@ -28,6 +28,9 @@ import SupplierDetailPage from '../components/SupplierDetailPage';
 import SupplierImportModal from '../components/SupplierImportModal';
 import { uiConfirm } from '../../../utils/dialog';
 
+// Bayangan tipis di kanan kolom yang terkunci saat tabel digeser ke samping.
+const KOLOM_TERKUNCI_BAYANGAN = '6px 0 8px -6px rgba(15, 23, 42, 0.18)';
+
 
 const MONTHS_ID = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 const fmtDate = (isoStr) => {
@@ -808,7 +811,8 @@ function CustomerSupplierInner() {
                             Customer; lihat catatan di HANDOVER. Kolom "Status"
                             dipertahankan meski Olsera tidak punya: tanpa itu
                             pelanggan yang dibekukan tak terlihat. */}
-                        <th style={{ padding: '12px 16px', fontWeight: 'bold', color: '#475569', whiteSpace: 'nowrap' }}>Nama</th>
+                        {/* Kolom Nama terkunci di kiri saat tabel digeser ke samping. */}
+                        <th style={{ padding: '12px 16px', fontWeight: 'bold', color: '#475569', whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 2, background: '#f8fafc', boxShadow: KOLOM_TERKUNCI_BAYANGAN }}>Nama</th>
                         <th style={{ padding: '12px 16px', fontWeight: 'bold', color: '#475569', whiteSpace: 'nowrap' }}>ID Pelanggan</th>
                         <th style={{ padding: '12px 16px', fontWeight: 'bold', color: '#475569', whiteSpace: 'nowrap' }}>Kode</th>
                         <th style={{ padding: '12px 16px', fontWeight: 'bold', color: '#475569', whiteSpace: 'nowrap' }}>Email</th>
@@ -828,7 +832,7 @@ function CustomerSupplierInner() {
                               pindah ke halaman rincian yang dibuka dari sini. */}
                           <td
                             onClick={() => setActiveCustomer(cust)}
-                            style={{ padding: '12px 16px', fontWeight: 'bold', color: '#2563eb', cursor: 'pointer' }}
+                            style={{ padding: '12px 16px', fontWeight: 'bold', color: '#2563eb', cursor: 'pointer', whiteSpace: 'nowrap', position: 'sticky', left: 0, zIndex: 1, background: '#ffffff', boxShadow: KOLOM_TERKUNCI_BAYANGAN }}
                           >
                             {cust.nama}
                           </td>

@@ -584,6 +584,7 @@ export default function ProductsPage() {
     {
       key: 'select',
       width: 50,
+      sticky: true,
       label: (
         <input
           type="checkbox"
@@ -603,6 +604,7 @@ export default function ProductsPage() {
       key: 'photo',
       label: 'Foto',
       width: 80,
+      sticky: true,
       render: (row) => (
         row.fotos?.[0]?.foto ? (
           <img src={row.fotos[0].foto} alt={row.nama} className="pi-product-thumb" style={{ objectFit: 'cover' }} />
@@ -615,6 +617,7 @@ export default function ProductsPage() {
       key: 'nama',
       label: 'Nama Produk',
       width: 250,
+      sticky: true,
       render: (row) => (
         <div>
           <div

@@ -34,6 +34,20 @@ export default function DataTable({ columns, rows, getRowKey, emptyText = 'Tidak
     document.addEventListener('mouseup', onMouseUp);
   };
 
+  // Kolom `sticky: true` di AWAL daftar kolom tetap terlihat saat tabel digeser ke
+  // samping (mis. Nama Produk saat mengubah harga di kolom kanan). Hanya kolom
+  // sticky yang berurutan dari kiri yang dikunci.
+  const posisiKunci = {};
+  let kiri = 0;
+  for (const column of columns) {
+    if (!column.sticky) break;
+    posisiKunci[column.key] = kiri;
+    kiri += widths[column.key] || (column.key === 'select' ? 50 : 150);
+  }
+  const kunciTerakhir = Object.keys(posisiKunci).pop();
+  const kelasKunci = (key) =>
+    key in posisiKunci ? `pi-sticky${key === kunciTerakhir ? ' pi-sticky-akhir' : ''}` : undefined;
+
   return (
     <div className="pi-table-card">
       <table className="pi-table" style={{ tableLayout: 'fixed', width: 'max-content', minWidth: '100%' }}>
@@ -44,11 +58,13 @@ export default function DataTable({ columns, rows, getRowKey, emptyText = 'Tidak
               return (
                 <th
                   key={column.key}
+                  className={kelasKunci(column.key)}
                   style={{
                     width: w,
                     minWidth: w,
                     maxWidth: w,
-                    position: 'relative',
+                    position: column.key in posisiKunci ? 'sticky' : 'relative',
+                    left: posisiKunci[column.key],
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                   }}
@@ -89,7 +105,9 @@ export default function DataTable({ columns, rows, getRowKey, emptyText = 'Tidak
                   return (
                     <td
                       key={column.key}
+                      className={kelasKunci(column.key)}
                       style={{
+                        left: posisiKunci[column.key],
                         width: w,
                         minWidth: w,
                         maxWidth: w,

@@ -224,6 +224,10 @@
   white-space: nowrap;
 }
 .pi-table-empty { text-align: center; color: #94a3b8 !important; padding: 42px 16px !important; }
+/* Kolom terkunci saat tabel digeser ke samping (DataTable `sticky`). */
+.pi-table td.pi-sticky { position: sticky; z-index: 2; background: #ffffff; }
+.pi-table th.pi-sticky { z-index: 4; background: #f8fafc; }
+.pi-table .pi-sticky-akhir { box-shadow: 6px 0 8px -6px rgba(15, 23, 42, 0.18); }
 
 .pi-product-thumb,
 .pi-empty-mark {
