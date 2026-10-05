@@ -516,6 +516,22 @@ export const KATALOG_LAYANAN = [
     uat: ['MST-02', 'MST-05'],
   },
   {
+    id: 'resep-bom',
+    modul: 'Produk & Inventori',
+    judul: 'Resep bahan baku produk (BoM)',
+    ringkas: 'Mengatur bahan yang otomatis terpotong saat produk dikerjakan.',
+    peran: KEUANGAN,
+    kataKunci: ['bom', 'resep', 'bahan baku', 'bill of materials', 'komposisi'],
+    langkah: [
+      'Buka Produk & Inventori > Produk, buka Detail produk, tab Bahan/Resep.',
+      'Tambah bahan dan jumlah pemakaiannya per satu produk, lalu simpan.',
+      'Untuk banyak produk sekaligus: menu titik tiga > Import Bahan / Resep.',
+    ],
+    halaman: '/product-inventory/product/products',
+    endpoint: ['GET /api/bom/', 'POST /api/bom/get-or-create-for-product/', 'POST /api/bom-items/create-from-product/', 'POST /api/products/import-recipes/'],
+    uat: ['E2E-04'],
+  },
+  {
     id: 'impor-produk',
     modul: 'Produk & Inventori',
     judul: 'Impor produk dari CSV',

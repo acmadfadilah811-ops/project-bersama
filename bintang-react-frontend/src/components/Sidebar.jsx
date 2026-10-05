@@ -22,7 +22,6 @@ import {
   CalendarClock,
   BookOpen,
   Bell,
-  DollarSign,
   ChevronDown,
   BarChart3,
   Layers,
@@ -128,7 +127,6 @@ const groupedMenuOwnerManager = [
     submenus: [
       { path: '/attendance', label: 'Absensi', icon: CalendarClock },
       { path: '/employees', label: 'Karyawan', icon: Briefcase },
-      { path: '/payroll', label: 'Penggajian & BoM', icon: DollarSign },
       { path: '/divisi', label: 'Divisi & Tahap', icon: Layers },
       { path: '/announcements', label: 'Pengumuman', icon: Bell },
       { path: '/reports', label: 'Laporan Kerja', icon: BarChart3 },
@@ -354,7 +352,6 @@ export default function Sidebar() {
     if (path === '/permintaan-bahan') return 'permintaan-bahan';
     if (path === '/attendance') return 'attendance';
     if (path === '/employees') return 'employees';
-    if (path === '/payroll') return 'payroll';
     if (path === '/announcements') return 'announcements';
     if (path === '/reports') return 'reports';
     if (path.startsWith('/product-inventory')) return 'product-inventory';

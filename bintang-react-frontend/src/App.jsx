@@ -23,7 +23,6 @@ import Orders from './features/orders/pages/Orders';
 import SettingsApp from './features/settings/pages/SettingsApp';
 import Profile from './features/settings/pages/Profile';
 import Employees from './features/hr/pages/Employees';
-import Payroll from './features/hr/pages/Payroll';
 import Attendance from './features/hr/pages/Attendance';
 import Announcements from './features/announcements/pages/Announcements';
 import Divisi from './features/hr/pages/Divisi';
@@ -193,7 +192,10 @@ function App() {
                 {/* Tim */}
                 <Route path="/users" element={<Employees />} />
                 <Route path="/employees" element={<Employees />} />
-                <Route path="/payroll" element={<Payroll />} />
+                {/* Menu "Penggajian & BoM" dihapus 2026-10-05: slip gaji diurus di HR
+                    (posting ke keuangan lewat Akuntansi Internal > Posting Gaji), resep
+                    bahan/BoM di Produk > Detail > tab Bahan/Resep. Alamat lama dialihkan. */}
+                <Route path="/payroll" element={<Navigate to="/product-inventory/product/products" replace />} />
                 <Route path="/divisi" element={<Divisi />} />
 
                 {/* Laporan & Lainnya */}
