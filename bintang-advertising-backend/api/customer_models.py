@@ -150,8 +150,25 @@ class CustomerNoteDocument(models.Model):
 
 
 class CustomerReview(models.Model):
-    """Ulasan Pelanggan — rating & komentar terkait kualitas produk/layanan."""
+    """Ulasan Pelanggan — rating & komentar terkait kualitas produk/layanan.
+
+    Sejak 2026-10-06 sebagian besar ulasan berasal otomatis dari saran survei
+    struk online (sumber='survei', tertaut ke SurveiKepuasan, tidak bisa
+    diubah). Input manual tetap ada untuk ulasan dari luar sistem.
+    """
+    SUMBER_CHOICES = [
+        ('survei', 'Survei Struk Online'),
+        ('google', 'Google Maps'),
+        ('instagram', 'Instagram'),
+        ('langsung', 'Langsung / Lisan'),
+        ('lainnya', 'Lainnya'),
+    ]
     customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviews')
+    sumber = models.CharField(max_length=20, choices=SUMBER_CHOICES, default='langsung')
+    survei = models.OneToOneField(
+        'api.SurveiKepuasan', on_delete=models.CASCADE, null=True, blank=True, related_name='ulasan',
+    )
+    nomor_transaksi = models.CharField(max_length=50, blank=True, default='')
     customer_name = models.CharField(max_length=255, blank=True, default='')
     rating = models.PositiveSmallIntegerField(default=5)
     comment = models.TextField()

@@ -498,7 +498,8 @@ function CustomerSupplierInner() {
   // ── Ulasan Pelanggan ─────────────────────────────────────────────
   const [reviews, setReviews] = useState([]);
   const [loadingReviews, setLoadingReviews] = useState(true);
-  const [reviewForm, setReviewForm] = useState({ customer: '', rating: 5, comment: '' });
+  const [reviewForm, setReviewForm] = useState({ customer: '', rating: 5, comment: '', sumber: 'langsung' });
+  const [saringUlasan, setSaringUlasan] = useState('semua');
   const [savingReview, setSavingReview] = useState(false);
 
   const fetchReviews = async () => {
@@ -529,8 +530,9 @@ function CustomerSupplierInner() {
         customer_name: selectedCustomer ? selectedCustomer.nama : 'Pelanggan Umum',
         rating: Number(reviewForm.rating),
         comment: reviewForm.comment.trim(),
+        sumber: reviewForm.sumber,
       });
-      setReviewForm({ customer: '', rating: 5, comment: '' });
+      setReviewForm({ customer: '', rating: 5, comment: '', sumber: 'langsung' });
       fetchReviews();
     } catch (err) {
       console.error('[CustomerSupplierApp] save review error:', err);
@@ -551,6 +553,8 @@ function CustomerSupplierInner() {
   };
 
   const avgRating = reviews.length ? (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1) : '0.0';
+  // Ulasan dari saran survei struk online masuk otomatis (sumber 'survei').
+  const reviewsTampil = reviews.filter((r) => saringUlasan === 'semua' || (saringUlasan === 'survei' ? r.sumber === 'survei' : r.sumber !== 'survei'));
 
   // ── Supplier ─────────────────────────────────────────────────────
   const [suppliers, setSuppliers] = useState([]);
@@ -1518,7 +1522,19 @@ function CustomerSupplierInner() {
           {activeTab === 'reviews' && (
             <div style={{ display: 'grid', gridTemplateColumns: '4fr 6fr', gap: '20px' }}>
               <form onSubmit={handleAddReview} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', height: 'fit-content' }}>
-                <h3 style={{ fontSize: '14px', fontWeight: 'bold', color: '#1e293b', margin: 0, borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>Tulis Ulasan Baru</h3>
+                <div style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
+                  <h3 style={{ fontSize: '14px', fontWeight: 'bold', color: '#1e293b', margin: 0 }}>Tambah Ulasan dari Luar Sistem</h3>
+                  <p style={{ fontSize: '11px', color: '#64748b', margin: '4px 0 0 0', lineHeight: 1.4 }}>Saran pelanggan dari survei struk online masuk otomatis. Form ini untuk ulasan Google Maps, Instagram, atau yang disampaikan langsung.</p>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={labelSm}>Sumber Ulasan</label>
+                  <select value={reviewForm.sumber} onChange={e => setReviewForm(p => ({ ...p, sumber: e.target.value }))} style={{ ...inputSm, background: '#fff' }}>
+                    <option value="google">Google Maps</option>
+                    <option value="instagram">Instagram</option>
+                    <option value="langsung">Langsung / Lisan</option>
+                    <option value="lainnya">Lainnya</option>
+                  </select>
+                </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   <label style={labelSm}>Nama Pelanggan</label>
                   <select value={reviewForm.customer} onChange={e => setReviewForm(p => ({ ...p, customer: e.target.value }))} style={{ ...inputSm, background: '#fff' }}>
@@ -1539,7 +1555,7 @@ function CustomerSupplierInner() {
                   <label style={labelSm}>Komentar Ulasan *</label>
                   <textarea value={reviewForm.comment} onChange={e => setReviewForm(p => ({ ...p, comment: e.target.value }))} required placeholder="Berikan komentar mengenai kualitas cetak atau layanan..." rows={4} style={{ border: '1px solid #cbd5e1', borderRadius: '6px', padding: '8px 10px', fontSize: '13px', resize: 'vertical', outline: 'none' }} />
                 </div>
-                <button type="submit" disabled={savingReview} style={{ background: '#0ea5e9', color: '#fff', border: 0, borderRadius: '6px', height: '38px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', opacity: savingReview ? 0.7 : 1 }}>
+                <button type="submit" disabled={savingReview} style={{ background: '#1e293b', color: '#fff', border: 0, borderRadius: '6px', height: '38px', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer', opacity: savingReview ? 0.7 : 1 }}>
                   {savingReview ? 'Mengirim...' : 'Kirim Ulasan'}
                 </button>
               </form>
@@ -1557,16 +1573,31 @@ function CustomerSupplierInner() {
                   </div>
                 </div>
 
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {[['semua', 'Semua'], ['survei', 'Dari Survei Struk'], ['manual', 'Input Manual']].map(([id, label]) => (
+                    <button key={id} type="button" onClick={() => setSaringUlasan(id)}
+                      style={{ border: 0, borderRadius: '9999px', padding: '4px 12px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', background: saringUlasan === id ? '#1e293b' : '#f1f5f9', color: saringUlasan === id ? '#fff' : '#475569' }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
                 {loadingReviews ? (
                   <p style={{ fontSize: '13px', color: '#94a3b8' }}>Memuat...</p>
-                ) : reviews.length === 0 ? (
+                ) : reviewsTampil.length === 0 ? (
                   <p style={{ fontSize: '13px', color: '#94a3b8' }}>Belum ada ulasan.</p>
-                ) : reviews.map(rev => (
+                ) : reviewsTampil.map(rev => (
                   <div key={rev.id} style={{ border: '1px solid #e2e8f0', borderRadius: '10px', padding: '16px', background: '#fff', position: 'relative' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                       <div>
                         <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#1e293b', marginRight: '8px' }}>{rev.customer_name || 'Pelanggan Umum'}</span>
                         <span style={{ fontSize: '11px', color: '#94a3b8' }}>{fmtDate(rev.created_at)}</span>
+                        <div style={{ marginTop: '4px', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '10px', fontWeight: 'bold', padding: '2px 8px', borderRadius: '9999px', background: rev.sumber === 'survei' ? '#1e293b' : '#f1f5f9', color: rev.sumber === 'survei' ? '#fff' : '#475569' }}>
+                            {rev.sumber_display || 'Manual'}
+                          </span>
+                          {rev.nomor_transaksi && <span style={{ fontSize: '10px', color: '#64748b' }}>{rev.nomor_transaksi}</span>}
+                        </div>
                       </div>
                       <div style={{ display: 'flex', gap: '2px' }}>
                         {[1, 2, 3, 4, 5].map((star) => (
@@ -1575,9 +1606,9 @@ function CustomerSupplierInner() {
                       </div>
                     </div>
                     <p style={{ fontSize: '13px', color: '#475569', margin: 0, lineHeight: '1.5', fontStyle: 'italic' }}>"{rev.comment}"</p>
-                    <button onClick={() => handleDeleteReview(rev)} style={{ position: 'absolute', right: '16px', bottom: '12px', border: 0, background: 'transparent', color: '#ef4444', cursor: 'pointer' }}>
+                    {(rev.sumber !== 'survei' || bolehLihatSurvei) && <button onClick={() => handleDeleteReview(rev)} style={{ position: 'absolute', right: '16px', bottom: '12px', border: 0, background: 'transparent', color: '#ef4444', cursor: 'pointer' }}>
                       <Trash2 size={14} />
-                    </button>
+                    </button>}
                   </div>
                 ))}
               </div>

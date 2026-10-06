@@ -379,6 +379,17 @@ class CustomerReviewViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(dibuat_oleh=self.request.user)
 
+    def update(self, request, *args, **kwargs):
+        if self.get_object().sumber == 'survei':
+            return Response({'error': 'Ulasan dari survei pelanggan tidak bisa diubah.'}, status=status.HTTP_400_BAD_REQUEST)
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        # Ulasan asli pelanggan hanya boleh dihapus Owner/Manager (mis. spam).
+        if self.get_object().sumber == 'survei' and getattr(request.user, 'role', '') not in ('owner', 'manager'):
+            return Response({'error': 'Hanya Owner/Manager yang bisa menghapus ulasan dari survei.'}, status=status.HTTP_403_FORBIDDEN)
+        return super().destroy(request, *args, **kwargs)
+
 
 class SupplierViewSet(ToggleStatusMixin, viewsets.ModelViewSet):
     """Supplier: Pelanggan & Supplier > Supplier.

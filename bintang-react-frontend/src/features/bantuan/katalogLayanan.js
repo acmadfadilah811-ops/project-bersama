@@ -790,6 +790,7 @@ export const KATALOG_LAYANAN = [
     langkah: [
       'Resi kasir dan invoice pesanan yang dikirim lewat WhatsApp otomatis membawa tautan struk online.',
       'Pelanggan membuka tautan, melihat rincian transaksi, lalu memberi nilai 1-5 per aspek (sekali per transaksi).',
+      'Saran tertulis pelanggan otomatis masuk ke tab Ulasan Pelanggan (label Survei Struk Online); ulasan Google Maps/Instagram/lisan ditambah manual di tab itu.',
       'Buka Pelanggan & Supplier > tab Kepuasan Pelanggan untuk melihat rata-rata per aspek dan daftar tanggapan; saring per tanggal.',
       'Atur aspek penilaian di kotak Aspek Penilaian: tambah, nonaktifkan, atau hapus aspek yang belum pernah dinilai.',
     ],

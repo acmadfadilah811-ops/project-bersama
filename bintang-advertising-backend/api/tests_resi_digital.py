@@ -110,3 +110,36 @@ class LaporanSurveiTests(_Dasar):
         c = APIClient()
         c.force_authenticate(owner)
         self.assertEqual(c.delete(f'/api/aspek-survei/{self.aspek[0].id}/').status_code, 400)
+
+
+class UlasanDariSurveiTests(_Dasar):
+    def kirim(self, catatan):
+        return self.publik.post(f'/api/resi/{self.token}/survei/', {'nilai': self.nilai_lengkap(4), 'catatan': catatan}, format='json')
+
+    def test_saran_survei_otomatis_jadi_ulasan(self):
+        from .customer_models import CustomerReview
+        self.assertEqual(self.kirim('Hasil cetak tajam').status_code, 201)
+        u = CustomerReview.objects.get()
+        self.assertEqual((u.sumber, u.rating, u.comment, u.nomor_transaksi), ('survei', 4, 'Hasil cetak tajam', 'POS-RESI-1'))
+
+    def test_survei_tanpa_saran_tidak_jadi_ulasan(self):
+        from .customer_models import CustomerReview
+        self.kirim('   ')
+        self.assertFalse(CustomerReview.objects.exists())
+
+    def test_ulasan_survei_terkunci_dan_hanya_owner_manager_bisa_hapus(self):
+        from .customer_models import CustomerReview
+        self.kirim('Mantap')
+        u = CustomerReview.objects.get()
+        kasir = CustomUser.objects.create_user(username='kasir.ulasan', password='x12345678', role='kasir')
+        owner = CustomUser.objects.create_user(username='owner.ulasan', password='x12345678', role='owner')
+        c = APIClient()
+        c.force_authenticate(kasir)
+        self.assertEqual(c.patch(f'/api/customer-reviews/{u.id}/', {'comment': 'diubah'}, format='json').status_code, 400)
+        self.assertEqual(c.delete(f'/api/customer-reviews/{u.id}/').status_code, 403)
+        self.assertEqual(c.post('/api/customer-reviews/', {'rating': 5, 'comment': 'palsu', 'sumber': 'survei'}, format='json').status_code, 400)
+        r = c.post('/api/customer-reviews/', {'rating': 5, 'comment': 'Dari Google', 'sumber': 'google'}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(r.json()['sumber_display'], 'Google Maps')
+        c.force_authenticate(owner)
+        self.assertEqual(c.delete(f'/api/customer-reviews/{u.id}/').status_code, 204)

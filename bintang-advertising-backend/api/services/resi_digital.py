@@ -6,7 +6,7 @@ jadi id berurutan tidak terbuka. Data yang ditampilkan dibatasi untuk pelanggan:
 nomor WA disamarkan, tanpa harga beli/HPP/data internal.
 """
 import os
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.core import signing
 from django.db import transaction
@@ -211,4 +211,22 @@ def simpan_survei(token, nilai_per_aspek, catatan=''):
             catatan=str(catatan or '')[:1000], rata_rata=rata,
         )
         NilaiSurvei.objects.bulk_create([NilaiSurvei(survei=survei, aspek=a, nilai=n) for a, n in nilai.items()])
+        buat_ulasan_dari_survei(survei)
     return survei
+
+
+def buat_ulasan_dari_survei(survei):
+    """Saran tertulis di survei otomatis jadi Ulasan Pelanggan (sumber 'survei')."""
+    from ..customer_models import CustomerReview
+
+    if not survei.catatan.strip():
+        return None
+    rating = max(1, min(5, int(survei.rata_rata.quantize(Decimal('1'), rounding=ROUND_HALF_UP))))
+    ulasan, _ = CustomerReview.objects.get_or_create(
+        survei=survei,
+        defaults={
+            'sumber': 'survei', 'customer_name': survei.nama_pelanggan or 'Pelanggan Umum',
+            'rating': rating, 'comment': survei.catatan.strip(), 'nomor_transaksi': survei.nomor_transaksi or '',
+        },
+    )
+    return ulasan

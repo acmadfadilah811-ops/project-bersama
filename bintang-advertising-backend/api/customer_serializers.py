@@ -147,10 +147,23 @@ class CustomerNoteSerializer(serializers.ModelSerializer):
 
 
 class CustomerReviewSerializer(serializers.ModelSerializer):
+    sumber_display = serializers.CharField(source='get_sumber_display', read_only=True)
+
     class Meta:
         model = CustomerReview
         fields = '__all__'
-        read_only_fields = ['dibuat_oleh']
+        read_only_fields = ['dibuat_oleh', 'survei', 'nomor_transaksi']
+
+    def validate_sumber(self, value):
+        # Ulasan bersumber survei hanya dibuat sistem dari struk online.
+        if value == 'survei':
+            raise serializers.ValidationError('Ulasan dari survei dibuat otomatis oleh sistem.')
+        return value
+
+    def validate_rating(self, value):
+        if not 1 <= value <= 5:
+            raise serializers.ValidationError('Rating harus 1-5.')
+        return value
 
 
 class SupplierSerializer(serializers.ModelSerializer):
