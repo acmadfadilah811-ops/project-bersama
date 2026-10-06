@@ -6,6 +6,7 @@ import {
 } from '../components/ExecutiveCharts';
 import ExecutiveNav from '../components/ExecutiveNav';
 import LaporanProduksiOwnerSection from '../components/LaporanProduksiOwnerSection';
+import KepuasanPelangganSection from '../components/KepuasanPelangganSection';
 
 /**
  * Dashboard eksekutif ("Ringkasan") — ringkasan lintas periode untuk
@@ -290,6 +291,9 @@ export default function ExecutiveDashboard() {
 
       {/* ===== Laporan Produksi (target & kendala operasional dari SPV) ===== */}
       <LaporanProduksiOwnerSection />
+
+      {/* ===== Kepuasan Pelanggan (survei struk online) ===== */}
+      <KepuasanPelangganSection mulai={bintang.periode.mulai} akhir={bintang.periode.akhir} />
 
       {/* ===== SDM (HR) ===== */}
       <h2 className="text-lg font-black text-slate-900 pt-2">SDM</h2>

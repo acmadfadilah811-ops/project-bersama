@@ -23,7 +23,7 @@ const PRESET = [
   { id: 'semua', label: 'Semua', hari: null },
 ];
 
-function BintangNilai({ nilai, ukuran = 16 }) {
+export function BintangNilai({ nilai, ukuran = 16 }) {
   const persen = Math.max(0, Math.min(100, (Number(nilai || 0) / 5) * 100));
   const baris = (kelas) => [1, 2, 3, 4, 5].map((n) => <Star key={n} size={ukuran} className={kelas} />);
   return (
@@ -61,7 +61,7 @@ function KpiKartu({ ikon: Ikon, label, children, sub }) {
   );
 }
 
-function CincinCsat({ persen }) {
+export function CincinCsat({ persen }) {
   const r = 30;
   const keliling = 2 * Math.PI * r;
   return (
@@ -92,7 +92,7 @@ function jalurHalus(titik) {
   return d;
 }
 
-function GrafikTren({ data }) {
+export function GrafikTren({ data }) {
   const [aktif, setAktif] = useState(null);
   const W = 640;
   const H = 230;
@@ -167,7 +167,7 @@ function GrafikTren({ data }) {
   );
 }
 
-function SebaranBintang({ sebaran }) {
+export function SebaranBintang({ sebaran }) {
   const total = sebaran.reduce((s, b) => s + b.jumlah, 0);
   return (
     <div className="mt-4 space-y-3">
@@ -193,7 +193,7 @@ function SebaranBintang({ sebaran }) {
   );
 }
 
-function RadarAspek({ data }) {
+export function RadarAspek({ data }) {
   const n = data.length;
   const S = 300;
   const c = S / 2;
@@ -233,7 +233,7 @@ function RadarAspek({ data }) {
   );
 }
 
-function PeringkatAspek({ data }) {
+export function PeringkatAspek({ data }) {
   const urut = [...data].sort((a, b) => b.rata_rata - a.rata_rata);
   return (
     <div className="space-y-4">
