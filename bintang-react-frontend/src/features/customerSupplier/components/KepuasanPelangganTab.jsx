@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, Star } from 'lucide-react';
-import { useTransaksiCrumb } from '../../transaksi/components/TransaksiContext';
 import apiClient from '../../../api/apiClient';
 
-// Laporan survei kepuasan pelanggan dari struk online (2026-10-06).
+// Tab Kepuasan Pelanggan: rekap survei dari struk online (2026-10-06).
 // Pelanggan mengisi lewat tautan struk di resi/invoice WhatsApp.
 
 const waktu = (iso) =>
@@ -90,16 +89,11 @@ function KelolaAspek() {
   );
 }
 
-export default function SurveiKepuasan() {
-  const { setSubtitle } = useTransaksiCrumb();
+export default function KepuasanPelangganTab() {
   const [mulai, setMulai] = useState('');
   const [selesai, setSelesai] = useState('');
   const [data, setData] = useState(null);
   const [memuat, setMemuat] = useState(false);
-
-  useEffect(() => {
-    setSubtitle('Survei Kepuasan Pelanggan');
-  }, [setSubtitle]);
 
   useEffect(() => {
     setMemuat(true);
@@ -111,7 +105,7 @@ export default function SurveiKepuasan() {
   }, [mulai, selesai]);
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="space-y-5">
       <div className="flex flex-wrap items-end gap-3">
         <label className="text-xs text-slate-600">
           Dari

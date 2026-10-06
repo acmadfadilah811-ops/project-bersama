@@ -782,7 +782,7 @@ export const KATALOG_LAYANAN = [
   },
   {
     id: 'survei-kepuasan',
-    modul: 'Laporan & Dashboard',
+    modul: 'Pelanggan & Supplier',
     judul: 'Struk online dan survei kepuasan',
     ringkas: 'Pelanggan membuka struk online dari WhatsApp dan memberi nilai bintang; hasilnya direkap di sini.',
     peran: OWNER_MANAGER,
@@ -790,10 +790,10 @@ export const KATALOG_LAYANAN = [
     langkah: [
       'Resi kasir dan invoice pesanan yang dikirim lewat WhatsApp otomatis membawa tautan struk online.',
       'Pelanggan membuka tautan, melihat rincian transaksi, lalu memberi nilai 1-5 per aspek (sekali per transaksi).',
-      'Buka Marketing > Survei Kepuasan untuk melihat rata-rata per aspek dan daftar tanggapan; saring per tanggal.',
+      'Buka Pelanggan & Supplier > tab Kepuasan Pelanggan untuk melihat rata-rata per aspek dan daftar tanggapan; saring per tanggal.',
       'Atur aspek penilaian di kotak Aspek Penilaian: tambah, nonaktifkan, atau hapus aspek yang belum pernah dinilai.',
     ],
-    halaman: '/marketing/survei-kepuasan',
+    halaman: '/customer-supplier/satisfaction',
     endpoint: ['GET /api/survei-kepuasan/', 'GET /api/aspek-survei/'],
     uat: [],
   },

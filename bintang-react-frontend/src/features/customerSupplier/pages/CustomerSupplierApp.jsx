@@ -5,8 +5,8 @@ import '../../inventory/pages/ProductInventory.css';
 import { TransaksiProvider, useTransaksiCrumb } from '../../transaksi/components/TransaksiContext';
 import {
   Plus, Trash2, Filter,
-  Download, Upload, Search, Star, ThumbsUp,
-  X, Heart, Edit2, ChevronLeft, ChevronRight, Calendar,
+  Download, Upload, Search, Star,
+  X, Edit2, ChevronLeft, ChevronRight, Calendar,
   MoreVertical, User,
 } from 'lucide-react';
 import { formatCurrency } from './customerSupplierData';
@@ -27,6 +27,8 @@ import SupplierFormPage from '../components/SupplierFormPage';
 import SupplierDetailPage from '../components/SupplierDetailPage';
 import SupplierImportModal from '../components/SupplierImportModal';
 import { uiConfirm } from '../../../utils/dialog';
+import { useAuth } from '../../../context/AuthContext';
+import KepuasanPelangganTab from '../components/KepuasanPelangganTab';
 
 // Bayangan tipis di kanan kolom yang terkunci saat tabel digeser ke samping.
 const KOLOM_TERKUNCI_BAYANGAN = '6px 0 8px -6px rgba(15, 23, 42, 0.18)';
@@ -112,12 +114,14 @@ function CustomerSupplierInner() {
   const pathParts = location.pathname.replace(/^\//, '').split('/');
   const activeTab = pathParts[1] || 'customer';
 
+  const { user } = useAuth();
+  const bolehLihatSurvei = ['owner', 'manager'].includes(user?.role?.toLowerCase());
   const tabs = [
     { id: 'customer', label: 'Pelanggan' },
     { id: 'notes', label: 'Catatan Pelanggan' },
     { id: 'types', label: 'Tipe Pelanggan' },
     { id: 'reviews', label: 'Ulasan Pelanggan' },
-    { id: 'satisfaction', label: 'Kepuasan Pelanggan' },
+    ...(bolehLihatSurvei ? [{ id: 'satisfaction', label: 'Kepuasan Pelanggan' }] : []),
     { id: 'supplier', label: 'Supplier' }
   ];
 
@@ -1580,59 +1584,8 @@ function CustomerSupplierInner() {
             </div>
           )}
 
-          {/* TAB 5: KEPUASAN PELANGGAN (ilustratif — belum ada integrasi survei WA) */}
-          {activeTab === 'satisfaction' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
-                <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '12px', padding: '20px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-                  <div style={{ background: '#bae6fd', color: '#0284c7', width: '48px', height: '48px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyItems: 'center', justifyContent: 'center' }}>
-                    <Heart size={24} style={{ fill: '#0284c7' }} />
-                  </div>
-                  <div>
-                    <h4 style={{ fontSize: '12px', fontWeight: 'bold', color: '#0369a1', margin: '0 0 2px 0' }}>Customer Satisfaction (CSAT)</h4>
-                    <h2 style={{ fontSize: '24px', fontWeight: '800', color: '#0369a1', margin: 0 }}>94.2%</h2>
-                    <p style={{ fontSize: '11px', color: '#0284c7', margin: 0 }}>Sangat Puas / Sangat Baik</p>
-                  </div>
-                </div>
-                <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '12px', padding: '20px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-                  <div style={{ background: '#bbf7d0', color: '#16a34a', width: '48px', height: '48px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyItems: 'center', justifyContent: 'center' }}>
-                    <ThumbsUp size={24} style={{ fill: '#16a34a' }} />
-                  </div>
-                  <div>
-                    <h4 style={{ fontSize: '12px', fontWeight: 'bold', color: '#15803d', margin: '0 0 2px 0' }}>Net Promoter Score (NPS)</h4>
-                    <h2 style={{ fontSize: '24px', fontWeight: '800', color: '#15803d', margin: 0 }}>+72</h2>
-                    <p style={{ fontSize: '11px', color: '#16a34a', margin: 0 }}>Loyalitas Pelanggan Sangat Kuat</p>
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '10px', padding: '14px 16px', fontSize: '12px', color: '#92400e' }}>
-                Angka di halaman ini masih ilustratif — perhitungannya berasal dari survei resi WhatsApp yang diisi pelanggan, dan integrasi tersebut belum tersedia di sistem ini.
-              </div>
-
-              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '20px' }}>
-                <h3 style={{ fontSize: '14px', fontWeight: 'bold', color: '#1e293b', margin: '0 0 16px 0' }}>Faktor Nilai Kepuasan Layanan</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {[
-                    { label: 'Kualitas Cetakan (Resolusi & Kecerahan Warna)', score: 96 },
-                    { label: 'Kecepatan Waktu Pengerjaan (SPK)', score: 88 },
-                    { label: 'Keramahan Admin WhatsApp & Kasir', score: 92 },
-                    { label: 'Kesesuaian Harga dengan Spek Bahan', score: 90 }
-                  ].map((item, idx) => (
-                    <div key={idx}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '6px' }}>
-                        <span>{item.label}</span>
-                        <span>{item.score}%</span>
-                      </div>
-                      <div style={{ width: '100%', height: '8px', background: '#f1f5f9', borderRadius: '4px', overflow: 'hidden' }}>
-                        <div style={{ width: `${item.score}%`, height: '100%', background: '#0ea5e9', borderRadius: '4px' }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
+          {/* TAB 5: KEPUASAN PELANGGAN — survei dari struk online (Owner/Manager) */}
+          {activeTab === 'satisfaction' && <KepuasanPelangganTab />}
 
           {/* TAB 6: SUPPLIER */}
           {activeTab === 'supplier' && (
