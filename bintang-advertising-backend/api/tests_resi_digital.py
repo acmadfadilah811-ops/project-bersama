@@ -98,6 +98,11 @@ class LaporanSurveiTests(_Dasar):
         self.assertEqual((d['jumlah'], d['rata_rata']), (1, 5.0))
         self.assertEqual(d['tanggapan'][0]['transaksi'], 'POS-RESI-1')
         self.assertEqual(len(d['per_aspek']), len(self.aspek))
+        self.assertEqual(d['csat'], 100.0)
+        self.assertEqual(len(d['tren']), 1)
+        self.assertEqual(d['tren'][0]['jumlah'], 1)
+        self.assertEqual(d['sebaran'][0], {'bintang': 5, 'jumlah': len(self.aspek)})
+        self.assertEqual(d['jumlah_catatan'], 0)
 
     def test_aspek_yang_sudah_dijawab_tidak_bisa_dihapus(self):
         self.publik.post(f'/api/resi/{self.token}/survei/', {'nilai': self.nilai_lengkap(5)}, format='json')
