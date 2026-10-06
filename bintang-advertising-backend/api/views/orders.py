@@ -1005,6 +1005,11 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         if jumlah_bayar is None:
             return Response({'error': 'jumlah_bayar wajib diisi.'}, status=status.HTTP_400_BAD_REQUEST)
+        # Kolom Order.metode_pembayaran maks. 20 karakter; tanpa cek ini nilai
+        # panjang menghasilkan 500 dari database (audit 2026-10-06).
+        metode = str(metode or 'tunai').strip()
+        if len(metode) > Order._meta.get_field('metode_pembayaran').max_length:
+            return Response({'error': 'metode_pembayaran terlalu panjang.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             jumlah_bayar = int(jumlah_bayar)

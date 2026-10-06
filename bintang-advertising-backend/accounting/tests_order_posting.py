@@ -96,7 +96,7 @@ class OrderPostingSetupMixin:
             nomor_wa="081234567890",
             nama="Pelanggan Test",
             dp_dibayar=0,
-            metode_pembayaran="tunai" if with_pm else "metode_tidak_dikenal_xyz",
+            metode_pembayaran="tunai" if with_pm else "tidak_dikenal_xyz",
             accounting_payment_method=self.payment_method if with_pm else None,
         )
         return order
@@ -274,7 +274,7 @@ class OrderPostingUnitTest(OrderPostingSetupMixin, TestCase):
     def test_gating_skips_when_payment_method_not_set(self):
         """Posting di-skip jika Order.accounting_payment_method belum ter-resolve dan tidak ada PaymentMethod yang cocok."""
         order = self._make_order(with_pm=False)  # tanpa payment method
-        order.metode_pembayaran = "metode_tanpa_mapping_123"
+        order.metode_pembayaran = "tanpa_mapping_123"
         order.save()
         activity_log = self._make_payment_log(order, 50_000)
 
@@ -392,6 +392,16 @@ class OrderPostingViaAPITest(OrderPostingSetupMixin, APITestCase):
         self.settings_row.is_active = True
         self.settings_row.save(update_fields=["is_active"])
 
+    def test_bayar_metode_terlalu_panjang_ditolak_400_bukan_500(self):
+        order = Order.objects.create(nomor_wa="081234567892", nama="Pelanggan Metode Panjang", dp_dibayar=0)
+        self._add_item(order)
+        response = self.client.post(
+            f"/api/orders/{order.id}/bayar/",
+            data={"jumlah_bayar": 30000, "metode_pembayaran": "x" * 25},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.data)
+
     def test_bayar_sukses_meskipun_pm_belum_dipetakan(self):
         """bayar() tetap sukses saat metode_pembayaran tidak dapat dipetakan ke PaymentMethod mana pun."""
         order_tanpa_pm = Order.objects.create(
@@ -403,7 +413,7 @@ class OrderPostingViaAPITest(OrderPostingSetupMixin, APITestCase):
         self._add_item(order_tanpa_pm)
         response = self.client.post(
             f"/api/orders/{order_tanpa_pm.id}/bayar/",
-            data={"jumlah_bayar": 30000, "metode_pembayaran": "metode_tidak_dikenal_xyz"},
+            data={"jumlah_bayar": 30000, "metode_pembayaran": "tidak_dikenal_xyz"},
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)

@@ -4,6 +4,8 @@ import apiClient from '../api/apiClient';
 import authSession from '../utils/authSession';
 import { registerNotifier } from '../utils/notify';
 
+const PERAN_BOLEH_CHAT_WA = ['owner', 'manager', 'admin', 'kasir'];
+
 const DynamicIslandContext = createContext(null);
 
 const TRACKS = [
@@ -149,6 +151,15 @@ export function DynamicIslandProvider({ children }) {
     let active = true;
     const pollChats = async () => {
       if (!authSession.getAccessToken()) return;
+      // Server hanya mengizinkan owner/manager/admin/kasir (IsOwnerManagerAdminOrKasir);
+      // peran lain dulu ikut memanggil tiap 8 detik dan selalu ditolak 403 (audit 2026-10-06).
+      let peran;
+      try {
+        peran = String(JSON.parse(authSession.getUser() || '{}')?.role || '').toLowerCase();
+      } catch {
+        peran = '';
+      }
+      if (!PERAN_BOLEH_CHAT_WA.includes(peran)) return;
       try {
         const response = await apiClient.get('/whatsapp/chats/');
         const data = Array.isArray(response.data)

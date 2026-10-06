@@ -102,9 +102,13 @@ class Mesin(models.Model):
         last = self.riwayat_maintenance.order_by('-tanggal', '-id').first()
         qs = self.log_penggunaan.all()
         if last:
+            # Hari yang sama dengan servis: yang dihitung hanya pemakaian SETELAH
+            # servis dicatat (waktu > dibuat_pada). Dulu memakai id__gt=last.id --
+            # membandingkan id PenggunaanMesin dengan id MaintenanceMesin (tabel &
+            # urutan nomor berbeda) sehingga hasilnya acak (audit 2026-10-06).
             qs = qs.filter(
                 models.Q(waktu__date__gt=last.tanggal)
-                | (models.Q(waktu__date=last.tanggal) & models.Q(id__gt=last.id))
+                | (models.Q(waktu__date=last.tanggal) & models.Q(waktu__gt=last.dibuat_pada))
             )
         agg = qs.aggregate(
             total=models.Sum(

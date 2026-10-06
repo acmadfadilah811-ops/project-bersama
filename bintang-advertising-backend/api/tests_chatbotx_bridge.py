@@ -39,7 +39,10 @@ class ChatbotXBridgeAuthTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_schemas_endpoint_juga_digerbang_api_key(self):
-        response = self.client.get(URL_SCHEMAS, HTTP_X_FORWARDED_PROTO="https")
+        # Kunci dikosongkan eksplisit: di kontainer produksi variabel ini terisi.
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("CHATBOTX_BRIDGE_API_KEY", None)
+            response = self.client.get(URL_SCHEMAS, HTTP_X_FORWARDED_PROTO="https")
         self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

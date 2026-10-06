@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.test import override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -28,6 +29,7 @@ class WaBotStatsServiceTests(APITestCase):
         self.assertEqual(hasil['total_kontak'], 2)
         self.assertEqual(hasil['handover_permanen'], 1)
 
+    @override_settings(CACHES={'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
     def test_handover_sementara_none_saat_backend_cache_tidak_mendukung(self):
         # Test suite ini jalan pakai LocMemCache (tidak ada REDIS_URL lokal)
         # -- cache.keys() tidak ada, harus fallback None dgn baik, bukan crash.

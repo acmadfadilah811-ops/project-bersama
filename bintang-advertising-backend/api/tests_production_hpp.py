@@ -58,9 +58,10 @@ class SerapBiayaKeHppTest(APITestCase):
         # Bobot: 100x10=1000 dan 300x10=3000 -> total 4000.
         # Porsi: 1000x(1000/4000)=250 -> 25/unit ; 1000x(3000/4000)=750 -> 75/unit.
         doc = self._dokumen(True, [('100', '10'), ('300', '10')], biaya='1000')
-        layers = self._post(doc)
-        self.assertEqual(layers[0].harga_beli, Decimal('125.00'))
-        self.assertEqual(layers[1].harga_beli, Decimal('375.00'))
+        # Urutan lapisan tidak dijamin (item dokumen tanpa ordering) -> per produk.
+        per_produk = {l.product.nama.split('-')[0]: l.harga_beli for l in self._post(doc)}
+        self.assertEqual(per_produk['P100'], Decimal('125.00'))
+        self.assertEqual(per_produk['P300'], Decimal('375.00'))
 
     def test_bahan_nol_jatuh_ke_rata_per_unit(self):
         # Tanpa nilai bahan tidak ada dasar proporsi; biaya tetap harus terserap.
