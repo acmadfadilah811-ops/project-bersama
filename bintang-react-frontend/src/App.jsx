@@ -32,6 +32,7 @@ import { useAuth } from './context/AuthContext';
 import ProductionApp from './features/production/pages/ProductionApp';
 import StaffCreateOrderPage from './features/production/pages/StaffCreateOrderPage';
 import UploadDesain from './features/orders/pages/UploadDesain';
+import ResiPublikPage from './features/resi/ResiPublikPage';
 import ProductInventoryApp from './features/inventory/pages/ProductInventoryApp';
 import CustomerSupplierApp from './features/customerSupplier/pages/CustomerSupplierApp';
 import TransaksiApp from './features/transaksi/pages/TransaksiApp';
@@ -141,6 +142,7 @@ function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/public/upload-desain" element={<UploadDesain />} />
             <Route path="/public/upload-desain/:orderId" element={<UploadDesain />} />
+            <Route path="/resi/:token" element={<ResiPublikPage />} />
 
             {/* Halaman yang butuh login */}
             <Route element={<ProtectedRoute />}>

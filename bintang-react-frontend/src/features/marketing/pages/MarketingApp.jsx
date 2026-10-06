@@ -3,6 +3,7 @@ import TransaksiTopbar from '../../transaksi/components/TransaksiTopbar';
 import { TransaksiProvider } from '../../transaksi/components/TransaksiContext';
 import VoucherDiskon from './VoucherDiskon';
 import LoyaltyPoint from './LoyaltyPoint';
+import SurveiKepuasan from './SurveiKepuasan';
 
 /**
  * Pembungkus area "Marketing" (full-screen, topbar sendiri).
@@ -17,6 +18,7 @@ export default function MarketingApp() {
           <Routes>
             <Route path="voucher-diskon" element={<VoucherDiskon />} />
             <Route path="loyalty-point" element={<LoyaltyPoint />} />
+            <Route path="survei-kepuasan" element={<SurveiKepuasan />} />
             <Route path="*" element={<Navigate to="voucher-diskon" replace />} />
           </Routes>
         </div>

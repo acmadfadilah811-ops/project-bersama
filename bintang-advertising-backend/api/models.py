@@ -1511,3 +1511,5 @@ from .reorder_models import *  # noqa: F401,F403
 # Pengembalian pekerjaan ke tahap sebelumnya (PRD-05 UAT, 2026-09-29).
 from .pengembalian_job_models import *  # noqa: F401,F403
 from .insentif_models import *  # noqa: F401,F403
+# Struk online + survei kepuasan pelanggan (2026-10-06).
+from .survei_models import *  # noqa: F401,F403

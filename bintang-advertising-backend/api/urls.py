@@ -5,6 +5,7 @@ from .views.pengembalian_job import KembalikanJobView, PengembalianJobListView, 
 from .views.hr_hapus_bridge import HRBridgeHapusAkunView
 from .views.hr_sandi_bridge import HRBridgeSandiView
 from .views.hr_foto_bridge import HRBridgeFotoView
+from .views.resi_digital import AspekSurveiViewSet, ResiPublikView, ResiSurveiView, SurveiKepuasanView
 from .views.hr_kredensial_bridge import HRBridgeKredensialView
 from .views.hr_organisasi_bridge import HROrganisasiView
 from .views.insentif import JenisInsentifViewSet, JobInsentifView, InsentifPekerjaanDetailView
@@ -126,6 +127,7 @@ from .views import finance_dashboard as finance_dashboard_views
 from . import pos_views
 router.register(r'pos/sales', pos_views.POSSaleViewSet, basename='pos-sale')
 router.register(r'pos-void-requests', views.POSVoidRequestViewSet, basename='pos-void-request')
+router.register(r'aspek-survei', AspekSurveiViewSet, basename='aspek-survei')
 
 
 urlpatterns = [
@@ -218,6 +220,10 @@ urlpatterns = [
     path('bridge/hr-employee-kredensial/', HRBridgeKredensialView.as_view(), name='hr-bridge-kredensial'),
     path('bridge/hr-employee-sandi/', HRBridgeSandiView.as_view(), name='hr-bridge-sandi'),
     path('bridge/hr-employee-foto/', HRBridgeFotoView.as_view(), name='hr-bridge-foto'),
+    # Struk online + survei kepuasan (publik, token bertanda tangan) -- 2026-10-06.
+    path('resi/<str:token>/', ResiPublikView.as_view(), name='resi-publik'),
+    path('resi/<str:token>/survei/', ResiSurveiView.as_view(), name='resi-survei'),
+    path('survei-kepuasan/', SurveiKepuasanView.as_view(), name='survei-kepuasan'),
     path('bridge/hr-employee-status/', HRBridgeSetStatusView.as_view(), name='hr-bridge-set-status'),
     path('bridge/absensi-status/', AbsensiStatusView.as_view(), name='hr-bridge-absensi-status'),
     path('bridge/kinerja-staff/', KinerjaStaffView.as_view(), name='hr-bridge-kinerja-staff'),

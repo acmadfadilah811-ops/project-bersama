@@ -232,6 +232,7 @@ class ResiSiapDiambilTests(APITestCase):
         self.assertTrue(result['ok'])
         caption = send_media_message.call_args.kwargs.get('caption')
         self.assertIn('SIAP DIAMBIL', caption)
+        self.assertIn('/resi/', caption)
 
     @patch('api.services.pos_receipt_whatsapp.whatsapp_client.send_media_message', return_value={'key': {'id': 'wa-belum-siap'}})
     def test_caption_wa_tanpa_spk_tidak_menyertakan_keterangan(self, send_media_message):

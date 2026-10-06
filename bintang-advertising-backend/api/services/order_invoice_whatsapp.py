@@ -441,6 +441,8 @@ def kirim_invoice_dp_whatsapp(*, order_id, otomatis=False):
         invoice_pdf = susun_invoice_dp_pdf(order)
         nomor_invoice = order.id
 
+    from .resi_digital import url_resi
+
     try:
         result = whatsapp_client.send_media_message(
             destination,
@@ -448,7 +450,8 @@ def kirim_invoice_dp_whatsapp(*, order_id, otomatis=False):
             'document',
             'application/pdf',
             f'Invoice-DP-{nomor_invoice}.pdf',
-            caption=f'Invoice DP {nomor_invoice}',
+            caption=f'Invoice DP {nomor_invoice}. Lihat struk online & beri penilaian: '
+                    f'{url_resi("order", order.id)}',
         )
     except Exception:
         logger.exception('Pengiriman invoice DP WhatsApp gagal untuk order_id=%s.', order_id)
@@ -506,6 +509,8 @@ def kirim_invoice_pesanan_whatsapp(*, order_id):
     if status_global == 'ready':
         caption_parts.append('✅ Pesanan Anda sudah SELESAI diproduksi dan SIAP DIAMBIL di toko.')
     caption_parts.append('Simpan nomor pesanan dan ID produk pada invoice untuk tracking.')
+    from .resi_digital import url_resi
+    caption_parts.append(f'Lihat struk online & beri penilaian: {url_resi("order", order.id)}')
 
     try:
         result = whatsapp_client.send_media_message(

@@ -83,6 +83,7 @@ const groupedMenuOwnerManager = [
     submenus: [
       { path: '/marketing/voucher-diskon', label: 'Voucher & Diskon', icon: Tag },
       { path: '/marketing/loyalty-point', label: 'Loyalty Point', icon: Gift },
+      { path: '/marketing/survei-kepuasan', label: 'Survei Kepuasan', icon: Star },
     ],
   },
   { path: '/customer-supplier', label: 'Pelanggan & Supplier', icon: Users, isGroup: false },

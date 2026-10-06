@@ -63,6 +63,7 @@ class InvoiceDpWhatsAppTests(APITestCase):
         self.assertEqual(send_media_message.call_args.args[3], 'application/pdf')
         self.assertIn(self.order.id, send_media_message.call_args.args[4])
         self.assertTrue(send_media_message.call_args.args[1])
+        self.assertIn('/resi/', send_media_message.call_args.kwargs.get('caption'))
         self.assertTrue(OrderActivityLog.objects.filter(
             order=self.order,
             tindakan='KIRIM_INVOICE_DP_WA',
@@ -144,6 +145,7 @@ class InvoiceDpWhatsAppTests(APITestCase):
         self.assertTrue(result['ok'])
         caption = send_media_message.call_args.kwargs.get('caption')
         self.assertIn('SIAP DIAMBIL', caption)
+        self.assertIn('/resi/', caption)
 
     @patch(
         'api.services.order_invoice_whatsapp.whatsapp_client.send_media_message',

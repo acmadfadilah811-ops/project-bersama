@@ -277,6 +277,8 @@ def kirim_resi_pos_whatsapp(*, sale_id, number=None, otomatis=False):
         caption_parts = [f'Resi Transaksi {nomor_sale}']
         if sale_siap_diambil(sale):
             caption_parts.append('✅ Pesanan Anda sudah SELESAI diproduksi dan SIAP DIAMBIL di toko.')
+        from .resi_digital import url_resi
+        caption_parts.append(f'Lihat struk online & beri penilaian: {url_resi("pos", sale.id)}')
         caption = ' '.join(caption_parts)
 
     try:
