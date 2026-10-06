@@ -563,17 +563,16 @@ class ProductViewSet(viewsets.ModelViewSet):
         return queryset.distinct()
 
     def destroy(self, request, *args, **kwargs):
-        """Hormati setelan Pengaturan POS > Cek Stok: cegah hapus produk yang
-        stoknya masih ada, supaya nilai persediaan tidak hilang diam-diam."""
+        """Produk berstok atau yang punya riwayat stok/transaksi tidak boleh
+        dihapus (lihat services/hapus_produk.py) -- dulu hanya bila setelan POS
+        "blokir hapus jika stok ada" dinyalakan, sehingga nilai Persediaan
+        tertinggal di buku besar tanpa stok (audit 2026-10-06)."""
+        from .services.hapus_produk import alasan_tolak_hapus
+
         instance = self.get_object()
-        if pos_settings.blokir_hapus_produk_jika_ada_stok():
-            sisa = float(instance.qty_stok or 0)
-            if sisa > 0:
-                return Response(
-                    {'error': f"'{instance.nama}' masih memiliki stok {sisa:g}. "
-                              f"Aturan 'blokir hapus produk jika stok masih ada' aktif di Pengaturan POS."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+        alasan = alasan_tolak_hapus(instance)
+        if alasan:
+            return Response({'error': alasan}, status=status.HTTP_400_BAD_REQUEST)
         return super().destroy(request, *args, **kwargs)
 
     @action(detail=True, methods=['get'], url_path='hitung-harga')
@@ -1544,6 +1543,16 @@ class ProductVariantViewSet(viewsets.ModelViewSet):
     queryset = ProductVariant.objects.all().order_by('product__nama', 'nama_varian')
     serializer_class = ProductVariantSerializer
     permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
+
+    def destroy(self, request, *args, **kwargs):
+        """Sama dengan produk: varian berstok/berriwayat tidak boleh dihapus."""
+        from .services.hapus_produk import alasan_tolak_hapus
+
+        instance = self.get_object()
+        alasan = alasan_tolak_hapus(instance.product, instance)
+        if alasan:
+            return Response({'error': alasan}, status=status.HTTP_400_BAD_REQUEST)
+        return super().destroy(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         variant = serializer.save()
