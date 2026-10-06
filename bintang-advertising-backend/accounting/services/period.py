@@ -11,7 +11,7 @@ from .ledger import get_account_balances
 from .period_rules import hari_potong, rentang_periode
 
 
-def get_computed_persediaan_value():
+def get_computed_persediaan_value(per_tanggal=None):
     """Nilai buku persediaan riil = total sisa lapisan stok (StockLayer) x
     harga beli tiap lapisan -- basis biaya yang SAMA dengan yang dipakai
     sistem HPP (api/stock_fifo.py), bukan qty_stok x harga_beli RATA-RATA
@@ -21,12 +21,47 @@ def get_computed_persediaan_value():
     tanggal) -- angka ini selalu "nilai stok SAAT DIHITUNG", bukan benar-benar
     "nilai stok pada period.end_date" kalau tutup buku dilakukan jauh setelah
     periode berakhir. Wajar untuk alur normal (tutup buku dilakukan tak lama
-    setelah periode berakhir)."""
+    setelah periode berakhir).
+
+    per_tanggal (2026-10-06): nilai stok PER tanggal itu, dihitung mundur dari nilai
+    sekarang -- dikurangi lapisan yang masuk setelahnya, ditambah pemakaian setelahnya.
+    Dipakai validasi tutup buku supaya periode lama tidak dibandingkan dengan stok
+    hari ini (dulu periode yang sudah lewat tidak bisa ditutup bila ada stok masuk
+    sesudahnya, dan karena tutup buku berurutan semua periode berikutnya ikut terkunci)."""
     from django.db.models import DecimalField, F, Sum
     from api.product_models import StockLayer
 
     agg = StockLayer.objects.filter(sisa_qty__gt=0).aggregate(
         total=Sum(F("sisa_qty") * F("harga_beli"), output_field=DecimalField(max_digits=20, decimal_places=2))
+    )
+    sekarang = agg["total"] or Decimal("0")
+    if per_tanggal is None or per_tanggal >= timezone.localdate():
+        return sekarang
+    return sekarang - _nilai_masuk_setelah(per_tanggal) + _nilai_terpakai_setelah(per_tanggal)
+
+
+def _nilai_masuk_setelah(tanggal):
+    """Nilai lapisan stok yang masuk SETELAH tanggal (tanggal dokumen)."""
+    from django.db.models import DecimalField, F, Sum
+    from api.product_models import StockLayer
+
+    agg = StockLayer.objects.filter(tanggal_masuk__gt=tanggal).aggregate(
+        total=Sum(F("qty_masuk") * F("harga_beli"), output_field=DecimalField(max_digits=20, decimal_places=2))
+    )
+    return agg["total"] or Decimal("0")
+
+
+def _nilai_terpakai_setelah(tanggal):
+    """Nilai pemakaian lapisan (HPP/stok keluar) yang terjadi SETELAH tanggal.
+    Tanggal efektif = tanggal dokumen pergerakan stok bila ada, selain itu tanggal
+    pencatatan. Pemakaian tanpa lapisan (shortfall) tidak mengurangi nilai stok."""
+    from django.db.models import DecimalField, F, Q, Sum
+    from api.product_models import StockLayerConsumption
+
+    agg = (
+        StockLayerConsumption.objects.filter(layer__isnull=False)
+        .filter(Q(movement__tanggal__gt=tanggal) | (Q(movement__tanggal__isnull=True) & Q(created_at__date__gt=tanggal)))
+        .aggregate(total=Sum(F("qty") * F("harga_beli"), output_field=DecimalField(max_digits=20, decimal_places=2)))
     )
     return agg["total"] or Decimal("0")
 
@@ -50,7 +85,7 @@ def _validate_stock_reconciliation(period):
     if not inventory_account:
         return
 
-    stock_value = get_computed_persediaan_value()
+    stock_value = get_computed_persediaan_value(period.end_date)
     gl_balance = get_account_balances([inventory_account], period.end_date).get(inventory_account.id) or Decimal("0")
 
     selisih = (gl_balance - stock_value).quantize(Decimal("0.01"))
