@@ -61,6 +61,7 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
   const [targetStaffId, setTargetStaffId] = useState('');
   const [targetTahapId, setTargetTahapId] = useState('');
   const [targetDeadline, setTargetDeadline] = useState('');
+  const [targetDeadlineJam, setTargetDeadlineJam] = useState('');
   const [targetStatusGlobal, setTargetStatusGlobal] = useState('desain');
 
   const [saving, setSaving] = useState(false);
@@ -547,6 +548,7 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
         assignPayload.tahap_id = targetTahapId;
       }
       assignPayload.deadline = targetDeadline;
+      if (targetDeadlineJam) assignPayload.deadline_jam = targetDeadlineJam;
 
       await apiClient.post(`/orders/${selectedOrder.id}/assign/`, assignPayload);
 
@@ -1016,13 +1018,22 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
                   <label className="block text-slate-500 mb-1">
                     Deadline / Jatuh Tempo <span className="text-rose-500">(wajib)</span>
                   </label>
-                  <input
-                    type="date"
-                    required
-                    value={targetDeadline}
-                    onChange={(e) => setTargetDeadline(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold text-slate-700 focus:outline-none"
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="date"
+                      required
+                      value={targetDeadline}
+                      onChange={(e) => setTargetDeadline(e.target.value)}
+                      className="min-w-0 flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold text-slate-700 focus:outline-none"
+                    />
+                    <input
+                      type="time"
+                      value={targetDeadlineJam}
+                      onChange={(e) => setTargetDeadlineJam(e.target.value)}
+                      title="Jam deadline (opsional, kosong = akhir hari)"
+                      className="w-28 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold text-slate-700 focus:outline-none"
+                    />
+                  </div>
                 </div>
               </div>
 

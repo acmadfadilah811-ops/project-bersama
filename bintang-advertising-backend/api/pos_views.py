@@ -598,6 +598,7 @@ class POSSaleViewSet(viewsets.ModelViewSet):
             with transaction.atomic():
                 staff = spk.resolve_staff(request.data.get('staff_id'), pemohon=request.user)
                 deadline = spk.resolve_deadline(request.data.get('deadline'))
+                deadline_jam = spk.resolve_deadline_jam(request.data.get('deadline_jam'))
                 tahap = spk.resolve_tahap(
                     tahap_id=request.data.get('tahap_id'),
                     divisi_id=request.data.get('divisi_id'),
@@ -606,7 +607,7 @@ class POSSaleViewSet(viewsets.ModelViewSet):
                 )
                 jobs = spk.terbitkan(
                     items, field='pos_sale_item', tahap=tahap, staff=staff,
-                    biaya_desain=biaya_desain, insentif=insentif, deadline=deadline,
+                    biaya_desain=biaya_desain, insentif=insentif, deadline=deadline, deadline_jam=deadline_jam,
                 )
         except spk.SpkError as exc:
             return Response({'error': exc.pesan}, status=exc.status_code)

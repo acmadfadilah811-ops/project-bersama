@@ -10,20 +10,33 @@ const startOfToday = () => {
  * job) & widget "Alert Deadline Pekerjaan" (ringkasan lintas job, Papan
  * Kerja SPK). Beberapa tingkatan (fitur 2026-09-07): Terlambat > Hari Ini >
  * Besok > Minggu Ini, makin kecil `priority` makin mendesak. */
-export function getDeadlineTier(deadline) {
+// `jam` (opsional, "HH:MM" / "HH:MM:SS", 2026-10-08): batas jam pada tanggal
+// deadline. Tanpa jam = sampai akhir hari, perilaku lama tetap.
+export function getDeadlineTier(deadline, jam) {
   if (!deadline) return null;
   const deadlineDate = new Date(`${deadline}T00:00:00`);
   if (Number.isNaN(deadlineDate.getTime())) return null;
 
+  const jamPendek = jam ? String(jam).slice(0, 5) : '';
+  const batas = new Date(deadlineDate);
+  if (jamPendek) {
+    const [hh, mm] = jamPendek.split(':').map(Number);
+    batas.setHours(hh || 0, mm || 0, 0, 0);
+  } else {
+    batas.setHours(23, 59, 59, 999);
+  }
+  const lewatJam = jamPendek && Date.now() > batas.getTime();
+
   const daysRemaining = Math.round((deadlineDate - startOfToday()) / 86_400_000);
   const formatted = deadlineDate.toLocaleDateString('id-ID', {
     day: 'numeric', month: 'short', year: 'numeric',
-  });
+  }) + (jamPendek ? ` ${jamPendek}` : '');
+  const pukul = jamPendek ? ` pukul ${jamPendek}` : '';
 
-  if (daysRemaining < 0) {
+  if (daysRemaining < 0 || lewatJam) {
     return {
       tier: 'terlambat', priority: 0, daysRemaining, formatted,
-      label: `Terlambat ${Math.abs(daysRemaining)} hari`,
+      label: daysRemaining < 0 ? `Terlambat ${Math.abs(daysRemaining)} hari` : `Terlambat (batas ${jamPendek})`,
       badgeClassName: 'border-rose-200 bg-rose-50 text-rose-700',
       alertClassName: 'border-rose-500 text-rose-900',
       alertBg: 'rgba(244, 63, 94, 0.06)',
@@ -33,7 +46,7 @@ export function getDeadlineTier(deadline) {
   if (daysRemaining === 0) {
     return {
       tier: 'hari_ini', priority: 1, daysRemaining, formatted,
-      label: 'Deadline hari ini',
+      label: `Deadline hari ini${pukul}`,
       badgeClassName: 'border-amber-200 bg-amber-50 text-amber-800',
       alertClassName: 'border-amber-500 text-amber-900',
       alertBg: 'rgba(245, 158, 11, 0.07)',
@@ -43,7 +56,7 @@ export function getDeadlineTier(deadline) {
   if (daysRemaining === 1) {
     return {
       tier: 'besok', priority: 2, daysRemaining, formatted,
-      label: 'Deadline besok',
+      label: `Deadline besok${pukul}`,
       badgeClassName: 'border-orange-200 bg-orange-50 text-orange-700',
       alertClassName: 'border-orange-400 text-orange-900',
       alertBg: 'rgba(251, 146, 60, 0.06)',
@@ -70,8 +83,8 @@ export function getDeadlineTier(deadline) {
   };
 }
 
-export default function DeadlineBadge({ deadline }) {
-  const state = getDeadlineTier(deadline);
+export default function DeadlineBadge({ deadline, jam }) {
+  const state = getDeadlineTier(deadline, jam);
   if (!state) return null;
 
   return (

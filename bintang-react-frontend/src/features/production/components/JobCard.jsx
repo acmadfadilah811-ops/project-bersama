@@ -34,7 +34,7 @@ export default function JobCard({ job, orderInfo, onOpenWorkspace, ambangAntrean
         </p>
       )}
       <div className="mt-1 flex flex-wrap gap-1">
-        <DeadlineBadge deadline={job?.deadline} />
+        <DeadlineBadge deadline={job?.deadline} jam={job?.deadline_jam} />
         <JobMacetBadge job={job} ambangAntreanJam={ambangAntreanJam} ambangDikerjakanJam={ambangDikerjakanJam} />
         {job?.insentif > 0 && (
           <span

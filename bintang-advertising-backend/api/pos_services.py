@@ -685,6 +685,7 @@ def create_sale(*, user, data):
             try:
                 staff = spk_service.resolve_staff(spk_payload.get('staff_id'), pemohon=user)
                 deadline = spk_service.resolve_deadline(spk_payload.get('deadline'))
+                deadline_jam = spk_service.resolve_deadline_jam(spk_payload.get('deadline_jam'))
                 if not deadline:
                     raise spk_service.SpkError('Deadline SPK wajib diisi.')
                 tahap = spk_service.resolve_tahap(
@@ -695,7 +696,7 @@ def create_sale(*, user, data):
                 )
                 spk_service.terbitkan(
                     sale.items.all(), field='pos_sale_item', tahap=tahap, staff=staff,
-                    deadline=deadline,
+                    deadline=deadline, deadline_jam=deadline_jam,
                 )
             except spk_service.SpkError as exc:
                 raise ValidationError({'error': exc.pesan})

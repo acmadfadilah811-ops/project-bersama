@@ -235,7 +235,7 @@ export default function ClaimPool({
                         {job.biaya_desain > 0 && (
                           <span className="text-emerald-600 font-bold">Rp{job.biaya_desain.toLocaleString()}</span>
                         )}
-                        <DeadlineBadge deadline={job.deadline} />
+                        <DeadlineBadge deadline={job.deadline} jam={job.deadline_jam} />
                         <JobMacetBadge job={job} ambangAntreanJam={ambangAntreanJam} ambangDikerjakanJam={ambangDikerjakanJam} />
                         <span className="ml-auto text-slate-300 font-mono shrink-0">#{job.id}</span>
                       </div>

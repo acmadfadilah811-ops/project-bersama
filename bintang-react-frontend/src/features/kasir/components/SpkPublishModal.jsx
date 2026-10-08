@@ -31,6 +31,7 @@ export default function SpkPublishModal({ judul, keterangan, onTerbitkan, onClos
   const [staffId, setStaffId] = useState('');
   const [tahapId, setTahapId] = useState('');
   const [deadline, setDeadline] = useState('');
+  const [deadlineJam, setDeadlineJam] = useState('');
 
   const [memuat, setMemuat] = useState(true);
   const [mengirim, setMengirim] = useState(false);
@@ -88,6 +89,7 @@ export default function SpkPublishModal({ judul, keterangan, onTerbitkan, onClos
     const payload = tipeEfektif === 'staff'
       ? { staff_id: staffId, deadline }
       : { divisi_id: divisiId, deadline };
+    if (deadlineJam) payload.deadline_jam = deadlineJam;
     if (tahapId) payload.tahap_id = tahapId;
     try {
       await onTerbitkan(payload);
@@ -176,13 +178,25 @@ export default function SpkPublishModal({ judul, keterangan, onTerbitkan, onClos
                 <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 5 }}>
                   Deadline pengerjaan <span style={{ color: '#dc2626' }}>(wajib)</span>
                 </span>
-                <input
-                  type="date"
-                  value={deadline}
-                  onChange={(event) => setDeadline(event.target.value)}
-                  required
-                  style={{ width: '100%', padding: 9, border: '1px solid #cbd5e1', borderRadius: 8 }}
-                />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    type="date"
+                    value={deadline}
+                    onChange={(event) => setDeadline(event.target.value)}
+                    required
+                    style={{ flex: 1, minWidth: 0, padding: 9, border: '1px solid #cbd5e1', borderRadius: 8 }}
+                  />
+                  <input
+                    type="time"
+                    value={deadlineJam}
+                    onChange={(event) => setDeadlineJam(event.target.value)}
+                    title="Jam deadline (opsional)"
+                    style={{ width: 120, padding: 9, border: '1px solid #cbd5e1', borderRadius: 8 }}
+                  />
+                </div>
+                <span style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+                  Jam opsional. Kosong = sampai akhir hari.
+                </span>
               </label>
             </div>
           )}

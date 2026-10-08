@@ -199,7 +199,7 @@ export default function KanbanPersonal({
                             )}
                           </div>
                         </div>
-                        <div className="mt-1.5"><DeadlineBadge deadline={job.deadline} /></div>
+                        <div className="mt-1.5"><DeadlineBadge deadline={job.deadline} jam={job.deadline_jam} /></div>
 
                         {/* Baris Tengah: Nama Pelanggan & Nama Produk */}
                         <div className="mt-1.5 flex items-baseline gap-1.5 min-w-0">

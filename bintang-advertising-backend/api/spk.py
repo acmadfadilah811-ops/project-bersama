@@ -13,7 +13,7 @@ import logging
 from datetime import date
 
 from django.utils import timezone
-from django.utils.dateparse import parse_date
+from django.utils.dateparse import parse_date, parse_time
 
 from .models import CustomUser, JobBoard, TahapProses
 from .permissions import get_subordinate_user_ids
@@ -45,6 +45,19 @@ def resolve_deadline(value):
     if not isinstance(value, str) or not (deadline := parse_date(value)):
         raise SpkError('Deadline harus menggunakan tanggal valid berformat YYYY-MM-DD.')
     return deadline
+
+
+def resolve_deadline_jam(value):
+    """Validasi jam deadline SPK (format HH:MM). Opsional: kosong = akhir hari."""
+    if value in (None, ''):
+        return None
+    try:
+        jam = parse_time(value) if isinstance(value, str) else None
+    except ValueError:
+        jam = None
+    if jam is None:
+        raise SpkError('Jam deadline harus berformat HH:MM.')
+    return jam.replace(second=0, microsecond=0)
 
 
 def resolve_staff(staff_id, pemohon=None):
@@ -151,7 +164,7 @@ def boleh_menentukan_insentif(user):
     return getattr(user, 'role', None) in ROLE_PENENTU_INSENTIF
 
 
-def terbitkan(items, *, field, tahap, staff, biaya_desain=0, insentif=0, deadline=None):
+def terbitkan(items, *, field, tahap, staff, biaya_desain=0, insentif=0, deadline=None, deadline_jam=None):
     """Buat/perbarui JobBoard untuk tiap item.
 
     `field` menentukan sumbernya: 'order_item' atau 'pos_sale_item'. Lookup
@@ -198,6 +211,7 @@ def terbitkan(items, *, field, tahap, staff, biaya_desain=0, insentif=0, deadlin
                 'biaya_desain': biaya_desain,
                 'insentif': insentif,
                 'deadline': deadline,
+                'deadline_jam': deadline_jam if deadline else None,
                 'waktu_mulai': None,
                 'waktu_selesai': None,
             },

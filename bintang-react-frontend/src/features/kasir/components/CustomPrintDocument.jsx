@@ -84,7 +84,7 @@ export default function CustomPrintDocument({ type, data, settings }) {
         {type === 'spk' && (
           <div className="text-right">
             <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Deadline</p>
-            <p className="font-bold text-sm">{data.spk_deadline ? formatTanggal(data.spk_deadline) : '-'}</p>
+            <p className="font-bold text-sm">{data.spk_deadline ? `${formatTanggal(data.spk_deadline)}${data.spk_deadline_jam ? ` ${data.spk_deadline_jam.slice(0, 5)}` : ''}` : '-'}</p>
           </div>
         )}
       </div>

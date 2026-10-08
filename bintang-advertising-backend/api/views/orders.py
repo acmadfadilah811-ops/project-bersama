@@ -637,6 +637,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         try:
             staff = spk.resolve_staff(spk_payload.get('staff_id'), pemohon=request.user)
             deadline = spk.resolve_deadline(spk_payload.get('deadline'))
+            deadline_jam = spk.resolve_deadline_jam(spk_payload.get('deadline_jam'))
             if not deadline:
                 raise spk.SpkError('Deadline SPK wajib diisi.')
             tahap = spk.resolve_tahap(
@@ -645,7 +646,10 @@ class OrderViewSet(viewsets.ModelViewSet):
                 staff=staff,
                 pemohon=request.user,
             )
-            jobs = spk.terbitkan(order.items.all(), field='order_item', tahap=tahap, staff=staff, deadline=deadline)
+            jobs = spk.terbitkan(
+                order.items.all(), field='order_item', tahap=tahap, staff=staff,
+                deadline=deadline, deadline_jam=deadline_jam,
+            )
         except spk.SpkError as exc:
             raise ValidationError({'error': exc.pesan})
 
@@ -1596,6 +1600,7 @@ class AssignOrderView(APIView):
         try:
             staff = spk.resolve_staff(staff_id, pemohon=request.user)
             deadline = spk.resolve_deadline(request.data.get('deadline'))
+            deadline_jam = spk.resolve_deadline_jam(request.data.get('deadline_jam'))
             tahap = spk.resolve_tahap(tahap_id=tahap_id, divisi_id=divisi_id, staff=staff, pemohon=request.user)
         except spk.SpkError as exc:
             return Response({'error': exc.pesan}, status=exc.status_code)
@@ -1611,7 +1616,7 @@ class AssignOrderView(APIView):
         try:
             created_jobs = spk.terbitkan(
                 items, field='order_item', tahap=tahap, staff=staff,
-                biaya_desain=biaya_desain, insentif=insentif, deadline=deadline,
+                biaya_desain=biaya_desain, insentif=insentif, deadline=deadline, deadline_jam=deadline_jam,
             )
         except spk.SpkError as exc:
             return Response({'error': exc.pesan}, status=exc.status_code)

@@ -512,7 +512,7 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
                 </td>
                 <td colSpan={3} className="px-2 border border-[#ccc] bg-sky-50/30">
                   {job.deadline ? (
-                    <DeadlineBadge deadline={job.deadline} />
+                    <DeadlineBadge deadline={job.deadline} jam={job.deadline_jam} />
                   ) : (
                     <span className="text-slate-400 italic">Belum ditentukan oleh manajer</span>
                   )}

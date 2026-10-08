@@ -53,6 +53,34 @@ class SpkDeadlineTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
         self.assertEqual(JobBoard.objects.get(order_item=item).deadline, date(2026, 8, 21))
 
+    def test_jam_deadline_tersimpan_di_pos_dan_order(self):
+        response = self.client.post(
+            f'/api/pos/sales/{self.sale.id}/terbitkan-spk/',
+            {'divisi_id': self.divisi.id, 'deadline': '2026-08-20', 'deadline_jam': '15:30'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        job = JobBoard.objects.get(pos_sale_item=self.sale_item)
+        self.assertEqual(self.client.get(f'/api/jobs/{job.id}/').data['deadline_jam'], '15:30:00')
+
+        order = Order.objects.create(nama='Pelanggan Jam', total_harga=50000)
+        item = OrderItem.objects.create(order=order, jenis_produk='Banner jam', qty=1)
+        response = self.client.post(
+            f'/api/orders/{order.id}/assign/',
+            {'order_item_id': item.id, 'divisi_id': self.divisi.id, 'deadline': '2026-08-21', 'deadline_jam': '09:00'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        self.assertEqual(str(JobBoard.objects.get(order_item=item).deadline_jam), '09:00:00')
+
+    def test_jam_deadline_tidak_valid_ditolak(self):
+        response = self.client.post(
+            f'/api/pos/sales/{self.sale.id}/terbitkan-spk/',
+            {'divisi_id': self.divisi.id, 'deadline': '2026-08-20', 'deadline_jam': '25:99'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.content)
+
     def test_deadline_tidak_valid_ditolak(self):
         response = self.client.post(
             f'/api/pos/sales/{self.sale.id}/terbitkan-spk/',

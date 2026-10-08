@@ -598,7 +598,7 @@ class JobBoardViewSet(viewsets.ModelViewSet):
         elif urutan == 'deadline':
             scoped_qs = scoped_qs.order_by(
                 Case(When(deadline__isnull=True, then=Value(1)), default=Value(0)),
-                'deadline', 'dibuat_pada', 'id',
+                'deadline', 'deadline_jam', 'dibuat_pada', 'id',
             )
 
         return scoped_qs

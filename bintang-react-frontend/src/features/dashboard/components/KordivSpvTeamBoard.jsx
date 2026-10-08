@@ -31,12 +31,14 @@ const STATUS_LABEL = {
   batal: 'Dibatalkan',
 };
 
-function formatDeadline(tanggal) {
+function formatDeadline(tanggal, jam) {
   if (!tanggal) return '-';
   const d = new Date(tanggal);
   const today = new Date();
-  const isPast = d < new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const label = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+  const jamPendek = jam ? String(jam).slice(0, 5) : '';
+  const batas = new Date(`${tanggal}T${jamPendek || '23:59'}:00`);
+  const isPast = jamPendek ? batas < today : d < new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const label = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) + (jamPendek ? ` ${jamPendek}` : '');
   return { label, isPast };
 }
 
@@ -242,7 +244,7 @@ export default function KordivSpvTeamBoard({ role }) {
                   </tr>
                 ) : (
                   filteredJobs.map((job) => {
-                    const dl = formatDeadline(job.deadline);
+                    const dl = formatDeadline(job.deadline, job.deadline_jam);
                     return (
                       <tr key={job.id} className="hover:bg-slate-50/80">
                         <td className="py-2 px-2.5 font-mono font-bold text-indigo-700 align-top">{job.nomor_sumber || job.id}</td>

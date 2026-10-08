@@ -582,7 +582,7 @@ export default function ProductionApp() {
       ? globalJobs.filter((j) => !['selesai', 'batal'].includes(j.status_pekerjaan))
       : jobs.filter((j) => ['antrean', 'dikerjakan', 'kendala'].includes(j.status_pekerjaan));
     return sumber
-      .map((job) => ({ job, tier: getDeadlineTier(job.deadline) }))
+      .map((job) => ({ job, tier: getDeadlineTier(job.deadline, job.deadline_jam) }))
       .filter((row) => row.tier && row.tier.priority <= 3)
       .sort((a, b) => a.tier.priority - b.tier.priority || a.tier.daysRemaining - b.tier.daysRemaining);
   }, [isAdminMode, jobs, globalJobs]);
@@ -919,7 +919,7 @@ export default function ProductionApp() {
             {selectedWorkspaceJob ? (
               <div className="flex h-full min-h-0 flex-col gap-2">
                 <div className="shrink-0 px-1 flex flex-wrap gap-1">
-                  <DeadlineBadge deadline={selectedWorkspaceJob.deadline} />
+                  <DeadlineBadge deadline={selectedWorkspaceJob.deadline} jam={selectedWorkspaceJob.deadline_jam} />
                   <JobMacetBadge job={selectedWorkspaceJob} ambangAntreanJam={ambangAntreanJam} ambangDikerjakanJam={ambangDikerjakanJam} />
                   {!isAdminMode &&
                     ['antrean', 'dikerjakan', 'kendala'].includes(selectedWorkspaceJob.status_pekerjaan) && (
