@@ -49,7 +49,7 @@ from .pos import (
 from .public import (
     HealthCheckView, ClientLogView, PublicOrderDetailsView, PublicSubmitDesignView
 )
-from .order_invoice import OrderInvoiceWhatsAppView
+from .order_invoice import OrderIdLacakWhatsAppView, OrderInvoiceWhatsAppView
 from .machine import (
     MesinViewSet, PenggunaanMesinViewSet, MaintenanceMesinViewSet
 )

@@ -85,3 +85,31 @@ class KirimIdLacakStaffTests(_Dasar):
         self.assertTrue(svc.minta_kirim_wa({'kirim_wa': True}))
         self.assertFalse(svc.minta_kirim_wa({'kirim_wa': False}))
         self.assertFalse(svc.minta_kirim_wa({'kirim_wa': 'false'}))
+
+
+@patch('api.whatsapp_client.whatsapp_client.send_text_message', return_value={'ok': True})
+class TombolKirimIdTests(_Dasar):
+    def setUp(self):
+        super().setUp()
+        from rest_framework.test import APIClient
+        from .models import CustomUser
+        self.api = APIClient()
+        self.api.force_authenticate(CustomUser.objects.create_user(username='kasir.id', password='x12345678', role='kasir'))
+
+    def test_tombol_kirim_id_tanpa_faktur_dan_bisa_ulang(self, kirim):
+        svc.jadwalkan_id_lacak_staff(self.order, kirim=False)  # dp 0: tidak dicatat
+        for _ in range(2):
+            r = self.api.post(f'/api/orders/{self.order.id}/kirim-id-whatsapp/')
+            self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(kirim.call_count, 2)
+        self.assertIn('berikut ID pesanan', kirim.call_args.args[1])
+        self.assertIn('ID PESANAN: ORD-20261008-AB12', kirim.call_args.args[1])
+
+    def test_staff_produksi_ditolak_dan_pesanan_tidak_ada_404(self, kirim):
+        from .models import CustomUser
+        staff = CustomUser.objects.create_user(username='staff.id', password='x12345678', role='staff')
+        self.api.force_authenticate(staff)
+        self.assertEqual(self.api.post(f'/api/orders/{self.order.id}/kirim-id-whatsapp/').status_code, 403)
+        self.api.force_authenticate(CustomUser.objects.get(username='kasir.id'))
+        self.assertEqual(self.api.post('/api/orders/ORD-TIDAK-ADA/kirim-id-whatsapp/').status_code, 404)
+        kirim.assert_not_called()

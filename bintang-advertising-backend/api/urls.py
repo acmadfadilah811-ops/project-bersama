@@ -151,6 +151,7 @@ urlpatterns = [
     path('ai-business-analyst/chat/', ai_business_analyst_views.AiBusinessAnalystChatView.as_view(), name='ai-business-analyst-chat'),
     path('auth/create-user/', CreateUserView.as_view(), name='create_user'),
     path('orders/<str:order_id>/invoice-whatsapp/', views.OrderInvoiceWhatsAppView.as_view(), name='order-invoice-whatsapp'),
+    path('orders/<str:order_id>/kirim-id-whatsapp/', views.OrderIdLacakWhatsAppView.as_view(), name='order-id-lacak-whatsapp'),
     path('orders/<str:order_id>/assign/', AssignOrderView.as_view(), name='assign_order'),
     path('jobs/<int:job_id>/forward/', ForwardJobView.as_view(), name='forward_job'),
     # Pengembalian pekerjaan ke tahap sebelumnya (PRD-05 UAT, 2026-09-29).

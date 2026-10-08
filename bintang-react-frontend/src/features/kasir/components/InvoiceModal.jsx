@@ -3,6 +3,7 @@ import { FileText, MessageCircle, Printer, X } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import OrderInvoicePrint from './OrderInvoicePrint';
 import { requestBrowserPrint } from '../../printing/services/printService';
+import KirimIdPesananButton from './KirimIdPesananButton';
 
 /**
  * Pratinjau & cetak faktur tanpa transaksi pembayaran.
@@ -150,6 +151,7 @@ export default function InvoiceModal({ order, onClose }) {
             >
               <MessageCircle size={14} /> {sendingInvoice ? 'Mengirim...' : 'Kirim Faktur WA'}
             </button>
+            <KirimIdPesananButton orderId={order.id} className="px-4 py-2 text-xs rounded-xl" />
           </div>
         </div>
       </div>

@@ -20,6 +20,7 @@ import { useAuth } from '../../../context/AuthContext';
 import useAutoRefresh from '../../../utils/useAutoRefresh';
 import PosHeaderBar from './PosHeaderBar';
 import PelunasanModal from './PelunasanModal';
+import KirimIdPesananButton from './KirimIdPesananButton';
 import WaOrderItemProductSource from './WaOrderItemProductSource';
 import WaOrderList from './WaOrderList';
 import { fetchActiveProducts, fetchActivePackages, fetchHargaKatalog } from '../utils/orderCatalogPricing';
@@ -1093,6 +1094,8 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
                 <MessageCircle size={16} />
                 <span>{sendingInvoice ? 'Mengirim Invoice...' : 'Kirim Invoice WA'}</span>
               </button>
+              <KirimIdPesananButton orderId={selectedOrder.id} iconSize={16} className="w-full py-3 text-sm rounded-xl" />
+              <p className="text-[11px] text-slate-400">Kirim ID Pesanan hanya mengirim ID untuk lacak status, tanpa faktur.</p>
             </div>
             </div>
           </div>

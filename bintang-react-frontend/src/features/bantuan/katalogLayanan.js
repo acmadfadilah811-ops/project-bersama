@@ -220,6 +220,7 @@ export const KATALOG_LAYANAN = [
       'Pesanan dari terminal kasir: ID (ORD-... atau POS-... untuk transaksi ber-SPK) ikut di resi/invoice WhatsApp.',
       'Pesanan dari staff: setelah kasir menerima pembayaran atau menerbitkan SPK, pelanggan otomatis menerima pesan berisi ID PESANAN.',
       'Pelanggan cukup mengirim ID itu ke WhatsApp toko; bot membalas status dan tahap produksi tiap item.',
+      'Untuk mengirim ID saja (tanpa faktur) atau mengirim ulang, tekan Kirim ID Pesanan WA di Antrean, Terima Pembayaran, atau Faktur pesanan.',
     ],
     halaman: '/kasir/riwayat',
     endpoint: [],

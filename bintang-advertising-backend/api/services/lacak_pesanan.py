@@ -107,22 +107,38 @@ def baris_id_lacak(id_lacak):
     return f"ID PESANAN: {id_lacak} — simpan & kirim ID ini ke WhatsApp kami untuk cek status pesanan."
 
 
-def kirim_id_lacak_whatsapp(order_id):
-    """Kirim ID lacak pesanan staff ke pelanggan (sekali per pesanan)."""
+def kirim_id_lacak_whatsapp(order_id, manual=False, user=None):
+    """Kirim ID lacak pesanan ke pelanggan (tanpa faktur).
+
+    Otomatis (pesanan staff): sekali per pesanan, dilewati bila kasir memilih
+    tidak mengirim. `manual=True` (tombol "Kirim ID Pesanan WA"): selalu kirim,
+    untuk pesanan dari sumber mana pun, termasuk kirim ulang.
+    """
     from ..models import Order, OrderActivityLog
+    from ..wa_logic import get_business_name
     from ..whatsapp_client import whatsapp_client
     from .pos_receipt_whatsapp import normalisasi_nomor_whatsapp
     from .resi_digital import url_resi
 
     order = Order.objects.filter(pk=order_id).first()
-    if not order or OrderActivityLog.objects.filter(order=order, tindakan__in=[TINDAKAN_KIRIM_ID, TINDAKAN_LEWATI_ID]).exists():
+    if order is None:
+        if manual:
+            raise Order.DoesNotExist
         return {'ok': True, 'status': 'skipped'}
+    if not manual and OrderActivityLog.objects.filter(order=order, tindakan__in=[TINDAKAN_KIRIM_ID, TINDAKAN_LEWATI_ID]).exists():
+        return {'ok': True, 'status': 'skipped'}
+    if order.status_global == 'batal':
+        return {'ok': False, 'status': 'skipped', 'reason': 'batal'}
     nomor = normalisasi_nomor_whatsapp(order.nomor_wa)
     if not nomor:
         return {'ok': False, 'status': 'skipped', 'reason': 'invalid_number'}
     panggilan = f"Kak {order.nama}" if order.nama else "Kak"
+    pembuka = (
+        f"Halo {panggilan}, berikut ID pesanan Kakak di {get_business_name()} 🙏"
+        if manual else f"Terima kasih {panggilan}! Pembayaran pesanan Kakak sudah kami verifikasi ✅"
+    )
     teks = (
-        f"Terima kasih {panggilan}! Pembayaran pesanan Kakak sudah kami verifikasi ✅\n\n"
+        f"{pembuka}\n\n"
         f"🎫 *ID PESANAN: {order.id}*\n"
         f"_Simpan ID ini untuk melacak status pesanan Kakak._ "
         f"Cukup kirim ID ini ke WhatsApp kami kapan saja untuk cek progres.\n\n"
@@ -135,10 +151,10 @@ def kirim_id_lacak_whatsapp(order_id):
         hasil = None
     if hasil:
         OrderActivityLog.objects.create(
-            order=order, user=None, tindakan=TINDAKAN_KIRIM_ID,
-            keterangan=f'ID lacak pesanan terkirim ke WhatsApp {nomor}.',
+            order=order, user=user, tindakan=TINDAKAN_KIRIM_ID,
+            keterangan=f"ID lacak pesanan terkirim ke WhatsApp {nomor}{' (manual oleh kasir)' if manual else ''}.",
         )
-        return {'ok': True, 'status': 'sent'}
+        return {'ok': True, 'status': 'sent', 'number': nomor}
     return {'ok': False, 'status': 'failed'}
 
 

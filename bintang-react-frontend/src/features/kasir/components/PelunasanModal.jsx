@@ -3,6 +3,7 @@ import { Loader2, MessageCircle, Printer, Wallet, X } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import NumericInput from '../../../components/NumericInput';
 import OrderInvoicePrint from './OrderInvoicePrint';
+import KirimIdPesananButton from './KirimIdPesananButton';
 import { requestBrowserPrint } from '../../printing/services/printService';
 
 /**
@@ -207,6 +208,7 @@ export default function PelunasanModal({ order, onClose, onSelesai }) {
                 >
                   <MessageCircle size={14} /> {sendingInvoice ? 'Mengirim...' : 'Kirim Faktur WA'}
                 </button>
+                <KirimIdPesananButton orderId={orderLunas.id} className="px-4 py-2 text-xs rounded-xl" />
               </>
             ) : (
               <>
