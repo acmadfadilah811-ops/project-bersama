@@ -210,6 +210,22 @@ export const KATALOG_LAYANAN = [
     catatan: 'Stok baru terpotong saat nota disimpan, bukan saat bot membuat pesanan.',
   },
   {
+    id: 'riwayat-void',
+    modul: 'Kasir & Shift',
+    judul: 'Riwayat void',
+    ringkas: 'Melihat semua permintaan void transaksi kasir dan pesanan beserta statusnya.',
+    peran: KASIR,
+    kataKunci: ['void', 'batal', 'riwayat void', 'otp', 'pembatalan'],
+    langkah: [
+      'Buka menu Riwayat Void di sidebar kasir.',
+      'Saring status: Menunggu, Sudah Di-void, atau Ditolak; pilih rentang tanggal atau cari nomor/pelanggan/alasan.',
+      'Kolom Diproses menunjukkan siapa yang menyetujui dan kapan transaksi benar-benar di-void.',
+    ],
+    halaman: '/kasir/riwayat-void',
+    endpoint: ['GET /api/pos-void-requests/', 'GET /api/order-void-requests/'],
+    uat: [],
+  },
+  {
     id: 'pelunasan',
     modul: 'Kasir & Shift',
     judul: 'Pelunasan pesanan (DP dan sisa tagihan)',

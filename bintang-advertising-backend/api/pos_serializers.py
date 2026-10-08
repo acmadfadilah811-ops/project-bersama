@@ -45,13 +45,14 @@ class POSVoidRequestSerializer(serializers.ModelSerializer):
     disetujui_oleh_nama = serializers.SerializerMethodField()
     disetujui_kordiv_oleh_nama = serializers.SerializerMethodField()
     sale_nomor = serializers.ReadOnlyField(source='sale.nomor')
+    sale_total = serializers.ReadOnlyField(source='sale.total')  # Riwayat Void kasir
     otp_code = serializers.SerializerMethodField()
     kadaluarsa = serializers.SerializerMethodField()
 
     class Meta:
         model = POSVoidRequest
         fields = [
-            'id', 'sale', 'sale_nomor', 'diminta_oleh', 'diminta_oleh_nama',
+            'id', 'sale', 'sale_nomor', 'sale_total', 'diminta_oleh', 'diminta_oleh_nama',
             'alasan', 'status', 'otp_code',
             'disetujui_kordiv_oleh', 'disetujui_kordiv_oleh_nama', 'disetujui_kordiv_pada',
             'disetujui_oleh', 'disetujui_oleh_nama',

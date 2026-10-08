@@ -22,6 +22,7 @@ import {
   Printer,
   Users,
   FileWarning,
+  Ban,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useKasir } from '../context/KasirContext';
@@ -76,6 +77,7 @@ export default function KasirSidebar({ isCollapsed, setIsCollapsed }) {
     { path: '/kasir/wa-live', label: 'WA Live', icon: MessageSquare },
     { path: '/kasir/pelanggan-supplier', label: 'Pelanggan', icon: Users },
     { path: '/kasir/riwayat', label: 'Riwayat Transaksi', icon: History },
+    { path: '/kasir/riwayat-void', label: 'Riwayat Void', icon: Ban },
     { path: '/kasir/shift', label: 'Shift', icon: Clock },
     { path: '/nota-human-error', label: 'Nota Human Error', icon: FileWarning },
     { path: '/kasir/pengaturan-cetak', label: 'Printer & Cetak', icon: Printer },

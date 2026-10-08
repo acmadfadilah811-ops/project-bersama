@@ -511,13 +511,14 @@ class OrderVoidRequestSerializer(serializers.ModelSerializer):
     diminta_oleh_nama = serializers.SerializerMethodField()
     disetujui_oleh_nama = serializers.SerializerMethodField()
     order_nama = serializers.ReadOnlyField(source='order.nama')
+    order_total = serializers.ReadOnlyField(source='order.total_harga')  # Riwayat Void kasir
     otp_code = serializers.SerializerMethodField()
     kadaluarsa = serializers.SerializerMethodField()
 
     class Meta:
         model = OrderVoidRequest
         fields = [
-            'id', 'order', 'order_nama', 'diminta_oleh', 'diminta_oleh_nama',
+            'id', 'order', 'order_nama', 'order_total', 'diminta_oleh', 'diminta_oleh_nama',
             'alasan', 'status', 'otp_code', 'disetujui_oleh', 'disetujui_oleh_nama',
             'alasan_tolak', 'dibuat_pada', 'disetujui_pada', 'kadaluarsa_pada',
             'digunakan_pada', 'kadaluarsa',
