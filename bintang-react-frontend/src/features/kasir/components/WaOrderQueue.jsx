@@ -96,6 +96,9 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
   // kalau `sumber` prop-nya gabungan (mengandung koma) -- kalau halaman ini
   // sudah dikunci ke satu sumber tunggal, filter ini tidak ditampilkan.
   const [sumberFilter, setSumberFilter] = useState('semua');
+  // 'menunggu' (bawaan): hanya draft/review -- pesanan yang sudah terbit SPK
+  // pindah ke Pesanan & Pelunasan dan tidak lagi tampil di antrean.
+  const [statusTampil, setStatusTampil] = useState('menunggu');
   const [cariSemua, setCariSemua] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(40);
@@ -109,6 +112,8 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
     try {
       const sumberEfektif = sumberFilter !== 'semua' ? sumberFilter : sumber;
       const params = { sumber: sumberEfektif, page, page_size: pageSize };
+      if (statusTampil === 'menunggu') params.status_global = 'draft,review';
+      else if (statusTampil === 'diproses') params.status_global = 'desain,proses,ready,selesai';
       const q = searchQuery.trim();
       if (q) params.search = q;
       // Sedang mengetik pencarian -- abaikan filter tanggal otomatis (tidak
@@ -234,12 +239,12 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
 
   useEffect(() => {
     setPage(1);
-  }, [sumber, sumberFilter, tanggal, searchQuery, cariSemua]);
+  }, [sumber, sumberFilter, statusTampil, tanggal, searchQuery, cariSemua]);
 
   useEffect(() => {
     const t = setTimeout(() => fetchQueueRef.current(), 250);
     return () => clearTimeout(t);
-  }, [sumber, sumberFilter, tanggal, searchQuery, cariSemua, page, pageSize]);
+  }, [sumber, sumberFilter, statusTampil, tanggal, searchQuery, cariSemua, page, pageSize]);
 
   useEffect(() => {
     const interval = setInterval(() => fetchQueueRef.current(), 15000);
@@ -635,6 +640,8 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
             sumberOptions={sumber.includes(',') ? sumber.split(',').map((s) => s.trim()) : null}
             sumberFilter={sumberFilter}
             onSumberFilterChange={setSumberFilter}
+            statusTampil={statusTampil}
+            onStatusTampilChange={setStatusTampil}
             tanggal={tanggal}
             onTanggalChange={setTanggal}
             cariSemua={cariSemua}

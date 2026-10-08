@@ -1,4 +1,5 @@
-import { MessageCircle, Clock, Phone, CheckCircle, Search, X, Calendar, Globe2, User } from 'lucide-react';
+import { MessageCircle, Clock, Phone, CheckCircle, Search, X, Calendar, Globe2, User, Send } from 'lucide-react';
+import { teksPosisi } from '../utils/posisiProduksi';
 
 const formatCurrency = (val) =>
   new Intl.NumberFormat('id-ID', {
@@ -39,6 +40,7 @@ export default function WaOrderList({
   sumberOptions, sumberFilter = 'semua', onSumberFilterChange,
   tanggal, onTanggalChange,
   cariSemua, onToggleCariSemua,
+  statusTampil = 'menunggu', onStatusTampilChange,
   page = 1, pageSize = 20, totalCount = 0, onPageChange, onPageSizeChange,
 }) {
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -116,6 +118,20 @@ export default function WaOrderList({
               menggabungkan >1 sumber (WaOrderQueue.jsx menentukan lewat
               sumberOptions). Order offline (dari staff/spv/kordiv, lihat
               StaffCreateOrderPanel.jsx) masuk sumber='staff'. */}
+          {/* Bawaan hanya pesanan yang belum diverifikasi; yang sudah terbit
+              SPK pindah ke Pesanan & Pelunasan (lihat "Sudah diproses"). */}
+          {onStatusTampilChange && (
+            <select
+              value={statusTampil}
+              onChange={(e) => onStatusTampilChange(e.target.value)}
+              className="shrink-0 border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-600 outline-none focus:ring-1 focus:ring-indigo-400 bg-white cursor-pointer"
+            >
+              <option value="menunggu">Menunggu Verifikasi</option>
+              <option value="diproses">Sudah Diproses (SPK terbit)</option>
+              <option value="semua">Semua Status</option>
+            </select>
+          )}
+
           {sumberOptions && sumberOptions.length > 1 && (
             <select
               value={sumberFilter}
@@ -222,6 +238,13 @@ export default function WaOrderList({
                   <p className="text-[9.5px] text-slate-500 font-medium line-clamp-1 italic" title={itemsText}>
                     "{itemsText}"
                   </p>
+
+                  {teksPosisi(order) && (
+                    <div className="flex items-start gap-1 text-[9.5px] text-slate-600 font-bold" title={`Masuk antrean ${teksPosisi(order)}`}>
+                      <Send size={9} className="shrink-0 mt-0.5" />
+                      <span className="line-clamp-2">Masuk {teksPosisi(order)}</span>
+                    </div>
+                  )}
 
                   <div className="flex justify-between items-center mt-0.5 pt-1 border-t border-slate-100 w-full text-[9.5px] font-bold">
                     <span className="text-slate-400 flex items-center gap-0.5">

@@ -104,11 +104,14 @@ class OrderViewSet(viewsets.ModelViewSet):
         # dikenali, sehingga permintaan seperti ?status_global=review&sumber=wa
         # (dipakai antrean WA dan badge topbar kasir) diabaikan diam-diam dan
         # mengembalikan SELURUH order — badge pun menghitung semuanya.
+        # Boleh beberapa status dipisah koma (?status_global=draft,review --
+        # antrean kasir hanya menampilkan pesanan yang belum diverifikasi).
         status_global = self.request.query_params.get('status_global')
         if status_global:
             valid_status = {kode for kode, _ in Order.STATUS_GLOBAL_CHOICES}
-            if status_global in valid_status:
-                base_qs = base_qs.filter(status_global=status_global)
+            status_list = [s.strip() for s in status_global.split(',') if s.strip() in valid_status]
+            if status_list:
+                base_qs = base_qs.filter(status_global__in=status_list)
 
         # ?sumber=wa,staff -> gabung beberapa sumber sekaligus (dipakai
         # antrean kasir "Antrean Online & Offline" yang menyatukan order WA

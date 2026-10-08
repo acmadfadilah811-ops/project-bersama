@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import PelunasanModal from './PelunasanModal';
+import { formatTanggalJam, teksPosisi } from '../utils/posisiProduksi';
 import InvoiceModal from './InvoiceModal';
 
 /**
@@ -62,6 +63,20 @@ const formatJam = (iso) => {
   if (!iso) return null;
   return new Date(iso).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 };
+
+/** Tanggal lokal (WIB) YYYY-MM-DD untuk filter hari. */
+const tanggalLokal = (iso) => (iso ? new Date(iso).toLocaleDateString('sv-SE') : '');
+
+/** Pesanan masuk kapan + sedang di divisi/tahap mana sejak kapan. */
+function KeteranganWaktu({ order }) {
+  const posisi = teksPosisi(order);
+  return (
+    <div className="text-[10px] font-semibold text-slate-400 space-y-0.5">
+      {order.waktu && <p>Pesanan masuk: {formatTanggalJam(order.waktu)}</p>}
+      {posisi && <p>Masuk antrean {posisi}</p>}
+    </div>
+  );
+}
 
 /** Waktu selesai produksi = job terakhir yang rampung di seluruh order. */
 const waktuSelesaiProduksi = (order) => {
@@ -148,6 +163,7 @@ export default function SiapDiambilPanel({ ringkas = false }) {
     id: sale.id,
     _origin: 'pos',
     _displayId: sale.nomor,
+    waktu: sale.created_at,
     nama: sale.pelanggan_name || 'Pelanggan Umum',
     nomor_wa: sale.pelanggan?.nomor_wa || '',
     sisa_tagihan: 0,
@@ -193,8 +209,12 @@ export default function SiapDiambilPanel({ ringkas = false }) {
     return () => clearInterval(id);
   }, [muat]);
 
+  // Filter hari ('' = semua tanggal). Bawaan semua supaya pesanan siap dari
+  // hari sebelumnya tidak tersembunyi.
+  const [filterTanggal, setFilterTanggal] = useState('');
   const query = pencarian.trim().toLowerCase();
   const cocokPencarian = useCallback((order) => {
+    if (filterTanggal && tanggalLokal(order.waktu) !== filterTanggal) return false;
     if (!query) return true;
     return (
       String(order.id).toLowerCase().includes(query) ||
@@ -202,7 +222,7 @@ export default function SiapDiambilPanel({ ringkas = false }) {
       (order.nama || '').toLowerCase().includes(query) ||
       (order.nomor_wa || '').toLowerCase().includes(query)
     );
-  }, [query]);
+  }, [query, filterTanggal]);
 
   const siapTersaring = useMemo(() => siap.filter(cocokPencarian), [siap, cocokPencarian]);
   const prosesTersaring = useMemo(() => proses.filter(cocokPencarian), [proses, cocokPencarian]);
@@ -400,6 +420,25 @@ export default function SiapDiambilPanel({ ringkas = false }) {
               </button>
             )}
           </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Tanggal pesanan</span>
+            {[['', 'Semua'], [new Date().toLocaleDateString('sv-SE'), 'Hari ini']].map(([nilai, label]) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => setFilterTanggal(nilai)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer ${filterTanggal === nilai ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+              >
+                {label}
+              </button>
+            ))}
+            <input
+              type="date"
+              value={filterTanggal}
+              onChange={(e) => setFilterTanggal(e.target.value)}
+              className="border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-semibold text-slate-600"
+            />
+          </div>
         </div>
 
         {error && (
@@ -467,6 +506,7 @@ export default function SiapDiambilPanel({ ringkas = false }) {
                           <p className="text-[11px] font-semibold text-slate-600 truncate">
                             {order.nama} &middot; {(order.items || []).length} item
                           </p>
+                          <KeteranganWaktu order={order} />
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
@@ -550,6 +590,7 @@ export default function SiapDiambilPanel({ ringkas = false }) {
                         <p className="text-[11px] font-semibold text-slate-600 truncate">
                           {order.nama} &middot; {(order.items || []).length} item
                         </p>
+                        <KeteranganWaktu order={order} />
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <div className="text-right mr-1">
@@ -621,6 +662,9 @@ export default function SiapDiambilPanel({ ringkas = false }) {
                             {tuntas}/{total} item selesai
                           </span>
                         </button>
+                        <div className="px-3 pb-2 -mt-1 pl-9">
+                          <KeteranganWaktu order={order} />
+                        </div>
 
                         {isTerbuka && (
                           <div className="px-3 pb-3 pt-1 space-y-1 border-t border-slate-100 bg-slate-50/50">
