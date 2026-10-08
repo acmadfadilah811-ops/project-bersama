@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { handleKasirLogout } from '../utils/kasirLogout';
 import {
@@ -26,7 +25,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useKasir } from '../context/KasirContext';
-import apiClient from '../../../api/apiClient';
 
 const getAvatarUrl = (path) => {
   if (!path) return null;
@@ -39,30 +37,11 @@ export default function KasirSidebar({ isCollapsed, setIsCollapsed }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout, businessSettings } = useAuth();
-  const { shiftAktif, siapDiambilCount } = useKasir();
+  const { shiftAktif, siapDiambilCount, jumlahMasuk } = useKasir();
 
-  const [waOrderCount, setWaOrderCount] = useState(0);
-
-  // Poll count order masuk (status_global=review) dari WA maupun dibantu
-  // staff (walk-in) -- satu antrean gabungan "Antrean Online & Offline",
-  // sebelumnya 2 menu/badge terpisah (digabung 2026-09-06).
-  const fetchWaOrdersCount = async () => {
-    try {
-      const response = await apiClient.get('/orders/', {
-        params: { status_global: 'review', sumber: 'wa,staff,crm' },
-      });
-      const data = response.data || [];
-      setWaOrderCount(data.length);
-    } catch (error) {
-      console.error('Error fetching WA orders count in sidebar:', error);
-    }
-  };
-
-  useEffect(() => {
-    fetchWaOrdersCount();
-    const interval = setInterval(fetchWaOrdersCount, 15000);
-    return () => clearInterval(interval);
-  }, []);
+  // Jumlah antrean & siap diambil dari KasirContext (useNotifikasiSiapDiambil):
+  // satu sumber data dengan lonceng notifikasi, tidak polling sendiri lagi.
+  const waOrderCount = jumlahMasuk;
 
   const avatarUrl = getAvatarUrl(user?.foto_profil);
   const userRole = user?.role?.toLowerCase();

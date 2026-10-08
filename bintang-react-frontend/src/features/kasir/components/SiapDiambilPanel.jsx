@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowRight,
   CheckCircle2,
@@ -128,7 +128,13 @@ export default function SiapDiambilPanel({ ringkas = false }) {
   const [orderAkanDiselesaikan, setOrderAkanDiselesaikan] = useState(null);
   const [menyelesaikan, setMenyelesaikan] = useState(false);
   const [terbuka, setTerbuka] = useState({});
-  const [pencarian, setPencarian] = useState('');
+  // ?cari=<ID> dari lonceng notifikasi kasir: langsung saring ke pesanan itu.
+  const [searchParams] = useSearchParams();
+  const [pencarian, setPencarian] = useState(() => searchParams.get('cari') || '');
+  useEffect(() => {
+    const cari = searchParams.get('cari');
+    if (cari) setPencarian(cari);
+  }, [searchParams]);
   const [waSendingId, setWaSendingId] = useState(null);
   const [waMessage, setWaMessage] = useState('');
 

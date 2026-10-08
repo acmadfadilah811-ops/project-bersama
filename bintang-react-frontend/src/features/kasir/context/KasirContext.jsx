@@ -11,6 +11,11 @@ export function KasirProvider({ children }) {
   // pesanan baru siap diambil, aktif di semua halaman kasir.
   const {
     jumlahSiap,
+    jumlahMasuk,
+    daftarMasuk,
+    daftarSiap,
+    kunciDibaca,
+    jumlahBaru,
     muatUlangSiapDiambil,
     riwayatNotifikasi,
     jumlahBelumDibaca,
@@ -451,6 +456,11 @@ export function KasirProvider({ children }) {
         cartNotes,
         setCartNotes,
         siapDiambilCount: jumlahSiap,
+        jumlahMasuk,
+        daftarMasuk,
+        daftarSiap,
+        kunciDibaca,
+        jumlahBaru,
         muatUlangSiapDiambil,
         riwayatNotifikasi,
         jumlahBelumDibaca,

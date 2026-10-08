@@ -16,6 +16,54 @@ const waktuRelatif = (ts) => {
 };
 
 const jenisIkon = { siap: PackageCheck, masuk: PackageSearch };
+const LABEL_SUMBER = { wa: 'WA', staff: 'Staff', crm: 'CRM' };
+const MAKS_PER_BAGIAN = 20;
+
+/** Satu baris pesanan yang menunggu tindakan kasir di panel lonceng. */
+function BarisPesanan({ p, baru, keterangan, onBuka }) {
+  return (
+    <button
+      onClick={() => onBuka(p.tautan)}
+      className="w-full flex items-start justify-between gap-2 px-4 py-2 hover:bg-slate-50 transition-colors text-left cursor-pointer border-b border-slate-50 last:border-b-0"
+    >
+      <span className="min-w-0">
+        <span className="flex items-center gap-1.5">
+          <span className="text-[11px] font-black text-slate-800 truncate">{p.label}</span>
+          {baru && <span className="shrink-0 rounded bg-rose-500 px-1 py-px text-[9px] font-black text-white">BARU</span>}
+        </span>
+        <span className="block text-[11px] text-slate-500 truncate">{p.nama}</span>
+      </span>
+      <span className="shrink-0 text-right text-[10px] font-semibold text-slate-400">{keterangan}</span>
+    </button>
+  );
+}
+
+function BagianNotifikasi({ judul, daftar, kosong, semua, kunciDibaca, onBuka, keterangan }) {
+  return (
+    <div className="border-b border-slate-100">
+      <div className="flex items-center justify-between px-4 pt-3 pb-1">
+        <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">
+          {judul} <span className="text-rose-600">({daftar.length})</span>
+        </p>
+        <button onClick={() => onBuka(semua)} className="text-[10px] font-bold text-slate-500 hover:text-slate-800 cursor-pointer">
+          Lihat semua
+        </button>
+      </div>
+      {daftar.length === 0 ? (
+        <p className="px-4 pb-3 text-[11px] text-slate-400">{kosong}</p>
+      ) : (
+        <>
+          {daftar.slice(0, MAKS_PER_BAGIAN).map((p) => (
+            <BarisPesanan key={p.kunci} p={p} baru={!kunciDibaca.has(p.kunci)} keterangan={keterangan(p)} onBuka={onBuka} />
+          ))}
+          {daftar.length > MAKS_PER_BAGIAN && (
+            <p className="px-4 py-2 text-[10px] text-slate-400">+{daftar.length - MAKS_PER_BAGIAN} lainnya — buka Lihat semua.</p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
 export default function PosHeaderBar({
   storeName,
@@ -28,7 +76,12 @@ export default function PosHeaderBar({
 }) {
   const navigate = useNavigate();
   const { user, businessSettings } = useAuth();
-  const { riwayatNotifikasi, jumlahBelumDibaca, tandaSemuaDibaca } = useKasir();
+  const {
+    riwayatNotifikasi, tandaSemuaDibaca, daftarMasuk, daftarSiap, kunciDibaca,
+  } = useKasir();
+  // Badge lonceng = jumlah pesanan yang menunggu tindakan kasir (sama dengan
+  // badge merah Antrean Online & Offline + Pesanan & Pelunasan di sidebar).
+  const jumlahMenunggu = daftarMasuk.length + daftarSiap.length;
   const [showDropdown, setShowDropdown] = useState(false);
   const [showNotifikasi, setShowNotifikasi] = useState(false);
   const dropdownRef = useRef(null);
@@ -53,14 +106,22 @@ export default function PosHeaderBar({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Buka lonceng -> tandai semua sudah dibaca (badge hilang), riwayatnya
-  // tetap tampil sampai polling berikutnya menambah yang baru.
-  const bukaNotifikasi = () => {
-    setShowNotifikasi((v) => {
-      const next = !v;
-      if (next) tandaSemuaDibaca();
-      return next;
-    });
+  // Tanda "BARU" per pesanan baru dihapus saat panel DITUTUP, supaya kasir
+  // sempat melihat pesanan mana saja yang baru.
+  const panelPernahTerbuka = useRef(false);
+  useEffect(() => {
+    if (showNotifikasi) {
+      panelPernahTerbuka.current = true;
+    } else if (panelPernahTerbuka.current) {
+      panelPernahTerbuka.current = false;
+      tandaSemuaDibaca();
+    }
+  }, [showNotifikasi, tandaSemuaDibaca]);
+
+  const bukaNotifikasi = () => setShowNotifikasi((v) => !v);
+  const bukaTautan = (tautan) => {
+    setShowNotifikasi(false);
+    navigate(tautan);
   };
 
   return (
@@ -95,9 +156,9 @@ export default function PosHeaderBar({
             title="Notifikasi"
           >
             <Bell size={19} />
-            {jumlahBelumDibaca > 0 && (
+            {jumlahMenunggu > 0 && (
               <span className="absolute -top-0.5 -right-0.5 min-w-[15px] h-[15px] px-0.5 flex items-center justify-center rounded-full bg-rose-500 text-white text-[9px] font-black leading-none border border-white">
-                {jumlahBelumDibaca > 9 ? '9+' : jumlahBelumDibaca}
+                {jumlahMenunggu > 9 ? '9+' : jumlahMenunggu}
               </span>
             )}
           </button>
@@ -107,37 +168,48 @@ export default function PosHeaderBar({
               <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50/70">
                 <p className="text-xs font-extrabold text-slate-700">Notifikasi</p>
               </div>
-              <div className="max-h-80 overflow-y-auto">
-                {riwayatNotifikasi.length === 0 ? (
-                  <p className="px-4 py-6 text-center text-[11px] font-semibold text-slate-400">
-                    Belum ada notifikasi.
-                  </p>
-                ) : (
-                  riwayatNotifikasi.map((n) => {
-                    const Ikon = jenisIkon[n.jenis] || Bell;
-                    const warna = n.jenis === 'siap' ? 'text-emerald-600 bg-emerald-50' : 'text-blue-600 bg-blue-50';
-                    return (
-                      <button
-                        key={n.id}
-                        onClick={() => {
-                          setShowNotifikasi(false);
-                          navigate(n.tautan);
-                        }}
-                        className="w-full flex items-start gap-2.5 px-4 py-2.5 hover:bg-slate-50 transition-colors text-left cursor-pointer border-b border-slate-50 last:border-b-0"
-                      >
-                        <span className={`shrink-0 p-1.5 rounded-lg ${warna}`}>
-                          <Ikon size={13} />
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block text-[11px] font-bold text-slate-800">{n.judul}</span>
-                          <span className="block text-[11px] text-slate-500 truncate">{n.pesan}</span>
-                          <span className="block text-[10px] text-slate-400 font-semibold mt-0.5">
-                            {waktuRelatif(n.waktu)}
+              <div className="max-h-[70vh] overflow-y-auto">
+                <BagianNotifikasi
+                  judul="Antrean Online & Offline"
+                  daftar={daftarMasuk}
+                  kosong="Tidak ada pesanan menunggu verifikasi."
+                  semua="/kasir/antrean-wa"
+                  kunciDibaca={kunciDibaca}
+                  onBuka={bukaTautan}
+                  keterangan={(p) => [LABEL_SUMBER[p.sumber] || p.sumber, p.waktu ? waktuRelatif(new Date(p.waktu).getTime()) : ''].filter(Boolean).join(' · ')}
+                />
+                <BagianNotifikasi
+                  judul="Siap Diambil (Pesanan & Pelunasan)"
+                  daftar={daftarSiap}
+                  kosong="Tidak ada pesanan siap diambil."
+                  semua="/kasir/pesanan"
+                  kunciDibaca={kunciDibaca}
+                  onBuka={bukaTautan}
+                  keterangan={(p) => (p.sisaTagihan > 0 ? `Sisa Rp ${p.sisaTagihan.toLocaleString('id-ID')}` : 'Lunas')}
+                />
+                {riwayatNotifikasi.length > 0 && (
+                  <>
+                    <p className="px-4 pt-3 pb-1 text-[10px] font-black uppercase tracking-wide text-slate-400">Riwayat sesi ini</p>
+                    {riwayatNotifikasi.map((n) => {
+                      const Ikon = jenisIkon[n.jenis] || Bell;
+                      return (
+                        <button
+                          key={n.id}
+                          onClick={() => bukaTautan(n.tautan)}
+                          className="w-full flex items-start gap-2.5 px-4 py-2 hover:bg-slate-50 transition-colors text-left cursor-pointer border-b border-slate-50 last:border-b-0"
+                        >
+                          <span className="shrink-0 p-1.5 rounded-lg text-slate-600 bg-slate-100">
+                            <Ikon size={13} />
                           </span>
-                        </span>
-                      </button>
-                    );
-                  })
+                          <span className="min-w-0">
+                            <span className="block text-[11px] font-bold text-slate-800">{n.judul}</span>
+                            <span className="block text-[11px] text-slate-500 truncate">{n.pesan}</span>
+                            <span className="block text-[10px] text-slate-400 font-semibold mt-0.5">{waktuRelatif(n.waktu)}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </>
                 )}
               </div>
             </div>

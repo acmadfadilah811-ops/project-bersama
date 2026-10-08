@@ -10,6 +10,25 @@ import {
 
 const POLL_INTERVAL_MS = 20000;
 const RIWAYAT_MAKS = 30;
+// Pesanan yang sudah dilihat kasir di lonceng (tanda "Baru" hilang). Disimpan
+// di browser supaya tidak muncul "Baru" lagi setelah halaman dimuat ulang.
+const KUNCI_DIBACA = 'kasir_notif_dibaca';
+
+function bacaDibaca() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(KUNCI_DIBACA) || '[]'));
+  } catch {
+    return new Set();
+  }
+}
+
+function simpanDibaca(set) {
+  try {
+    localStorage.setItem(KUNCI_DIBACA, JSON.stringify([...set]));
+  } catch {
+    // storage tidak tersedia -- tanda "Baru" hanya bertahan selama sesi
+  }
+}
 
 // Bunyi pendek supaya kasir yang sedang melayani pelanggan (mata ke layar
 // lain) tetap sadar. Browser bisa memblokir audio sebelum ada interaksi
@@ -48,6 +67,11 @@ function bunyiPendek() {
  */
 export function useNotifikasiSiapDiambil() {
   const [jumlahSiap, setJumlahSiap] = useState(0);
+  // Daftar pesanan yang menunggu tindakan kasir -- isi badge merah di sidebar
+  // (Antrean Online & Offline, Pesanan & Pelunasan) dan daftar di lonceng.
+  const [daftarMasuk, setDaftarMasuk] = useState([]);
+  const [daftarSiap, setDaftarSiap] = useState([]);
+  const [kunciDibaca, setKunciDibaca] = useState(bacaDibaca);
   const [riwayatNotifikasi, setRiwayatNotifikasi] = useState([]);
   const [jumlahBelumDibaca, setJumlahBelumDibaca] = useState(0);
   const kunciSiapSebelumnya = useRef(null);
@@ -71,10 +95,12 @@ export function useNotifikasiSiapDiambil() {
       const siapBaru = temukanPesananBaru(kunciSiapSebelumnya.current, daftarSiap);
       kunciSiapSebelumnya.current = new Set(daftarSiap.map((p) => p.kunci));
       setJumlahSiap(daftarSiap.length);
+      setDaftarSiap(daftarSiap);
 
       const daftarMasuk = gabungPesananMasuk(resMasuk.data || []);
       const masukBaru = temukanPesananBaru(kunciMasukSebelumnya.current, daftarMasuk);
       kunciMasukSebelumnya.current = new Set(daftarMasuk.map((p) => p.kunci));
+      setDaftarMasuk(daftarMasuk);
 
       if (siapBaru.length > 0) {
         notify({ type: 'success', title: 'Pesanan siap diambil', message: pesanNotifikasi(siapBaru) });
@@ -116,10 +142,26 @@ export function useNotifikasiSiapDiambil() {
     return () => clearInterval(interval);
   }, [muat]);
 
-  const tandaSemuaDibaca = useCallback(() => setJumlahBelumDibaca(0), []);
+  // Buka lonceng = semua pesanan yang sedang tampil dianggap sudah dilihat.
+  // Hanya kunci yang masih menunggu yang disimpan, supaya storage tidak membengkak.
+  const tandaSemuaDibaca = useCallback(() => {
+    setJumlahBelumDibaca(0);
+    setKunciDibaca(() => {
+      const baru = new Set([...daftarMasuk, ...daftarSiap].map((p) => p.kunci));
+      simpanDibaca(baru);
+      return baru;
+    });
+  }, [daftarMasuk, daftarSiap]);
+
+  const jumlahBaru = [...daftarMasuk, ...daftarSiap].filter((p) => !kunciDibaca.has(p.kunci)).length;
 
   return {
     jumlahSiap,
+    jumlahMasuk: daftarMasuk.length,
+    daftarMasuk,
+    daftarSiap,
+    kunciDibaca,
+    jumlahBaru,
     muatUlangSiapDiambil: muat,
     riwayatNotifikasi,
     jumlahBelumDibaca,

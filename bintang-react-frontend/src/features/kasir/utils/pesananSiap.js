@@ -13,11 +13,15 @@ export function gabungPesananSiap(orders = [], penjualanPos = []) {
       kunci: `order:${o.id}`,
       label: o.id,
       nama: o.nama || 'Pelanggan',
+      sisaTagihan: Number(o.sisa_tagihan || 0),
+      tautan: `/kasir/pesanan?cari=${encodeURIComponent(o.id)}`,
     })),
     ...penjualanPos.map((s) => ({
       kunci: `pos:${s.id}`,
       label: s.nomor || `POS-${s.id}`,
       nama: s.pelanggan_name || 'Pelanggan Umum',
+      sisaTagihan: 0,
+      tautan: `/kasir/pesanan?cari=${encodeURIComponent(s.nomor || '')}`,
     })),
   ];
 }
@@ -54,5 +58,8 @@ export function gabungPesananMasuk(orders = []) {
     kunci: `masuk:${o.id}`,
     label: o.id,
     nama: o.nama || 'Pelanggan',
+    sumber: o.sumber || '',
+    waktu: o.waktu || null,
+    tautan: `/kasir/antrean-wa?order=${encodeURIComponent(o.id)}`,
   }));
 }

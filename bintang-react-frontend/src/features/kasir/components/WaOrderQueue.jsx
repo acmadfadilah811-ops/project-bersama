@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import NumericInput from '../../../components/NumericInput';
 import {
   MessageCircle,
@@ -17,6 +18,7 @@ import {
 } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import { useAuth } from '../../../context/AuthContext';
+import { useKasir } from '../context/KasirContext';
 import useAutoRefresh from '../../../utils/useAutoRefresh';
 import PosHeaderBar from './PosHeaderBar';
 import PelunasanModal from './PelunasanModal';
@@ -30,6 +32,7 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
   // Kasir hanya boleh menerbitkan SPK ke antrean divisi — aturan sama dgn
   // SpkPublishModal (ditegakkan backend di api/spk.py), gate diulang di sini.
   const { user } = useAuth();
+  const { muatUlangSiapDiambil } = useKasir();
   const bolehPilihStaff = (user?.role || '').toLowerCase() !== 'kasir';
 
   const [orders, setOrders] = useState([]);
@@ -204,6 +207,19 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
     fetchPackages();
     fetchProducts();
   }, []);
+
+  // ?order=<ID> dari lonceng notifikasi kasir: langsung buka pesanan itu.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const orderDariNotifikasi = searchParams.get('order');
+  useEffect(() => {
+    if (!orderDariNotifikasi) return;
+    apiClient
+      .get(`/orders/${encodeURIComponent(orderDariNotifikasi)}/`)
+      .then((res) => handleSelectOrder(res.data))
+      .catch(() => alert(`Pesanan ${orderDariNotifikasi} tidak ditemukan.`))
+      .finally(() => setSearchParams({}, { replace: true }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderDariNotifikasi]);
 
   // Perubahan produk/paket di menu Produk otomatis terbaca (instruksi user
   // 2026-09-24), tanpa kasir perlu reload halaman Antrean.
@@ -560,6 +576,7 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
       alert('Pesanan telah diverifikasi dan diteruskan ke Papan Kerja Produksi.');
       setSelectedOrder(null);
       await fetchQueue();
+      muatUlangSiapDiambil();
     } catch (err) {
       console.error('Error publishing SPK:', err);
       alert(
