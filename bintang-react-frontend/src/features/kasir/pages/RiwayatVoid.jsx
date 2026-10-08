@@ -12,7 +12,10 @@ import { todayISO } from '../../../utils/date';
 const STATUS = {
   pending: { label: 'Menunggu Persetujuan', kelas: 'bg-amber-50 text-amber-700 border-amber-200' },
   menunggu_spv: { label: 'Menunggu SPV', kelas: 'bg-amber-50 text-amber-700 border-amber-200' },
-  disetujui: { label: 'Disetujui (belum dipakai)', kelas: 'bg-sky-50 text-sky-700 border-sky-200' },
+  // Disetujui = OTP sudah keluar, transaksi BELUM di-void sampai kasir
+  // memasukkan OTP (berlaku 15 menit). Lewat batas = kedaluwarsa.
+  disetujui: { label: 'Disetujui, OTP belum dipakai', kelas: 'bg-sky-50 text-sky-700 border-sky-200' },
+  kedaluwarsa: { label: 'OTP Kedaluwarsa (tidak di-void)', kelas: 'bg-slate-100 text-slate-500 border-slate-200' },
   digunakan: { label: 'Sudah Di-void', kelas: 'bg-slate-800 text-white border-slate-800' },
   ditolak: { label: 'Ditolak', kelas: 'bg-rose-50 text-rose-700 border-rose-200' },
 };
@@ -74,6 +77,7 @@ export default function RiwayatVoid({ onToggleSidebar }) {
       if (dari && tgl < dari) return false;
       if (sampai && tgl > sampai) return false;
       if (aturan?.cocok && !aturan.cocok.includes(r.status)) return false;
+      if (saring === 'proses' && r.status === 'disetujui' && r.kadaluarsa) return false;
       if (q && ![r.nomor, r.pelanggan, r.alasan, r.diminta_oleh_nama].some((v) => String(v || '').toLowerCase().includes(q))) return false;
       return true;
     });
@@ -155,7 +159,8 @@ export default function RiwayatVoid({ onToggleSidebar }) {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {tampil.map((r) => {
-                const st = STATUS[r.status] || { label: r.status, kelas: 'bg-slate-100 text-slate-600 border-slate-200' };
+                const kunciStatus = r.status === 'disetujui' && r.kadaluarsa ? 'kedaluwarsa' : r.status;
+                const st = STATUS[kunciStatus] || { label: r.status, kelas: 'bg-slate-100 text-slate-600 border-slate-200' };
                 return (
                   <tr key={`${r.jenis}-${r.id}`} className="align-top">
                     <td className="px-4 py-3 whitespace-nowrap text-slate-600">
