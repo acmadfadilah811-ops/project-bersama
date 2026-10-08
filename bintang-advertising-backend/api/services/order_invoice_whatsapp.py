@@ -441,6 +441,7 @@ def kirim_invoice_dp_whatsapp(*, order_id, otomatis=False):
         invoice_pdf = susun_invoice_dp_pdf(order)
         nomor_invoice = order.id
 
+    from .lacak_pesanan import baris_id_lacak
     from .resi_digital import url_resi
 
     try:
@@ -450,7 +451,7 @@ def kirim_invoice_dp_whatsapp(*, order_id, otomatis=False):
             'document',
             'application/pdf',
             f'Invoice-DP-{nomor_invoice}.pdf',
-            caption=f'Invoice DP {nomor_invoice}. Lihat struk online & beri penilaian: '
+            caption=f'Invoice DP {nomor_invoice}. {baris_id_lacak(nomor_invoice)} Lihat struk online & beri penilaian: '
                     f'{url_resi("order", order.id)}',
         )
     except Exception:
@@ -510,6 +511,8 @@ def kirim_invoice_pesanan_whatsapp(*, order_id):
         caption_parts.append('✅ Pesanan Anda sudah SELESAI diproduksi dan SIAP DIAMBIL di toko.')
     caption_parts.append('Simpan nomor pesanan dan ID produk pada invoice untuk tracking.')
     from .resi_digital import url_resi
+    from .lacak_pesanan import baris_id_lacak
+    caption_parts.append(baris_id_lacak(order.id))
     caption_parts.append(f'Lihat struk online & beri penilaian: {url_resi("order", order.id)}')
 
     try:

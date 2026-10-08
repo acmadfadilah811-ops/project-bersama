@@ -1086,6 +1086,10 @@ class OrderViewSet(viewsets.ModelViewSet):
         except Contact.DoesNotExist:
             pass
 
+        # Pembayaran pesanan staff diterima kasir: kirim ID lacak (sekali).
+        from ..services.lacak_pesanan import jadwalkan_id_lacak_staff
+        jadwalkan_id_lacak_staff(order)
+
         return Response(OrderSerializer(order, context={'request': request}).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='selesaikan')
@@ -1650,6 +1654,9 @@ class AssignOrderView(APIView):
         
         order._current_user = request.user
         order.save()
+        # Pesanan staff yang sudah dibayar & diverifikasi kasir: kirim ID lacak.
+        from ..services.lacak_pesanan import jadwalkan_id_lacak_staff
+        jadwalkan_id_lacak_staff(order)
 
         return Response({
             'message': f'Order {order_id} berhasil di-publish/assign ke {target_name}.',

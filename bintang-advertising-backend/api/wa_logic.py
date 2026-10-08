@@ -304,7 +304,7 @@ STATUS_LABEL = {
 }
 
 
-def format_tracking(order, panggilan="Kak"):
+def format_tracking(order, panggilan="Kak", tampil_harga=True):
     status_map = {
         'draft': 'Draft Penawaran',
         'quotation': 'Kirim Penawaran',
@@ -343,7 +343,7 @@ def format_tracking(order, panggilan="Kak"):
             else:
                 lines.append("     ⏳ Menunggu diproses")
 
-            if item.harga_jual and item.harga_jual > 0:
+            if tampil_harga and item.harga_jual and item.harga_jual > 0:
                 lines.append(f"     💰 Harga: Rp {item.harga_jual:,}".replace(',', '.'))
 
     # Tentukan footer dinamis berdasarkan status_global dan status job riil

@@ -96,7 +96,7 @@ TOOL_SCHEMAS = [
             "name": "cek_status_pesanan",
             "description": (
                 "Cek status pesanan pelanggan. Isi nomor_order kalau pelanggan sebut ID pesanan "
-                "(format ORD-...). Kosongkan nomor_order untuk cari pesanan TERBARU milik pelanggan "
+                "(format ORD-... atau POS-...). Kosongkan nomor_order untuk cari pesanan TERBARU milik pelanggan "
                 "yang sedang chat ini secara otomatis (sistem tahu nomor WA-nya sendiri)."
             ),
             "parameters": {
@@ -462,12 +462,12 @@ def cek_status_pesanan(nomor_order=None, nomor=None):
     from ..wa_logic import format_tracking
 
     if nomor_order:
+        # ID lacak: ORD-... (pesanan) atau POS-... (transaksi kasir ber-SPK).
+        from .lacak_pesanan import status_dari_id
         order_id = str(nomor_order).strip().upper()
-        try:
-            order = Order.objects.prefetch_related('items__jobs').get(id=order_id)
-            return {'ok': True, 'status_text': format_tracking(order)}
-        except Order.DoesNotExist:
-            return {'ok': False, 'error': f"Pesanan {order_id} tidak ditemukan."}
+        if order_id.startswith('POS-') or Order.objects.filter(id__iexact=order_id).exists():
+            return {'ok': True, 'status_text': status_dari_id(order_id, nomor)}
+        return {'ok': False, 'error': f"Pesanan {order_id} tidak ditemukan."}
 
     orders = Order.objects.filter(nomor_wa=nomor).order_by('-waktu')[:3] if nomor else []
     if not orders:

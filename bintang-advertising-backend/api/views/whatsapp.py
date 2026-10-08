@@ -743,6 +743,17 @@ class BaseWhatsAppWebhookView(APIView):
                 self._kirim_balas_async(sender_number, jawaban)
                 return jawaban, {'status': 'tracking_replied'}, status.HTTP_200_OK
 
+            # Lacak pesanan (2026-10-08): pelanggan cukup kirim ID pesanan
+            # (ORD-... atau POS-... dari resi/invoice/pesan verifikasi) dan
+            # bot langsung membalas status -- tidak bergantung AI Assistant.
+            from ..services.lacak_pesanan import cari_id, status_dari_id
+            id_lacak = None if media_url else cari_id(message_text)
+            if id_lacak:
+                jawaban = status_dari_id(id_lacak, sender_number, panggilan)
+                simpan_ke_memori(sender_number, "assistant", jawaban, nama_pelanggan)
+                self._kirim_balas_async(sender_number, jawaban)
+                return jawaban, {'status': 'tracking_replied'}, status.HTTP_200_OK
+
         # Step 3: Deteksi form order / desain
         if is_form_order or is_form_desain:
             detail_bersih = _re.split(r'(?i)===?\s*AKHIR\s*TEMPLATE\s*===?|⚠️\s*\*?PENTING:\*?|data\s+sudah\s+sesuai|desain\s+sudah\s+sesuai', message_text)[0].strip()

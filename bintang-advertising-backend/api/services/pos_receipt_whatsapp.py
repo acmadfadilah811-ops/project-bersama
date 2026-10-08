@@ -277,6 +277,10 @@ def kirim_resi_pos_whatsapp(*, sale_id, number=None, otomatis=False):
         caption_parts = [f'Resi Transaksi {nomor_sale}']
         if sale_siap_diambil(sale):
             caption_parts.append('✅ Pesanan Anda sudah SELESAI diproduksi dan SIAP DIAMBIL di toko.')
+        if sale.items.filter(jobs__isnull=False).exists():
+            # Transaksi ber-SPK = pesanan produksi: sertakan ID lacak untuk bot WA.
+            from .lacak_pesanan import baris_id_lacak
+            caption_parts.append(baris_id_lacak(nomor_sale))
         from .resi_digital import url_resi
         caption_parts.append(f'Lihat struk online & beri penilaian: {url_resi("pos", sale.id)}')
         caption = ' '.join(caption_parts)
