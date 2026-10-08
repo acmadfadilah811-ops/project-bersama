@@ -80,6 +80,13 @@ function DashboardRouter() {
   return <Navigate to="/dashboard-eksekutif/operasional" replace />;
 }
 
+// Kasir membuka Nota Human Error di dalam area kasir (sidebar kasir tetap).
+function NotaHumanErrorRoute() {
+  const { user } = useAuth();
+  if (user?.role?.toLowerCase() === 'kasir') return <Navigate to="/kasir/nota-human-error" replace />;
+  return <NotaHumanError />;
+}
+
 function App() {
   const [customAlert, setCustomAlert] = useState({
     open: false,
@@ -204,7 +211,7 @@ function App() {
                 <Route path="/announcements" element={<Announcements />} />
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/profile" element={<Profile />} />
-                <Route path="/nota-human-error" element={<NotaHumanError />} />
+                <Route path="/nota-human-error" element={<NotaHumanErrorRoute />} />
                 <Route path="/settings/*" element={<SettingsApp />} />
                 <Route path="/pengaturan-wa-bot" element={<PengaturanWaBotPage />} />
                 <Route path="/permintaan-bahan" element={<PermintaanBahanPage />} />

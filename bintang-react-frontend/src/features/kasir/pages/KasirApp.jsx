@@ -6,6 +6,7 @@ import { KasirProvider } from '../context/KasirContext';
 import PosTerminal from './PosTerminal';
 import PosHistory from './PosHistory';
 import RiwayatVoid from './RiwayatVoid';
+import KasirNotaHumanError from './KasirNotaHumanError';
 import PosShift from './PosShift';
 import PosRekapHarian from './PosRekapHarian';
 import WaOrderQueue from '../components/WaOrderQueue';
@@ -75,6 +76,7 @@ export default function KasirApp() {
               <Route path="pelanggan-supplier" element={<KasirPelangganSupplier onToggleSidebar={handleToggleSidebar} />} />
               <Route path="riwayat" element={<PosHistory onToggleSidebar={handleToggleSidebar} />} />
               <Route path="riwayat-void" element={<RiwayatVoid onToggleSidebar={handleToggleSidebar} />} />
+              <Route path="nota-human-error" element={<KasirNotaHumanError onToggleSidebar={handleToggleSidebar} />} />
               <Route path="rekap-harian" element={<Navigate to="/kasir/shift" replace />} />
               <Route path="shift" element={<PosShift onToggleSidebar={handleToggleSidebar} />} />
               <Route path="ringkasan-shift-v2" element={<PosRekapHarian onToggleSidebar={handleToggleSidebar} />} />
