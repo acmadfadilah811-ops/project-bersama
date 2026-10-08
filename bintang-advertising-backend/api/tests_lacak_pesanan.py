@@ -40,6 +40,12 @@ class StatusDariIdTests(_Dasar):
         self.assertIn('Cetak Lacak', teks)
         self.assertTrue(cek_status_pesanan(nomor_order='pos-lacak-1')['ok'])
 
+    def test_pesanan_checkout_terminal_berawalan_pos_ord(self):
+        Order.objects.create(id='POS-ORD-ABC123', nama='Sari', nomor_wa='0812', sumber='pos')
+        self.assertEqual(svc.cari_id('cek POS-ORD-ABC123'), 'POS-ORD-ABC123')
+        self.assertIn('STATUS PESANAN (POS-ORD-ABC123)', svc.status_dari_id('pos-ord-abc123'))
+        self.assertTrue(cek_status_pesanan(nomor_order='POS-ORD-ABC123')['ok'])
+
     def test_transaksi_kasir_tanpa_spk_atau_id_salah_tidak_ditemukan(self):
         self.assertIn('tidak ditemukan', svc.status_dari_id('POS-LACAK-1'))
         self.assertIn('tidak ditemukan', svc.status_dari_id('ORD-TIDAK-ADA'))

@@ -1,6 +1,7 @@
 """ID lacak pesanan (2026-10-08).
 
-ID lacak = ID yang sama dengan bot WA: ID pesanan `ORD-...` untuk Order dan
+ID lacak = ID yang sama dengan bot WA: ID pesanan (`ORD-...`, atau `POS-ORD-...`
+untuk pesanan dari checkout terminal) untuk Order dan
 nomor transaksi `POS-...` untuk transaksi kasir yang punya SPK produksi.
 Pelanggan mengirim ID itu ke WhatsApp toko dan bot membalas status pesanan.
 
@@ -89,14 +90,13 @@ def status_dari_id(id_lacak, nomor_pengirim=None, panggilan='Kak'):
     from ..wa_logic import format_tracking
 
     id_lacak = (id_lacak or '').strip().upper()
-    if id_lacak.startswith('POS-'):
-        sale = POSSale.objects.select_related('pelanggan').filter(nomor__iexact=id_lacak).exclude(status='hold').first()
-        if sale and sale.items.filter(jobs__isnull=False).exists():
-            return format_tracking_pos(sale, panggilan)
-    else:
-        order = Order.objects.prefetch_related('items__jobs__tahap__divisi').filter(id__iexact=id_lacak).first()
-        if order:
-            return format_tracking(order, panggilan, tampil_harga=_nomor_cocok(nomor_pengirim, order.nomor_wa))
+    # Pesanan dulu: pesanan dari checkout terminal ber-ID 'POS-ORD-...'.
+    order = Order.objects.prefetch_related('items__jobs__tahap__divisi').filter(id__iexact=id_lacak).first()
+    if order:
+        return format_tracking(order, panggilan, tampil_harga=_nomor_cocok(nomor_pengirim, order.nomor_wa))
+    sale = POSSale.objects.select_related('pelanggan').filter(nomor__iexact=id_lacak).exclude(status='hold').first()
+    if sale and sale.items.filter(jobs__isnull=False).exists():
+        return format_tracking_pos(sale, panggilan)
     return f"Maaf {panggilan}, ID pesanan *{id_lacak}* tidak ditemukan. Mohon periksa kembali ya Kak 🙏"
 
 
