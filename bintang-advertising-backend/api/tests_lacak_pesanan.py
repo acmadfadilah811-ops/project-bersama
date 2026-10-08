@@ -71,3 +71,17 @@ class KirimIdLacakStaffTests(_Dasar):
             self.order.sumber = 'wa'  # bot WA sudah mengirim ID sendiri
             svc.jadwalkan_id_lacak_staff(self.order)
         kirim.assert_not_called()
+
+    def test_kasir_mematikan_kirim_wa_berlaku_seterusnya(self, kirim):
+        self.order.dp_dibayar = 20000
+        with self.captureOnCommitCallbacks(execute=True):
+            svc.jadwalkan_id_lacak_staff(self.order, kirim=False)
+            svc.jadwalkan_id_lacak_staff(self.order)  # pembayaran berikutnya
+        kirim.assert_not_called()
+        self.assertTrue(OrderActivityLog.objects.filter(order=self.order, tindakan=svc.TINDAKAN_LEWATI_ID).exists())
+
+    def test_baca_pilihan_kirim_wa(self, kirim):
+        self.assertTrue(svc.minta_kirim_wa({}))
+        self.assertTrue(svc.minta_kirim_wa({'kirim_wa': True}))
+        self.assertFalse(svc.minta_kirim_wa({'kirim_wa': False}))
+        self.assertFalse(svc.minta_kirim_wa({'kirim_wa': 'false'}))

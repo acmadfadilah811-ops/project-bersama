@@ -17,6 +17,8 @@ export default function PelunasanModal({ order, onClose, onSelesai }) {
 
   const [jumlah, setJumlah] = useState(sisaAwal);
   const [metode, setMetode] = useState('tunai');
+  // Pesanan offline dari staff: kasir boleh tidak mengirim ID pesanan via WA (faktur manual).
+  const [kirimWa, setKirimWa] = useState(true);
   const [memproses, setMemproses] = useState(false);
   const [error, setError] = useState('');
   const [orderLunas, setOrderLunas] = useState(null);
@@ -47,6 +49,7 @@ export default function PelunasanModal({ order, onClose, onSelesai }) {
         jumlah_bayar: Math.round(jumlahNum),
         metode_pembayaran: metode,
         idempotency_key: idempotencyKey,
+        kirim_wa: kirimWa,
       });
       setOrderLunas(res.data);
       if (onSelesai) onSelesai(res.data);
@@ -152,6 +155,16 @@ export default function PelunasanModal({ order, onClose, onSelesai }) {
                     <option value="qris">QRIS</option>
                   </select>
                 </div>
+
+                {order.sumber === 'staff' && (
+                  <label className="flex items-start gap-2 text-xs text-slate-600 cursor-pointer">
+                    <input type="checkbox" checked={kirimWa} onChange={(e) => setKirimWa(e.target.checked)} className="mt-0.5" />
+                    <span>
+                      Kirim ID pesanan ke WhatsApp pelanggan
+                      <span className="block text-[11px] text-slate-400">Matikan bila staff sudah membuat faktur manual.</span>
+                    </span>
+                  </label>
+                )}
 
                 <div className="flex justify-between items-center pt-1 text-xs font-bold text-slate-600">
                   <span>Sisa setelah pembayaran</span>

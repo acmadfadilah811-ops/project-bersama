@@ -62,6 +62,8 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
   const [targetTahapId, setTargetTahapId] = useState('');
   const [targetDeadline, setTargetDeadline] = useState('');
   const [targetDeadlineJam, setTargetDeadlineJam] = useState('');
+  // Pesanan offline dari staff: kasir boleh tidak mengirim ID pesanan via WA (faktur manual).
+  const [kirimWaPelanggan, setKirimWaPelanggan] = useState(true);
   const [targetStatusGlobal, setTargetStatusGlobal] = useState('desain');
 
   const [saving, setSaving] = useState(false);
@@ -229,6 +231,7 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
 
   const handleSelectOrder = async (order) => {
     setSelectedOrder(order);
+    setKirimWaPelanggan(true);
     setEditNama(order.nama || '');
     setEditWa(order.nomor_wa || '');
     setEditDp(order.dp_dibayar || 0);
@@ -549,6 +552,7 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
       }
       assignPayload.deadline = targetDeadline;
       if (targetDeadlineJam) assignPayload.deadline_jam = targetDeadlineJam;
+      assignPayload.kirim_wa = kirimWaPelanggan;
 
       await apiClient.post(`/orders/${selectedOrder.id}/assign/`, assignPayload);
 
@@ -1036,6 +1040,16 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
                   </div>
                 </div>
               </div>
+
+              {selectedOrder.sumber === 'staff' && (
+                <label className="flex items-start gap-2 text-xs text-slate-600 cursor-pointer">
+                  <input type="checkbox" checked={kirimWaPelanggan} onChange={(e) => setKirimWaPelanggan(e.target.checked)} className="mt-0.5" />
+                  <span>
+                    Kirim ID pesanan ke WhatsApp pelanggan
+                    <span className="block text-[11px] text-slate-400">Matikan bila staff sudah membuat faktur manual.</span>
+                  </span>
+                </label>
+              )}
 
               {/* Publish Action Button */}
               <div className="pt-2">

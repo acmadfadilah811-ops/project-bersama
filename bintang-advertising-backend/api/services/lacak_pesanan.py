@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 POLA_ID = re.compile(r'\b((?:ord|pos)-[a-z0-9-]+)', re.IGNORECASE)
 TINDAKAN_KIRIM_ID = 'KIRIM_ID_LACAK_WA'
+# Kasir memilih tidak mengirim (mis. staff sudah membuat faktur manual).
+TINDAKAN_LEWATI_ID = 'LEWATI_ID_LACAK_WA'
 
 
 def cari_id(teks):
@@ -113,7 +115,7 @@ def kirim_id_lacak_whatsapp(order_id):
     from .resi_digital import url_resi
 
     order = Order.objects.filter(pk=order_id).first()
-    if not order or OrderActivityLog.objects.filter(order=order, tindakan=TINDAKAN_KIRIM_ID).exists():
+    if not order or OrderActivityLog.objects.filter(order=order, tindakan__in=[TINDAKAN_KIRIM_ID, TINDAKAN_LEWATI_ID]).exists():
         return {'ok': True, 'status': 'skipped'}
     nomor = normalisasi_nomor_whatsapp(order.nomor_wa)
     if not nomor:
@@ -140,9 +142,27 @@ def kirim_id_lacak_whatsapp(order_id):
     return {'ok': False, 'status': 'failed'}
 
 
-def jadwalkan_id_lacak_staff(order):
-    """Pesanan dari staff yang sudah dibayar: kirim ID lacak setelah commit."""
+def minta_kirim_wa(data):
+    """Pilihan kasir `kirim_wa` dari payload (bawaan: kirim)."""
+    return str(data.get('kirim_wa', True)).strip().lower() not in ('false', '0', 'no', 'off', '')
+
+
+def jadwalkan_id_lacak_staff(order, kirim=True, user=None):
+    """Pesanan dari staff yang sudah dibayar: kirim ID lacak setelah commit.
+
+    `kirim=False` (kasir mematikan pilihan kirim WA) dicatat supaya pembayaran
+    atau penerbitan SPK berikutnya juga tidak mengirim pesan untuk pesanan ini.
+    """
+    from ..models import OrderActivityLog
+
     if order.sumber != 'staff' or (order.dp_dibayar or 0) <= 0 or order.status_global == 'batal':
+        return
+    if not kirim:
+        if not OrderActivityLog.objects.filter(order=order, tindakan__in=[TINDAKAN_KIRIM_ID, TINDAKAN_LEWATI_ID]).exists():
+            OrderActivityLog.objects.create(
+                order=order, user=user, tindakan=TINDAKAN_LEWATI_ID,
+                keterangan='Kasir memilih tidak mengirim ID pesanan ke WhatsApp pelanggan (faktur manual).',
+            )
         return
     order_id = order.id
     transaction.on_commit(lambda: kirim_id_lacak_whatsapp(order_id))

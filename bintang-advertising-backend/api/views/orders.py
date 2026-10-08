@@ -1087,8 +1087,8 @@ class OrderViewSet(viewsets.ModelViewSet):
             pass
 
         # Pembayaran pesanan staff diterima kasir: kirim ID lacak (sekali).
-        from ..services.lacak_pesanan import jadwalkan_id_lacak_staff
-        jadwalkan_id_lacak_staff(order)
+        from ..services.lacak_pesanan import jadwalkan_id_lacak_staff, minta_kirim_wa
+        jadwalkan_id_lacak_staff(order, kirim=minta_kirim_wa(request.data), user=request.user)
 
         return Response(OrderSerializer(order, context={'request': request}).data, status=status.HTTP_200_OK)
 
@@ -1655,8 +1655,8 @@ class AssignOrderView(APIView):
         order._current_user = request.user
         order.save()
         # Pesanan staff yang sudah dibayar & diverifikasi kasir: kirim ID lacak.
-        from ..services.lacak_pesanan import jadwalkan_id_lacak_staff
-        jadwalkan_id_lacak_staff(order)
+        from ..services.lacak_pesanan import jadwalkan_id_lacak_staff, minta_kirim_wa
+        jadwalkan_id_lacak_staff(order, kirim=minta_kirim_wa(request.data), user=request.user)
 
         return Response({
             'message': f'Order {order_id} berhasil di-publish/assign ke {target_name}.',
