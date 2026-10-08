@@ -17,6 +17,8 @@ import {
 import { useAuth } from '../../../context/AuthContext';
 import { useKasir } from '../context/KasirContext';
 import apiClient from '../../../api/apiClient';
+import { fetchAllPages } from '../../../utils/paginatedApi';
+import { todayISO } from '../../../utils/date';
 import SiapDiambilPanel from '../components/SiapDiambilPanel';
 
 import PosHeaderBar from '../components/PosHeaderBar';
@@ -53,12 +55,20 @@ export default function KasirDashboard({ onToggleSidebar }) {
       } catch (err) {
         console.error('Gagal memuat antrean online & offline:', err);
       }
+      // Sama persis dengan daftar Nota/Riwayat Transaksi (PosHistory.jsx) hari
+      // ini: transaksi kasir + pesanan, filter date_from/date_to, semua halaman.
+      // Dulu memakai parameter `tanggal` yang diabaikan /pos/sales/ (jumlah
+      // tidak sesuai nota), hanya transaksi kasir, dan tanggal UTC.
       try {
-        const today = new Date().toISOString().slice(0, 10);
-        const resSales = await apiClient.get('/pos/sales/', { params: { tanggal: today } });
-        const list = resSales.data || [];
-        const total = list.reduce((s, t) => s + Number(t.total || 0), 0);
-        setTodayStats({ count: list.length, total });
+        const today = todayISO();
+        const params = { date_from: today, date_to: today };
+        const [posData, orderData] = await Promise.all([
+          fetchAllPages('/pos/sales/', { params }),
+          fetchAllPages('/orders/', { params }),
+        ]);
+        const total = posData.reduce((s, t) => s + Number(t.total || 0), 0)
+          + orderData.reduce((s, o) => s + Number(o.total_harga || 0), 0);
+        setTodayStats({ count: posData.length + orderData.length, total });
       } catch {
         setTodayStats({ count: 0, total: 0 });
       }
