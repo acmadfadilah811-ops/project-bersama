@@ -6,7 +6,7 @@ from django.db.models import Sum
 from ..models import Account, AccountingSettings, JournalEntry, JournalEntryLine
 
 
-def _sum_debit_kredit(accounts, date_from=None, date_to=None, exclude_source_types=None):
+def _sum_debit_kredit(accounts, date_from=None, date_to=None, exclude_source_types=None, department_id=None):
     """Agregat debit & kredit mentah per akun (belum diarahkan ke normal_balance), rentang tanggal opsional.
 
     `exclude_source_types`: dipakai laporan Laba Rugi bertanggal (Satu/Multi
@@ -25,6 +25,9 @@ def _sum_debit_kredit(accounts, date_from=None, date_to=None, exclude_source_typ
         qs = qs.filter(journal_entry__date__lte=date_to)
     if exclude_source_types:
         qs = qs.exclude(journal_entry__source_type__in=exclude_source_types)
+    if department_id:
+        # Laba Rugi per unit bisnis (2026-10-11): hanya jurnal bertanda departemen unit.
+        qs = qs.filter(journal_entry__department_id=department_id)
     totals = qs.values("account_id").annotate(total_debit=Sum("debit"), total_kredit=Sum("kredit"))
     return {row["account_id"]: row for row in totals}
 
@@ -256,7 +259,7 @@ INCOME_STATEMENT_CLASSIFICATIONS = [
 ]
 
 
-def _income_statement_section(classification_name, date_from, date_to):
+def _income_statement_section(classification_name, date_from, date_to, department_id=None):
     """
     Baris akun 1 klasifikasi P&L untuk rentang tanggal. `amount` dihitung dari
     ARAH DASAR account_type (revenue: kredit-debit, expense: debit-kredit),
@@ -277,7 +280,7 @@ def _income_statement_section(classification_name, date_from, date_to):
     )
     totals = _sum_debit_kredit(
         accounts, date_from=date_from, date_to=date_to,
-        exclude_source_types=[JournalEntry.SourceType.PERIOD_CLOSE],
+        exclude_source_types=[JournalEntry.SourceType.PERIOD_CLOSE], department_id=department_id,
     )
     rows = []
     for account in accounts:
@@ -289,7 +292,7 @@ def _income_statement_section(classification_name, date_from, date_to):
     return rows
 
 
-def get_income_statement(date_from, date_to):
+def get_income_statement(date_from, date_to, department_id=None):
     """
     Laba Rugi 1 periode: 5 seksi berdasar klasifikasi COA (bukan kode akun
     hardcode, supaya akun baru di klasifikasi yang sama otomatis ikut
@@ -297,7 +300,7 @@ def get_income_statement(date_from, date_to):
     Lain (Non-Operasional), Pengeluaran Lain (Biaya Non-Operasional).
     """
     sections = {
-        key: _income_statement_section(name, date_from, date_to)
+        key: _income_statement_section(name, date_from, date_to, department_id)
         for key, name in INCOME_STATEMENT_CLASSIFICATIONS
     }
 

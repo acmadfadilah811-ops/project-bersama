@@ -68,7 +68,11 @@ def posting_hpp_mutasi_order(movement, actor=None):
     settings_row = AccountingSettings.objects.first()
     if not settings_row or not settings_row.is_active or not settings_row.initial_setup_completed_at:
         return None
-    if not settings_row.pos_cogs_expense_account_id or not settings_row.pos_inventory_account_id:
+    # Akun HPP & departemen per unit bisnis pesanan (2026-10-11).
+    from . import unit_bisnis as akun_unit
+    unit_id = movement.order.unit_bisnis_id if movement.order_id else None
+    hpp = akun_unit.akun(settings_row, "pos_cogs_expense_account", unit_id)
+    if hpp is None or not settings_row.pos_inventory_account_id:
         logger.warning(
             "Jurnal HPP mutasi order #%s di-skip: akun HPP/Persediaan POS belum diatur.", movement.id,
         )
@@ -80,11 +84,10 @@ def posting_hpp_mutasi_order(movement, actor=None):
 
     jumlah = Decimal(str(movement.hpp_total)).quantize(Decimal("0.01"))
     if movement.tipe == "pengembalian":
-        jumlah = min(jumlah, _hpp_terjurnal_order(movement.order_id, settings_row.pos_cogs_expense_account_id))
+        jumlah = min(jumlah, _hpp_terjurnal_order(movement.order_id, hpp.id))
         if jumlah <= 0:
             return None
 
-    hpp = settings_row.pos_cogs_expense_account
     persediaan = settings_row.pos_inventory_account
     nama = movement.product.nama
     if movement.tipe == "penjualan":
@@ -109,4 +112,5 @@ def posting_hpp_mutasi_order(movement, actor=None):
         source_type=JournalEntry.SourceType.ORDER_STOCK_HPP,
         source_id=movement.id,
         created_by=actor if getattr(actor, "is_authenticated", False) else None,
+        department=akun_unit.department(unit_id),
     )

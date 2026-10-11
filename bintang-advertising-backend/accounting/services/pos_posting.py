@@ -40,7 +40,8 @@ def should_post_sale(sale: POSSale) -> tuple[bool, str]:
         return False, "Modul akuntansi sedang dinonaktifkan."
     if not settings_row.initial_setup_completed_at:
         return False, "Setup awal akuntansi belum diselesaikan."
-    if not settings_row.pos_sales_revenue_account_id:
+    from . import unit_bisnis as akun_unit
+    if akun_unit.akun(settings_row, "pos_sales_revenue_account", sale.unit_bisnis_id) is None:
         return False, "Akun pendapatan penjualan POS (pos_sales_revenue_account) belum diatur."
 
     sale_date = timezone.localdate(sale.created_at) if sale.created_at else timezone.localdate()
@@ -59,7 +60,7 @@ def should_post_sale(sale: POSSale) -> tuple[bool, str]:
 
     # T-107: HPP/Persediaan wajib dikonfigurasi kalau ada item berlacak inventori terjual.
     if _sale_hpp_total(sale) > Decimal("0"):
-        if not settings_row.pos_cogs_expense_account_id:
+        if akun_unit.akun(settings_row, "pos_cogs_expense_account", sale.unit_bisnis_id) is None:
             return False, "Akun HPP (pos_cogs_expense_account) belum diatur di Pengaturan Akuntansi."
         if not settings_row.pos_inventory_account_id:
             return False, "Akun Persediaan (pos_inventory_account) belum diatur di Pengaturan Akuntansi."
@@ -107,18 +108,22 @@ def post_pos_sale_journal(sale: POSSale, actor=None, manual=False) -> Optional[J
     pajak_amount = Decimal(str(sale.pajak or 0))
     revenue_amount = total_amount - pajak_amount
 
+    # Akun & departemen per unit bisnis (2026-10-11): tunai masuk kas laci unit.
+    from . import unit_bisnis as akun_unit
+    unit_id = sale.unit_bisnis_id
+
     # Build Journal Lines (T-102 §2)
     # Line 1: DEBIT Akun Kas/Piutang Transit (PaymentMethod.account)
     lines = [
         {
-            "account": pm.account,
+            "account": akun_unit.akun_kas(pm, unit_id),
             "debit": total_amount,
             "kredit": Decimal("0"),
             "description": f"Pembayaran POS ({sale.metode_bayar})",
         },
         # Line 2: KREDIT Akun Pendapatan Penjualan POS (net revenue)
         {
-            "account": settings_row.pos_sales_revenue_account,
+            "account": akun_unit.akun(settings_row, "pos_sales_revenue_account", unit_id),
             "debit": Decimal("0"),
             "kredit": revenue_amount,
             "description": f"Penjualan POS {sale.nomor}",
@@ -140,7 +145,7 @@ def post_pos_sale_journal(sale: POSSale, actor=None, manual=False) -> Optional[J
     hpp_amount = _sale_hpp_total(sale)
     if hpp_amount > Decimal("0"):
         lines.append({
-            "account": settings_row.pos_cogs_expense_account,
+            "account": akun_unit.akun(settings_row, "pos_cogs_expense_account", unit_id),
             "debit": hpp_amount,
             "kredit": Decimal("0"),
             "description": f"HPP Penjualan POS {sale.nomor}",
@@ -165,6 +170,7 @@ def post_pos_sale_journal(sale: POSSale, actor=None, manual=False) -> Optional[J
                     source_id=sale.id,
                     created_by=actor or sale.kasir,
                     status=JournalEntry.Status.POSTED,
+                    department=akun_unit.department(unit_id),
                 )
                 return entry
         except IntegrityError as exc:
@@ -238,6 +244,7 @@ def post_pos_void_journal(sale: POSSale, actor=None, reason="Void POS") -> Optio
                     source_id=None,
                     created_by=actor or sale.kasir,
                     status=JournalEntry.Status.POSTED,
+                    department=original_entry.department,
                 )
 
                 # Link reversal_entry ke original_entry
@@ -295,6 +302,7 @@ def post_pos_bahan_reversal(sale: POSSale, actor=None, reason="Void POS"):
             description=f"Jurnal Pembalik — {reason} {sale.nomor} (bahan resep)"[:255],
             source_type=JournalEntry.SourceType.PRODUCTION, source_id=None,
             created_by=actor or sale.kasir, status=JournalEntry.Status.POSTED,
+            department=original.department,
         )
         reversal.reversed_entry = original
         reversal.save(update_fields=["reversed_entry"])

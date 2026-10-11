@@ -212,9 +212,11 @@ def post_order_payment_journal(
     # Baris 1: DEBIT Kas/Bank/Transit (PaymentMethod.account)
     # Baris 2: KREDIT Piutang Usaha ATAU Uang Muka Pelanggan (lihat account_field)
     transit_status = "unsettled" if (pm and not pm.is_cash) else "not_applicable"
+    # Akun & departemen per unit bisnis (2026-10-11): tunai masuk kas laci unit.
+    from . import unit_bisnis as akun_unit
     lines = [
         {
-            "account": pm.account,
+            "account": akun_unit.akun_kas(pm, order.unit_bisnis_id),
             "debit": jumlah_bayar,
             "kredit": Decimal("0"),
             "description": f"Pembayaran Order ({metode_label.upper()})",
@@ -242,6 +244,7 @@ def post_order_payment_journal(
                     source_id=source_id,
                     created_by=actor,
                     status=JournalEntry.Status.POSTED,
+                    department=akun_unit.department(order.unit_bisnis_id),
                 )
                 return entry
         except IntegrityError as exc:
@@ -300,7 +303,9 @@ def post_order_revenue_recognition_journal(order, actor=None, activity_log=None)
     if not settings_row or not settings_row.is_active or not settings_row.initial_setup_completed_at:
         logger.warning("Posting pengakuan pendapatan Order #%s di-skip: akuntansi belum aktif/setup.", order.id)
         return None
-    if not settings_row.order_sales_revenue_account_id:
+    from . import unit_bisnis as akun_unit
+    akun_pendapatan = akun_unit.akun(settings_row, "order_sales_revenue_account", order.unit_bisnis_id)
+    if akun_pendapatan is None:
         logger.warning(
             "Posting pengakuan pendapatan Order #%s di-skip: order_sales_revenue_account belum diatur.",
             order.id,
@@ -321,7 +326,7 @@ def post_order_revenue_recognition_journal(order, actor=None, activity_log=None)
             "description": f"Piutang Usaha Order {order.id}",
         },
         {
-            "account": settings_row.order_sales_revenue_account,
+            "account": akun_pendapatan,
             "debit": Decimal("0"),
             "kredit": total_harga,
             "description": f"Pengakuan Pendapatan Order {order.id} (Selesai)",
@@ -368,6 +373,7 @@ def post_order_revenue_recognition_journal(order, actor=None, activity_log=None)
                     source_id=activity_log.id,
                     created_by=actor,
                     status=JournalEntry.Status.POSTED,
+                    department=akun_unit.department(order.unit_bisnis_id),
                 )
         except IntegrityError as exc:
             if attempt == max_retries - 1:
@@ -444,7 +450,9 @@ def post_order_material_hpp_journal(order, actor=None, activity_log=None) -> Opt
     if not settings_row or not settings_row.is_active or not settings_row.initial_setup_completed_at:
         logger.warning("Posting HPP Order #%s di-skip: akuntansi belum aktif/setup.", order.id)
         return None
-    if not settings_row.order_hpp_expense_account_id or not settings_row.order_material_inventory_account_id:
+    from . import unit_bisnis as akun_unit
+    akun_hpp = akun_unit.akun(settings_row, "order_hpp_expense_account", order.unit_bisnis_id)
+    if akun_hpp is None or not settings_row.order_material_inventory_account_id:
         logger.warning(
             "Posting HPP Order #%s di-skip: order_hpp_expense_account/"
             "order_material_inventory_account belum diatur di Pengaturan Akuntansi.",
@@ -454,7 +462,7 @@ def post_order_material_hpp_journal(order, actor=None, activity_log=None) -> Opt
 
     lines = [
         {
-            "account": settings_row.order_hpp_expense_account,
+            "account": akun_hpp,
             "debit": hpp_amount,
             "kredit": Decimal("0"),
             "description": f"HPP Bahan Baku Order {order.id}",
@@ -479,6 +487,7 @@ def post_order_material_hpp_journal(order, actor=None, activity_log=None) -> Opt
                     source_id=activity_log.id,
                     created_by=actor,
                     status=JournalEntry.Status.POSTED,
+                    department=akun_unit.department(order.unit_bisnis_id),
                 )
         except IntegrityError as exc:
             if attempt == max_retries - 1:
@@ -558,6 +567,7 @@ def post_order_reversal_journal(
             source_id=None,
             created_by=actor,
             status=JournalEntry.Status.POSTED,
+            department=orig_entry.department,
         )
         reversal.reversed_entry = orig_entry
         reversal.save(update_fields=["reversed_entry"])

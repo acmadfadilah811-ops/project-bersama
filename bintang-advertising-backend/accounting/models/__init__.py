@@ -9,6 +9,7 @@ from .assets import FixedAsset
 from .payroll import PayrollComponentMapping, PayrollPosting
 from .notifikasi import NotifikasiKeuangan
 from .payroll_persetujuan import PengajuanGaji, PengajuanGajiLog
+from .unit_bisnis import AkunUnitBisnis
 
 __all__ = [
     "AccountingSettings",
@@ -34,4 +35,5 @@ __all__ = [
     "NotifikasiKeuangan",
     "PengajuanGaji",
     "PengajuanGajiLog",
+    "AkunUnitBisnis",
 ]

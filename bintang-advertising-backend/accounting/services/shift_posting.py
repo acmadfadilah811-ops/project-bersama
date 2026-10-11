@@ -50,13 +50,17 @@ def post_shift_cash_variance_journal(ringkasan, actor=None) -> Optional[JournalE
         return None
 
     variance_account = settings_row.shift_cash_variance_account
+    # Kas laci & departemen mengikuti unit bisnis kasir (2026-10-11).
+    from . import unit_bisnis as akun_unit
+    unit_id = getattr(ringkasan.kasir, "unit_bisnis_id", None)
+    akun_kas = akun_unit.akun_kas(cash_pm, unit_id)
     tanggal = timezone.localdate(ringkasan.berakhir) if ringkasan.berakhir else timezone.localdate()
     jumlah = abs(selisih)
     kasir_label = ringkasan.kasir.get_full_name() or ringkasan.kasir.username if ringkasan.kasir else "-"
 
     if selisih > 0:
         lines = [
-            {"account": cash_pm.account, "debit": jumlah, "kredit": Decimal("0"),
+            {"account": akun_kas, "debit": jumlah, "kredit": Decimal("0"),
              "description": f"Kas lebih shift {kasir_label} ({tanggal})"},
             {"account": variance_account, "debit": Decimal("0"), "kredit": jumlah,
              "description": f"Selisih kas lebih shift {kasir_label}"},
@@ -66,7 +70,7 @@ def post_shift_cash_variance_journal(ringkasan, actor=None) -> Optional[JournalE
         lines = [
             {"account": variance_account, "debit": jumlah, "kredit": Decimal("0"),
              "description": f"Selisih kas kurang shift {kasir_label}"},
-            {"account": cash_pm.account, "debit": Decimal("0"), "kredit": jumlah,
+            {"account": akun_kas, "debit": Decimal("0"), "kredit": jumlah,
              "description": f"Kas kurang shift {kasir_label} ({tanggal})"},
         ]
         deskripsi = f"Selisih kas KURANG shift {kasir_label} {tanggal}: Rp {jumlah:,.2f}"
@@ -80,6 +84,7 @@ def post_shift_cash_variance_journal(ringkasan, actor=None) -> Optional[JournalE
             source_id=ringkasan.id,
             created_by=actor,
             status=JournalEntry.Status.POSTED,
+            department=akun_unit.department(unit_id),
         )
     except Exception:
         logger.exception("Gagal posting selisih kas shift #%s ke jurnal.", ringkasan.id)

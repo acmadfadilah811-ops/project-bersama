@@ -17,6 +17,23 @@ from .common import resolve_date_range
 _XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
+def _department_unit(request):
+    """`?unit_bisnis=<id>` -> id departemen unit itu (Laba Rugi per unit, 2026-10-11)."""
+    from ..services.unit_bisnis import department_id_untuk_filter
+
+    unit = str(request.query_params.get("unit_bisnis") or "").strip()
+    if not unit:
+        return None, None
+    if not unit.isdigit():
+        return None, Response({"error": "Unit bisnis tidak valid."}, status=status.HTTP_400_BAD_REQUEST)
+    dept_id = department_id_untuk_filter(int(unit))
+    if not dept_id:
+        return None, Response(
+            {"error": "Departemen unit bisnis ini belum diatur di Akun Unit Bisnis."}, status=status.HTTP_400_BAD_REQUEST,
+        )
+    return dept_id, None
+
+
 class IncomeStatementView(APIView):
     """
     GET /api/accounting/reports/income-statement/?date_from=&date_to=
@@ -33,7 +50,10 @@ class IncomeStatementView(APIView):
 
     def get(self, request):
         date_from, date_to = resolve_date_range(request)
-        return Response(get_income_statement(date_from, date_to))
+        dept_id, galat = _department_unit(request)
+        if galat:
+            return galat
+        return Response(get_income_statement(date_from, date_to, department_id=dept_id))
 
 
 class IncomeStatementExportView(APIView):
@@ -43,7 +63,10 @@ class IncomeStatementExportView(APIView):
 
     def get(self, request):
         date_from, date_to = resolve_date_range(request)
-        data = get_income_statement(date_from, date_to)
+        dept_id, galat = _department_unit(request)
+        if galat:
+            return galat
+        data = get_income_statement(date_from, date_to, department_id=dept_id)
         buffer = build_income_statement_xlsx(data)
         filename = f"laba-rugi-{timezone.localdate():%Y%m%d}.xlsx"
         response = HttpResponse(buffer.getvalue(), content_type=_XLSX_CONTENT_TYPE)

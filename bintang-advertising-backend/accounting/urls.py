@@ -5,6 +5,7 @@ from .views.payroll_persetujuan import (
     PengajuanGajiTolakView, PengajuanGajiVerifikasiView,
 )
 from .views.notifikasi import NotifikasiKeuanganBacaView, NotifikasiKeuanganListView
+from .views.unit_bisnis import AkunUnitBisnisDetailView, AkunUnitBisnisListView
 from .views.payroll import (
     PayrollBayarView,
     PayrollKoreksiView,
@@ -121,6 +122,8 @@ urlpatterns = [
     path("reports/cash-flow/<str:category>/", CashFlowDetailView.as_view(), name="accounting-cash-flow-detail"),
     path("journal-templates/", JournalTemplateListView.as_view(), name="accounting-journal-templates"),
     path("departments/", DepartmentListView.as_view(), name="accounting-departments"),
+    path("akun-unit-bisnis/", AkunUnitBisnisListView.as_view(), name="accounting-akun-unit-bisnis"),
+    path("akun-unit-bisnis/<int:unit_id>/", AkunUnitBisnisDetailView.as_view(), name="accounting-akun-unit-bisnis-detail"),
     path(
         "journal-entries/import/preview/",
         JournalImportPreviewView.as_view(),
