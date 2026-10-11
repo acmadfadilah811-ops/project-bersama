@@ -203,15 +203,19 @@ export default function JenisInsentif() {
       </div>
 
       {form && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4">
-          <form onSubmit={simpan} className="bg-white rounded-xl shadow-xl w-full max-w-md p-5 space-y-4">
-            <div className="flex items-center justify-between">
+        // z di atas tombol Bantuan (z-60); tinggi dibatasi layar, isi bisa digulir,
+        // tombol Simpan selalu terlihat di bawah.
+        <div className="fixed inset-0 z-[70] bg-slate-900/40 flex items-center justify-center p-4">
+          <form onSubmit={simpan} className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
               <h2 className="text-sm font-bold text-slate-800">{form.id ? 'Ubah Jenis Insentif' : 'Tambah Jenis Insentif'}</h2>
               <button type="button" onClick={() => setForm(null)} className="p-1 rounded hover:bg-slate-100 text-slate-500" aria-label="Tutup">
                 <X size={16} />
               </button>
             </div>
 
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
             <label className="block space-y-1">
               <span className="text-[11px] font-semibold text-slate-500 uppercase">Nama</span>
               <input
@@ -234,6 +238,7 @@ export default function JenisInsentif() {
                 className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-slate-500"
               />
             </label>
+            </div>
 
             <label className="block space-y-1">
               <span className="text-[11px] font-semibold text-slate-500 uppercase">Unit bisnis</span>
@@ -250,7 +255,7 @@ export default function JenisInsentif() {
 
             <fieldset className="space-y-1">
               <legend className="text-[11px] font-semibold text-slate-500 uppercase">Divisi target (otomatis masuk SPK)</legend>
-              <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-2 grid grid-cols-2 gap-1">
+              <div className="max-h-56 overflow-y-auto border border-slate-200 rounded-lg p-2 grid grid-cols-2 sm:grid-cols-3 gap-1">
                 {divisiTerpilihUnit(form.unit_bisnis).map((d) => (
                   <label key={d.id} className="flex items-center gap-2 text-xs text-slate-700 px-1 py-0.5">
                     <input type="checkbox" checked={form.divisi.includes(d.id)} onChange={() => toggleDivisi(d.id)} />
@@ -275,8 +280,9 @@ export default function JenisInsentif() {
               <input type="checkbox" checked={form.aktif} onChange={(e) => setForm({ ...form, aktif: e.target.checked })} />
               Aktif
             </label>
+            </div>
 
-            <div className="flex justify-end gap-2 pt-1">
+            <div className="flex justify-end gap-2 px-5 py-3 border-t border-slate-100 bg-slate-50 shrink-0">
               <button type="button" onClick={() => setForm(null)} className="text-xs font-semibold text-slate-600 px-3 py-2 rounded-lg hover:bg-slate-100">
                 Batal
               </button>
