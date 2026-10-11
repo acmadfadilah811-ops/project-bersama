@@ -8,6 +8,7 @@ import { useAuth } from '../../../../context/AuthContext';
 import apiClient from '../../../../api/apiClient';
 import { fetchAllPages } from '../../../../utils/paginatedApi';
 import { uiConfirm } from '../../../../utils/dialog';
+import UnitBisnisSelect, { namaUnitBisnis, useUnitBisnisOptions } from '../components/UnitBisnisField';
 
 const getFileSizeStr = (bytes) => {
   if (!bytes) return '0 B';
@@ -78,6 +79,8 @@ export function PackagesPage({ onToggleCreate }) {
 
   // Form states - General
   const [namaPaket, setNamaPaket] = useState('');
+  const [unitBisnis, setUnitBisnis] = useState('');
+  const unitBisnisOptions = useUnitBisnisOptions();
   const [sku, setSku] = useState('');
   const [barcode, setBarcode] = useState('');
   const [deskripsi, setDeskripsi] = useState('');
@@ -152,6 +155,7 @@ export function PackagesPage({ onToggleCreate }) {
     try {
       const fd = new FormData();
       fd.append('nama', `${pkg.nama} (Salinan)`);
+      fd.append('unit_bisnis', pkg.unit_bisnis ? String(pkg.unit_bisnis) : '');
       if (pkg.sku) fd.append('sku', `${pkg.sku}_copy`);
       if (pkg.deskripsi) fd.append('deskripsi', pkg.deskripsi);
       fd.append('harga_beli', String(pkg.harga_beli || 0));
@@ -208,6 +212,7 @@ export function PackagesPage({ onToggleCreate }) {
 
   const resetForm = () => {
     setNamaPaket('');
+    setUnitBisnis('');
     setSku('');
     setBarcode('');
     setDeskripsi('');
@@ -302,6 +307,7 @@ export function PackagesPage({ onToggleCreate }) {
     try {
       const fd = new FormData();
       fd.append('nama', namaPaket);
+      fd.append('unit_bisnis', unitBisnis);
       // Selalu dikirim (bukan hanya saat terisi) supaya SKU/barcode bisa
       // dikosongkan lagi saat edit. Serializer mengubah '' menjadi NULL agar
       // tidak bentrok dengan unique constraint.
@@ -352,6 +358,7 @@ export function PackagesPage({ onToggleCreate }) {
   const handleViewDetail = (pkg) => {
     setViewingPackage(pkg);
     setNamaPaket(pkg.nama || '');
+    setUnitBisnis(pkg.unit_bisnis ? String(pkg.unit_bisnis) : '');
     setSku(pkg.sku || '');
     setBarcode(pkg.barcode || '');
     setDeskripsi(pkg.deskripsi || '');
@@ -386,6 +393,7 @@ export function PackagesPage({ onToggleCreate }) {
     try {
       const fd = new FormData();
       fd.append('nama', namaPaket);
+      fd.append('unit_bisnis', unitBisnis);
       // Selalu dikirim (bukan hanya saat terisi) supaya SKU/barcode bisa
       // dikosongkan lagi saat edit. Serializer mengubah '' menjadi NULL agar
       // tidak bentrok dengan unique constraint.
@@ -886,6 +894,7 @@ export function PackagesPage({ onToggleCreate }) {
                         <label className="form-group-label">Nama Paket Produk</label>
                         <input type="text" className="pi-input-text w-full" value={namaPaket} onChange={(e) => setNamaPaket(e.target.value)} />
                       </div>
+                      <UnitBisnisSelect value={unitBisnis} onChange={setUnitBisnis} options={unitBisnisOptions} />
                       
                       <div>
                         <label className="form-group-label">SKU</label>
@@ -1051,6 +1060,10 @@ export function PackagesPage({ onToggleCreate }) {
                       <div className="detail-row-item">
                         <span className="detail-row-label">Nama Paket Produk</span>
                         <span className="detail-row-value">{viewingPackage.nama}</span>
+                      </div>
+                      <div className="detail-row-item">
+                        <span className="detail-row-label">Unit Bisnis</span>
+                        <span className="detail-row-value">{namaUnitBisnis(viewingPackage)}</span>
                       </div>
                       <div className="detail-row-item">
                         <span className="detail-row-label">SKU</span>
@@ -1561,6 +1574,17 @@ export function PackagesPage({ onToggleCreate }) {
                   </div>
                 </div>
 
+                {/* Unit Bisnis */}
+                <div className="pi-create-row" style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '20px' }}>
+                  <div className="pi-row-label-desc">
+                    <span className="pi-row-label">Unit Bisnis</span>
+                    <span className="pi-row-desc">Kosongkan bila paket ini dijual di semua unit bisnis</span>
+                  </div>
+                  <div className="pi-row-input">
+                    <UnitBisnisSelect value={unitBisnis} onChange={setUnitBisnis} options={unitBisnisOptions} label="" labelStyle={{ display: 'none' }} />
+                  </div>
+                </div>
+
                 {/* SKU / Barcode */}
                 <div className="pi-create-row" style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '20px' }}>
                   <div className="pi-row-label-desc">
@@ -1858,6 +1882,7 @@ export function PackagesPage({ onToggleCreate }) {
             label: renderHeaderLabel('qty', 'Qty'), 
             render: (row) => row.items?.length || 0 
           },
+          { key: 'unit_bisnis', label: 'Unit Bisnis', render: (row) => namaUnitBisnis(row) },
           { 
             key: 'harga_jual_online', 
             label: renderHeaderLabel('harga_jual_online', 'Harga Jual Online'), 

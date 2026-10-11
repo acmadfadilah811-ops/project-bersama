@@ -4,6 +4,7 @@ import DataTable from '../components/DataTable';
 import apiClient from '../../../../api/apiClient';
 import { fetchAllPages } from '../../../../utils/paginatedApi';
 import { uiConfirm } from '../../../../utils/dialog';
+import UnitBisnisSelect, { namaUnitBisnis, useUnitBisnisOptions } from '../components/UnitBisnisField';
 
 const formatToIDR = (num) => {
   if (num === null || num === undefined) return 'IDR 0';
@@ -41,6 +42,8 @@ export function AddonsPage({ onToggleCreate }) {
   const [qtyAddon, setQtyAddon] = useState('1.00');
   const [appliesToCategories, setAppliesToCategories] = useState([]);
   const [appliesToProducts, setAppliesToProducts] = useState([]);
+  const [unitBisnis, setUnitBisnis] = useState('');
+  const unitBisnisOptions = useUnitBisnisOptions();
 
   // Viewing detail state
   const [viewingAddon, setViewingAddon] = useState(null);
@@ -97,6 +100,7 @@ export function AddonsPage({ onToggleCreate }) {
       setQtyAddon('1.00');
       setAppliesToCategories([]);
       setAppliesToProducts([]);
+      setUnitBisnis('');
     }
   };
 
@@ -109,6 +113,7 @@ export function AddonsPage({ onToggleCreate }) {
     setQtyAddon(parseFloat(addon.linked_qty || 1.00).toFixed(2));
     setAppliesToCategories(addon.applies_to_categories || []);
     setAppliesToProducts(addon.applies_to || []);
+    setUnitBisnis(addon.unit_bisnis ? String(addon.unit_bisnis) : '');
     setIsEditingDetail(false);
   };
 
@@ -126,6 +131,7 @@ export function AddonsPage({ onToggleCreate }) {
         linked_qty: parseFloat(qtyAddon) || 1.00,
         applies_to: appliesToProducts,
         applies_to_categories: appliesToCategories,
+        unit_bisnis: unitBisnis || null,
         is_active: true,
       });
       handleSetIsCreating(false);
@@ -150,6 +156,7 @@ export function AddonsPage({ onToggleCreate }) {
         linked_qty: parseFloat(qtyAddon) || 1.00,
         applies_to: appliesToProducts,
         applies_to_categories: appliesToCategories,
+        unit_bisnis: unitBisnis || null,
         is_active: true
       });
       setViewingAddon(res.data);
@@ -268,6 +275,8 @@ export function AddonsPage({ onToggleCreate }) {
                     />
                   </div>
 
+                  <UnitBisnisSelect value={unitBisnis} onChange={setUnitBisnis} options={unitBisnisOptions} />
+
                   {/* Hubungkan ke Produk */}
                   <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '16px' }}>
                     <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#475569', display: 'block', marginBottom: '8px' }}>Hubungkan ke Produk (Stok)</label>
@@ -331,6 +340,10 @@ export function AddonsPage({ onToggleCreate }) {
                   <div>
                     <span style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '4px' }}>Harga</span>
                     <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#0f172a' }}>{formatToIDR(viewingAddon.harga)}</span>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '4px' }}>Unit Bisnis</span>
+                    <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#0f172a' }}>{namaUnitBisnis(viewingAddon)}</span>
                   </div>
                   <div>
                     <span style={{ fontSize: '12px', fontWeight: '500', color: '#64748b', display: 'block', marginBottom: '4px' }}>Hubungkan ke Produk (Stok)</span>
@@ -517,6 +530,10 @@ export function AddonsPage({ onToggleCreate }) {
                   style={{ width: '100%', boxSizing: 'border-box' }}
                 />
               </div>
+              <UnitBisnisSelect
+                value={unitBisnis} onChange={setUnitBisnis} options={unitBisnisOptions}
+                labelStyle={{ fontSize: '12px', fontWeight: 'bold', color: '#64748b' }}
+              />
             </div>
 
             {/* Section 2: Hubungkan ke Produk (Stok) */}
@@ -679,7 +696,8 @@ export function AddonsPage({ onToggleCreate }) {
               </span>
             )
           },
-          { key: 'harga', label: 'Harga', render: (row) => formatToIDR(row.harga) }
+          { key: 'harga', label: 'Harga', render: (row) => formatToIDR(row.harga) },
+          { key: 'unit_bisnis', label: 'Unit Bisnis', render: (row) => namaUnitBisnis(row) }
         ]}
       />
 

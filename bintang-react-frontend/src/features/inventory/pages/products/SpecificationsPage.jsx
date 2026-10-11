@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Search } from 'lucide-react';
 import DataTable from '../components/DataTable';
 import apiClient from '../../../../api/apiClient';
+import { UnitBisnisRow, namaUnitBisnis, useUnitBisnisOptions } from '../components/UnitBisnisField';
 
 export function SpecificationsPage() {
   const [specifications, setSpecifications] = useState([]);
@@ -11,6 +12,8 @@ export function SpecificationsPage() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [namaSpesifikasi, setNamaSpesifikasi] = useState('');
+  const [unitBisnis, setUnitBisnis] = useState('');
+  const unitBisnisOptions = useUnitBisnisOptions();
 
   const fetchSpecifications = async () => {
     setLoading(true);
@@ -36,7 +39,7 @@ export function SpecificationsPage() {
     if (!canSave) return;
     setSaving(true);
     try {
-      await apiClient.post('/specifications/', { nama: namaSpesifikasi });
+      await apiClient.post('/specifications/', { nama: namaSpesifikasi, unit_bisnis: unitBisnis || null });
       setNamaSpesifikasi('');
       await fetchSpecifications();
     } catch (err) {
@@ -86,6 +89,7 @@ export function SpecificationsPage() {
                 />
               </div>
             </div>
+            <UnitBisnisRow value={unitBisnis} onChange={setUnitBisnis} options={unitBisnisOptions} />
           </div>
         </div>
 
@@ -112,7 +116,8 @@ export function SpecificationsPage() {
               rows={filteredSpecs}
               emptyText={loading ? 'Memuat...' : 'Tidak ada data'}
               columns={[
-                { key: 'nama', label: 'Nama Spesifikasi' }
+                { key: 'nama', label: 'Nama Spesifikasi' },
+                { key: 'unit_bisnis', label: 'Unit Bisnis', render: (row) => namaUnitBisnis(row) }
               ]}
             />
           </div>

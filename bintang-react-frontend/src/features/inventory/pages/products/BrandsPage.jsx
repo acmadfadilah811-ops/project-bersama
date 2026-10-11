@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Search, ChevronRight, Move, Trash2, X } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
+import UnitBisnisSelect, { UnitBisnisRow, namaUnitBisnis, useUnitBisnisOptions } from '../components/UnitBisnisField';
 import { uiConfirm } from '../../../../utils/dialog';
 
 export function BrandsPage() {
@@ -12,6 +13,9 @@ export function BrandsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [namaBrand, setNamaBrand] = useState('');
   const [komisi, setKomisi] = useState('');
+  const [unitBisnis, setUnitBisnis] = useState('');
+  const [editUnitBisnis, setEditUnitBisnis] = useState('');
+  const unitBisnisOptions = useUnitBisnisOptions();
 
   // Modal State - Edit
   const [editingBrand, setEditingBrand] = useState(null);
@@ -46,10 +50,12 @@ export function BrandsPage() {
       await apiClient.post('/brands/', {
         nama: namaBrand,
         komisi_persen: parseFloat(komisi) || 0,
+        unit_bisnis: unitBisnis || null,
         is_active: true,
       });
       setNamaBrand('');
       setKomisi('');
+      setUnitBisnis('');
       await fetchBrands();
     } catch (err) {
       console.error('[BrandsPage] save error:', err);
@@ -63,6 +69,7 @@ export function BrandsPage() {
     setEditingBrand(brand);
     setEditNamaBrand(brand.nama || '');
     setEditKomisiBrand(String(brand.komisi_persen ?? 0));
+    setEditUnitBisnis(brand.unit_bisnis ? String(brand.unit_bisnis) : '');
     setShowEditModal(true);
   };
 
@@ -80,6 +87,7 @@ export function BrandsPage() {
       await apiClient.put(`/brands/${editingBrand.id}/`, {
         nama: editNamaBrand,
         komisi_persen: parseFloat(editKomisiBrand) || 0,
+        unit_bisnis: editUnitBisnis || null,
         is_active: editingBrand.is_active ?? true,
       });
       handleCloseEdit();
@@ -171,6 +179,7 @@ export function BrandsPage() {
                 </div>
               </div>
             </div>
+            <UnitBisnisRow value={unitBisnis} onChange={setUnitBisnis} options={unitBisnisOptions} />
           </div>
         </div>
 
@@ -235,7 +244,7 @@ export function BrandsPage() {
                           {brand.nama} {brand.products_count !== undefined ? `(${brand.products_count})` : ''}
                         </span>
                         <span style={{ fontSize: '11px', color: '#64748b' }}>
-                          Komisi {brand.komisi_persen}%
+                          Komisi {brand.komisi_persen}% · {namaUnitBisnis(brand)}
                         </span>
                       </div>
                     </div>
@@ -320,6 +329,10 @@ export function BrandsPage() {
                   </div>
                 </div>
               </div>
+              <UnitBisnisSelect
+                value={editUnitBisnis} onChange={setEditUnitBisnis} options={unitBisnisOptions}
+                labelStyle={{ fontSize: '12px', fontWeight: '600', color: '#475569' }}
+              />
             </div>
 
             {/* Footer */}

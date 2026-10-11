@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Plus, Search, ChevronRight, GripVertical, Trash2, X, UploadCloud } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
 import { uiConfirm } from '../../../../utils/dialog';
+import UnitBisnisSelect, { namaUnitBisnis, useUnitBisnisOptions } from '../components/UnitBisnisField';
 
 export function CategoriesPage() {
   const [categories, setCategories] = useState([]);
@@ -12,6 +13,9 @@ export function CategoriesPage() {
   // Form State - Create
   const [namaGrup, setNamaGrup] = useState('');
   const [klasifikasi, setKlasifikasi] = useState('');
+  const [unitBisnis, setUnitBisnis] = useState('');
+  const [editUnitBisnis, setEditUnitBisnis] = useState('');
+  const unitBisnisOptions = useUnitBisnisOptions();
   const [nonAktifkan, setNonAktifkan] = useState(false);
   const [tidakMunculPos, setTidakMunculPos] = useState(false);
   const [tidakMunculNavWeb, setTidakMunculNavWeb] = useState(false);
@@ -69,6 +73,7 @@ export function CategoriesPage() {
       const fd = new FormData();
       fd.append('nama', namaGrup);
       fd.append('klasifikasi', klasifikasi);
+      fd.append('unit_bisnis', unitBisnis);
       fd.append('is_active', String(!nonAktifkan));
       fd.append('tampil_pos', String(!tidakMunculPos));
       fd.append('tampil_nav_web', String(!tidakMunculNavWeb));
@@ -79,6 +84,7 @@ export function CategoriesPage() {
       });
       setNamaGrup('');
       setKlasifikasi('');
+      setUnitBisnis('');
       setNonAktifkan(false);
       setTidakMunculPos(false);
       setTidakMunculNavWeb(false);
@@ -97,6 +103,7 @@ export function CategoriesPage() {
     setEditingCategory(cat);
     setEditNama(cat.nama || '');
     setEditKlasifikasi(cat.klasifikasi || '');
+    setEditUnitBisnis(cat.unit_bisnis ? String(cat.unit_bisnis) : '');
     setEditNonAktifkan(!cat.is_active);
     setEditTidakPos(!cat.tampil_pos);
     setEditTidakNavWeb(!cat.tampil_nav_web);
@@ -112,6 +119,7 @@ export function CategoriesPage() {
       const fd = new FormData();
       fd.append('nama', editNama);
       fd.append('klasifikasi', editKlasifikasi);
+      fd.append('unit_bisnis', editUnitBisnis);
       fd.append('is_active', String(!editNonAktifkan));
       fd.append('tampil_pos', String(!editTidakPos));
       fd.append('tampil_nav_web', String(!editTidakNavWeb));
@@ -464,6 +472,17 @@ export function CategoriesPage() {
               </div>
             </div>
 
+            {/* Unit Bisnis */}
+            <div className="pi-create-row" style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '16px' }}>
+              <div className="pi-row-label-desc">
+                <span className="pi-row-label">Unit Bisnis</span>
+                <span className="pi-row-desc">Kosongkan bila grup produk ini dipakai semua unit bisnis</span>
+              </div>
+              <div className="pi-row-input">
+                <UnitBisnisSelect value={unitBisnis} onChange={setUnitBisnis} options={unitBisnisOptions} label="" labelStyle={{ display: 'none' }} />
+              </div>
+            </div>
+
             {/* Product Group Photo */}
             <div className="pi-create-row" style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '16px' }}>
               <div className="pi-row-label-desc">
@@ -577,7 +596,7 @@ export function CategoriesPage() {
                     <GripVertical size={16} />
                   </div>
                   <span className="category-item-name">
-                    {cat.nama} <span className="category-item-count">({cat.products_count || 0})</span>
+                    {cat.nama} <span className="category-item-count">({cat.products_count || 0}) · {namaUnitBisnis(cat)}</span>
                   </span>
                 </div>
                 <div className="category-item-right">
@@ -618,6 +637,11 @@ export function CategoriesPage() {
                   onChange={(e) => setEditNama(e.target.value)} 
                 />
               </div>
+
+              <UnitBisnisSelect
+                value={editUnitBisnis} onChange={setEditUnitBisnis} options={unitBisnisOptions}
+                labelStyle={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#475569' }}
+              />
 
               {/* Klasifikasi */}
               <div>
