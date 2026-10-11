@@ -3,7 +3,9 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { hasMenuAccess } from '../utils/permissions';
 import { useRingkasanPermintaanBahan } from '../features/requisition/hooks/useRingkasanPermintaanBahan';
+import useMenuSesiFoto, { MENU_SESI_FOTO } from '../features/starfoto/hooks/useMenuSesiFoto';
 import {
+  Camera,
   ClipboardList,
   LayoutDashboard,
   LineChart,
@@ -53,6 +55,7 @@ const PENGATURAN_GROUP = {
     { path: '/settings/notifikasi', label: 'Notifikasi', icon: Bell },
     { path: '/settings/sistem-stok', label: 'Sistem Stok', icon: Boxes },
     { path: '/settings/insentif', label: 'Jenis Insentif', icon: Gift },
+    { path: '/settings/starfoto', label: 'StarFoto', icon: Camera },
   ],
 };
 
@@ -374,7 +377,8 @@ export default function Sidebar() {
     return null;
   };
 
-  const baseMenu =
+  const tampilSesiFoto = useMenuSesiFoto();
+  const menuDasar =
     userRole === 'staff'
       ? menuStaff
       : userRole === 'kasir'
@@ -388,6 +392,10 @@ export default function Sidebar() {
       : userRole === 'admin_finance'
       ? menuFinance
       : groupedMenuOwnerManager;
+  // Fotografer/asisten StarFoto (2026-10-11): menu Sesi Foto setelah Papan Kerja.
+  const baseMenu = tampilSesiFoto
+    ? menuDasar.flatMap((item) => (item.path === '/produksi' ? [item, { ...MENU_SESI_FOTO, icon: Camera }] : [item]))
+    : menuDasar;
 
   // Filter menu berdasarkan perizinan hak akses dinamis
   const filteredMenu = baseMenu

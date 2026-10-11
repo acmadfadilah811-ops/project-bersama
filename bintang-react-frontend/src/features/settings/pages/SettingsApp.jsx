@@ -6,6 +6,7 @@ import PointOfSale from './pos/PointOfSale';
 import Notifikasi from './Notifikasi';
 import SistemStok from './SistemStok';
 import JenisInsentif from './JenisInsentif';
+import PengaturanStarfotoPage from '../../starfoto/pages/PengaturanStarfotoPage';
 import PrinterSettings from '../../printing/pages/PrinterSettings';
 
 /**
@@ -24,6 +25,7 @@ export default function SettingsApp() {
             <Route path="notifikasi" element={<Notifikasi />} />
             <Route path="sistem-stok" element={<SistemStok />} />
             <Route path="insentif" element={<JenisInsentif />} />
+            <Route path="starfoto" element={<PengaturanStarfotoPage />} />
             <Route path="cetak" element={<PrinterSettings />} />
             <Route path="*" element={<Navigate to="point-of-sale" replace />} />
           </Routes>

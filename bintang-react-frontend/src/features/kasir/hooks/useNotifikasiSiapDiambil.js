@@ -71,11 +71,14 @@ export function useNotifikasiSiapDiambil() {
   // (Antrean Online & Offline, Pesanan & Pelunasan) dan daftar di lonceng.
   const [daftarMasuk, setDaftarMasuk] = useState([]);
   const [daftarSiap, setDaftarSiap] = useState([]);
+  // Pesanan foto StarFoto yang sesinya selesai & menunggu konfirmasi kasir (2026-10-11).
+  const [daftarSesiFoto, setDaftarSesiFoto] = useState([]);
   const [kunciDibaca, setKunciDibaca] = useState(bacaDibaca);
   const [riwayatNotifikasi, setRiwayatNotifikasi] = useState([]);
   const [jumlahBelumDibaca, setJumlahBelumDibaca] = useState(0);
   const kunciSiapSebelumnya = useRef(null);
   const kunciMasukSebelumnya = useRef(null);
+  const kunciSesiSebelumnya = useRef(null);
   const idUrutan = useRef(0);
 
   const tambahKeRiwayat = useCallback((entri) => {
@@ -85,11 +88,36 @@ export function useNotifikasiSiapDiambil() {
 
   const muat = useCallback(async () => {
     try {
-      const [resOrder, resPos, resMasuk] = await Promise.all([
+      const [resOrder, resPos, resMasuk, resSesi] = await Promise.all([
         apiClient.get('/orders/', { params: { status_global: 'ready' } }),
         apiClient.get('/pos/sales/produksi/', { params: { status_produksi: 'ready' } }),
         apiClient.get('/orders/', { params: { status_global: 'review', sumber: 'wa,staff,crm' } }),
+        apiClient.get('/starfoto/pesanan/', { params: { status: 'menunggu_kasir' } }).catch(() => ({ data: [] })),
       ]);
+
+      const daftarSesi = (Array.isArray(resSesi.data) ? resSesi.data : resSesi.data?.results || []).map((p) => ({
+        kunci: `sesi:${p.id}`,
+        label: p.order,
+        nama: p.pelanggan || 'Pelanggan',
+        waktu: p.dibuat_pada,
+        tautan: '/kasir/sesi-foto',
+        usulan: (p.usulan || []).filter((u) => u.status === 'usulan').length,
+      }));
+      const sesiBaru = temukanPesananBaru(kunciSesiSebelumnya.current, daftarSesi);
+      kunciSesiSebelumnya.current = new Set(daftarSesi.map((p) => p.kunci));
+      setDaftarSesiFoto(daftarSesi);
+      if (sesiBaru.length > 0) {
+        notify({ type: 'info', title: 'Sesi foto selesai', message: `${sesiBaru.length} pesanan foto menunggu konfirmasi & pilih file.` });
+        tambahKeRiwayat(sesiBaru.map((p) => ({
+          id: `sesi-${p.kunci}-${idUrutan.current++}`,
+          jenis: 'masuk',
+          judul: 'Sesi foto selesai',
+          pesan: `${p.label} · ${p.nama} menunggu konfirmasi kasir.`,
+          tautan: p.tautan,
+          waktu: Date.now(),
+        })));
+        bunyiPendek();
+      }
 
       const daftarSiap = gabungPesananSiap(resOrder.data || [], resPos.data || []);
       const siapBaru = temukanPesananBaru(kunciSiapSebelumnya.current, daftarSiap);
@@ -147,19 +175,20 @@ export function useNotifikasiSiapDiambil() {
   const tandaSemuaDibaca = useCallback(() => {
     setJumlahBelumDibaca(0);
     setKunciDibaca(() => {
-      const baru = new Set([...daftarMasuk, ...daftarSiap].map((p) => p.kunci));
+      const baru = new Set([...daftarMasuk, ...daftarSiap, ...daftarSesiFoto].map((p) => p.kunci));
       simpanDibaca(baru);
       return baru;
     });
-  }, [daftarMasuk, daftarSiap]);
+  }, [daftarMasuk, daftarSiap, daftarSesiFoto]);
 
-  const jumlahBaru = [...daftarMasuk, ...daftarSiap].filter((p) => !kunciDibaca.has(p.kunci)).length;
+  const jumlahBaru = [...daftarMasuk, ...daftarSiap, ...daftarSesiFoto].filter((p) => !kunciDibaca.has(p.kunci)).length;
 
   return {
     jumlahSiap,
     jumlahMasuk: daftarMasuk.length,
     daftarMasuk,
     daftarSiap,
+    daftarSesiFoto,
     kunciDibaca,
     jumlahBaru,
     muatUlangSiapDiambil: muat,

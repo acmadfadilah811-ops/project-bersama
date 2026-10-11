@@ -31,6 +31,7 @@ import Komplain from './features/komplain/pages/Komplain';
 import { useAuth } from './context/AuthContext';
 import ProductionApp from './features/production/pages/ProductionApp';
 import StaffCreateOrderPage from './features/production/pages/StaffCreateOrderPage';
+import SesiFotoPage from './features/starfoto/pages/SesiFotoPage';
 import UploadDesain from './features/orders/pages/UploadDesain';
 import ResiPublikPage from './features/resi/ResiPublikPage';
 import ProductInventoryApp from './features/inventory/pages/ProductInventoryApp';
@@ -177,6 +178,7 @@ function App() {
                 <Route path="/jobs" element={<Navigate to="/produksi" replace />} />
                 <Route path="/produksi/*" element={<ProductionApp />} />
                 <Route path="/buat-order" element={<StaffCreateOrderPage />} />
+                <Route path="/sesi-foto" element={<SesiFotoPage />} />
                 <Route path="/product-inventory/*" element={<ProductInventoryApp />} />
                 <Route path="/customer-supplier/*" element={<CustomerSupplierApp />} />
                 <Route path="/attendance" element={<Attendance />} />

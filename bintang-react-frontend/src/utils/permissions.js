@@ -224,7 +224,7 @@ export function getFeatureIdByPath(path) {
   if (path === '/' || path.startsWith('/dashboard')) return 'dashboard';
   if (path.startsWith('/staff-dashboard')) return 'staff-dashboard';
   if (path.startsWith('/finance-dashboard')) return 'finance-dashboard';
-  if (path.startsWith('/papan-kerja') || path.startsWith('/produksi') || path.startsWith('/jobs')) return 'jobs';
+  if (path.startsWith('/papan-kerja') || path.startsWith('/produksi') || path.startsWith('/jobs') || path.startsWith('/sesi-foto')) return 'jobs';
   if (path.startsWith('/product-inventory')) return 'product-inventory';
   if (path.startsWith('/transaksi')) return 'buku-besar';
   // HARUS sebelum '/laporan' generik di bawah -- kalau tidak, prefix

@@ -22,6 +22,7 @@ import {
   Users,
   FileWarning,
   Ban,
+  Camera,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { useKasir } from '../context/KasirContext';
@@ -37,7 +38,7 @@ export default function KasirSidebar({ isCollapsed, setIsCollapsed }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout, businessSettings } = useAuth();
-  const { shiftAktif, siapDiambilCount, jumlahMasuk } = useKasir();
+  const { shiftAktif, siapDiambilCount, jumlahMasuk, daftarSesiFoto = [] } = useKasir();
 
   // Jumlah antrean & siap diambil dari KasirContext (useNotifikasiSiapDiambil):
   // satu sumber data dengan lonceng notifikasi, tidak polling sendiri lagi.
@@ -46,6 +47,7 @@ export default function KasirSidebar({ isCollapsed, setIsCollapsed }) {
   const avatarUrl = getAvatarUrl(user?.foto_profil);
   const userRole = user?.role?.toLowerCase();
   const isOwnerOrAdmin = ['owner', 'admin', 'manager'].includes(userRole);
+  const isStarfoto = isOwnerOrAdmin || /starfoto/i.test(user?.unit_bisnis_nama || '') || daftarSesiFoto.length > 0;
 
   const navItems = [
     { path: '/kasir/dashboard', label: 'Dashboard Kasir', icon: LayoutDashboard },
@@ -53,6 +55,8 @@ export default function KasirSidebar({ isCollapsed, setIsCollapsed }) {
     { path: '/kasir/produk', label: 'Katalog Produk', icon: Package },
     { path: '/kasir/pesanan', label: 'Pesanan & Pelunasan', icon: PackageCheck, badge: siapDiambilCount },
     { path: '/kasir/antrean-wa', label: 'Antrean Online & Offline', icon: MessageCircle, badge: waOrderCount },
+    // Kasir StarFoto (2026-10-11): konfirmasi sesi foto & jadwal studio.
+    ...(isStarfoto ? [{ path: '/kasir/sesi-foto', label: 'Sesi Foto', icon: Camera, badge: daftarSesiFoto.length }] : []),
     { path: '/kasir/wa-live', label: 'WA Live', icon: MessageSquare },
     { path: '/kasir/pelanggan-supplier', label: 'Pelanggan', icon: Users },
     { path: '/kasir/riwayat', label: 'Riwayat Transaksi', icon: History },

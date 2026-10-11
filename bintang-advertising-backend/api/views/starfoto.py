@@ -25,6 +25,7 @@ from rest_framework.permissions import SAFE_METHODS, BasePermission, IsAuthentic
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from ..models import TahapProses
 from ..permissions import IsClockedIn, IsOwnerManagerAdminOrKasir
 from ..serializers_starfoto import (
     PaketFotoSerializer, PesananFotoSerializer, SesiFotoSerializer, UsulanTambahanSerializer,
@@ -52,7 +53,13 @@ class PengaturanStarfotoView(APIView):
         return [IsAuthenticated()]
 
     def get(self, request):
-        return Response(svc.pengaturan())
+        data = svc.pengaturan()
+        # Untuk tampilan: menu Sesi Foto hanya untuk anggota divisi tahap Sesi/Asisten.
+        data['divisi_sesi_ids'] = sorted(set(
+            TahapProses.objects.filter(pk__in=[data['tahap_sesi_id'], data['tahap_asisten_id']])
+            .values_list('divisi_id', flat=True)
+        ))
+        return Response(data)
 
     def patch(self, request):
         if request.user.role not in ('owner', 'manager'):

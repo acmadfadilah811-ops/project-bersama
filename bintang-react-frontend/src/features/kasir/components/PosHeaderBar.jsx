@@ -77,11 +77,11 @@ export default function PosHeaderBar({
   const navigate = useNavigate();
   const { user, businessSettings } = useAuth();
   const {
-    riwayatNotifikasi, tandaSemuaDibaca, daftarMasuk, daftarSiap, kunciDibaca,
+    riwayatNotifikasi, tandaSemuaDibaca, daftarMasuk, daftarSiap, daftarSesiFoto = [], kunciDibaca,
   } = useKasir();
   // Badge lonceng = jumlah pesanan yang menunggu tindakan kasir (sama dengan
   // badge merah Antrean Online & Offline + Pesanan & Pelunasan di sidebar).
-  const jumlahMenunggu = daftarMasuk.length + daftarSiap.length;
+  const jumlahMenunggu = daftarMasuk.length + daftarSiap.length + daftarSesiFoto.length;
   const [showDropdown, setShowDropdown] = useState(false);
   const [showNotifikasi, setShowNotifikasi] = useState(false);
   const dropdownRef = useRef(null);
@@ -178,6 +178,17 @@ export default function PosHeaderBar({
                   onBuka={bukaTautan}
                   keterangan={(p) => [LABEL_SUMBER[p.sumber] || p.sumber, p.waktu ? waktuRelatif(new Date(p.waktu).getTime()) : ''].filter(Boolean).join(' · ')}
                 />
+                {daftarSesiFoto.length > 0 && (
+                  <BagianNotifikasi
+                    judul="Sesi Foto — Menunggu Konfirmasi"
+                    daftar={daftarSesiFoto}
+                    kosong=""
+                    semua="/kasir/sesi-foto"
+                    kunciDibaca={kunciDibaca}
+                    onBuka={bukaTautan}
+                    keterangan={(p) => (p.usulan ? `${p.usulan} usulan tambahan` : 'Pilih file & konfirmasi')}
+                  />
+                )}
                 <BagianNotifikasi
                   judul="Siap Diambil (Pesanan & Pelunasan)"
                   daftar={daftarSiap}

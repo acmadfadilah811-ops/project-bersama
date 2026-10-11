@@ -30,6 +30,8 @@ import PaymentProcessModal from '../components/PaymentProcessModal';
 import PaymentSuccessModal from '../components/PaymentSuccessModal';
 import ReceiptPrint from '../components/ReceiptPrint';
 import SpkPublishModal from '../components/SpkPublishModal';
+import StarfotoSesiModal from '../../starfoto/components/StarfotoSesiModal';
+import useStarfotoKasir from '../../starfoto/hooks/useStarfotoKasir';
 import { uiConfirm } from '../../../utils/dialog';
 
 const makeCheckoutKey = () => {
@@ -113,6 +115,10 @@ export default function PosTerminal({ onToggleSidebar }) {
     shiftAktif,
     loadingShift,
   } = useKasir();
+  // Mode StarFoto (2026-10-11): keranjang berisi Paket Foto -> isi Data Sesi
+  // dulu, lalu pembayaran DP/lunas lewat /orders/checkout-pos/ dengan blok starfoto.
+  const starfoto = useStarfotoKasir(cart);
+  const bukaPembayaran = () => (starfoto.item ? starfoto.bukaModal() : setShowPaymentModal(true));
 
   // Mode Tampilan Panel Kanan: 'catalog' | 'itemDetail' | 'customerList'
   const [rightPanelMode, setRightPanelMode] = useState('catalog');
@@ -781,14 +787,28 @@ export default function PosTerminal({ onToggleSidebar }) {
         return;
       }
     }
-    setPendingPayment({ ...paymentData, checkoutKey: makeCheckoutKey() });
+    const pembayaran = { ...paymentData, checkoutKey: makeCheckoutKey() };
+    setPendingPayment(pembayaran);
     setShowPaymentModal(false);
+    if (starfoto.item) {
+      if (!selectedPelayanId) {
+        setPendingPayment(null);
+        notifyError('Karyawan diperlukan', 'Pilih karyawan yang melayani sebelum menyimpan pesanan foto.');
+        return;
+      }
+      handlePublishSpkAndCheckout(null, pembayaran).catch(() => {
+        setPendingPayment(null);
+        setShowPaymentModal(true);
+      });
+    }
   };
 
-  const handlePublishSpkAndCheckout = async (spkPayload) => {
-    if (!pendingPayment) return;
-    if (pendingPayment.paymentType !== 'dp') {
-      return executeLunasPayment(pendingPayment, spkPayload);
+  const handlePublishSpkAndCheckout = async (spkPayload, pembayaran = pendingPayment) => {
+    if (!pembayaran) return;
+    // Pesanan foto selalu lewat checkout pesanan (DP maupun lunas) supaya
+    // jadwal sesi & SPK fotografer ikut tersimpan.
+    if (pembayaran.paymentType !== 'dp' && !starfoto.item) {
+      return executeLunasPayment(pembayaran, spkPayload);
     }
 
     const items = cart.map((item) => {
@@ -804,6 +824,8 @@ export default function PosTerminal({ onToggleSidebar }) {
         nama: item.nama,
         is_custom_priced: Boolean(item.isCustomPriced),
         addon_ids: item.addonIds || [],
+        // Qty per addon (mis. tambah 3 orang) hanya untuk pesanan foto; alur lama tetap.
+        ...(starfoto.item ? { addons: (item.addonIds || []).map((id) => ({ id, qty: item.addonQty?.[id] || 1 })) } : {}),
         panjang: item.panjang || 0,
         lebar: item.lebar || 0,
         harga_per_m2: item.hargaPerM2 || 0,
@@ -823,19 +845,20 @@ export default function PosTerminal({ onToggleSidebar }) {
 
     try {
       const res = await apiClient.post('/orders/checkout-pos/', {
-        idempotency_key: pendingPayment.checkoutKey,
+        idempotency_key: pembayaran.checkoutKey,
         nama: selectedContact.nama,
         nomor_wa: selectedContact.nomor_wa,
         items,
-        jumlah_bayar: Math.round(pendingPayment.payAmount),
-        metode_pembayaran: pendingPayment.method,
+        // Lunas pesanan foto: uang diterima bisa lebih (kembalian) -> tagihan saja yang dicatat.
+        jumlah_bayar: Math.round(pembayaran.paymentType !== 'dp' ? Math.min(pembayaran.payAmount, getTotal()) : pembayaran.payAmount),
+        metode_pembayaran: pembayaran.method,
         diskon_persen: discountPercent,
         metode_diskon: metodeDiskon,
         kupon_kode: selectedCoupon?.kode || undefined,
         catatan: cartNotes,
-        jatuh_tempo: pendingPayment.dueDate,
+        jatuh_tempo: pembayaran.dueDate,
         dilayani_oleh_id: selectedPelayanId,
-        spk: spkPayload,
+        ...(starfoto.item ? { starfoto: starfoto.data } : { spk: spkPayload }),
       });
       const order = res.data;
       if (Array.isArray(order.stok_kritis) && order.stok_kritis.length > 0) {
@@ -879,6 +902,7 @@ export default function PosTerminal({ onToggleSidebar }) {
   };
 
   const handleNewOrder = () => {
+    starfoto.reset();
     clearCart();
     setCartNotes('');
     setShowSuccessModal(false);
@@ -1055,7 +1079,7 @@ export default function PosTerminal({ onToggleSidebar }) {
                 type="button"
                 onClick={() => {
                   setStokKritisModal(null);
-                  if (stokKritisModal.mode === 'gate') setShowPaymentModal(true);
+                  if (stokKritisModal.mode === 'gate') bukaPembayaran();
                 }}
                 className="flex-1 rounded-xl bg-amber-500 hover:bg-amber-400 text-amber-950 font-black text-sm py-3 cursor-pointer transition-colors"
               >
@@ -1121,7 +1145,7 @@ export default function PosTerminal({ onToggleSidebar }) {
               setStokKritisModal({ items: kritis, mode: 'gate' });
               return;
             }
-            setShowPaymentModal(true);
+            bukaPembayaran();
           }}
           onVoidClick={() => {
             if (cart.length === 0) return;
@@ -1310,7 +1334,24 @@ export default function PosTerminal({ onToggleSidebar }) {
         onConfirmPayment={handleConfirmPayment}
       />
 
-      {pendingPayment && (
+      {starfoto.modalTerbuka && starfoto.item && starfoto.paket && (
+        <StarfotoSesiModal
+          paket={starfoto.paket}
+          item={starfoto.item}
+          pengaturan={starfoto.pengaturan}
+          awal={starfoto.data}
+          totalKeranjang={getTotal()}
+          onClose={starfoto.tutupModal}
+          onSimpan={({ data, item }) => {
+            upsertCartItems([item]);
+            starfoto.setData(data);
+            starfoto.tutupModal();
+            setShowPaymentModal(true);
+          }}
+        />
+      )}
+
+      {pendingPayment && !starfoto.item && (
         <SpkPublishModal
           judul="Tujuan SPK Produksi"
           keterangan={pendingPayment.paymentType === 'dp'

@@ -38,13 +38,17 @@ class SesiFotoSerializer(serializers.ModelSerializer):
     pesanan_id = serializers.IntegerField(source='pesanan.id', read_only=True)
     pelanggan = serializers.CharField(source='pesanan.order.nama', read_only=True)
     paket = serializers.CharField(source='pesanan.paket_item.jenis_produk', read_only=True)
+    paket_product = serializers.IntegerField(source='pesanan.paket_item.product_id', read_only=True)
+    nomor_kantong = serializers.CharField(source='pesanan.nomor_kantong', read_only=True)
+    background = serializers.CharField(source='pesanan.background', read_only=True)
     jumlah_orang = serializers.IntegerField(source='pesanan.jumlah_orang', read_only=True)
     status_pesanan = serializers.CharField(source='pesanan.status', read_only=True)
 
     class Meta:
         model = SesiFoto
         fields = [
-            'id', 'pesanan_id', 'order_id', 'pelanggan', 'paket', 'jumlah_orang', 'urutan', 'mulai',
+            'id', 'pesanan_id', 'order_id', 'pelanggan', 'paket', 'paket_product', 'nomor_kantong', 'background',
+            'jumlah_orang', 'urutan', 'mulai',
             'durasi_menit', 'lokasi', 'alamat', 'fotografer', 'fotografer_nama', 'asisten', 'asisten_nama',
             'status', 'status_pesanan', 'mulai_aktual', 'selesai_aktual',
         ]
@@ -79,6 +83,7 @@ class PesananFotoSerializer(serializers.ModelSerializer):
     pelanggan = serializers.CharField(source='order.nama', read_only=True)
     nomor_wa = serializers.CharField(source='order.nomor_wa', read_only=True)
     paket = serializers.CharField(source='paket_item.jenis_produk', read_only=True)
+    paket_product = serializers.IntegerField(source='paket_item.product_id', read_only=True)
     jumlah_edit = serializers.IntegerField(source='paket_item.product.paket_foto.jumlah_edit', read_only=True)
     total_harga = serializers.IntegerField(source='order.total_harga', read_only=True)
     sisa_tagihan = serializers.IntegerField(source='order.sisa_tagihan', read_only=True)
@@ -90,7 +95,7 @@ class PesananFotoSerializer(serializers.ModelSerializer):
     class Meta:
         model = PesananFoto
         fields = [
-            'id', 'order', 'pelanggan', 'nomor_wa', 'paket', 'jumlah_edit', 'jenis', 'status', 'jumlah_orang',
+            'id', 'order', 'pelanggan', 'nomor_wa', 'paket', 'paket_product', 'jumlah_edit', 'jenis', 'status', 'jumlah_orang',
             'nomor_kantong', 'background', 'catatan_file', 'total_harga', 'sisa_tagihan', 'status_order',
             'dikonfirmasi_pada', 'dibuat_pada', 'sesi', 'usulan', 'pilihan_file',
         ]
