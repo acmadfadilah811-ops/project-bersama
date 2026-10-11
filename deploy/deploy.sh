@@ -60,4 +60,11 @@ fi
 echo "[deploy] frontend"
 docker compose up -d --no-deps frontend
 
+# nginx.conf di-mount sebagai file tunggal: git pull membuat file baru yang
+# tidak terlihat container lama -> restart gateway hanya bila isinya berbeda.
+if ! docker compose exec -T gateway cat /etc/nginx/conf.d/default.conf | cmp -s - nginx.conf; then
+  echo "[deploy] nginx.conf berubah, restart gateway"
+  docker compose restart gateway
+fi
+
 echo "[deploy] SELESAI"
