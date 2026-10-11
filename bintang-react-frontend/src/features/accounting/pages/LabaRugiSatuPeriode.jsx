@@ -5,6 +5,7 @@ import { downloadFile } from '../../../utils/downloadFile';
 import { notifyApiError } from '../../../utils/notify';
 import LabaRugiToolbar from '../components/LabaRugiToolbar';
 import LabaRugiFilterModal from '../components/LabaRugiFilterModal';
+import { useUnitBisnisOptions } from '../../inventory/pages/components/UnitBisnisField';
 import LabaRugiSatuPeriodeReport from '../components/LabaRugiSatuPeriodeReport';
 import RincianMutasiAkun from './RincianMutasiAkun';
 
@@ -25,6 +26,9 @@ export default function LabaRugiSatuPeriode() {
   // --- STATE PENGATURAN LAPORAN (GEAR MODAL) ---
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [hideZeroAccounts, setHideZeroAccounts] = useState(false);
+  // Laba Rugi per unit bisnis (2026-10-11): kosong = gabungan semua unit.
+  const [unitBisnis, setUnitBisnis] = useState('');
+  const unitBisnisOptions = useUnitBisnisOptions();
 
   // --- STATE DATA LAPORAN & LOADING ---
   const [loading, setLoading] = useState(false);
@@ -181,7 +185,7 @@ export default function LabaRugiSatuPeriode() {
     setLoading(true);
     try {
       const res = await apiClient.get('/accounting/reports/income-statement/', {
-        params: { date_from: startDate, date_to: endDate },
+        params: { date_from: startDate, date_to: endDate, ...(unitBisnis ? { unit_bisnis: unitBisnis } : {}) },
       });
       setReportData(res.data);
     } catch (err) {
@@ -190,7 +194,7 @@ export default function LabaRugiSatuPeriode() {
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate]);
+  }, [startDate, endDate, unitBisnis]);
 
   useEffect(() => {
     fetchReportData();
@@ -199,7 +203,8 @@ export default function LabaRugiSatuPeriode() {
   // Export handlers
   const handleExportPdf = () => window.print();
   const handleExportExcel = () => {
-    downloadFile(`/accounting/reports/income-statement/export/?date_from=${startDate}&date_to=${endDate}`, 'laba-rugi.xlsx');
+    const unitParam = unitBisnis ? `&unit_bisnis=${unitBisnis}` : '';
+    downloadFile(`/accounting/reports/income-statement/export/?date_from=${startDate}&date_to=${endDate}${unitParam}`, 'laba-rugi.xlsx');
   };
 
   // Filter akun bernilai 0 jika disetting
@@ -256,6 +261,21 @@ export default function LabaRugiSatuPeriode() {
         handleExportPdf={handleExportPdf}
         handleExportExcel={handleExportExcel}
       />
+
+      <div className="flex flex-wrap items-center gap-2 px-1 text-xs">
+        <span className="font-semibold text-slate-600">Unit Bisnis</span>
+        <select
+          value={unitBisnis}
+          onChange={(e) => setUnitBisnis(e.target.value)}
+          className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-700"
+        >
+          <option value="">Semua unit (gabungan)</option>
+          {unitBisnisOptions.map((u) => <option key={u.id} value={String(u.id)}>{u.nama}</option>)}
+        </select>
+        {unitBisnis && (
+          <span className="text-[11px] text-slate-400">Hanya jurnal bertanda unit ini (kasir & pesanan sejak 11 Okt 2026).</span>
+        )}
+      </div>
 
       <p className="text-[11px] text-slate-400 italic px-1">
         Dihitung dari jurnal terposting (Akuntansi) — bisa berbeda dari Laba Rugi di Laporan Penjualan yang
