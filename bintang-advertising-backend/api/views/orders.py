@@ -635,26 +635,34 @@ class OrderViewSet(viewsets.ModelViewSet):
             raise ValidationError({'error': pesan or 'Pembayaran ditolak.'})
 
         spk_payload = request.data.get('spk')
-        if not isinstance(spk_payload, dict):
+        if request.data.get('starfoto'):
+            # Pesanan sesi foto StarFoto: DP minimal, jadwal sesi & SPK
+            # fotografer/asisten diatur services/starfoto.py (2026-10-11).
+            from ..services import starfoto
+            jobs, staff, tahap = starfoto.terbitkan_dari_checkout(
+                order, request.data.get('starfoto'), request.user, jumlah_bayar,
+            )
+        elif not isinstance(spk_payload, dict):
             raise ValidationError({'error': 'Tujuan divisi dan deadline SPK wajib diisi.'})
-        try:
-            staff = spk.resolve_staff(spk_payload.get('staff_id'), pemohon=request.user)
-            deadline = spk.resolve_deadline(spk_payload.get('deadline'))
-            deadline_jam = spk.resolve_deadline_jam(spk_payload.get('deadline_jam'))
-            if not deadline:
-                raise spk.SpkError('Deadline SPK wajib diisi.')
-            tahap = spk.resolve_tahap(
-                tahap_id=spk_payload.get('tahap_id'),
-                divisi_id=spk_payload.get('divisi_id'),
-                staff=staff,
-                pemohon=request.user,
-            )
-            jobs = spk.terbitkan(
-                order.items.all(), field='order_item', tahap=tahap, staff=staff,
-                deadline=deadline, deadline_jam=deadline_jam,
-            )
-        except spk.SpkError as exc:
-            raise ValidationError({'error': exc.pesan})
+        else:
+            try:
+                staff = spk.resolve_staff(spk_payload.get('staff_id'), pemohon=request.user)
+                deadline = spk.resolve_deadline(spk_payload.get('deadline'))
+                deadline_jam = spk.resolve_deadline_jam(spk_payload.get('deadline_jam'))
+                if not deadline:
+                    raise spk.SpkError('Deadline SPK wajib diisi.')
+                tahap = spk.resolve_tahap(
+                    tahap_id=spk_payload.get('tahap_id'),
+                    divisi_id=spk_payload.get('divisi_id'),
+                    staff=staff,
+                    pemohon=request.user,
+                )
+                jobs = spk.terbitkan(
+                    order.items.all(), field='order_item', tahap=tahap, staff=staff,
+                    deadline=deadline, deadline_jam=deadline_jam,
+                )
+            except spk.SpkError as exc:
+                raise ValidationError({'error': exc.pesan})
 
         order.status_global = 'desain' if spk.is_divisi_desain(staff, tahap) else 'proses'
         order._current_user = request.user

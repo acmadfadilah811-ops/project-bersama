@@ -1515,3 +1515,5 @@ from .pengembalian_job_models import *  # noqa: F401,F403
 from .insentif_models import *  # noqa: F401,F403
 # Struk online + survei kepuasan pelanggan (2026-10-06).
 from .survei_models import *  # noqa: F401,F403
+# Pesanan sesi foto StarFoto (2026-10-11).
+from .starfoto_models import *  # noqa: F401,F403

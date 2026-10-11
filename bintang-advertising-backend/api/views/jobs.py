@@ -375,6 +375,10 @@ class JobBoardViewSet(viewsets.ModelViewSet):
                 {"status_pekerjaan": f"Transisi status '{old_status}' → '{new_status}' tidak diizinkan."}
             )
 
+        if new_status == 'selesai' and old_status != 'selesai':
+            from ..services.starfoto import cek_boleh_selesai
+            cek_boleh_selesai(old_instance)
+
         # PRD-04: mulai mengerjakan hanya setelah tahap sebelumnya selesai.
         # PRD-05: dan tidak sedang menunggu keputusan pengembalian.
         if new_status == 'dikerjakan' and old_status != 'dikerjakan':
@@ -446,6 +450,8 @@ class JobBoardViewSet(viewsets.ModelViewSet):
 
                 # Potong stok bahan otomatis
                 deduct_job_materials_if_needed(job, user)
+                from ..services.starfoto import setelah_job_selesai
+                setelah_job_selesai(job, user)
 
                 # Cek kelengkapan pesanan secara global — hanya berlaku untuk
                 # job dari alur order (job POS tidak punya Order induk)
@@ -896,6 +902,7 @@ class JobBoardViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsClockedIn])
+    @transaction.atomic
     def complete(self, request, pk=None):
         """POST /api/jobs/{id}/complete/ — Staff menyelesaikan pengerjaan job secara langsung (bebas OTP)"""
         job = self.get_object()
@@ -911,6 +918,8 @@ class JobBoardViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        from ..services.starfoto import cek_boleh_selesai, setelah_job_selesai
+        cek_boleh_selesai(job)
         job.status_pekerjaan = 'selesai'
         job.waktu_selesai = timezone.now()
         # Reset OTP fields
@@ -927,6 +936,7 @@ class JobBoardViewSet(viewsets.ModelViewSet):
 
         # Potong bahan otomatis ke inventori
         deduct_job_materials_if_needed(job, user)
+        setelah_job_selesai(job, user)
 
         # Cek apakah seluruh job dari semua item dalam pesanan ini sudah selesai
         # — hanya berlaku untuk job dari alur order (job POS tidak punya Order induk)

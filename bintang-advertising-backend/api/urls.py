@@ -6,6 +6,10 @@ from .views.hr_hapus_bridge import HRBridgeHapusAkunView
 from .views.hr_sandi_bridge import HRBridgeSandiView
 from .views.hr_foto_bridge import HRBridgeFotoView
 from .views.resi_digital import AspekSurveiViewSet, ResiPublikView, ResiSurveiView, SurveiKepuasanView
+from .views.starfoto import (
+    JadwalSesiView, PaketFotoViewSet, PengaturanStarfotoView, PesananFotoViewSet, SesiAksiView, SesiSayaView,
+    UsulanTambahanDetailView,
+)
 from .views.hr_kredensial_bridge import HRBridgeKredensialView
 from .views.hr_organisasi_bridge import HROrganisasiView
 from .views.insentif import JenisInsentifViewSet, JobInsentifView, InsentifPekerjaanDetailView
@@ -128,6 +132,8 @@ from . import pos_views
 router.register(r'pos/sales', pos_views.POSSaleViewSet, basename='pos-sale')
 router.register(r'pos-void-requests', views.POSVoidRequestViewSet, basename='pos-void-request')
 router.register(r'aspek-survei', AspekSurveiViewSet, basename='aspek-survei')
+router.register(r'starfoto/paket', PaketFotoViewSet, basename='starfoto-paket')
+router.register(r'starfoto/pesanan', PesananFotoViewSet, basename='starfoto-pesanan')
 
 
 urlpatterns = [
@@ -225,6 +231,12 @@ urlpatterns = [
     path('resi/<str:token>/', ResiPublikView.as_view(), name='resi-publik'),
     path('resi/<str:token>/survei/', ResiSurveiView.as_view(), name='resi-survei'),
     path('survei-kepuasan/', SurveiKepuasanView.as_view(), name='survei-kepuasan'),
+    # Pesanan sesi foto StarFoto -- 2026-10-11.
+    path('starfoto/pengaturan/', PengaturanStarfotoView.as_view(), name='starfoto-pengaturan'),
+    path('starfoto/usulan/<int:pk>/', UsulanTambahanDetailView.as_view(), name='starfoto-usulan'),
+    path('starfoto/sesi-saya/', SesiSayaView.as_view(), name='starfoto-sesi-saya'),
+    path('starfoto/sesi/<int:pk>/<str:aksi>/', SesiAksiView.as_view(), name='starfoto-sesi-aksi'),
+    path('starfoto/jadwal/', JadwalSesiView.as_view(), name='starfoto-jadwal'),
     path('bridge/hr-employee-status/', HRBridgeSetStatusView.as_view(), name='hr-bridge-set-status'),
     path('bridge/absensi-status/', AbsensiStatusView.as_view(), name='hr-bridge-absensi-status'),
     path('bridge/kinerja-staff/', KinerjaStaffView.as_view(), name='hr-bridge-kinerja-staff'),
