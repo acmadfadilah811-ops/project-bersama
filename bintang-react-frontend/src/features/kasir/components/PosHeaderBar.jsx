@@ -180,13 +180,13 @@ export default function PosHeaderBar({
                 />
                 {daftarSesiFoto.length > 0 && (
                   <BagianNotifikasi
-                    judul="Sesi Foto — Menunggu Konfirmasi"
+                    judul="Sesi Foto — Perlu Tindakan"
                     daftar={daftarSesiFoto}
                     kosong=""
                     semua="/kasir/sesi-foto"
                     kunciDibaca={kunciDibaca}
                     onBuka={bukaTautan}
-                    keterangan={(p) => (p.usulan ? `${p.usulan} usulan tambahan` : 'Pilih file & konfirmasi')}
+                    keterangan={(p) => p.keterangan}
                   />
                 )}
                 <BagianNotifikasi

@@ -64,7 +64,7 @@ export default function PengaturanStarfotoPage() {
     setMenyimpan(true);
     try {
       const payload = {};
-      ['dp_minimal_persen', 'durasi_default_menit', 'jumlah_studio', 'kantong_terakhir', 'dinas_luar_non_sesi', 'uang_transport', 'uang_transport_nominal', ...TAHAP.map(([k]) => k)]
+      ['dp_minimal_persen', 'durasi_default_menit', 'jumlah_studio', 'kantong_terakhir', 'batas_revisi', 'pengingat_approval_jam', 'masa_link_hari', 'dinas_luar_non_sesi', 'uang_transport', 'uang_transport_nominal', ...TAHAP.map(([k]) => k)]
         .forEach((k) => { payload[k] = atur[k] ?? ''; });
       await apiClient.patch('/starfoto/pengaturan/', payload);
       notifySuccess('Tersimpan', 'Pengaturan StarFoto disimpan.');
@@ -138,6 +138,17 @@ export default function PengaturanStarfotoPage() {
           <Kolom label="No. kantong terakhir" bantuan={`Pesanan foto berikutnya otomatis memakai ${atur.kantong_berikutnya || 'nomor ini + 1'}. Isi nomor amplop terakhir yang sudah terpakai.`}>
             <input value={atur.kantong_terakhir || ''} onChange={(e) => ubah('kantong_terakhir', e.target.value.replace(/\D/g, ''))} placeholder="mis. 018594" className={`${kelasInput} max-w-xs`} />
           </Kolom>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Kolom label="Batas revisi edit (kali)" bantuan="0 = pelanggan hanya bisa menyetujui.">
+              <input type="number" min={0} value={atur.batas_revisi ?? 2} onChange={(e) => ubah('batas_revisi', e.target.value)} className={kelasInput} />
+            </Kolom>
+            <Kolom label="Pengingat approval (jam)" bantuan="Belum direspons selama ini -> muncul di lonceng kasir.">
+              <input type="number" min={1} value={atur.pengingat_approval_jam ?? 24} onChange={(e) => ubah('pengingat_approval_jam', e.target.value)} className={kelasInput} />
+            </Kolom>
+            <Kolom label="Masa berlaku tautan (hari)">
+              <input type="number" min={1} value={atur.masa_link_hari ?? 7} onChange={(e) => ubah('masa_link_hari', e.target.value)} className={kelasInput} />
+            </Kolom>
+          </div>
           <div className="grid gap-4 sm:grid-cols-2">
             {TAHAP.map(([kunci, label]) => (
               <Kolom key={kunci} label={label}>

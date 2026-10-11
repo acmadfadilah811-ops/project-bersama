@@ -5,8 +5,8 @@ import { useAuth } from '../context/AuthContext';
 import { useEffect, useState } from 'react';
 import LockedScreen from './LockedScreen';
 import apiClient from '../api/apiClient';
-import { LayoutDashboard, CalendarClock, ShoppingCart, Kanban, User, Camera } from 'lucide-react';
-import useMenuSesiFoto from '../features/starfoto/hooks/useMenuSesiFoto';
+import { LayoutDashboard, CalendarClock, ShoppingCart, Kanban, User, Camera, Wand2 } from 'lucide-react';
+import { useMenuStarfoto } from '../features/starfoto/hooks/useMenuSesiFoto';
 
 export default function Layout() {
   const { user } = useAuth();
@@ -15,7 +15,8 @@ export default function Layout() {
   const [statusTerkunci, setStatusTerkunci] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isMobileScreen, setIsMobileScreen] = useState(() => window.innerWidth < 768);
-  const tampilSesiFoto = useMenuSesiFoto();
+  const menuStarfoto = useMenuStarfoto();
+  const tampilSesiFoto = menuStarfoto.sesi;
 
   useEffect(() => {
     const handleResize = () => {
@@ -63,8 +64,9 @@ export default function Layout() {
   const mobileMenuStaff = [
     { path: '/staff-dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { path: '/jobs', label: 'Produksi', icon: Kanban },
-    // Fotografer/asisten StarFoto (2026-10-11).
+    // Fotografer/asisten & editor StarFoto (2026-10-11).
     ...(tampilSesiFoto ? [{ path: '/sesi-foto', label: 'Sesi Foto', icon: Camera }] : []),
+    ...(menuStarfoto.edit ? [{ path: '/edit-foto', label: 'Edit Foto', icon: Wand2 }] : []),
     { path: '/profile', label: 'Profil', icon: User },
   ];
 

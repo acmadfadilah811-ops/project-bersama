@@ -3,10 +3,11 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { hasMenuAccess } from '../utils/permissions';
 import { useRingkasanPermintaanBahan } from '../features/requisition/hooks/useRingkasanPermintaanBahan';
-import useMenuSesiFoto, { MENU_SESI_FOTO } from '../features/starfoto/hooks/useMenuSesiFoto';
+import { MENU_EDIT_FOTO, MENU_SESI_FOTO, useMenuStarfoto } from '../features/starfoto/hooks/useMenuSesiFoto';
 import {
   Camera,
   Navigation,
+  Wand2,
   ClipboardList,
   LayoutDashboard,
   LineChart,
@@ -379,7 +380,7 @@ export default function Sidebar() {
     return null;
   };
 
-  const tampilSesiFoto = useMenuSesiFoto();
+  const menuStarfoto = useMenuStarfoto();
   const menuDasar =
     userRole === 'staff'
       ? menuStaff
@@ -395,8 +396,13 @@ export default function Sidebar() {
       ? menuFinance
       : groupedMenuOwnerManager;
   // Fotografer/asisten StarFoto (2026-10-11): menu Sesi Foto setelah Papan Kerja.
-  const baseMenu = tampilSesiFoto
-    ? menuDasar.flatMap((item) => (item.path === '/produksi' ? [item, { ...MENU_SESI_FOTO, icon: Camera }] : [item]))
+  // Editor StarFoto: menu Edit Foto (pratinjau & approval pelanggan).
+  const menuTambahan = [
+    ...(menuStarfoto.sesi ? [{ ...MENU_SESI_FOTO, icon: Camera }] : []),
+    ...(menuStarfoto.edit ? [{ ...MENU_EDIT_FOTO, icon: Wand2 }] : []),
+  ];
+  const baseMenu = menuTambahan.length
+    ? menuDasar.flatMap((item) => (item.path === '/produksi' ? [item, ...menuTambahan] : [item]))
     : menuDasar;
 
   // Filter menu berdasarkan perizinan hak akses dinamis

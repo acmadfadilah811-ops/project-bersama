@@ -64,11 +64,15 @@ class PengaturanStarfotoView(APIView):
             .values_list('divisi_id', flat=True)
         ))
         user = request.user
+        divisi_edit = TahapProses.objects.filter(pk=data['tahap_edit_id']).values_list('divisi_id', flat=True).first()
         if user.role in ('spv', 'kordiv'):
             from ..permissions import get_subordinate_divisi_ids
-            data['menu_sesi_foto'] = bool(set(data['divisi_sesi_ids']) & set(get_subordinate_divisi_ids(user)))
+            bawahan = set(get_subordinate_divisi_ids(user))
+            data['menu_sesi_foto'] = bool(set(data['divisi_sesi_ids']) & bawahan)
+            data['menu_edit_foto'] = divisi_edit in bawahan
         else:
             data['menu_sesi_foto'] = user.role == 'staff' and user.divisi_id in data['divisi_sesi_ids']
+            data['menu_edit_foto'] = user.role == 'staff' and divisi_edit is not None and user.divisi_id == divisi_edit
         return Response(data)
 
     def patch(self, request):
@@ -88,13 +92,16 @@ class PesananFotoViewSet(viewsets.ReadOnlyModelViewSet):
             'order', 'paket_item__product__paket_foto',
         ).prefetch_related(
             'sesi__fotografer', 'sesi__asisten', 'usulan__addon', 'usulan__product', 'usulan__variant',
-            'usulan__diusulkan_oleh', 'pilihan_file',
+            'usulan__diusulkan_oleh', 'pilihan_file', 'pratinjau__pilihan_file',
         )
         if user.role not in svc.ROLE_KASIR:
             qs = qs.filter(Q(sesi__fotografer=user) | Q(sesi__asisten=user)).distinct()
         order_param = self.request.query_params.get('order')
         if order_param:
             qs = qs.filter(order_id=order_param)
+        approval_param = self.request.query_params.get('approval')
+        if approval_param:
+            qs = qs.filter(approval_status__in=approval_param.split(','))
         status_param = self.request.query_params.get('status')
         if status_param:
             qs = qs.filter(status__in=status_param.split(','))

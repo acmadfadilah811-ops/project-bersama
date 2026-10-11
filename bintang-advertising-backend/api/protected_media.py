@@ -34,6 +34,8 @@ PROTECTED_PREFIXES = (
     "purchase_attachments/",
     # Selfie + lokasi dinas luar staff (2026-10-11).
     "dinas_luar/",
+    # Pratinjau hasil edit foto pelanggan (2026-10-11).
+    "pratinjau_edit/",
 )
 
 

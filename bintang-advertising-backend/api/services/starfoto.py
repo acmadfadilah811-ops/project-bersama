@@ -42,6 +42,10 @@ PENGATURAN = {
     'tahap_cetak_id': ('starfoto_tahap_cetak_id', '', 'id'),
     # Nomor kantong terakhir yang terpakai; pesanan baru = nomor ini + 1.
     'kantong_terakhir': ('starfoto_kantong_terakhir', '', 'teks'),
+    # Approval hasil edit oleh pelanggan (2026-10-11).
+    'batas_revisi': ('starfoto_batas_revisi', '2', 'angka0'),
+    'pengingat_approval_jam': ('starfoto_pengingat_approval_jam', '24', 'angka'),
+    'masa_link_hari': ('starfoto_masa_link_hari', '7', 'angka'),
 }
 
 
@@ -56,7 +60,7 @@ def _ubah_tipe(nilai, tipe):
         return int(nilai) if nilai.isdigit() else 0
     if tipe == 'id':
         return int(nilai) if nilai.isdigit() else None
-    if tipe == 'angka':
+    if tipe in ('angka', 'angka0'):
         return int(nilai) if nilai.isdigit() else 0
     try:
         return Decimal(nilai or '0')
@@ -90,6 +94,9 @@ def simpan_pengaturan(data):
                 continue
         elif tipe == 'angka' and (not teks.isdigit() or int(teks) < 1):
             galat[nama] = 'Harus bilangan bulat minimal 1.'
+            continue
+        elif tipe == 'angka0' and not teks.isdigit():
+            galat[nama] = 'Harus bilangan bulat 0 atau lebih.'
             continue
         elif tipe == 'id' and teks:
             if not teks.isdigit() or not TahapProses.objects.filter(pk=int(teks)).exists():
@@ -543,9 +550,12 @@ def konfirmasi(pesanan_id, user, data):
     except spk.SpkError as exc:
         raise ValidationError({'error': exc.pesan})
     if not deadline:
-        raise ValidationError({'error': 'Deadline SPK Edit wajib diisi.'})
+        raise ValidationError({'error': 'Deadline SPK wajib diisi.'})
     tahap_edit = _tahap('tahap_edit_id', 'Edit')
-    _tahap('tahap_cetak_id', 'Cetak')  # pastikan siap sebelum Edit diterbitkan
+    tahap_cetak = _tahap('tahap_cetak_id', 'Cetak')
+    # Paket tanpa file edit langsung ke Cetak (kasir boleh memilih sebaliknya).
+    jumlah_edit = getattr(getattr(pesanan.paket_item.product, 'paket_foto', None), 'jumlah_edit', 1)
+    tanpa_edit = str(data.get('tanpa_edit', jumlah_edit == 0)).strip().lower() in ('true', '1', 'ya')
 
     sekarang = timezone.now()
     paket_item = pesanan.paket_item
@@ -589,20 +599,22 @@ def konfirmasi(pesanan_id, user, data):
     pesanan.catatan_file = str(data.get('catatan_file') or '')
     pesanan.status = 'dikonfirmasi'
     pesanan.dikonfirmasi_oleh, pesanan.dikonfirmasi_pada = user, sekarang
-    pesanan.save(update_fields=['catatan_file', 'status', 'dikonfirmasi_oleh', 'dikonfirmasi_pada'])
+    pesanan.approval_status = 'tanpa_edit' if tanpa_edit else ''
+    pesanan.save(update_fields=['catatan_file', 'status', 'dikonfirmasi_oleh', 'dikonfirmasi_pada', 'approval_status'])
 
     order.refresh_from_db()
     order._current_user = user
     order.status_global = 'proses'
     order.save()
 
-    jobs = spk.terbitkan([paket_item], field='order_item', tahap=tahap_edit, staff=None,
+    tahap_tujuan = tahap_cetak if tanpa_edit else tahap_edit
+    jobs = spk.terbitkan([paket_item], field='order_item', tahap=tahap_tujuan, staff=None,
                          deadline=deadline, deadline_jam=deadline_jam)
     OrderActivityLog.objects.create(
         order=order, user=user, tindakan='KONFIRMASI_SESI_FOTO',
         keterangan=(
             f'Kasir {user.username} mengonfirmasi sesi foto: {len(pilihan)} file dipilih, '
-            f'SPK Edit diterbitkan ke {tahap_edit.divisi.nama}.'
+            f'SPK {tahap_tujuan.nama} diterbitkan ke {tahap_tujuan.divisi.nama}.'
         ),
     )
     return pesanan, jobs
@@ -620,10 +632,17 @@ def cek_boleh_selesai(job):
     kerja) supaya pesanan kembali ke kasir, bukan langsung Siap Diambil."""
     if job.tahap_id and job.tahap_id in _tahap_id_sesi() and pesanan_dari_job(job):
         raise ValidationError({'error': "Selesaikan sesi foto lewat menu 'Sesi Saya' di HP."})
+    if job.tahap_id and job.tahap_id == pengaturan()['tahap_edit_id'] and pesanan_dari_job(job):
+        raise ValidationError({'error': "Kirim hasil edit lewat menu 'Edit Foto' (unggah pratinjau untuk disetujui pelanggan)."})
 
 
 def setelah_job_selesai(job, user):
-    """Edit selesai -> SPK Cetak otomatis ke divisi Operator (deadline ikut Edit)."""
+    """Edit selesai -> SPK Cetak otomatis ke divisi Operator (deadline ikut Edit).
+
+    Sejak approval pelanggan (2026-10-11) SPK Edit pesanan foto ditutup lewat
+    services/starfoto_approval.kirim_ke_pelanggan dan SPK Cetak baru terbit
+    setelah pelanggan setuju; kait ini tinggal pengaman bila Edit tertutup
+    lewat jalur lain."""
     if not job.tahap_id or job.tahap_id != pengaturan()['tahap_edit_id']:
         return
     pesanan = pesanan_dari_job(job)

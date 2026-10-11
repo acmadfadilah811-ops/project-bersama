@@ -33,6 +33,8 @@ import ProductionApp from './features/production/pages/ProductionApp';
 import StaffCreateOrderPage from './features/production/pages/StaffCreateOrderPage';
 import SesiFotoPage from './features/starfoto/pages/SesiFotoPage';
 import RekapDinasLuarPage from './features/starfoto/pages/RekapDinasLuarPage';
+import EditFotoPage from './features/starfoto/pages/EditFotoPage';
+import ApprovalFotoPublikPage from './features/starfoto/pages/ApprovalFotoPublikPage';
 import UploadDesain from './features/orders/pages/UploadDesain';
 import ResiPublikPage from './features/resi/ResiPublikPage';
 import ProductInventoryApp from './features/inventory/pages/ProductInventoryApp';
@@ -152,6 +154,7 @@ function App() {
             <Route path="/public/upload-desain" element={<UploadDesain />} />
             <Route path="/public/upload-desain/:orderId" element={<UploadDesain />} />
             <Route path="/resi/:token" element={<ResiPublikPage />} />
+            <Route path="/approval-foto/:token" element={<ApprovalFotoPublikPage />} />
 
             {/* Halaman yang butuh login */}
             <Route element={<ProtectedRoute />}>
@@ -181,6 +184,7 @@ function App() {
                 <Route path="/buat-order" element={<StaffCreateOrderPage />} />
                 <Route path="/sesi-foto" element={<SesiFotoPage />} />
                 <Route path="/dinas-luar" element={<RekapDinasLuarPage />} />
+                <Route path="/edit-foto" element={<EditFotoPage />} />
                 <Route path="/product-inventory/*" element={<ProductInventoryApp />} />
                 <Route path="/customer-supplier/*" element={<CustomerSupplierApp />} />
                 <Route path="/attendance" element={<Attendance />} />

@@ -66,6 +66,22 @@ class PesananFoto(models.Model):
     dikonfirmasi_pada = models.DateTimeField(null=True, blank=True)
     dibuat_pada = models.DateTimeField(auto_now_add=True)
 
+    # Approval hasil edit oleh pelanggan lewat tautan WA (2026-10-11).
+    APPROVAL_CHOICES = (
+        ('', 'Belum'),
+        ('menunggu', 'Menunggu Pelanggan'),
+        ('revisi', 'Revisi'),
+        ('disetujui', 'Disetujui'),
+        ('tanpa_edit', 'Tanpa Edit'),
+    )
+    approval_status = models.CharField(max_length=20, choices=APPROVAL_CHOICES, blank=True, default='', db_index=True)
+    # Putaran pratinjau saat ini (1 = hasil edit pertama, 2 = setelah revisi ke-1, dst).
+    approval_putaran = models.PositiveIntegerField(default=0)
+    approval_dikirim_pada = models.DateTimeField(null=True, blank=True)
+    approval_diputus_pada = models.DateTimeField(null=True, blank=True)
+    # 'pelanggan' atau username staff yang memutuskan atas nama pelanggan.
+    approval_oleh = models.CharField(max_length=150, blank=True, default='')
+
     class Meta:
         ordering = ['-dibuat_pada']
 
@@ -165,3 +181,34 @@ class PilihanFile(models.Model):
 
     def __str__(self):
         return f'File {self.nomor_file} ({self.pesanan.order_id})'
+
+
+def _path_pratinjau(instance, filename):
+    import uuid
+    return f'pratinjau_edit/{instance.pesanan_id}/{uuid.uuid4().hex}.jpg'
+
+
+class PratinjauEdit(models.Model):
+    """Pratinjau hasil edit (ber-watermark) per foto per putaran, beserta
+    keputusan pelanggan. File di prefix terlindung `pratinjau_edit/`; pelanggan
+    melihatnya lewat tautan bertanda tangan tanpa login."""
+    KEPUTUSAN_CHOICES = (
+        ('', 'Belum'),
+        ('setuju', 'Setuju'),
+        ('revisi', 'Minta Revisi'),
+    )
+
+    pesanan = models.ForeignKey(PesananFoto, on_delete=models.CASCADE, related_name='pratinjau')
+    putaran = models.PositiveIntegerField(default=1)
+    pilihan_file = models.ForeignKey(PilihanFile, on_delete=models.SET_NULL, null=True, blank=True, related_name='pratinjau')
+    berkas = models.ImageField(upload_to=_path_pratinjau)
+    keputusan = models.CharField(max_length=10, choices=KEPUTUSAN_CHOICES, blank=True, default='')
+    catatan_pelanggan = models.TextField(blank=True, default='')
+    diunggah_oleh = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='+')
+    dibuat_pada = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['putaran', 'id']
+
+    def __str__(self):
+        return f'Pratinjau {self.pesanan.order_id} putaran {self.putaran}'

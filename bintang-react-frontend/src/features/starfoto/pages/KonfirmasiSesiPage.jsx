@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { MessageCircle, Plus, RefreshCw, Send, ThumbsUp, Trash2 } from 'lucide-react';
 import PosHeaderBar from '../../kasir/components/PosHeaderBar';
 import apiClient from '../../../api/apiClient';
 import { useAuth } from '../../../context/AuthContext';
 import { notifyApiError, notifySuccess } from '../../../utils/notify';
+import { uiConfirm } from '../../../utils/dialog';
 import { todayISO } from '../../../utils/date';
 import { LABEL_STATUS_PESANAN, formatJadwal, formatRupiah } from '../hooks/useStarfoto';
 
@@ -27,6 +28,8 @@ function FormKonfirmasi({ pesanan, onSelesai }) {
   const [deadline, setDeadline] = useState(geserHari(todayISO(), 3));
   const [jam, setJam] = useState('17:00');
   const [menyimpan, setMenyimpan] = useState(false);
+  // Paket tanpa jatah edit langsung ke Cetak; kasir boleh mengubah.
+  const [tanpaEdit, setTanpaEdit] = useState(Number(pesanan.jumlah_edit || 0) === 0);
 
   const usulan = pesanan.usulan.filter((u) => u.status === 'usulan');
   const putusan = (id) => keputusan[id] || { setuju: true, alasan: '' };
@@ -41,9 +44,10 @@ function FormKonfirmasi({ pesanan, onSelesai }) {
         usulan: usulan.map((u) => ({ id: u.id, ...putusan(u.id) })),
         pilihan_file: files.filter((f) => f.nomor_file.trim()),
         catatan_file: catatanFile,
+        tanpa_edit: tanpaEdit,
         spk: { deadline, deadline_jam: jam || null },
       });
-      notifySuccess('Sesi dikonfirmasi', 'SPK Edit sudah masuk antrean Editor.');
+      notifySuccess('Sesi dikonfirmasi', tanpaEdit ? 'SPK Cetak sudah masuk antrean Operator.' : 'SPK Edit sudah masuk antrean Editor.');
       onSelesai();
     } catch (err) {
       notifyApiError(err, 'Gagal mengonfirmasi sesi.');
@@ -122,8 +126,12 @@ function FormKonfirmasi({ pesanan, onSelesai }) {
         />
       </div>
 
+      <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+        <input type="checkbox" checked={tanpaEdit} onChange={(e) => setTanpaEdit(e.target.checked)} />
+        Langsung cetak (tanpa edit &amp; approval pelanggan)
+      </label>
       <div className="grid grid-cols-2 gap-3">
-        <label className="space-y-1"><span className="text-xs font-bold uppercase text-slate-400">Deadline SPK Edit</span>
+        <label className="space-y-1"><span className="text-xs font-bold uppercase text-slate-400">Deadline SPK {tanpaEdit ? 'Cetak' : 'Edit'}</span>
           <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} className="w-full rounded-lg border border-slate-300 p-2" />
         </label>
         <label className="space-y-1"><span className="text-xs font-bold uppercase text-slate-400">Jam</span>
@@ -141,8 +149,69 @@ function FormKonfirmasi({ pesanan, onSelesai }) {
         type="button" onClick={simpan} disabled={menyimpan || !jumlahFile || !deadline}
         className="w-full rounded-xl bg-slate-800 py-2.5 font-bold text-white disabled:opacity-40"
       >
-        {menyimpan ? 'Menyimpan...' : 'Konfirmasi & Kirim ke Editor'}
+        {menyimpan ? 'Menyimpan...' : tanpaEdit ? 'Konfirmasi & Kirim ke Cetak' : 'Konfirmasi & Kirim ke Editor'}
       </button>
+    </div>
+  );
+}
+
+const nomorWa = (nomor) => String(nomor || '').replace(/\D/g, '').replace(/^0/, '62');
+const sejak = (iso) => {
+  if (!iso) return '-';
+  const jam = Math.floor((Date.now() - new Date(iso).getTime()) / 3600000);
+  return jam < 1 ? 'kurang dari 1 jam' : jam < 24 ? `${jam} jam` : `${Math.floor(jam / 24)} hari`;
+};
+const LABEL_APPROVAL = { menunggu: 'Menunggu pelanggan', revisi: 'Revisi di editor' };
+
+function KartuApproval({ p, tertunda, onBerubah }) {
+  const [proses, setProses] = useState('');
+  const fotoBerjalan = p.pratinjau.filter((f) => f.putaran === p.approval_putaran);
+  const jalankan = async (kunci, fn, sukses) => {
+    setProses(kunci);
+    try {
+      await fn();
+      notifySuccess(...sukses);
+      onBerubah();
+    } catch (err) {
+      notifyApiError(err, 'Aksi gagal.');
+    } finally {
+      setProses('');
+    }
+  };
+  const setujui = async () => {
+    if (!(await uiConfirm(`Setujui ${fotoBerjalan.length} hasil edit atas nama ${p.pelanggan}? SPK Cetak langsung terbit.`))) return;
+    jalankan('setuju', () => apiClient.post(`/starfoto/pesanan/${p.id}/approval/`, {
+      keputusan: fotoBerjalan.map((f) => ({ id: f.id, setuju: true })),
+    }), ['Disetujui', 'SPK Cetak diterbitkan.']);
+  };
+  return (
+    <div className={`rounded-xl border bg-white p-4 ${tertunda ? 'border-amber-300' : 'border-slate-200'}`}>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="font-bold text-slate-800">{p.pelanggan} · {p.paket}</p>
+          <p className="text-xs text-slate-500">{p.order}{p.nomor_kantong ? ` · Kantong ${p.nomor_kantong}` : ''} · putaran {p.approval_putaran}</p>
+        </div>
+        <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${tertunda ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>
+          {LABEL_APPROVAL[p.approval_status] || p.approval_status}{p.approval_status === 'menunggu' ? ` · ${sejak(p.approval_dikirim_pada)}` : ''}
+        </span>
+      </div>
+      {tertunda && <p className="mt-2 text-xs font-semibold text-amber-800">Belum direspons pelanggan — mohon follow up atau putuskan.</p>}
+      {p.approval_status === 'menunggu' && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" disabled={proses === 'ulang'} onClick={() => jalankan('ulang', () => apiClient.post(`/starfoto/pesanan/${p.id}/kirim-ulang-link/`), ['Terkirim', 'Tautan persetujuan dikirim ulang.'])}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700 disabled:opacity-50">
+            <Send size={13} /> Kirim ulang tautan
+          </button>
+          <a href={`https://wa.me/${nomorWa(p.nomor_wa)}`} target="_blank" rel="noreferrer"
+            className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700">
+            <MessageCircle size={13} /> Hubungi WA
+          </a>
+          <button type="button" disabled={proses === 'setuju'} onClick={setujui}
+            className="flex items-center gap-1.5 rounded-lg bg-[#0088FF] px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">
+            <ThumbsUp size={13} /> Setujui atas nama pelanggan
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -157,16 +226,22 @@ export default function KonfirmasiSesiPage({ onToggleSidebar }) {
   const [dari, setDari] = useState(todayISO());
   const [dipilih, setDipilih] = useState(null);
   const [memuat, setMemuat] = useState(false);
+  const [approval, setApproval] = useState([]);
+  const [tertundaIds, setTertundaIds] = useState(new Set());
 
   const muat = useCallback(async () => {
     setMemuat(true);
     try {
-      const [p, j] = await Promise.all([
+      const [p, j, a, t] = await Promise.all([
         apiClient.get('/starfoto/pesanan/', { params: { status: 'menunggu_kasir,sesi', page_size: 200 } }),
         apiClient.get('/starfoto/jadwal/', { params: { dari, sampai: geserHari(dari, 6) } }),
+        apiClient.get('/starfoto/pesanan/', { params: { status: 'dikonfirmasi', approval: 'menunggu,revisi', page_size: 200 } }),
+        apiClient.get('/starfoto/approval-tertunda/'),
       ]);
       setPesanan(daftar(p.data));
       setJadwal(daftar(j.data));
+      setApproval(daftar(a.data));
+      setTertundaIds(new Set(daftar(t.data).map((x) => x.id)));
     } catch (err) {
       notifyApiError(err, 'Gagal memuat data sesi foto.');
     } finally {
@@ -204,10 +279,19 @@ export default function KonfirmasiSesiPage({ onToggleSidebar }) {
         <div className="flex flex-wrap gap-1.5">
           {tombolTab('menunggu', 'Menunggu Konfirmasi', menunggu.length)}
           {tombolTab('berjalan', 'Sedang Sesi', berjalan.length)}
+          {tombolTab('approval', 'Approval Edit', approval.length)}
           {tombolTab('jadwal', 'Jadwal 7 Hari')}
         </div>
 
-        {tab === 'jadwal' ? (
+        {tab === 'approval' ? (
+          <div className="space-y-3">
+            <p className="text-xs text-slate-500">Hasil edit yang menunggu persetujuan pelanggan atau sedang direvisi editor. Kartu kuning = belum direspons melewati batas waktu.</p>
+            {[...approval].sort((x, y) => Number(tertundaIds.has(y.id)) - Number(tertundaIds.has(x.id))).map((p) => (
+              <KartuApproval key={p.id} p={p} tertunda={tertundaIds.has(p.id)} onBerubah={muat} />
+            ))}
+            {!memuat && !approval.length && <p className="py-10 text-center text-sm text-slate-400">Tidak ada approval yang berjalan.</p>}
+          </div>
+        ) : tab === 'jadwal' ? (
           <div className="space-y-3">
             <input type="date" value={dari} onChange={(e) => setDari(e.target.value || todayISO())} className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
             <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">

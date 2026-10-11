@@ -11,6 +11,10 @@ from .views.starfoto import (
     UsulanTambahanDetailView,
 )
 from .views.dinas_luar import DinasLuarAktifView, DinasLuarListView, DinasLuarMulaiView, DinasLuarSelesaiView
+from .views.starfoto_approval import (
+    ApprovalFotoBerkasView, ApprovalPublikView, ApprovalStaffView, ApprovalTertundaView, EditFotoAntreanView,
+    KirimApprovalView, KirimUlangLinkView, PratinjauHapusView, PratinjauUnggahView,
+)
 from .views.hr_kredensial_bridge import HRBridgeKredensialView
 from .views.hr_organisasi_bridge import HROrganisasiView
 from .views.insentif import JenisInsentifViewSet, JobInsentifView, InsentifPekerjaanDetailView
@@ -243,6 +247,16 @@ urlpatterns = [
     path('starfoto/dinas-luar/aktif/', DinasLuarAktifView.as_view(), name='dinas-luar-aktif'),
     path('starfoto/dinas-luar/mulai/', DinasLuarMulaiView.as_view(), name='dinas-luar-mulai'),
     path('starfoto/dinas-luar/<int:pk>/selesai/', DinasLuarSelesaiView.as_view(), name='dinas-luar-selesai'),
+    # Approval hasil edit oleh pelanggan (2026-10-11).
+    path('starfoto/edit-foto/', EditFotoAntreanView.as_view(), name='starfoto-edit-foto'),
+    path('starfoto/pesanan/<int:pk>/pratinjau/', PratinjauUnggahView.as_view(), name='starfoto-pratinjau-unggah'),
+    path('starfoto/pratinjau/<int:pk>/', PratinjauHapusView.as_view(), name='starfoto-pratinjau-hapus'),
+    path('starfoto/pesanan/<int:pk>/kirim-approval/', KirimApprovalView.as_view(), name='starfoto-kirim-approval'),
+    path('starfoto/pesanan/<int:pk>/approval/', ApprovalStaffView.as_view(), name='starfoto-approval-staff'),
+    path('starfoto/pesanan/<int:pk>/kirim-ulang-link/', KirimUlangLinkView.as_view(), name='starfoto-kirim-ulang'),
+    path('starfoto/approval-tertunda/', ApprovalTertundaView.as_view(), name='starfoto-approval-tertunda'),
+    path('approval-foto/<str:token>/', ApprovalPublikView.as_view(), name='approval-foto-publik'),
+    path('approval-foto/<str:token>/foto/<int:pk>/', ApprovalFotoBerkasView.as_view(), name='approval-foto-berkas'),
     path('starfoto/antrean-sesi/', AntreanSesiView.as_view(), name='starfoto-antrean-sesi'),
     path('starfoto/antrean-sesi/<int:pesanan_id>/klaim/', AntreanSesiView.as_view(), name='starfoto-klaim-sesi'),
     path('bridge/hr-employee-status/', HRBridgeSetStatusView.as_view(), name='hr-bridge-set-status'),

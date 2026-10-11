@@ -164,26 +164,16 @@ class PesananStarfotoTests(_Dasar):
         self.assertEqual(self.client.post(f'/api/starfoto/pesanan/{pesanan.id}/usulan/',
                                           {'addon_id': self.kostum.id}, format='json').status_code, 400)
 
-        # Editor selesai -> SPK Cetak otomatis; pesanan belum siap.
+        # SPK Edit pesanan foto tidak ditutup dari papan kerja: wajib lewat
+        # Edit Foto (pratinjau + approval pelanggan, lihat tests_starfoto_approval).
         job_edit = aktif.get()
         job_edit.pic_staff = self.editor
         job_edit.status_pekerjaan = 'dikerjakan'
         job_edit.save()
         self.client.force_authenticate(self.editor)
-        self.assertEqual(self.client.post(f'/api/jobs/{job_edit.id}/complete/').status_code, 200)
-        job_cetak = JobBoard.objects.get(order_item=pesanan.paket_item, tahap=self.t_cetak)
-        self.assertEqual(job_cetak.deadline, job_edit.deadline)
-        order.refresh_from_db()
-        self.assertNotEqual(order.status_global, 'ready')
-
-        # Operator cetak selesai -> Siap Diambil (notifikasi kasir).
-        job_cetak.pic_staff = self.operator
-        job_cetak.status_pekerjaan = 'dikerjakan'
-        job_cetak.save()
-        self.client.force_authenticate(self.operator)
-        self.assertEqual(self.client.post(f'/api/jobs/{job_cetak.id}/complete/').status_code, 200)
-        order.refresh_from_db()
-        self.assertEqual(order.status_global, 'ready')
+        res = self.client.post(f'/api/jobs/{job_edit.id}/complete/')
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('Edit Foto', str(res.content))
 
     def test_hak_akses(self):
         pesanan, sesi = self._pesanan_siap_konfirmasi()

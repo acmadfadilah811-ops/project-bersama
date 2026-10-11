@@ -88,31 +88,44 @@ export function useNotifikasiSiapDiambil() {
 
   const muat = useCallback(async () => {
     try {
-      const [resOrder, resPos, resMasuk, resSesi] = await Promise.all([
+      const [resOrder, resPos, resMasuk, resSesi, resApproval] = await Promise.all([
         apiClient.get('/orders/', { params: { status_global: 'ready' } }),
         apiClient.get('/pos/sales/produksi/', { params: { status_produksi: 'ready' } }),
         apiClient.get('/orders/', { params: { status_global: 'review', sumber: 'wa,staff,crm' } }),
         apiClient.get('/starfoto/pesanan/', { params: { status: 'menunggu_kasir' } }).catch(() => ({ data: [] })),
+        apiClient.get('/starfoto/approval-tertunda/').catch(() => ({ data: [] })),
       ]);
 
-      const daftarSesi = (Array.isArray(resSesi.data) ? resSesi.data : resSesi.data?.results || []).map((p) => ({
-        kunci: `sesi:${p.id}`,
-        label: p.order,
-        nama: p.pelanggan || 'Pelanggan',
-        waktu: p.dibuat_pada,
-        tautan: '/kasir/sesi-foto',
-        usulan: (p.usulan || []).filter((u) => u.status === 'usulan').length,
-      }));
+      const daftarSesi = [
+        ...(Array.isArray(resSesi.data) ? resSesi.data : resSesi.data?.results || []).map((p) => ({
+          kunci: `sesi:${p.id}`,
+          label: p.order,
+          nama: p.pelanggan || 'Pelanggan',
+          waktu: p.dibuat_pada,
+          tautan: '/kasir/sesi-foto',
+          keterangan: (p.usulan || []).some((u) => u.status === 'usulan')
+            ? `${(p.usulan || []).filter((u) => u.status === 'usulan').length} usulan tambahan` : 'Pilih file & konfirmasi',
+        })),
+        // Approval hasil edit belum direspons pelanggan (Pengaturan StarFoto: jam pengingat).
+        ...(Array.isArray(resApproval.data) ? resApproval.data : []).map((p) => ({
+          kunci: `approval:${p.id}:${p.approval_putaran}`,
+          label: p.order,
+          nama: p.pelanggan || 'Pelanggan',
+          waktu: p.approval_dikirim_pada,
+          tautan: '/kasir/sesi-foto',
+          keterangan: 'Approval edit belum direspons — follow up',
+        })),
+      ];
       const sesiBaru = temukanPesananBaru(kunciSesiSebelumnya.current, daftarSesi);
       kunciSesiSebelumnya.current = new Set(daftarSesi.map((p) => p.kunci));
       setDaftarSesiFoto(daftarSesi);
       if (sesiBaru.length > 0) {
-        notify({ type: 'info', title: 'Sesi foto selesai', message: `${sesiBaru.length} pesanan foto menunggu konfirmasi & pilih file.` });
+        notify({ type: 'info', title: 'Pesanan foto perlu tindakan', message: `${sesiBaru.length} pesanan foto menunggu konfirmasi atau follow up approval.` });
         tambahKeRiwayat(sesiBaru.map((p) => ({
           id: `sesi-${p.kunci}-${idUrutan.current++}`,
           jenis: 'masuk',
-          judul: 'Sesi foto selesai',
-          pesan: `${p.label} · ${p.nama} menunggu konfirmasi kasir.`,
+          judul: 'Pesanan foto perlu tindakan',
+          pesan: `${p.label} · ${p.nama}: ${p.keterangan}.`,
           tautan: p.tautan,
           waktu: Date.now(),
         })));

@@ -3,7 +3,7 @@ from rest_framework import serializers
 
 from .dinas_models import DinasLuar
 from .protected_media import protected_media_url
-from .starfoto_models import PaketFoto, PesananFoto, PilihanFile, SesiFoto, UsulanTambahan
+from .starfoto_models import PaketFoto, PesananFoto, PilihanFile, PratinjauEdit, SesiFoto, UsulanTambahan
 
 
 class PaketFotoSerializer(serializers.ModelSerializer):
@@ -83,6 +83,18 @@ class PilihanFileSerializer(serializers.ModelSerializer):
         fields = ['id', 'nomor_file', 'peruntukan', 'catatan', 'urutan']
 
 
+class PratinjauEditSerializer(serializers.ModelSerializer):
+    nomor_file = serializers.CharField(source='pilihan_file.nomor_file', read_only=True, default='')
+    berkas = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PratinjauEdit
+        fields = ['id', 'putaran', 'pilihan_file', 'nomor_file', 'berkas', 'keputusan', 'catatan_pelanggan', 'dibuat_pada']
+
+    def get_berkas(self, obj):
+        return protected_media_url(obj.berkas, self.context.get('request')) if obj.berkas else None
+
+
 class PesananFotoSerializer(serializers.ModelSerializer):
     pelanggan = serializers.CharField(source='order.nama', read_only=True)
     nomor_wa = serializers.CharField(source='order.nomor_wa', read_only=True)
@@ -95,13 +107,15 @@ class PesananFotoSerializer(serializers.ModelSerializer):
     sesi = SesiFotoSerializer(many=True, read_only=True)
     usulan = UsulanTambahanSerializer(many=True, read_only=True)
     pilihan_file = PilihanFileSerializer(many=True, read_only=True)
+    pratinjau = PratinjauEditSerializer(many=True, read_only=True)
 
     class Meta:
         model = PesananFoto
         fields = [
             'id', 'order', 'pelanggan', 'nomor_wa', 'paket', 'paket_product', 'jumlah_edit', 'jenis', 'status', 'jumlah_orang',
             'nomor_kantong', 'background', 'catatan_file', 'total_harga', 'sisa_tagihan', 'status_order',
-            'dikonfirmasi_pada', 'dibuat_pada', 'sesi', 'usulan', 'pilihan_file',
+            'dikonfirmasi_pada', 'dibuat_pada', 'sesi', 'usulan', 'pilihan_file', 'pratinjau',
+            'approval_status', 'approval_putaran', 'approval_dikirim_pada', 'approval_diputus_pada', 'approval_oleh',
         ]
 
 
