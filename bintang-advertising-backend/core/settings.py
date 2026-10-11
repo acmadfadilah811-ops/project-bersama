@@ -423,6 +423,25 @@ if not os.path.exists(LOG_DIR):
     except Exception:
         pass
 
+# /app/logs di produksi adalah volume bersama (deploy/docker-compose.yml) supaya
+# log tidak hilang setiap deploy (temuan audit 2026-10-11). Satu file per
+# container (beberapa replika + worker tidak berebut rotasi file yang sama);
+# file container lama dihapus setelah 30 hari.
+_LOG_BISA_DITULIS = os.path.isdir(LOG_DIR) and os.access(LOG_DIR, os.W_OK)
+LOG_FILE = (
+    os.path.join(LOG_DIR, f"django-{os.environ.get('HOSTNAME') or 'lokal'}.log")
+    if _LOG_BISA_DITULIS else os.path.join(BASE_DIR, 'django.log')
+)
+if _LOG_BISA_DITULIS:
+    import time as _time
+    try:
+        _batas = _time.time() - 30 * 24 * 3600
+        for _entri in os.scandir(LOG_DIR):
+            if _entri.name.startswith('django-') and _entri.stat().st_mtime < _batas:
+                os.remove(_entri.path)
+    except OSError:
+        pass
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -444,7 +463,7 @@ LOGGING = {
         'file': {
             'level': 'WARNING',
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(LOG_DIR, 'django.log') if os.path.exists(LOG_DIR) else 'django.log',
+            'filename': LOG_FILE,
             'maxBytes': 1024 * 1024 * 5,  # 5MB
             'backupCount': 5,
             'formatter': 'verbose',
@@ -454,8 +473,14 @@ LOGGING = {
         'django': {
             'handlers': ['console', 'file'],
             'level': 'INFO',
-            'propagate': True,
+            'propagate': False,
         },
+    },
+    # Logger aplikasi (api.*, accounting.*, hr.*) sebelumnya tidak punya
+    # handler sama sekali -- error-nya tidak pernah masuk file log.
+    'root': {
+        'handlers': ['console', 'file'],
+        'level': 'WARNING',
     },
 }
 

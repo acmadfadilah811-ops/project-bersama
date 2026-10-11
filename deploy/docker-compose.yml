@@ -79,6 +79,8 @@ services:
       # ditaruh di sana). File asli cuma ada di host VPS
       # (deploy/qz-secrets/), tidak pernah masuk git -- lihat .gitignore.
       - ./qz-secrets:/app/qz-secrets:ro
+      # Log Django (WARNING ke atas) per container -- bertahan antar deploy.
+      - backend_logs:/app/logs
     deploy:
       replicas: ${BACKEND_REPLICAS:-2}
     healthcheck:
@@ -176,6 +178,7 @@ services:
 
 volumes:
   bintang_db_data:
+  backend_logs:
   bintang_redis_data:
   static_files:
   media_files:
