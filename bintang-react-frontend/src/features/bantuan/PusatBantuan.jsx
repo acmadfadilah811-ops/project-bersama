@@ -137,7 +137,7 @@ export default function PusatBantuan() {
   return (
     <>
       {terbuka && (
-        <div className="fixed bottom-16 right-4 z-[60] w-[360px] max-w-[calc(100vw-2rem)] h-[70vh] max-h-[620px] bg-white border border-slate-200 rounded-xl shadow-2xl flex flex-col">
+        <div className="fixed bottom-32 md:bottom-16 right-4 z-[60] w-[360px] max-w-[calc(100vw-2rem)] h-[70vh] max-h-[620px] bg-white border border-slate-200 rounded-xl shadow-2xl flex flex-col">
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
             <div>
               <h3 className="text-sm font-bold text-slate-900">Pusat Bantuan</h3>
@@ -200,7 +200,7 @@ export default function PusatBantuan() {
       <button
         type="button"
         onClick={() => setTerbuka((t) => !t)}
-        className="fixed bottom-4 right-4 z-[60] flex items-center gap-1.5 h-10 pl-3 pr-3.5 rounded-full bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold shadow-lg cursor-pointer"
+        className="fixed bottom-20 md:bottom-4 right-4 z-[60] flex items-center gap-1.5 h-10 pl-3 pr-3.5 rounded-full bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold shadow-lg cursor-pointer"
         title="Pusat Bantuan"
       >
         <HelpCircle size={16} /> Bantuan
