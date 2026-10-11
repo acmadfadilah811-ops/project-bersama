@@ -164,12 +164,17 @@ def boleh_menentukan_insentif(user):
     return getattr(user, 'role', None) in ROLE_PENENTU_INSENTIF
 
 
-def terbitkan(items, *, field, tahap, staff, biaya_desain=0, insentif=0, deadline=None, deadline_jam=None):
+def terbitkan(items, *, field, tahap, staff, biaya_desain=0, insentif=0, deadline=None, deadline_jam=None,
+              tutup_job_hantu=True):
     """Buat/perbarui JobBoard untuk tiap item.
 
     `field` menentukan sumbernya: 'order_item' atau 'pos_sale_item'. Lookup
     memakai (item, tahap) supaya menerbitkan ulang ke tahap berbeda tidak
     menimpa SPK tahap sebelumnya.
+
+    `tutup_job_hantu=False` dipakai alur yang sengaja punya beberapa SPK
+    antrean sekaligus untuk item yang sama (StarFoto: Sesi Foto + Asisten
+    Foto), supaya SPK saudaranya yang belum diklaim tidak ikut dibatalkan.
     """
     if field not in ('order_item', 'pos_sale_item'):
         raise ValueError(f"field SPK tidak dikenal: {field}")
@@ -192,15 +197,16 @@ def terbitkan(items, *, field, tahap, staff, biaya_desain=0, insentif=0, deadlin
         # dimulai), job itu jadi permanen mengganjal -- order tak pernah
         # "Siap Diambil" walau tahap yang benar-benar dituju sudah tuntas.
         # Bug ditemukan user 2026-09-07 (ORD-20260907-59F1, ORD-20260905-C652).
-        JobBoard.objects.filter(
-            **{field: item},
-            status_pekerjaan='antrean',
-            pic_staff__isnull=True,
-            waktu_mulai__isnull=True,
-        ).exclude(tahap=tahap).update(
-            status_pekerjaan='batal',
-            waktu_selesai=timezone.now(),
-        )
+        if tutup_job_hantu:
+            JobBoard.objects.filter(
+                **{field: item},
+                status_pekerjaan='antrean',
+                pic_staff__isnull=True,
+                waktu_mulai__isnull=True,
+            ).exclude(tahap=tahap).update(
+                status_pekerjaan='batal',
+                waktu_selesai=timezone.now(),
+            )
 
         job, created = JobBoard.objects.update_or_create(
             **{field: item},

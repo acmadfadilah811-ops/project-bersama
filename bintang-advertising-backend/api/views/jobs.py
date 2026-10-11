@@ -851,6 +851,8 @@ class JobBoardViewSet(viewsets.ModelViewSet):
         job.pic_staff = user
         job.status_pekerjaan = 'antrean'
         job.save()
+        from ..services.starfoto import setelah_klaim
+        setelah_klaim(job, user)
 
         tahap_nama = job.tahap.nama if job.tahap else "Tahap Awal"
         _catat_aktivitas_order(

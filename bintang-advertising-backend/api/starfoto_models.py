@@ -87,7 +87,11 @@ class SesiFoto(models.Model):
     durasi_menit = models.PositiveIntegerField(default=30)
     lokasi = models.CharField(max_length=20, choices=LOKASI_CHOICES, default='studio')
     alamat = models.CharField(max_length=255, blank=True, default='')
-    fotografer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='sesi_foto_fotografer')
+    # Kosong = belum diambil; fotografer StarFoto mengklaim sesi dari antrean
+    # global divisinya (2026-10-11) dan otomatis jadi PIC SPK Sesi Foto.
+    fotografer = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name='sesi_foto_fotografer',
+    )
     asisten = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name='sesi_foto_asisten',
     )

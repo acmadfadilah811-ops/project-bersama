@@ -189,15 +189,15 @@ def terbitkan_dari_checkout(order, data, user, jumlah_bayar):
     if Decimal(str(jumlah_bayar)) < minimal:
         raise ValidationError({'error': f'DP minimal Rp{int(minimal):,}.'.replace(',', '.')})
 
+    # Fotografer/asisten opsional: kosong = SPK masuk antrean global divisi dan
+    # diklaim sendiri oleh fotografer (lihat klaim()).
     tahap_sesi = _tahap('tahap_sesi_id', 'Sesi Foto')
     fotografer = _petugas(data.get('fotografer_id'), 'Fotografer', tahap_sesi)
     asisten = None
     tahap_asisten = None
-    if data.get('asisten_id'):
+    if data.get('asisten_id') or str(data.get('butuh_asisten')).lower() in ('true', '1', 'ya'):
         tahap_asisten = _tahap('tahap_asisten_id', 'Asisten Foto')
         asisten = _petugas(data.get('asisten_id'), 'Asisten', tahap_asisten)
-    if not fotografer:
-        raise ValidationError({'error': 'Fotografer wajib dipilih.'})
 
     jenis = data.get('jenis') if data.get('jenis') in dict(PesananFoto.JENIS_CHOICES) else 'walkin'
     daftar_sesi = data.get('sesi') or [{}]
@@ -234,9 +234,10 @@ def terbitkan_dari_checkout(order, data, user, jumlah_bayar):
     pertama = timezone.localtime(jadwal[0].mulai)
     jobs = spk.terbitkan([paket_item], field='order_item', tahap=tahap_sesi, staff=fotografer,
                          deadline=pertama.date(), deadline_jam=pertama.time().replace(second=0, microsecond=0))
-    if asisten:
+    if tahap_asisten:
         jobs += spk.terbitkan([paket_item], field='order_item', tahap=tahap_asisten, staff=asisten,
-                              deadline=pertama.date(), deadline_jam=pertama.time().replace(second=0, microsecond=0))
+                              deadline=pertama.date(), deadline_jam=pertama.time().replace(second=0, microsecond=0),
+                              tutup_job_hantu=False)
     if paket.jumlah_sesi > 1:
         _kalikan_insentif_sesi(paket_item, paket.jumlah_sesi)
     OrderActivityLog.objects.create(
@@ -271,6 +272,8 @@ def _jobs_sesi(pesanan):
 @transaction.atomic
 def mulai_sesi(sesi_id, user):
     sesi = SesiFoto.objects.select_for_update(of=('self',)).select_related('pesanan__order').get(pk=sesi_id)
+    if not sesi.fotografer_id:
+        raise ValidationError({'error': 'Sesi ini belum diambil fotografer. Ambil sesi dulu di Antrean Sesi.'})
     if user.pk not in (sesi.fotografer_id, sesi.asisten_id):
         raise PermissionDenied('Hanya fotografer/asisten sesi ini yang dapat memulai sesi.')
     if sesi.pesanan.status != 'sesi' or sesi.pesanan.order.status_global == 'batal':
@@ -360,6 +363,83 @@ def hapus_usulan(usulan_id, user):
     if usulan.diusulkan_oleh_id != user.pk and user.role not in ROLE_KASIR:
         raise PermissionDenied('Hanya pengusul atau kasir yang dapat menghapus usulan ini.')
     usulan.delete()
+
+
+# ---------------------------------------------------------------- klaim global
+PERAN_TAHAP = {'fotografer': ('tahap_sesi_id', 'Sesi Foto'), 'asisten': ('tahap_asisten_id', 'Asisten Foto')}
+
+
+def _boleh_klaim(user, tahap):
+    if user.role in ('spv', 'kordiv'):
+        from ..permissions import get_subordinate_divisi_ids
+        return tahap.divisi_id in get_subordinate_divisi_ids(user)
+    return user.role == 'staff' and user.divisi_id == tahap.divisi_id
+
+
+def sinkron_petugas(job):
+    """PIC SPK Sesi/Asisten Foto = fotografer/asisten di semua jadwal sesi pesanan."""
+    pesanan = pesanan_dari_job(job)
+    if not pesanan or not job.tahap_id:
+        return
+    atur = pengaturan()
+    if job.tahap_id == atur['tahap_sesi_id']:
+        pesanan.sesi.update(fotografer=job.pic_staff)
+    elif job.tahap_id == atur['tahap_asisten_id']:
+        pesanan.sesi.update(asisten=job.pic_staff)
+
+
+def antrean_sesi(user):
+    """Sesi yang belum punya fotografer/asisten di divisi user: [(sesi, peran)]."""
+    hasil = []
+    for peran, (kunci, _label) in PERAN_TAHAP.items():
+        tahap_id = pengaturan()[kunci]
+        tahap = TahapProses.objects.filter(pk=tahap_id).first() if tahap_id else None
+        if not tahap or not _boleh_klaim(user, tahap):
+            continue
+        item_ids = JobBoard.objects.filter(
+            tahap=tahap, pic_staff__isnull=True, status_pekerjaan='antrean', order_item__pesanan_foto__status='sesi',
+        ).exclude(order_item__order__status_global='batal').values('order_item_id')
+        for sesi in SesiFoto.objects.select_related('pesanan__order', 'pesanan__paket_item', 'fotografer', 'asisten').filter(
+            pesanan__paket_item_id__in=item_ids, urutan=1,
+        ).order_by('mulai'):
+            hasil.append((sesi, peran))
+    return hasil
+
+
+@transaction.atomic
+def klaim(pesanan_id, user, peran):
+    if peran not in PERAN_TAHAP:
+        raise ValidationError({'error': 'Peran harus fotografer atau asisten.'})
+    pesanan = PesananFoto.objects.select_for_update(of=('self',)).select_related('order').get(pk=pesanan_id)
+    if pesanan.status != 'sesi' or pesanan.order.status_global == 'batal':
+        raise ValidationError({'error': 'Pesanan ini sudah tidak dalam tahap sesi foto.'})
+    kunci, label = PERAN_TAHAP[peran]
+    tahap = _tahap(kunci, label)
+    if not _boleh_klaim(user, tahap):
+        raise PermissionDenied(f'Hanya anggota divisi {tahap.divisi.nama} yang dapat mengambil sesi ini.')
+    job = JobBoard.objects.select_for_update().filter(
+        order_item_id=pesanan.paket_item_id, tahap=tahap,
+    ).exclude(status_pekerjaan__in=['batal', 'selesai']).first()
+    if not job:
+        raise ValidationError({'error': f'Pesanan ini tidak membutuhkan {peran}.'})
+    if job.pic_staff_id:
+        raise ValidationError({'error': f'Sesi ini sudah diambil oleh {job.pic_staff.username}.'})
+    if peran == 'asisten' and pesanan.sesi.filter(fotografer=user).exists():
+        raise ValidationError({'error': 'Anda sudah menjadi fotografer sesi ini.'})
+    job.pic_staff = user
+    job.save(update_fields=['pic_staff'])
+    sinkron_petugas(job)
+    OrderActivityLog.objects.create(
+        order=pesanan.order, user=user, tindakan='CLAIM_JOB',
+        keterangan=f"{user.username} mengambil sesi foto sebagai {peran} (PIC {label}).",
+    )
+    return pesanan
+
+
+def setelah_klaim(job, user):
+    """Klaim SPK Sesi/Asisten lewat papan kerja ikut mengisi petugas sesi."""
+    if job.tahap_id and job.tahap_id in _tahap_id_sesi():
+        sinkron_petugas(job)
 
 
 # ---------------------------------------------------------------- konfirmasi kasir

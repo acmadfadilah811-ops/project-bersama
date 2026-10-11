@@ -236,3 +236,47 @@ class PengaturanStarfotoTests(_Dasar):
         self.assertEqual(self.client.get('/api/starfoto/paket/').status_code, 200)
         self.assertEqual(self.client.post('/api/starfoto/paket/', {}, format='json').status_code, 403)
         self.assertEqual(SesiFoto.objects.count(), 0)
+
+
+class KlaimGlobalSesiTests(_Dasar):
+    def _pesanan_tanpa_petugas(self):
+        res = self._checkout(fotografer_id=None, asisten_id=None, butuh_asisten=True)
+        self.assertEqual(res.status_code, 201, res.content)
+        return PesananFoto.objects.get(order_id=res.json()['id'])
+
+    def test_fotografer_klaim_dari_antrean_jadi_pic(self):
+        pesanan = self._pesanan_tanpa_petugas()
+        sesi = pesanan.sesi.get()
+        self.assertTrue(all(j.pic_staff_id is None for j in JobBoard.objects.filter(order_item=pesanan.paket_item)))
+
+        self.client.force_authenticate(self.foto)
+        self.assertEqual(self.client.post(f'/api/starfoto/sesi/{sesi.id}/mulai/').status_code, 400)  # belum diklaim
+        antrean = self.client.get('/api/starfoto/antrean-sesi/').json()
+        self.assertEqual(sorted(r['peran'] for r in antrean), ['asisten', 'fotografer'])
+        url = f'/api/starfoto/antrean-sesi/{pesanan.id}/klaim/'
+        self.assertEqual(self.client.post(url, {'peran': 'fotografer'}, format='json').status_code, 200)
+        sesi.refresh_from_db()
+        self.assertEqual(sesi.fotografer, self.foto)
+        self.assertEqual(JobBoard.objects.get(order_item=pesanan.paket_item, tahap=self.t_sesi).pic_staff, self.foto)
+        self.assertEqual(self.client.post(url, {'peran': 'asisten'}, format='json').status_code, 400)
+
+        # Fotografer lain tidak bisa merebut; asisten mengambil peran asisten.
+        self.client.force_authenticate(self.asisten)
+        res = self.client.post(url, {'peran': 'fotografer'}, format='json')
+        self.assertIn('sudah diambil oleh foto.sf', res.json()['error'])
+        self.assertEqual([r['peran'] for r in self.client.get('/api/starfoto/antrean-sesi/').json()], ['asisten'])
+        self.assertEqual(self.client.post(url, {'peran': 'asisten'}, format='json').status_code, 200)
+        self.assertEqual(self.client.get('/api/starfoto/antrean-sesi/').json(), [])
+
+        # Divisi lain ditolak; fotografer bisa memulai sesi.
+        self.client.force_authenticate(self.editor)
+        self.assertEqual(self.client.post(url, {'peran': 'fotografer'}, format='json').status_code, 403)
+        self.client.force_authenticate(self.foto)
+        self.assertEqual(self.client.post(f'/api/starfoto/sesi/{sesi.id}/mulai/').status_code, 200)
+
+    def test_klaim_lewat_papan_kerja_ikut_mengisi_sesi(self):
+        pesanan = self._pesanan_tanpa_petugas()
+        job = JobBoard.objects.get(order_item=pesanan.paket_item, tahap=self.t_asisten)
+        self.client.force_authenticate(self.asisten)
+        self.assertEqual(self.client.post(f'/api/jobs/{job.id}/claim/').status_code, 200)
+        self.assertEqual(pesanan.sesi.get().asisten, self.asisten)

@@ -141,3 +141,24 @@ class JadwalSesiView(APIView):
         if (sampai - dari).days > 62:
             return Response({'error': 'Rentang jadwal maksimal 62 hari.'}, status=status.HTTP_400_BAD_REQUEST)
         return Response(SesiFotoSerializer(svc.jadwal(dari, sampai), many=True).data)
+
+
+class AntreanSesiView(APIView):
+    """GET  /api/starfoto/antrean-sesi/                    sesi yang belum punya fotografer/asisten
+    POST /api/starfoto/antrean-sesi/{pesanan_id}/klaim/ {peran: fotografer|asisten}
+    Klaim global: fotografer divisi mana pun mengambil sesi dan jadi PIC SPK-nya."""
+    permission_classes = [IsAuthenticated, IsClockedIn]
+
+    def get(self, request):
+        data = []
+        for sesi, peran in svc.antrean_sesi(request.user):
+            baris = SesiFotoSerializer(sesi).data
+            baris['peran'] = peran
+            data.append(baris)
+        return Response(data)
+
+    def post(self, request, pesanan_id):
+        get_object_or_404(PesananFoto, pk=pesanan_id)
+        pesanan = svc.klaim(pesanan_id, request.user, str(request.data.get('peran') or 'fotografer'))
+        sesi = pesanan.sesi.select_related('pesanan__order', 'pesanan__paket_item', 'fotografer', 'asisten')
+        return Response(SesiFotoSerializer(sesi, many=True).data)

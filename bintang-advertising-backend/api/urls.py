@@ -7,7 +7,7 @@ from .views.hr_sandi_bridge import HRBridgeSandiView
 from .views.hr_foto_bridge import HRBridgeFotoView
 from .views.resi_digital import AspekSurveiViewSet, ResiPublikView, ResiSurveiView, SurveiKepuasanView
 from .views.starfoto import (
-    JadwalSesiView, PaketFotoViewSet, PengaturanStarfotoView, PesananFotoViewSet, SesiAksiView, SesiSayaView,
+    AntreanSesiView, JadwalSesiView, PaketFotoViewSet, PengaturanStarfotoView, PesananFotoViewSet, SesiAksiView, SesiSayaView,
     UsulanTambahanDetailView,
 )
 from .views.hr_kredensial_bridge import HRBridgeKredensialView
@@ -237,6 +237,8 @@ urlpatterns = [
     path('starfoto/sesi-saya/', SesiSayaView.as_view(), name='starfoto-sesi-saya'),
     path('starfoto/sesi/<int:pk>/<str:aksi>/', SesiAksiView.as_view(), name='starfoto-sesi-aksi'),
     path('starfoto/jadwal/', JadwalSesiView.as_view(), name='starfoto-jadwal'),
+    path('starfoto/antrean-sesi/', AntreanSesiView.as_view(), name='starfoto-antrean-sesi'),
+    path('starfoto/antrean-sesi/<int:pesanan_id>/klaim/', AntreanSesiView.as_view(), name='starfoto-klaim-sesi'),
     path('bridge/hr-employee-status/', HRBridgeSetStatusView.as_view(), name='hr-bridge-set-status'),
     path('bridge/absensi-status/', AbsensiStatusView.as_view(), name='hr-bridge-absensi-status'),
     path('bridge/kinerja-staff/', KinerjaStaffView.as_view(), name='hr-bridge-kinerja-staff'),
