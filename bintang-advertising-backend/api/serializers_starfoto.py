@@ -7,6 +7,8 @@ from .starfoto_models import PaketFoto, PesananFoto, PilihanFile, SesiFoto, Usul
 class PaketFotoSerializer(serializers.ModelSerializer):
     nama = serializers.CharField(source='product.nama', read_only=True)
     harga = serializers.DecimalField(source='product.harga_jual_toko', max_digits=12, decimal_places=2, read_only=True)
+    kategori = serializers.IntegerField(source='product.kategori_id', read_only=True, default=None)
+    kategori_nama = serializers.CharField(source='product.kategori.nama', read_only=True, default='')
     addon_tambah_orang_nama = serializers.CharField(source='addon_tambah_orang.nama', read_only=True, default=None)
     addon_tambah_orang_harga = serializers.DecimalField(
         source='addon_tambah_orang.harga', max_digits=12, decimal_places=2, read_only=True, default=None,
@@ -15,7 +17,7 @@ class PaketFotoSerializer(serializers.ModelSerializer):
     class Meta:
         model = PaketFoto
         fields = [
-            'id', 'product', 'nama', 'harga', 'kuota_orang', 'addon_tambah_orang', 'addon_tambah_orang_nama',
+            'id', 'product', 'nama', 'harga', 'kategori', 'kategori_nama', 'kuota_orang', 'addon_tambah_orang', 'addon_tambah_orang_nama',
             'addon_tambah_orang_harga', 'jumlah_edit', 'jumlah_sesi', 'durasi_menit', 'lokasi',
             'dp_minimal_persen', 'isi_paket',
         ]

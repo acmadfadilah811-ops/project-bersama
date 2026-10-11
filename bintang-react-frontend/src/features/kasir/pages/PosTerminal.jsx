@@ -31,7 +31,9 @@ import PaymentSuccessModal from '../components/PaymentSuccessModal';
 import ReceiptPrint from '../components/ReceiptPrint';
 import SpkPublishModal from '../components/SpkPublishModal';
 import StarfotoSesiModal from '../../starfoto/components/StarfotoSesiModal';
-import useStarfotoKasir from '../../starfoto/hooks/useStarfotoKasir';
+import useStarfotoKasir, { galatData, payloadStarfoto } from '../../starfoto/hooks/useStarfotoKasir';
+import StarfotoKatalogPanel, { StarfotoTabBar } from '../../starfoto/components/StarfotoKatalogPanel';
+import StarfotoPesananPanel from '../../starfoto/components/StarfotoPesananPanel';
 import { uiConfirm } from '../../../utils/dialog';
 
 const makeCheckoutKey = () => {
@@ -118,7 +120,20 @@ export default function PosTerminal({ onToggleSidebar }) {
   // Mode StarFoto (2026-10-11): keranjang berisi Paket Foto -> isi Data Sesi
   // dulu, lalu pembayaran DP/lunas lewat /orders/checkout-pos/ dengan blok starfoto.
   const starfoto = useStarfotoKasir(cart);
-  const bukaPembayaran = () => (starfoto.item ? starfoto.bukaModal() : setShowPaymentModal(true));
+  const [tabStarfoto, setTabStarfoto] = useState('paket');
+  const bukaPembayaran = () => {
+    if (!starfoto.item) return setShowPaymentModal(true);
+    // Terminal biasa (bukan kasir StarFoto): data sesi lewat popup.
+    if (!starfoto.modeAktif) return starfoto.bukaModal();
+    const galat = galatData(starfoto.data);
+    if (galat) {
+      setSelectedCartItemKey(starfoto.item.key);
+      setRightPanelMode('itemDetail');
+      notifyError('Data pesanan foto belum lengkap', galat);
+      return undefined;
+    }
+    return setShowPaymentModal(true);
+  };
 
   // Mode Tampilan Panel Kanan: 'catalog' | 'itemDetail' | 'customerList'
   const [rightPanelMode, setRightPanelMode] = useState('catalog');
@@ -452,6 +467,22 @@ export default function PosTerminal({ onToggleSidebar }) {
     addToCart(product);
     setSelectedCartItemKey(key);
     setRightPanelMode('itemDetail');
+  };
+
+  // Satu pesanan foto = satu paket: memilih paket lain mengganti paket di keranjang.
+  const handlePilihPaketFoto = (p) => {
+    const lain = cart.filter((it) => it.product?.id && starfoto.paketByProduct[it.product.id] && it.product.id !== p.product);
+    lain.forEach((it) => removeFromCart(it.key));
+    if (!cart.some((it) => it.product?.id === p.product)) {
+      addToCart({ id: p.product, nama: p.nama, harga_jual_toko: p.harga, lacak_inventori: false, kategori: p.kategori });
+    }
+    setSelectedCartItemKey(`${p.product}`);
+    setRightPanelMode('itemDetail');
+  };
+
+  const handleTambahPigura = (produk, varian) => {
+    addToCart(produk, { ...varian, harga: Number(varian.harga_jual_toko || 0) });
+    notifySuccess('Pigura ditambahkan', `${produk.nama} (${varian.nama_varian})`);
   };
 
   const handleAddPackageFromCatalog = (paket) => {
@@ -858,7 +889,7 @@ export default function PosTerminal({ onToggleSidebar }) {
         catatan: cartNotes,
         jatuh_tempo: pembayaran.dueDate,
         dilayani_oleh_id: selectedPelayanId,
-        ...(starfoto.item ? { starfoto: starfoto.data } : { spk: spkPayload }),
+        ...(starfoto.item ? { starfoto: payloadStarfoto(starfoto.data) } : { spk: spkPayload }),
       });
       const order = res.data;
       if (Array.isArray(order.stok_kritis) && order.stok_kritis.length > 0) {
@@ -908,6 +939,63 @@ export default function PosTerminal({ onToggleSidebar }) {
     setShowSuccessModal(false);
     setRightPanelMode('catalog');
   };
+
+  const handleBayarClick = async () => {
+    if (cart.length === 0 || payCheckingRef.current) return;
+    // Cek pelanggan di titik paling awal, sebelum modal pembayaran
+    // dibuka sama sekali -- kasir langsung tahu harus pilih/tambah
+    // pelanggan dulu, bukan baru ditolak setelah isi nominal bayar
+    // (validasi cadangan tetap ada di handleConfirmPayment).
+    if (!selectedContact?.nama || !selectedContact?.nomor_wa) {
+      setRightPanelMode('customerList');
+      notifyError('Pilih pelanggan dulu', 'Order tidak bisa dibuat tanpa data pelanggan (nama & nomor WhatsApp). Pilih atau tambahkan pelanggan terlebih dahulu.');
+      return;
+    }
+    // Gerbang stok kritis (2026-09-24, instruksi user: kasir harus
+    // tertahan SEBELUM pembayaran, bukan diberi tahu setelahnya).
+    // Stok dihitung dari data produk TERBARU (bukan snapshot saat
+    // item dimasukkan ke keranjang) supaya perubahan stok dari menu
+    // Produk / kasir lain ikut terbaca; gagal ambil -> pakai snapshot.
+    payCheckingRef.current = true;
+    let kritis;
+    try {
+      kritis = hitungStokKritisKeranjang(await segarkanProdukKeranjang(cart));
+    } finally {
+      payCheckingRef.current = false;
+    }
+    if (kritis.length > 0) {
+      setStokKritisModal({ items: kritis, mode: 'gate' });
+      return;
+    }
+    bukaPembayaran();
+  };
+
+  const katalogBiasa = (
+    <PosCatalogPanel
+      products={products}
+      packages={packages}
+      categories={categories}
+      onAddToCart={handleAddToCartFromCatalog}
+      onAddPackage={handleAddPackageFromCatalog}
+      searchTerm={searchTerm}
+      setSearchTerm={setSearchTerm}
+      selectedCategory={selectedCategory}
+      setSelectedCategory={setSelectedCategory}
+      onSync={handleSyncCatalog}
+      syncing={syncingCatalog}
+      brands={brands}
+      collections={collections}
+      selectedBrand={selectedBrand}
+      setSelectedBrand={setSelectedBrand}
+      selectedCollection={selectedCollection}
+      setSelectedCollection={setSelectedCollection}
+      page={catalogPage}
+      pageSize={catalogPageSize}
+      totalCount={catalogTotalCount}
+      onPageChange={setCatalogPage}
+      onPageSizeChange={(size) => { setCatalogPageSize(size); setCatalogPage(1); }}
+    />
+  );
 
   const selectedStaffObj = staffList.find((s) => String(s.id) === String(selectedPelayanId));
   const selectedCartItem = cart.find((i) => i.key === selectedCartItemKey);
@@ -1118,35 +1206,7 @@ export default function PosTerminal({ onToggleSidebar }) {
           }}
           onSelectItem={handleSelectItem}
           selectedCartItemKey={selectedCartItemKey}
-          onPayClick={async () => {
-            if (cart.length === 0 || payCheckingRef.current) return;
-            // Cek pelanggan di titik paling awal, sebelum modal pembayaran
-            // dibuka sama sekali -- kasir langsung tahu harus pilih/tambah
-            // pelanggan dulu, bukan baru ditolak setelah isi nominal bayar
-            // (validasi cadangan tetap ada di handleConfirmPayment).
-            if (!selectedContact?.nama || !selectedContact?.nomor_wa) {
-              setRightPanelMode('customerList');
-              notifyError('Pilih pelanggan dulu', 'Order tidak bisa dibuat tanpa data pelanggan (nama & nomor WhatsApp). Pilih atau tambahkan pelanggan terlebih dahulu.');
-              return;
-            }
-            // Gerbang stok kritis (2026-09-24, instruksi user: kasir harus
-            // tertahan SEBELUM pembayaran, bukan diberi tahu setelahnya).
-            // Stok dihitung dari data produk TERBARU (bukan snapshot saat
-            // item dimasukkan ke keranjang) supaya perubahan stok dari menu
-            // Produk / kasir lain ikut terbaca; gagal ambil -> pakai snapshot.
-            payCheckingRef.current = true;
-            let kritis;
-            try {
-              kritis = hitungStokKritisKeranjang(await segarkanProdukKeranjang(cart));
-            } finally {
-              payCheckingRef.current = false;
-            }
-            if (kritis.length > 0) {
-              setStokKritisModal({ items: kritis, mode: 'gate' });
-              return;
-            }
-            bukaPembayaran();
-          }}
+          onPayClick={handleBayarClick}
           onVoidClick={() => {
             if (cart.length === 0) return;
             setShowVoidOrderModal(true);
@@ -1195,6 +1255,26 @@ export default function PosTerminal({ onToggleSidebar }) {
             }}
             onClose={() => setRightPanelMode('catalog')}
           />
+        ) : rightPanelMode === 'itemDetail' && starfoto.modeAktif && starfoto.paket && selectedCartItem?.key === starfoto.item?.key ? (
+          <StarfotoPesananPanel
+            paket={starfoto.paket}
+            item={starfoto.item}
+            data={starfoto.data}
+            setData={starfoto.setData}
+            pengaturan={starfoto.pengaturan}
+            totalKeranjang={getTotal()}
+            onUbahItem={(it) => upsertCartItems([it])}
+            onHapus={() => {
+              removeFromCart(starfoto.item.key);
+              setSelectedCartItemKey(null);
+              setRightPanelMode('catalog');
+            }}
+            onTutup={() => {
+              setSelectedCartItemKey(null);
+              setRightPanelMode('catalog');
+            }}
+            onBayar={handleBayarClick}
+          />
         ) : rightPanelMode === 'itemDetail' && selectedCartItem ? (
           <PosItemDetailPanel
             item={selectedCartItem}
@@ -1209,31 +1289,22 @@ export default function PosTerminal({ onToggleSidebar }) {
               setRightPanelMode('catalog');
             }}
           />
-        ) : (
-          <PosCatalogPanel
-            products={products}
-            packages={packages}
-            categories={categories}
-            onAddToCart={handleAddToCartFromCatalog}
-            onAddPackage={handleAddPackageFromCatalog}
-            searchTerm={searchTerm}
-            setSearchTerm={setSearchTerm}
-            selectedCategory={selectedCategory}
-            setSelectedCategory={setSelectedCategory}
-            onSync={handleSyncCatalog}
-            syncing={syncingCatalog}
-            brands={brands}
-            collections={collections}
-            selectedBrand={selectedBrand}
-            setSelectedBrand={setSelectedBrand}
-            selectedCollection={selectedCollection}
-            setSelectedCollection={setSelectedCollection}
-            page={catalogPage}
-            pageSize={catalogPageSize}
-            totalCount={catalogTotalCount}
-            onPageChange={setCatalogPage}
-            onPageSizeChange={(size) => { setCatalogPageSize(size); setCatalogPage(1); }}
+        ) : starfoto.modeAktif && tabStarfoto !== 'lain' ? (
+          <StarfotoKatalogPanel
+            tab={tabStarfoto}
+            setTab={setTabStarfoto}
+            paketList={starfoto.paketList}
+            paketAktifId={starfoto.paket?.id}
+            onPilihPaket={handlePilihPaketFoto}
+            onTambahPigura={handleTambahPigura}
           />
+        ) : starfoto.modeAktif ? (
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+            <StarfotoTabBar tab={tabStarfoto} setTab={setTabStarfoto} />
+            {katalogBiasa}
+          </div>
+        ) : (
+          katalogBiasa
         )}
       </div>
 
@@ -1344,7 +1415,7 @@ export default function PosTerminal({ onToggleSidebar }) {
           onClose={starfoto.tutupModal}
           onSimpan={({ data, item }) => {
             upsertCartItems([item]);
-            starfoto.setData(data);
+            starfoto.setData({ ...data, paketId: starfoto.paket.id });
             starfoto.tutupModal();
             setShowPaymentModal(true);
           }}

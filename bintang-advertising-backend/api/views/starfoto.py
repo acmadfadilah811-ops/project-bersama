@@ -43,7 +43,7 @@ class _BacaSemuaTulisPengelola(BasePermission):
 
 
 class PaketFotoViewSet(viewsets.ModelViewSet):
-    queryset = PaketFoto.objects.select_related('product', 'addon_tambah_orang').all()
+    queryset = PaketFoto.objects.select_related('product__kategori', 'addon_tambah_orang').all()
     serializer_class = PaketFotoSerializer
     permission_classes = [_BacaSemuaTulisPengelola]
 
