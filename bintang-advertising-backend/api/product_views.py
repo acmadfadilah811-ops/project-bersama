@@ -19,6 +19,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.exceptions import ValidationError
 from api.permissions import IsOwnerManagerAdminSpvFinanceOrReadOnly, IsOwnerManagerAdminFinanceOrReadOnly, scoped_by_unit_bisnis
+from api.unit_bisnis_scope import UnitBisnisScopedMixin
 from rest_framework.response import Response
 
 from .product_models import (
@@ -464,7 +465,7 @@ def _parse_date_ddmmyyyy(raw):
             continue
     return None
 
-class ProductCategoryViewSet(viewsets.ModelViewSet):
+class ProductCategoryViewSet(UnitBisnisScopedMixin, viewsets.ModelViewSet):
     queryset = ProductCategory.objects.all().order_by('urutan')
     serializer_class = ProductCategorySerializer
     permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
@@ -486,7 +487,7 @@ class ProductCategoryViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(tampil_pos=tampil_pos_bool)
         return queryset
 
-class BrandViewSet(viewsets.ModelViewSet):
+class BrandViewSet(UnitBisnisScopedMixin, viewsets.ModelViewSet):
     queryset = Brand.objects.all().order_by('nama')
     serializer_class = BrandSerializer
     permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
@@ -496,7 +497,7 @@ class SpecialTypeViewSet(viewsets.ModelViewSet):
     serializer_class = SpecialTypeSerializer
     permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
-class CollectionViewSet(viewsets.ModelViewSet):
+class CollectionViewSet(UnitBisnisScopedMixin, viewsets.ModelViewSet):
     queryset = Collection.objects.all().order_by('nama')
     serializer_class = CollectionSerializer
     permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
@@ -1588,7 +1589,7 @@ class ProductVariantViewSet(viewsets.ModelViewSet):
             post_stock_opname_document(doc, self.request.user)
             variant.refresh_from_db(fields=['qty_stok'])
 
-class ProductPackageViewSet(viewsets.ModelViewSet):
+class ProductPackageViewSet(UnitBisnisScopedMixin, viewsets.ModelViewSet):
     queryset = ProductPackage.objects.all().order_by('nama')
     serializer_class = ProductPackageSerializer
     permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
@@ -1695,12 +1696,12 @@ class ProductPackageViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED if created_packages else status.HTTP_400_BAD_REQUEST,
         )
 
-class AddonViewSet(viewsets.ModelViewSet):
+class AddonViewSet(UnitBisnisScopedMixin, viewsets.ModelViewSet):
     queryset = Addon.objects.all().order_by('nama')
     serializer_class = AddonSerializer
     permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]
 
-class SpecificationViewSet(viewsets.ModelViewSet):
+class SpecificationViewSet(UnitBisnisScopedMixin, viewsets.ModelViewSet):
     queryset = Specification.objects.all().order_by('nama')
     serializer_class = SpecificationSerializer
     permission_classes = [IsOwnerManagerAdminSpvFinanceOrReadOnly]

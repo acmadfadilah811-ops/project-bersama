@@ -13,6 +13,9 @@ class ProductCategory(models.Model):
     tampil_nav_web = models.BooleanField(default=True)
     default_price_type = models.CharField(max_length=50, choices=[('flat', 'Flat'), ('tier', 'Tier'), ('per_m2', 'Per M2')], default='flat')
     urutan = models.IntegerField(default=0)
+    # Unit bisnis pemilik (2026-10-11). Kosong = berlaku untuk semua unit;
+    # staff/kasir melihat unitnya + yang kosong (scoped_by_unit_bisnis).
+    unit_bisnis = models.ForeignKey('UnitBisnis', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
 
     def __str__(self):
         return self.nama
@@ -21,6 +24,9 @@ class Brand(models.Model):
     nama = models.CharField(max_length=255)
     komisi_persen = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
     is_active = models.BooleanField(default=True)
+    # Unit bisnis pemilik (2026-10-11). Kosong = berlaku untuk semua unit;
+    # staff/kasir melihat unitnya + yang kosong (scoped_by_unit_bisnis).
+    unit_bisnis = models.ForeignKey('UnitBisnis', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
 
     def __str__(self):
         return self.nama
@@ -37,6 +43,9 @@ class SpecialType(models.Model):
 class Collection(models.Model):
     nama = models.CharField(max_length=255)
     is_active = models.BooleanField(default=True)
+    # Unit bisnis pemilik (2026-10-11). Kosong = berlaku untuk semua unit;
+    # staff/kasir melihat unitnya + yang kosong (scoped_by_unit_bisnis).
+    unit_bisnis = models.ForeignKey('UnitBisnis', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
 
     def __str__(self):
         return self.nama
@@ -202,6 +211,9 @@ class ProductPackage(models.Model):
     seo_keywords = models.CharField(max_length=255, blank=True, null=True)
     seo_description = models.TextField(blank=True, null=True)
     foto = models.ImageField(upload_to='package_photos/', blank=True, null=True)
+    # Unit bisnis pemilik (2026-10-11). Kosong = berlaku untuk semua unit;
+    # staff/kasir melihat unitnya + yang kosong (scoped_by_unit_bisnis).
+    unit_bisnis = models.ForeignKey('UnitBisnis', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
 
     def __str__(self):
         return self.nama
@@ -221,6 +233,9 @@ class Addon(models.Model):
     linked_product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True, blank=True, related_name='addon_stok_links')
     linked_variant = models.ForeignKey(ProductVariant, on_delete=models.SET_NULL, null=True, blank=True, related_name='addon_stok_links')
     linked_qty = models.DecimalField(max_digits=10, decimal_places=2, default=1.00)
+    # Unit bisnis pemilik (2026-10-11). Kosong = berlaku untuk semua unit;
+    # staff/kasir melihat unitnya + yang kosong (scoped_by_unit_bisnis).
+    unit_bisnis = models.ForeignKey('UnitBisnis', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
 
     def __str__(self):
         return self.nama
@@ -258,6 +273,9 @@ class Specification(models.Model):
     nama = models.CharField(max_length=255)
     tipe = models.CharField(max_length=50, blank=True, null=True)
     satuan = models.CharField(max_length=50, blank=True, null=True)
+    # Unit bisnis pemilik (2026-10-11). Kosong = berlaku untuk semua unit;
+    # staff/kasir melihat unitnya + yang kosong (scoped_by_unit_bisnis).
+    unit_bisnis = models.ForeignKey('UnitBisnis', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
 
     def __str__(self):
         return self.nama

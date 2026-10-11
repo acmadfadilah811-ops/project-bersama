@@ -13,6 +13,7 @@ from .product_models import (
 from .protected_media import protected_media_url
 
 class ProductCategorySerializer(serializers.ModelSerializer):
+    unit_bisnis_nama = serializers.ReadOnlyField(source='unit_bisnis.nama')
     products_count = serializers.SerializerMethodField()
 
     class Meta:
@@ -23,6 +24,7 @@ class ProductCategorySerializer(serializers.ModelSerializer):
         return obj.products.count()
 
 class BrandSerializer(serializers.ModelSerializer):
+    unit_bisnis_nama = serializers.ReadOnlyField(source='unit_bisnis.nama')
     products_count = serializers.SerializerMethodField()
 
     class Meta:
@@ -38,6 +40,7 @@ class SpecialTypeSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class CollectionSerializer(serializers.ModelSerializer):
+    unit_bisnis_nama = serializers.ReadOnlyField(source='unit_bisnis.nama')
     class Meta:
         model = Collection
         fields = '__all__'
@@ -53,6 +56,7 @@ class ProductVariantSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class SpecificationSerializer(serializers.ModelSerializer):
+    unit_bisnis_nama = serializers.ReadOnlyField(source='unit_bisnis.nama')
     class Meta:
         model = Specification
         fields = '__all__'
@@ -134,6 +138,7 @@ class ProductPackageItemSerializer(serializers.ModelSerializer):
         return None
 
 class ProductPackageSerializer(serializers.ModelSerializer):
+    unit_bisnis_nama = serializers.ReadOnlyField(source='unit_bisnis.nama')
     items = ProductPackageItemSerializer(many=True, read_only=True)
     
     class Meta:
@@ -201,6 +206,7 @@ class ProductPackageSerializer(serializers.ModelSerializer):
         return instance
 
 class AddonSerializer(serializers.ModelSerializer):
+    unit_bisnis_nama = serializers.ReadOnlyField(source='unit_bisnis.nama')
     linked_product_nama = serializers.ReadOnlyField(source='linked_product.nama')
     linked_variant_nama = serializers.ReadOnlyField(source='linked_variant.nama_varian')
     applies_to_names = serializers.SerializerMethodField()
