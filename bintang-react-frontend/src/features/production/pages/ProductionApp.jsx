@@ -46,6 +46,7 @@ import JobMacetBadge, { getMacetInfo } from '../components/JobMacetBadge';
 // job sendiri (lihat JobBoardViewSet.get_queryset() backend) -- dipakai
 // juga di StaffDashboard, reuse langsung bukan diimplementasikan ulang.
 import KordivSpvTeamBoard from '../../dashboard/components/KordivSpvTeamBoard';
+import { useMenuStarfoto } from '../../starfoto/hooks/useMenuSesiFoto';
 
 // --- DYNAMIC MINI CALENDAR COMPONENT ---
 function MiniCalendar() {
@@ -142,6 +143,7 @@ function MiniCalendar() {
 
 export default function ProductionApp() {
   const { user, businessSettings } = useAuth();
+  const menuStarfoto = useMenuStarfoto();
 
   // Sidebar Collapsed States
   const [leftCollapsed, setLeftCollapsed] = useState(false);
@@ -568,6 +570,8 @@ export default function ProductionApp() {
       { id: 'log_mesin_saya', label: 'Riwayat Mesin Saya', icon: History },
       { id: 'logs', label: 'Log Aktivitas', icon: Bell },
     ];
+    // Fotografer/asisten StarFoto tidak memakai mesin produksi (2026-10-12).
+    if (menuStarfoto.sesi) menuItems = menuItems.filter((m) => m.id !== 'log_mesin_saya');
   }
 
   // Alert Deadline Pekerjaan (ganti Monitor Stok Kritis, fitur 2026-09-07):

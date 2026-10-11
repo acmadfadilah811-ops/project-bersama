@@ -401,9 +401,14 @@ export default function Sidebar() {
     ...(menuStarfoto.sesi ? [{ ...MENU_SESI_FOTO, icon: Camera }] : []),
     ...(menuStarfoto.edit ? [{ ...MENU_EDIT_FOTO, icon: Wand2 }] : []),
   ];
-  const baseMenu = menuTambahan.length
-    ? menuDasar.flatMap((item) => (item.path === '/produksi' ? [item, ...menuTambahan] : [item]))
+  // Fotografer/asisten StarFoto (staff) tidak membuat order -- pesanan foto
+  // dibuat kasir StarFoto (2026-10-12).
+  const menuDasarUnit = userRole === 'staff' && menuStarfoto.sesi
+    ? menuDasar.filter((item) => item.path !== '/buat-order')
     : menuDasar;
+  const baseMenu = menuTambahan.length
+    ? menuDasarUnit.flatMap((item) => (item.path === '/produksi' ? [item, ...menuTambahan] : [item]))
+    : menuDasarUnit;
 
   // Filter menu berdasarkan perizinan hak akses dinamis
   const filteredMenu = baseMenu
