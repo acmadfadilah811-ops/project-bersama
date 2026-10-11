@@ -14,7 +14,10 @@ from django.dispatch import receiver
 
 
 class JenisInsentif(models.Model):
-    nama = models.CharField(max_length=100, unique=True)
+    # Unik per unit bisnis (nama sama boleh dipakai StarFoto & Advertising).
+    nama = models.CharField(max_length=100)
+    # Unit bisnis pemilik (2026-10-11). Kosong = berlaku untuk semua unit.
+    unit_bisnis = models.ForeignKey('UnitBisnis', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     nominal_default = models.PositiveIntegerField(default=0, help_text='Nominal standar (Rp) saat masuk ke SPK')
     # Kosong = tidak pernah otomatis, hanya bisa ditambahkan manual oleh Manager.
     divisi = models.ManyToManyField('Divisi', blank=True, related_name='jenis_insentif')
@@ -24,6 +27,10 @@ class JenisInsentif(models.Model):
 
     class Meta:
         ordering = ['nama']
+        constraints = [
+            models.UniqueConstraint(fields=['nama', 'unit_bisnis'], name='uniq_jenis_insentif_nama_unit'),
+            models.UniqueConstraint(fields=['nama'], condition=models.Q(unit_bisnis__isnull=True), name='uniq_jenis_insentif_nama_umum'),
+        ]
 
     def __str__(self):
         return self.nama

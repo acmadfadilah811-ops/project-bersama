@@ -10,7 +10,7 @@
   bergeser diam-diam.
 """
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from rest_framework.exceptions import ValidationError
 
 from ..insentif_models import InsentifPekerjaan, JenisInsentif
@@ -38,7 +38,12 @@ def terapkan_otomatis(job):
     """Tambahkan baris insentif dari master untuk divisi tahap SPK ini."""
     divisi_id = job.tahap.divisi_id if job.tahap_id else None
     if divisi_id:
-        for jenis in JenisInsentif.objects.filter(aktif=True, divisi__id=divisi_id):
+        # Jenis ber-unit hanya untuk SPK di divisi unit yang sama (2026-10-11).
+        unit_id = job.tahap.divisi.unit_bisnis_id
+        jenis_qs = JenisInsentif.objects.filter(aktif=True, divisi__id=divisi_id)
+        if unit_id:
+            jenis_qs = jenis_qs.filter(Q(unit_bisnis__isnull=True) | Q(unit_bisnis_id=unit_id))
+        for jenis in jenis_qs:
             InsentifPekerjaan.objects.get_or_create(
                 job=job, jenis=jenis,
                 defaults={'nama': jenis.nama, 'nominal': jenis.nominal_default, 'otomatis': True},

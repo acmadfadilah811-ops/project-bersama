@@ -5,8 +5,9 @@ import apiClient from '../../../api/apiClient';
 import { fetchAllPages } from '../../../utils/paginatedApi';
 import { uiConfirm } from '../../../utils/dialog';
 import { notifySuccess, notifyApiError } from '../../../utils/notify';
+import { useUnitBisnisOptions } from '../../inventory/pages/components/UnitBisnisField';
 
-const FORM_KOSONG = { id: null, nama: '', nominal_default: '', divisi: [], keterangan: '', aktif: true };
+const FORM_KOSONG = { id: null, nama: '', nominal_default: '', unit_bisnis: '', divisi: [], keterangan: '', aktif: true };
 const rupiah = (n) => `Rp ${Number(n || 0).toLocaleString('id-ID')}`;
 
 /**
@@ -22,6 +23,9 @@ export default function JenisInsentif() {
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
+  // Unit bisnis (2026-10-11): kosong = berlaku semua unit.
+  const unitOptions = useUnitBisnisOptions();
+  const [filterUnit, setFilterUnit] = useState('semua');
 
   useEffect(() => { setSubtitle('Jenis Insentif'); }, [setSubtitle]);
 
@@ -54,6 +58,7 @@ export default function JenisInsentif() {
     const payload = {
       nama: form.nama.trim(),
       nominal_default: parseInt(form.nominal_default || 0, 10),
+      unit_bisnis: form.unit_bisnis ? Number(form.unit_bisnis) : null,
       divisi: form.divisi,
       keterangan: form.keterangan.trim(),
       aktif: form.aktif,
@@ -90,6 +95,16 @@ export default function JenisInsentif() {
     }
   };
 
+  // Divisi yang boleh dipilih: milik unit terpilih atau divisi umum (tanpa unit).
+  const divisiTerpilihUnit = (unitId) => divisiList.filter((d) => !unitId || !d.unit_bisnis || String(d.unit_bisnis) === String(unitId));
+  const ubahUnitForm = (unitId) => setForm((f) => {
+    const boleh = new Set(divisiTerpilihUnit(unitId).map((d) => d.id));
+    return { ...f, unit_bisnis: unitId, divisi: f.divisi.filter((id) => boleh.has(id)) };
+  });
+  const daftarTampil = daftar.filter((j) => (
+    filterUnit === 'semua' ? true : filterUnit === 'umum' ? !j.unit_bisnis : String(j.unit_bisnis) === filterUnit
+  ));
+
   return (
     <div className="max-w-4xl w-full mx-auto p-6">
       <div className="flex items-start justify-between gap-4 mb-5">
@@ -109,11 +124,23 @@ export default function JenisInsentif() {
         </button>
       </div>
 
+      <div className="mb-3 flex flex-wrap gap-1.5">
+        {[['semua', 'Semua'], ...unitOptions.map((u) => [String(u.id), u.nama]), ['umum', 'Semua unit (umum)']].map(([id, label]) => (
+          <button
+            key={id} type="button" onClick={() => setFilterUnit(id)}
+            className={`rounded-full px-3 py-1 text-xs font-semibold ${filterUnit === id ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       <div className="border border-slate-200 rounded-xl overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
             <tr>
               <th className="text-left px-4 py-2.5">Nama</th>
+              <th className="text-left px-4 py-2.5">Unit bisnis</th>
               <th className="text-right px-4 py-2.5">Nominal standar</th>
               <th className="text-left px-4 py-2.5">Divisi target</th>
               <th className="text-center px-4 py-2.5">Aktif</th>
@@ -122,17 +149,18 @@ export default function JenisInsentif() {
           </thead>
           <tbody className="divide-y divide-slate-100">
             {loading && (
-              <tr><td colSpan={5} className="px-4 py-6 text-center text-slate-400 text-xs">Memuat…</td></tr>
+              <tr><td colSpan={6} className="px-4 py-6 text-center text-slate-400 text-xs">Memuat…</td></tr>
             )}
-            {!loading && daftar.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-6 text-center text-slate-400 text-xs">Belum ada jenis insentif.</td></tr>
+            {!loading && daftarTampil.length === 0 && (
+              <tr><td colSpan={6} className="px-4 py-6 text-center text-slate-400 text-xs">Belum ada jenis insentif.</td></tr>
             )}
-            {daftar.map((j) => (
+            {daftarTampil.map((j) => (
               <tr key={j.id} className={j.aktif ? '' : 'text-slate-400'}>
                 <td className="px-4 py-3 font-semibold">
                   {j.nama}
                   {j.keterangan && <div className="text-[11px] font-normal text-slate-400">{j.keterangan}</div>}
                 </td>
+                <td className="px-4 py-3 text-xs text-slate-600">{j.unit_bisnis_nama || 'Semua unit'}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{rupiah(j.nominal_default)}</td>
                 <td className="px-4 py-3">
                   {j.divisi_nama.length === 0 ? (
@@ -152,7 +180,7 @@ export default function JenisInsentif() {
                   <div className="flex justify-end gap-1">
                     <button
                       type="button"
-                      onClick={() => setForm({ ...j, nominal_default: String(j.nominal_default) })}
+                      onClick={() => setForm({ ...j, nominal_default: String(j.nominal_default), unit_bisnis: j.unit_bisnis ? String(j.unit_bisnis) : '' })}
                       className="p-1.5 rounded hover:bg-slate-100 text-slate-500"
                       aria-label={`Ubah ${j.nama}`}
                     >
@@ -207,13 +235,27 @@ export default function JenisInsentif() {
               />
             </label>
 
+            <label className="block space-y-1">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase">Unit bisnis</span>
+              <select
+                value={form.unit_bisnis || ''}
+                onChange={(e) => ubahUnitForm(e.target.value)}
+                className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-slate-500 bg-white"
+              >
+                <option value="">Semua unit</option>
+                {unitOptions.map((u) => <option key={u.id} value={String(u.id)}>{u.nama}</option>)}
+              </select>
+              <span className="block text-[11px] text-slate-400">Insentif hanya masuk ke SPK divisi unit ini.</span>
+            </label>
+
             <fieldset className="space-y-1">
               <legend className="text-[11px] font-semibold text-slate-500 uppercase">Divisi target (otomatis masuk SPK)</legend>
               <div className="max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-2 grid grid-cols-2 gap-1">
-                {divisiList.map((d) => (
+                {divisiTerpilihUnit(form.unit_bisnis).map((d) => (
                   <label key={d.id} className="flex items-center gap-2 text-xs text-slate-700 px-1 py-0.5">
                     <input type="checkbox" checked={form.divisi.includes(d.id)} onChange={() => toggleDivisi(d.id)} />
                     {d.nama}
+                    {!form.unit_bisnis && d.unit_bisnis_nama && <span className="text-[10px] text-slate-400">({d.unit_bisnis_nama})</span>}
                   </label>
                 ))}
               </div>

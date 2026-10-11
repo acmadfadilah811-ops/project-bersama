@@ -7,7 +7,7 @@ from rest_framework.test import APITestCase
 from hr.models import Absensi
 
 from .insentif_models import InsentifPekerjaan, JenisInsentif
-from .models import Divisi, JobBoard, Order, OrderItem, TahapProses
+from .models import Divisi, JobBoard, Order, OrderItem, TahapProses, UnitBisnis
 
 User = get_user_model()
 
@@ -48,6 +48,39 @@ class MasterJenisInsentifTests(InsentifBase):
         self.client.force_authenticate(self.manager)
         res = self.client.post('/api/jenis-insentif/', {'nama': 'Insentif Desain', 'nominal_default': 1}, format='json')
         self.assertEqual(res.status_code, 400)
+
+
+class JenisInsentifUnitBisnisTests(InsentifBase):
+    """Unit bisnis pada Jenis Insentif (2026-10-11)."""
+
+    def setUp(self):
+        super().setUp()
+        self.foto, _ = UnitBisnis.objects.get_or_create(nama='StarFoto')
+        self.adv, _ = UnitBisnis.objects.get_or_create(nama='Star Advertising')
+        self.d_desain.unit_bisnis = self.foto
+        self.d_desain.save()
+
+    def test_divisi_harus_seunit_dan_nama_boleh_sama_beda_unit(self):
+        self.client.force_authenticate(self.manager)
+        url = '/api/jenis-insentif/'
+        res = self.client.post(url, {'nama': 'Insentif Edit', 'unit_bisnis': self.adv.id, 'divisi': [self.d_desain.id]}, format='json')
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('bukan milik unit', str(res.content))
+        res = self.client.post(url, {'nama': 'Insentif Edit', 'unit_bisnis': self.foto.id, 'divisi': [self.d_desain.id]}, format='json')
+        self.assertEqual(res.status_code, 201, res.content)
+        self.assertEqual(res.json()['unit_bisnis_nama'], 'StarFoto')
+        self.assertEqual(self.client.post(url, {'nama': 'Insentif Edit', 'unit_bisnis': self.adv.id}, format='json').status_code, 201)
+        self.assertEqual(self.client.post(url, {'nama': 'insentif edit', 'unit_bisnis': self.foto.id}, format='json').status_code, 400)
+
+    def test_spk_hanya_dapat_insentif_unitnya(self):
+        lain = JenisInsentif.objects.create(nama='Insentif Adv', nominal_default=7000, unit_bisnis=self.adv)
+        lain.divisi.add(self.d_desain)  # data lama tidak konsisten: tetap tidak boleh terpakai
+        sendiri = JenisInsentif.objects.create(nama='Insentif Foto', nominal_default=3000, unit_bisnis=self.foto)
+        sendiri.divisi.add(self.d_desain)
+        self.assertEqual(self.assign(divisi_id=self.d_desain.id).status_code, 200)
+        job = JobBoard.objects.get(order_item=self.item, tahap=self.t_desain)
+        self.assertEqual(sorted(job.rincian_insentif.values_list('nama', flat=True)), ['Insentif Desain', 'Insentif Foto'])
+        self.assertEqual(job.insentif, 13000)
 
 
 class InsentifOtomatisSpkTests(InsentifBase):

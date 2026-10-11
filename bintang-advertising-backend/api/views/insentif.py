@@ -19,7 +19,7 @@ from ..services import insentif_pekerjaan as svc
 
 
 class JenisInsentifViewSet(viewsets.ModelViewSet):
-    queryset = JenisInsentif.objects.prefetch_related('divisi').all()
+    queryset = JenisInsentif.objects.select_related('unit_bisnis').prefetch_related('divisi').all()
     serializer_class = JenisInsentifSerializer
     permission_classes = [IsOwnerOrManager]
 
