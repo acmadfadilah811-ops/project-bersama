@@ -26,6 +26,7 @@ const PAGE_TITLES = {
   '/dashboard': 'Dashboard',
   '/staff-dashboard': 'Dashboard',
   '/sesi-foto': 'Sesi Foto',
+  '/dinas-luar': 'Dinas Luar',
   '/orders': 'Pesanan',
   '/customer-supplier': 'Pelanggan & Supplier',
   '/jobs': 'Papan Produksi',

@@ -1,6 +1,8 @@
 """Serializer pesanan sesi foto StarFoto (2026-10-11)."""
 from rest_framework import serializers
 
+from .dinas_models import DinasLuar
+from .protected_media import protected_media_url
 from .starfoto_models import PaketFoto, PesananFoto, PilihanFile, SesiFoto, UsulanTambahan
 
 
@@ -101,3 +103,44 @@ class PesananFotoSerializer(serializers.ModelSerializer):
             'nomor_kantong', 'background', 'catatan_file', 'total_harga', 'sisa_tagihan', 'status_order',
             'dikonfirmasi_pada', 'dibuat_pada', 'sesi', 'usulan', 'pilihan_file',
         ]
+
+
+
+class DinasLuarSerializer(serializers.ModelSerializer):
+    """Foto selfie lewat link terlindung bertanda tangan (protected_media)."""
+    staff_nama = serializers.SerializerMethodField()
+    sesi_info = serializers.SerializerMethodField()
+    mulai_foto = serializers.SerializerMethodField()
+    selesai_foto = serializers.SerializerMethodField()
+    durasi_menit = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DinasLuar
+        fields = [
+            'id', 'staff', 'staff_nama', 'sesi', 'sesi_info', 'tujuan', 'alamat', 'status',
+            'mulai_pada', 'mulai_lat', 'mulai_lng', 'mulai_akurasi', 'mulai_foto',
+            'selesai_pada', 'selesai_lat', 'selesai_lng', 'selesai_akurasi', 'selesai_foto',
+            'durasi_menit', 'uang_transport', 'catatan',
+        ]
+
+    def get_staff_nama(self, obj):
+        return obj.staff.get_full_name() or obj.staff.username
+
+    def get_sesi_info(self, obj):
+        if not obj.sesi_id:
+            return None
+        return {'order_id': obj.sesi.pesanan.order_id, 'pelanggan': obj.sesi.pesanan.order.nama, 'urutan': obj.sesi.urutan}
+
+    def _foto(self, berkas):
+        return protected_media_url(berkas, self.context.get('request')) if berkas else None
+
+    def get_mulai_foto(self, obj):
+        return self._foto(obj.mulai_foto)
+
+    def get_selesai_foto(self, obj):
+        return self._foto(obj.selesai_foto)
+
+    def get_durasi_menit(self, obj):
+        if not obj.selesai_pada:
+            return None
+        return int((obj.selesai_pada - obj.mulai_pada).total_seconds() // 60)

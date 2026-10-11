@@ -32,6 +32,8 @@ PROTECTED_PREFIXES = (
     "customer_notes/",
     "cash_transactions/",
     "purchase_attachments/",
+    # Selfie + lokasi dinas luar staff (2026-10-11).
+    "dinas_luar/",
 )
 
 

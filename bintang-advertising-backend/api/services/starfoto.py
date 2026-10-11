@@ -34,6 +34,8 @@ PENGATURAN = {
     'jumlah_studio': ('starfoto_jumlah_studio', '1', 'angka'),
     'dinas_luar_non_sesi': ('starfoto_dinas_luar_non_sesi', 'False', 'bool'),
     'uang_transport': ('starfoto_uang_transport', 'False', 'bool'),
+    # Rupiah per dinas luar per petugas (dipakai bila uang_transport aktif).
+    'uang_transport_nominal': ('starfoto_uang_transport_nominal', '0', 'rupiah'),
     'tahap_sesi_id': ('starfoto_tahap_sesi_id', '', 'id'),
     'tahap_asisten_id': ('starfoto_tahap_asisten_id', '', 'id'),
     'tahap_edit_id': ('starfoto_tahap_edit_id', '', 'id'),
@@ -50,6 +52,8 @@ def _ubah_tipe(nilai, tipe):
         return nilai.lower() in ('true', '1', 'ya', 'on')
     if tipe == 'teks':
         return nilai
+    if tipe == 'rupiah':
+        return int(nilai) if nilai.isdigit() else 0
     if tipe == 'id':
         return int(nilai) if nilai.isdigit() else None
     if tipe == 'angka':
@@ -93,6 +97,9 @@ def simpan_pengaturan(data):
                 continue
         elif tipe == 'bool':
             teks = 'True' if _ubah_tipe(teks, 'bool') else 'False'
+        elif tipe == 'rupiah' and not (teks or '0').isdigit():
+            galat[nama] = 'Nominal harus angka rupiah (tanpa titik/koma).'
+            continue
         elif tipe == 'teks' and teks and not teks.isdigit():
             galat[nama] = 'Nomor kantong harus berupa angka.'
             continue
@@ -328,6 +335,10 @@ def mulai_sesi(sesi_id, user):
         raise ValidationError({'error': 'Pesanan ini tidak sedang dalam tahap sesi foto.'})
     if sesi.status != 'terjadwal':
         raise ValidationError({'error': f'Sesi sudah {sesi.get_status_display().lower()}.'})
+    if sesi.lokasi == 'outdoor':
+        from .dinas_luar import dinas_sesi_berjalan
+        if not dinas_sesi_berjalan(user, sesi):
+            raise ValidationError({'error': "Sesi outdoor: tekan 'Mulai Dinas' di lokasi dulu (GPS + selfie)."})
     sesi.status = 'berlangsung'
     sesi.mulai_aktual = timezone.now()
     sesi.save(update_fields=['status', 'mulai_aktual'])

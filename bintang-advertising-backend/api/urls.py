@@ -10,6 +10,7 @@ from .views.starfoto import (
     AntreanSesiView, JadwalSesiView, PaketFotoViewSet, PengaturanStarfotoView, PesananFotoViewSet, SesiAksiView, SesiSayaView,
     UsulanTambahanDetailView,
 )
+from .views.dinas_luar import DinasLuarAktifView, DinasLuarListView, DinasLuarMulaiView, DinasLuarSelesaiView
 from .views.hr_kredensial_bridge import HRBridgeKredensialView
 from .views.hr_organisasi_bridge import HROrganisasiView
 from .views.insentif import JenisInsentifViewSet, JobInsentifView, InsentifPekerjaanDetailView
@@ -237,6 +238,11 @@ urlpatterns = [
     path('starfoto/sesi-saya/', SesiSayaView.as_view(), name='starfoto-sesi-saya'),
     path('starfoto/sesi/<int:pk>/<str:aksi>/', SesiAksiView.as_view(), name='starfoto-sesi-aksi'),
     path('starfoto/jadwal/', JadwalSesiView.as_view(), name='starfoto-jadwal'),
+    # Dinas luar staff (2026-10-11).
+    path('starfoto/dinas-luar/', DinasLuarListView.as_view(), name='dinas-luar'),
+    path('starfoto/dinas-luar/aktif/', DinasLuarAktifView.as_view(), name='dinas-luar-aktif'),
+    path('starfoto/dinas-luar/mulai/', DinasLuarMulaiView.as_view(), name='dinas-luar-mulai'),
+    path('starfoto/dinas-luar/<int:pk>/selesai/', DinasLuarSelesaiView.as_view(), name='dinas-luar-selesai'),
     path('starfoto/antrean-sesi/', AntreanSesiView.as_view(), name='starfoto-antrean-sesi'),
     path('starfoto/antrean-sesi/<int:pesanan_id>/klaim/', AntreanSesiView.as_view(), name='starfoto-klaim-sesi'),
     path('bridge/hr-employee-status/', HRBridgeSetStatusView.as_view(), name='hr-bridge-set-status'),

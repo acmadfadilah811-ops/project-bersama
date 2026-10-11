@@ -64,7 +64,7 @@ export default function PengaturanStarfotoPage() {
     setMenyimpan(true);
     try {
       const payload = {};
-      ['dp_minimal_persen', 'durasi_default_menit', 'jumlah_studio', 'kantong_terakhir', 'dinas_luar_non_sesi', 'uang_transport', ...TAHAP.map(([k]) => k)]
+      ['dp_minimal_persen', 'durasi_default_menit', 'jumlah_studio', 'kantong_terakhir', 'dinas_luar_non_sesi', 'uang_transport', 'uang_transport_nominal', ...TAHAP.map(([k]) => k)]
         .forEach((k) => { payload[k] = atur[k] ?? ''; });
       await apiClient.patch('/starfoto/pengaturan/', payload);
       notifySuccess('Tersimpan', 'Pengaturan StarFoto disimpan.');
@@ -158,6 +158,12 @@ export default function PengaturanStarfotoPage() {
               Uang transport staff (opsional)
             </label>
           </div>
+          {atur.uang_transport && (
+            <Kolom label="Uang transport per dinas (Rp)" bantuan="Per petugas per dinas luar. Untuk sesi outdoor otomatis masuk insentif SPK petugas (slip gaji).">
+              <input value={atur.uang_transport_nominal ?? 0} onChange={(e) => ubah('uang_transport_nominal', e.target.value.replace(/\D/g, ''))} className={`${kelasInput} max-w-xs`} />
+            </Kolom>
+          )}
+          <a href="/dinas-luar" className="inline-block text-xs font-bold text-[#0088FF] underline">Lihat rekap dinas luar</a>
           <button type="button" onClick={simpanPengaturan} disabled={menyimpan} className="inline-flex items-center gap-2 rounded-lg bg-slate-800 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
             <Save size={16} /> Simpan Pengaturan
           </button>

@@ -10,19 +10,20 @@ export const MENU_SESI_FOTO = { path: '/sesi-foto', label: 'Sesi Foto', isGroup:
 
 export default function useMenuSesiFoto() {
   const { user } = useAuth();
-  const [divisiIds, setDivisiIds] = useState([]);
+  const [boleh, setBoleh] = useState(false);
   const peranProduksi = ['staff', 'spv', 'kordiv'].includes(user?.role?.toLowerCase());
 
   useEffect(() => {
     if (!peranProduksi) return undefined;
     let aktif = true;
-    permintaan = permintaan || apiClient.get('/starfoto/pengaturan/').then((res) => res.data?.divisi_sesi_ids || []).catch(() => {
+    permintaan = permintaan || apiClient.get('/starfoto/pengaturan/').then((res) => Boolean(res.data?.menu_sesi_foto)).catch(() => {
       permintaan = null;
-      return [];
+      return false;
     });
-    permintaan.then((ids) => { if (aktif) setDivisiIds(ids); });
+    permintaan.then((boleh) => { if (aktif) setBoleh(boleh); });
     return () => { aktif = false; };
   }, [peranProduksi]);
 
-  return peranProduksi && Boolean(user?.divisi) && divisiIds.includes(Number(user.divisi));
+  // Ditentukan server: anggota divisi Sesi/Asisten Foto atau SPV/Kordiv atasannya.
+  return peranProduksi && boleh;
 }

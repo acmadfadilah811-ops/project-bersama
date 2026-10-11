@@ -73,6 +73,8 @@ export default function Layout() {
     { path: '/attendance', label: 'Absensi', icon: CalendarClock },
     { path: '/orders', label: 'Pesanan', icon: ShoppingCart },
     { path: '/jobs', label: 'Produksi', icon: Kanban },
+    // SPV/Kordiv fotografi (2026-10-11).
+    ...(tampilSesiFoto ? [{ path: '/sesi-foto', label: 'Sesi Foto', icon: Camera }] : []),
     { path: '/profile', label: 'Profil', icon: User },
   ];
 

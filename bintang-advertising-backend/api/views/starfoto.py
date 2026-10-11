@@ -31,7 +31,9 @@ from ..serializers_starfoto import (
     PaketFotoSerializer, PesananFotoSerializer, SesiFotoSerializer, UsulanTambahanSerializer,
 )
 from ..services import starfoto as svc
+from ..dinas_models import DinasLuar
 from ..starfoto_models import PaketFoto, PesananFoto, SesiFoto, UsulanTambahan
+from .dinas_luar import IsClockedInAtauDinasLuar
 
 
 class _BacaSemuaTulisPengelola(BasePermission):
@@ -55,11 +57,18 @@ class PengaturanStarfotoView(APIView):
     def get(self, request):
         data = svc.pengaturan()
         data['kantong_berikutnya'] = svc.kantong_berikutnya()
-        # Untuk tampilan: menu Sesi Foto hanya untuk anggota divisi tahap Sesi/Asisten.
+        # Untuk tampilan: menu Sesi Foto hanya untuk anggota divisi tahap Sesi/Asisten
+        # atau SPV/Kordiv yang membawahi divisi itu.
         data['divisi_sesi_ids'] = sorted(set(
             TahapProses.objects.filter(pk__in=[data['tahap_sesi_id'], data['tahap_asisten_id']])
             .values_list('divisi_id', flat=True)
         ))
+        user = request.user
+        if user.role in ('spv', 'kordiv'):
+            from ..permissions import get_subordinate_divisi_ids
+            data['menu_sesi_foto'] = bool(set(data['divisi_sesi_ids']) & set(get_subordinate_divisi_ids(user)))
+        else:
+            data['menu_sesi_foto'] = user.role == 'staff' and user.divisi_id in data['divisi_sesi_ids']
         return Response(data)
 
     def patch(self, request):
@@ -116,7 +125,7 @@ class UsulanTambahanDetailView(APIView):
 
 
 class SesiSayaView(APIView):
-    permission_classes = [IsAuthenticated, IsClockedIn]
+    permission_classes = [IsAuthenticated, IsClockedInAtauDinasLuar]
 
     def get(self, request):
         tanggal = parse_date(request.query_params.get('tanggal') or '') or timezone.localdate()
@@ -125,11 +134,17 @@ class SesiSayaView(APIView):
         ).filter(Q(fotografer=request.user) | Q(asisten=request.user)).filter(
             Q(mulai__date=tanggal) | Q(status='berlangsung'),
         ).exclude(pesanan__order__status_global='batal')
-        return Response(SesiFotoSerializer(qs, many=True).data)
+        data = SesiFotoSerializer(qs, many=True).data
+        # Status dinas luar milik user per sesi outdoor (untuk tombol Mulai/Selesai Dinas).
+        dinas = {d.sesi_id: d for d in DinasLuar.objects.filter(staff=request.user, sesi__in=[s.id for s in qs])}
+        for baris in data:
+            d = dinas.get(baris['id'])
+            baris['dinas_saya'] = {'id': d.id, 'status': d.status} if d else None
+        return Response(data)
 
 
 class SesiAksiView(APIView):
-    permission_classes = [IsAuthenticated, IsClockedIn]
+    permission_classes = [IsAuthenticated, IsClockedInAtauDinasLuar]
 
     def post(self, request, pk, aksi):
         get_object_or_404(SesiFoto, pk=pk)

@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Camera, CheckCircle2, Clock, MapPin, Play, Plus, RefreshCw, Users } from 'lucide-react';
+import { Camera, CheckCircle2, Clock, MapPin, Navigation, Play, Plus, RefreshCw, Users } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import { useAuth } from '../../../context/AuthContext';
 import { notifyApiError, notifySuccess } from '../../../utils/notify';
 import { uiConfirm } from '../../../utils/dialog';
 import UsulanTambahanModal from '../components/UsulanTambahanModal';
-import { formatJadwal, formatRupiah } from '../hooks/useStarfoto';
+import DinasLuarModal from '../components/DinasLuarModal';
+import KartuDinas, { jamMenit } from '../components/KartuDinas';
+import { formatJadwal, formatRupiah, usePengaturanStarfoto } from '../hooks/useStarfoto';
 
 // Halaman HP fotografer/asisten StarFoto (2026-10-11): Antrean Sesi (klaim
 // global) + Sesi Saya (mulai, usulkan tambahan, selesai).
@@ -46,18 +48,31 @@ export default function SesiFotoPage() {
   const [memuat, setMemuat] = useState(false);
   const [usulanUntuk, setUsulanUntuk] = useState(null);
   const [proses, setProses] = useState(null);
+  const [dinasAktif, setDinasAktif] = useState(null);
+  const [dinasList, setDinasList] = useState([]);
+  const [dinasModal, setDinasModal] = useState(null);
+  const { pengaturan } = usePengaturanStarfoto();
+  const atasan = ['spv', 'kordiv'].includes(user?.role);
 
   const muat = useCallback(async () => {
     setMemuat(true);
     try {
-      const [a, s, p] = await Promise.all([
+      // allSettled: staff yang berangkat langsung ke lokasi outdoor belum absen
+      // kantor -> Antrean (butuh absen) boleh gagal, Sesi Saya & dinas tetap tampil.
+      const [a, s, p, d, r] = await Promise.allSettled([
         apiClient.get('/starfoto/antrean-sesi/'),
         apiClient.get('/starfoto/sesi-saya/', { params: { tanggal } }),
         apiClient.get('/starfoto/pesanan/', { params: { status: 'sesi,menunggu_kasir', page_size: 100 } }),
+        apiClient.get('/starfoto/dinas-luar/aktif/'),
+        apiClient.get('/starfoto/dinas-luar/'),
       ]);
-      setAntrean(daftar(a.data));
-      setSesiSaya(daftar(s.data));
-      setPesanan(Object.fromEntries(daftar(p.data).map((x) => [x.id, x])));
+      const isi = (h) => (h.status === 'fulfilled' ? daftar(h.value.data) : []);
+      setAntrean(isi(a));
+      setSesiSaya(isi(s));
+      setPesanan(Object.fromEntries(isi(p).map((x) => [x.id, x])));
+      setDinasAktif(d.status === 'fulfilled' ? d.value.data?.aktif || null : null);
+      setDinasList(isi(r));
+      if (s.status === 'rejected') notifyApiError(s.reason, 'Gagal memuat sesi foto.');
     } catch (err) {
       notifyApiError(err, 'Gagal memuat sesi foto.');
     } finally {
@@ -101,7 +116,7 @@ export default function SesiFotoPage() {
   );
 
   return (
-    <div className="mx-auto max-w-2xl space-y-3 pb-6">
+    <div className="mx-auto max-w-2xl space-y-3 pb-24 md:pb-6">
       <div className="flex items-center justify-end md:justify-between">
         {/* Di HP judul sudah tampil di header atas. */}
         <h1 className="hidden items-center gap-2 text-lg font-bold text-slate-800 md:flex"><Camera size={20} /> Sesi Foto</h1>
@@ -109,7 +124,42 @@ export default function SesiFotoPage() {
           <RefreshCw size={18} className={memuat ? 'animate-spin' : ''} />
         </button>
       </div>
-      <div className="flex gap-2">{tombolTab('saya', 'Sesi Saya', sesiSaya.length)}{tombolTab('antrean', 'Antrean', antrean.length)}</div>
+      <div className="flex gap-2">
+        {tombolTab('saya', 'Sesi Saya', sesiSaya.length)}
+        {tombolTab('antrean', 'Antrean', antrean.length)}
+        {tombolTab('dinas', atasan ? 'Dinas Tim' : 'Dinas')}
+      </div>
+
+      {dinasAktif && (
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm">
+          <div>
+            <p className="font-bold text-amber-900">Sedang dinas sejak {jamMenit(dinasAktif.mulai_pada)}</p>
+            <p className="text-amber-800">{dinasAktif.tujuan}</p>
+          </div>
+          <button
+            type="button" onClick={() => setDinasModal({ mode: 'selesai', dinasId: dinasAktif.id })}
+            className="shrink-0 rounded-xl bg-amber-600 px-3 py-2 text-xs font-bold text-white"
+          >
+            Selesai Dinas
+          </button>
+        </div>
+      )}
+
+      {tab === 'dinas' && (
+        <div className="space-y-3">
+          {!atasan && pengaturan?.dinas_luar_non_sesi && !dinasAktif && (
+            <button
+              type="button" onClick={() => setDinasModal({ mode: 'mulai', nonSesi: true })}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#0088FF] py-3 text-sm font-bold text-white"
+            >
+              <Navigation size={16} /> Mulai Dinas Lain (di luar sesi)
+            </button>
+          )}
+          <p className="text-xs text-slate-400">Riwayat 7 hari terakhir{atasan ? ' — tim Anda' : ''}.</p>
+          {dinasList.map((dn) => <KartuDinas key={dn.id} d={dn} />)}
+          {!memuat && !dinasList.length && <p className="py-10 text-center text-sm text-slate-400">Belum ada dinas luar.</p>}
+        </div>
+      )}
 
       {tab === 'antrean' && (
         <div className="space-y-3">
@@ -171,7 +221,15 @@ export default function SesiFotoPage() {
                 )}
 
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                  {sesi.status === 'terjadwal' && (
+                  {sesi.status === 'terjadwal' && sesi.lokasi === 'outdoor' && !sesi.dinas_saya && (
+                    <button
+                      type="button" onClick={() => setDinasModal({ mode: 'mulai', sesi })}
+                      className="col-span-2 flex items-center justify-center gap-2 rounded-xl bg-[#0088FF] py-3 text-sm font-bold text-white"
+                    >
+                      <Navigation size={16} /> Mulai Dinas (GPS + selfie)
+                    </button>
+                  )}
+                  {sesi.status === 'terjadwal' && (sesi.lokasi !== 'outdoor' || sesi.dinas_saya) && (
                     <button
                       type="button" disabled={proses === `mulai-${sesi.id}`}
                       onClick={() => aksi(`mulai-${sesi.id}`, () => apiClient.post(`/starfoto/sesi/${sesi.id}/mulai/`), ['Sesi dimulai', 'Selamat bekerja!'])}
@@ -204,6 +262,17 @@ export default function SesiFotoPage() {
             <p className="py-10 text-center text-sm text-slate-400">Belum ada sesi Anda pada tanggal ini. Cek tab Antrean untuk mengambil sesi.</p>
           )}
         </div>
+      )}
+
+      {dinasModal && (
+        <DinasLuarModal
+          mode={dinasModal.mode}
+          sesi={dinasModal.sesi}
+          dinasId={dinasModal.dinasId}
+          nonSesi={dinasModal.nonSesi}
+          onClose={() => setDinasModal(null)}
+          onSaved={muat}
+        />
       )}
 
       {usulanUntuk && (

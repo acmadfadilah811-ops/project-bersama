@@ -6,6 +6,7 @@ import { useRingkasanPermintaanBahan } from '../features/requisition/hooks/useRi
 import useMenuSesiFoto, { MENU_SESI_FOTO } from '../features/starfoto/hooks/useMenuSesiFoto';
 import {
   Camera,
+  Navigation,
   ClipboardList,
   LayoutDashboard,
   LineChart,
@@ -129,6 +130,7 @@ const groupedMenuOwnerManager = [
     isGroup: true,
     submenus: [
       { path: '/attendance', label: 'Absensi', icon: CalendarClock },
+      { path: '/dinas-luar', label: 'Dinas Luar', icon: Navigation },
       { path: '/employees', label: 'Karyawan', icon: Briefcase },
       { path: '/divisi', label: 'Divisi & Tahap', icon: Layers },
       { path: '/announcements', label: 'Pengumuman', icon: Bell },
