@@ -102,8 +102,9 @@ export default function SesiFotoPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-3 pb-6">
-      <div className="flex items-center justify-between">
-        <h1 className="flex items-center gap-2 text-lg font-bold text-slate-800"><Camera size={20} /> Sesi Foto</h1>
+      <div className="flex items-center justify-end md:justify-between">
+        {/* Di HP judul sudah tampil di header atas. */}
+        <h1 className="hidden items-center gap-2 text-lg font-bold text-slate-800 md:flex"><Camera size={20} /> Sesi Foto</h1>
         <button type="button" onClick={muat} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="Muat ulang">
           <RefreshCw size={18} className={memuat ? 'animate-spin' : ''} />
         </button>

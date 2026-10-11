@@ -25,6 +25,7 @@ import NotifikasiKeuanganBell from './NotifikasiKeuanganBell';
 const PAGE_TITLES = {
   '/dashboard': 'Dashboard',
   '/staff-dashboard': 'Dashboard',
+  '/sesi-foto': 'Sesi Foto',
   '/orders': 'Pesanan',
   '/customer-supplier': 'Pelanggan & Supplier',
   '/jobs': 'Papan Produksi',
@@ -239,18 +240,23 @@ export default function Topbar() {
   return (
     <header className="h-[72px] bg-white border-b border-slate-200 shadow-sm flex items-center justify-between px-4 md:px-8 z-30 shrink-0 sticky top-0">
       {/* Kiri: Judul & Tanggal */}
-      <div className="flex flex-col justify-center min-w-0">
+      <div className="flex flex-col justify-center min-w-0 flex-1 md:flex-none">
         <h1
           className="font-bold text-slate-800 leading-tight truncate text-xl md:text-[22px]"
           title={getPageTitle()}
         >
           {getPageTitle()}
         </h1>
-        <p className="text-xs text-slate-400 font-medium mt-0.5">{currentDate}</p>
+        {/* HP: tanggal ringkas satu baris supaya tidak menumpuk dengan judul. */}
+        <p className="text-xs text-slate-400 font-medium mt-0.5 whitespace-nowrap truncate">
+          <span className="md:hidden">{new Date().toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+          <span className="hidden md:inline">{currentDate}</span>
+        </p>
       </div>
 
       {/* Tengah: Dynamic Island */}
-      <div className="flex items-center justify-center flex-1 relative z-50 max-w-md mx-4">
+      {/* HP: pill Cari/motivasi disembunyikan (layar sempit); notifikasi & pencarian aktif tetap tampil. */}
+      <div className={`${activeNotification || isSearchExpanded ? 'flex' : 'hidden md:flex'} items-center justify-center flex-1 relative z-50 max-w-md mx-2 md:mx-4`}>
         <style>{`
           @keyframes scaleUp {
             from { transform: scale(0.95); opacity: 0; }
@@ -324,7 +330,7 @@ export default function Topbar() {
           </div>
         ) : (
           /* C. IDLE / MUSIC STATE (UNIFIED PILL) */
-          <div className="flex items-center justify-between bg-slate-950 text-white h-9 px-4 rounded-full border border-slate-800 shadow-md select-none gap-3 transition-all duration-300 w-[340px]">
+          <div className="flex items-center justify-between bg-slate-950 text-white h-9 px-4 rounded-full border border-slate-800 shadow-md select-none gap-3 transition-all duration-300 w-full max-w-[340px]">
             {/* Left: Search Trigger */}
             <div
               onClick={() => setIsSearchExpanded(true)}
