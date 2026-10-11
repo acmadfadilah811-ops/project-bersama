@@ -64,7 +64,7 @@ export default function PengaturanStarfotoPage() {
     setMenyimpan(true);
     try {
       const payload = {};
-      ['dp_minimal_persen', 'durasi_default_menit', 'jumlah_studio', 'dinas_luar_non_sesi', 'uang_transport', ...TAHAP.map(([k]) => k)]
+      ['dp_minimal_persen', 'durasi_default_menit', 'jumlah_studio', 'kantong_terakhir', 'dinas_luar_non_sesi', 'uang_transport', ...TAHAP.map(([k]) => k)]
         .forEach((k) => { payload[k] = atur[k] ?? ''; });
       await apiClient.patch('/starfoto/pengaturan/', payload);
       notifySuccess('Tersimpan', 'Pengaturan StarFoto disimpan.');
@@ -135,6 +135,9 @@ export default function PengaturanStarfotoPage() {
               <input type="number" min={1} value={atur.jumlah_studio} onChange={(e) => ubah('jumlah_studio', e.target.value)} className={kelasInput} />
             </Kolom>
           </div>
+          <Kolom label="No. kantong terakhir" bantuan={`Pesanan foto berikutnya otomatis memakai ${atur.kantong_berikutnya || 'nomor ini + 1'}. Isi nomor amplop terakhir yang sudah terpakai.`}>
+            <input value={atur.kantong_terakhir || ''} onChange={(e) => ubah('kantong_terakhir', e.target.value.replace(/\D/g, ''))} placeholder="mis. 018594" className={`${kelasInput} max-w-xs`} />
+          </Kolom>
           <div className="grid gap-4 sm:grid-cols-2">
             {TAHAP.map(([kunci, label]) => (
               <Kolom key={kunci} label={label}>

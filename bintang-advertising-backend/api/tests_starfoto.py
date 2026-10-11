@@ -58,7 +58,7 @@ class _Dasar(APITestCase):
     def _checkout(self, orang=7, tambah=1, bayar=150000, **ekstra):
         mulai = (timezone.now() + datetime.timedelta(hours=1)).replace(microsecond=0)
         starfoto = {
-            'jenis': 'booking_wa', 'jumlah_orang': orang, 'nomor_kantong': '018595',
+            'jenis': 'booking_wa', 'jumlah_orang': orang,
             'fotografer_id': self.foto.id, 'asisten_id': self.asisten.id,
             'sesi': [{'mulai': mulai.isoformat(), 'lokasi': 'studio'}],
         }
@@ -89,7 +89,7 @@ class PesananStarfotoTests(_Dasar):
         order = Order.objects.get(pk=res.json()['id'])
         self.assertEqual(order.total_harga, 290000)  # 280000 + 1 orang x 10000
         pesanan = order.pesanan_foto
-        self.assertEqual((pesanan.status, pesanan.jumlah_orang, pesanan.nomor_kantong), ('sesi', 7, '018595'))
+        self.assertEqual((pesanan.status, pesanan.jumlah_orang, pesanan.nomor_kantong), ('sesi', 7, '000001'))
         jobs = JobBoard.objects.filter(order_item__order=order)
         self.assertEqual({(j.tahap_id, j.pic_staff_id) for j in jobs},
                          {(self.t_sesi.id, self.foto.id), (self.t_asisten.id, self.asisten.id)})
@@ -214,6 +214,18 @@ class PesananStarfotoTests(_Dasar):
         res = self.client.post(url, {'usulan': [{'id': usulan_id, 'setuju': False}], 'spk': spk}, format='json')
         self.assertIn('minimal satu file', res.json()['error'])
         self.assertEqual(PesananFoto.objects.get(pk=pesanan.pk).status, 'menunggu_kasir')
+
+
+class KantongTests(_Dasar):
+    def test_kantong_otomatis_berurutan_dan_manual_tidak_boleh_dobel(self):
+        SystemConfig.objects.create(key='starfoto_kantong_terakhir', value='018594')
+        self.assertEqual(self.client.get('/api/starfoto/pengaturan/').json()['kantong_berikutnya'], '018595')
+        self.assertEqual(self._checkout().status_code, 201)
+        jam = timezone.now() + datetime.timedelta(hours=3)
+        self.assertEqual(self._checkout(sesi=[{'mulai': jam.isoformat()}]).status_code, 201)
+        self.assertEqual(sorted(PesananFoto.objects.values_list('nomor_kantong', flat=True)), ['018595', '018596'])
+        res = self._checkout(nomor_kantong='018596', sesi=[{'mulai': (jam + datetime.timedelta(hours=2)).isoformat()}])
+        self.assertIn('sudah dipakai', res.json()['error'])
 
 
 class PengaturanStarfotoTests(_Dasar):

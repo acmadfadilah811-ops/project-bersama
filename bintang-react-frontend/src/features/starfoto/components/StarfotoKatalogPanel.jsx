@@ -15,11 +15,11 @@ export const TAB_STARFOTO = [
 
 export function StarfotoTabBar({ tab, setTab }) {
   return (
-    <div className="flex shrink-0 gap-1 border-b border-slate-200 bg-white px-4 pt-3">
+    <div className="flex shrink-0 items-center justify-center gap-10 border-b border-blue-400/40 bg-[#0088FF] px-6 pt-3 text-white">
       {TAB_STARFOTO.map(({ id, label, icon: Ikon }) => (
         <button
           key={id} type="button" onClick={() => setTab(id)}
-          className={`flex items-center gap-1.5 rounded-t-lg border-b-2 px-4 py-2 text-sm font-bold ${tab === id ? 'border-slate-800 text-slate-800' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+          className={`flex cursor-pointer items-center gap-1.5 border-b-2 pb-2.5 text-xs font-bold transition-all ${tab === id ? 'border-white text-white' : 'border-transparent text-blue-100 hover:text-white'}`}
         >
           <Ikon size={15} /> {label}
         </button>
@@ -46,16 +46,16 @@ function KatalogPaket({ paketList, paketAktifId, onPilihPaket }) {
     <div className="space-y-5">
       <div className="relative">
         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-        <input value={cari} onChange={(e) => setCari(e.target.value)} placeholder="Cari paket..." className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm" />
+        <input value={cari} onChange={(e) => setCari(e.target.value)} placeholder="Cari paket..." className="w-full max-w-sm rounded-md bg-white py-1.5 pl-9 pr-3 text-sm shadow-sm outline-none" />
       </div>
       {kelompok.map(([kategori, daftar]) => (
         <div key={kategori}>
-          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">{kategori}</p>
+          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-blue-100">{kategori}</p>
           <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-2">
             {daftar.map((p) => (
               <button
                 key={p.id} type="button" onClick={() => onPilihPaket(p)}
-                className={`rounded-xl border p-3 text-left transition-colors ${paketAktifId === p.id ? 'border-slate-800 bg-slate-50' : 'border-slate-200 bg-white hover:border-slate-400'}`}
+                className={`cursor-pointer rounded-lg bg-white p-3 text-left shadow-sm transition-all hover:shadow-md ${paketAktifId === p.id ? 'ring-2 ring-white ring-offset-2 ring-offset-[#0088FF]' : ''}`}
               >
                 <p className="text-sm font-bold leading-tight text-slate-800">{p.nama}</p>
                 <p className="mt-1 text-sm font-semibold text-slate-700">{formatRupiah(p.harga)}</p>
@@ -67,7 +67,7 @@ function KatalogPaket({ paketList, paketAktifId, onPilihPaket }) {
           </div>
         </div>
       ))}
-      {!kelompok.length && <p className="py-10 text-center text-sm text-slate-400">Paket tidak ditemukan.</p>}
+      {!kelompok.length && <p className="py-10 text-center text-sm text-blue-100">Paket tidak ditemukan.</p>}
     </div>
   );
 }
@@ -96,22 +96,22 @@ function KatalogPigura({ onTambahPigura }) {
         {pigura.map((p) => (
           <button
             key={p.id} type="button" onClick={() => setDipilih(p.id)}
-            className={`w-full rounded-lg px-3 py-2 text-left text-sm ${dipilih === p.id ? 'bg-slate-800 font-bold text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+            className={`w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm ${dipilih === p.id ? 'bg-white font-bold text-[#0088FF] shadow-sm' : 'text-blue-50 hover:bg-blue-600/60'}`}
           >
             {p.nama.replace(/^Pigura /, '')}
           </button>
         ))}
-        {!pigura.length && <p className="text-sm text-slate-400">Belum ada pigura.</p>}
+        {!pigura.length && <p className="text-sm text-blue-100">Belum ada pigura.</p>}
       </div>
       {produk && (
         <div>
-          <p className="mb-1 text-sm font-bold text-slate-800">{produk.nama}</p>
-          <p className="mb-3 text-xs text-slate-500">Pilih ukuran. Catat kode warna di catatan item.</p>
+          <p className="mb-1 text-sm font-bold text-white">{produk.nama}</p>
+          <p className="mb-3 text-xs text-blue-100">Pilih ukuran. Catat kode warna di catatan item.</p>
           <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-2">
             {(produk.variants || []).map((v) => (
               <button
                 key={v.id} type="button" onClick={() => onTambahPigura(produk, v)}
-                className="rounded-xl border border-slate-200 bg-white p-3 text-left hover:border-slate-400"
+                className="cursor-pointer rounded-lg bg-white p-3 text-left shadow-sm transition-all hover:shadow-md"
               >
                 <p className="text-sm font-bold text-slate-800">{v.nama_varian}</p>
                 <p className="text-sm text-slate-700">{formatRupiah(v.harga_jual_toko)}</p>
@@ -127,7 +127,7 @@ function KatalogPigura({ onTambahPigura }) {
 
 export default function StarfotoKatalogPanel({ tab, setTab, paketList, paketAktifId, onPilihPaket, onTambahPigura }) {
   return (
-    <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#F8FAFC]">
+    <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#0088FF]">
       <StarfotoTabBar tab={tab} setTab={setTab} />
       <div className="flex-1 overflow-y-auto p-4">
         {tab === 'paket'

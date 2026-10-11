@@ -54,6 +54,7 @@ class PengaturanStarfotoView(APIView):
 
     def get(self, request):
         data = svc.pengaturan()
+        data['kantong_berikutnya'] = svc.kantong_berikutnya()
         # Untuk tampilan: menu Sesi Foto hanya untuk anggota divisi tahap Sesi/Asisten.
         data['divisi_sesi_ids'] = sorted(set(
             TahapProses.objects.filter(pk__in=[data['tahap_sesi_id'], data['tahap_asisten_id']])
@@ -82,6 +83,9 @@ class PesananFotoViewSet(viewsets.ReadOnlyModelViewSet):
         )
         if user.role not in svc.ROLE_KASIR:
             qs = qs.filter(Q(sesi__fotografer=user) | Q(sesi__asisten=user)).distinct()
+        order_param = self.request.query_params.get('order')
+        if order_param:
+            qs = qs.filter(order_id=order_param)
         status_param = self.request.query_params.get('status')
         if status_param:
             qs = qs.filter(status__in=status_param.split(','))

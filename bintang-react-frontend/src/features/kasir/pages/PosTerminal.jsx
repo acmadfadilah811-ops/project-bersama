@@ -892,6 +892,15 @@ export default function PosTerminal({ onToggleSidebar }) {
         ...(starfoto.item ? { starfoto: payloadStarfoto(starfoto.data) } : { spk: spkPayload }),
       });
       const order = res.data;
+      if (starfoto.item) {
+        // Nomor kantong dibuat otomatis oleh server -- tampilkan supaya ditulis di amplop.
+        apiClient.get('/starfoto/pesanan/', { params: { order: order.id } })
+          .then((r) => {
+            const pf = (Array.isArray(r.data) ? r.data : r.data?.results || [])[0];
+            if (pf?.nomor_kantong) notifySuccess(`No. Kantong ${pf.nomor_kantong}`, 'Tulis nomor ini di amplop kantong pesanan foto.');
+          })
+          .catch(() => {});
+      }
       if (Array.isArray(order.stok_kritis) && order.stok_kritis.length > 0) {
         setStokKritisModal({ items: order.stok_kritis, mode: 'info' });
       }
@@ -1273,7 +1282,6 @@ export default function PosTerminal({ onToggleSidebar }) {
               setSelectedCartItemKey(null);
               setRightPanelMode('catalog');
             }}
-            onBayar={handleBayarClick}
           />
         ) : rightPanelMode === 'itemDetail' && selectedCartItem ? (
           <PosItemDetailPanel

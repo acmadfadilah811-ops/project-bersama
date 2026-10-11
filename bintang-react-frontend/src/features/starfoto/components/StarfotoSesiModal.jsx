@@ -12,7 +12,6 @@ const LOKASI_DEFAULT = { studio: 'studio', outdoor: 'outdoor', studio_outdoor: '
 export default function StarfotoSesiModal({ paket, item, pengaturan, awal, totalKeranjang, onSimpan, onClose }) {
   const [jenis, setJenis] = useState(awal?.jenis || 'walkin');
   const [jumlahOrang, setJumlahOrang] = useState(awal?.jumlah_orang || paket.kuota_orang || 1);
-  const [nomorKantong, setNomorKantong] = useState(awal?.nomor_kantong || '');
   const [background, setBackground] = useState(awal?.background || '');
   const [butuhAsisten, setButuhAsisten] = useState(Boolean(awal?.butuh_asisten));
   const [sesi, setSesi] = useState(() => {
@@ -43,7 +42,7 @@ export default function StarfotoSesiModal({ paket, item, pengaturan, awal, total
       data: {
         jenis,
         jumlah_orang: Number(jumlahOrang) || 1,
-        nomor_kantong: nomorKantong.trim(),
+        nomor_kantong: '',
         background: background.trim(),
         butuh_asisten: butuhAsisten,
         sesi: terisi.map((s) => ({ mulai: s.mulai || null, lokasi: s.lokasi, alamat: s.lokasi === 'outdoor' ? s.alamat : '' })),
@@ -86,7 +85,7 @@ export default function StarfotoSesiModal({ paket, item, pengaturan, awal, total
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1 block font-semibold text-slate-600">No. Kantong</label>
-              <input value={nomorKantong} onChange={(e) => setNomorKantong(e.target.value)} className="w-full rounded-lg border border-slate-300 p-2" />
+              <p className="rounded-lg border border-dashed border-slate-300 p-2 text-slate-500">Otomatis{pengaturan?.kantong_berikutnya ? ` · ${pengaturan.kantong_berikutnya}` : ''}</p>
             </div>
             <div>
               <label className="mb-1 block font-semibold text-slate-600">Background</label>

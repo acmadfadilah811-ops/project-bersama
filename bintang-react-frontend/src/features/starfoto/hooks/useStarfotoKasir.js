@@ -9,7 +9,7 @@ import { usePaketFoto, usePengaturanStarfoto } from './useStarfoto';
 export default function useStarfotoKasir(cart) {
   const { user } = useAuth();
   const { paket } = usePaketFoto();
-  const { pengaturan } = usePengaturanStarfoto();
+  const { pengaturan, muatUlang } = usePengaturanStarfoto();
   const [data, setData] = useState(null);
   const [modalTerbuka, setModalTerbuka] = useState(false);
 
@@ -38,7 +38,7 @@ export default function useStarfotoKasir(cart) {
     modalTerbuka,
     bukaModal: () => setModalTerbuka(true),
     tutupModal: () => setModalTerbuka(false),
-    reset: () => { setData(null); setModalTerbuka(false); },
+    reset: () => { setData(null); setModalTerbuka(false); muatUlang(); },
   };
 }
 

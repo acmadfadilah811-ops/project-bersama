@@ -38,6 +38,8 @@ PENGATURAN = {
     'tahap_asisten_id': ('starfoto_tahap_asisten_id', '', 'id'),
     'tahap_edit_id': ('starfoto_tahap_edit_id', '', 'id'),
     'tahap_cetak_id': ('starfoto_tahap_cetak_id', '', 'id'),
+    # Nomor kantong terakhir yang terpakai; pesanan baru = nomor ini + 1.
+    'kantong_terakhir': ('starfoto_kantong_terakhir', '', 'teks'),
 }
 
 
@@ -46,6 +48,8 @@ def _ubah_tipe(nilai, tipe):
     nilai = '' if nilai is None else str(nilai).strip()
     if tipe == 'bool':
         return nilai.lower() in ('true', '1', 'ya', 'on')
+    if tipe == 'teks':
+        return nilai
     if tipe == 'id':
         return int(nilai) if nilai.isdigit() else None
     if tipe == 'angka':
@@ -89,10 +93,49 @@ def simpan_pengaturan(data):
                 continue
         elif tipe == 'bool':
             teks = 'True' if _ubah_tipe(teks, 'bool') else 'False'
+        elif tipe == 'teks' and teks and not teks.isdigit():
+            galat[nama] = 'Nomor kantong harus berupa angka.'
+            continue
         SystemConfig.objects.update_or_create(key=kunci, defaults={'value': teks})
     if galat:
         raise ValidationError(galat)
     return pengaturan()
+
+
+def _naik(nomor):
+    return str(int(nomor) + 1).zfill(len(nomor))
+
+
+def kantong_berikutnya():
+    """Perkiraan nomor kantong (amplop bernomor urut) pesanan berikutnya:
+    nomor terakhir di Pengaturan + 1, panjang digit dipertahankan (018595 -> 018596)."""
+    terakhir = pengaturan()['kantong_terakhir']
+    return _naik(terakhir) if terakhir else '000001'
+
+
+def ambil_kantong_baru():
+    """Nomor kantong otomatis saat pesanan disimpan. Baris pengaturan dikunci
+    (select_for_update) supaya dua kasir bersamaan tidak mendapat nomor sama;
+    nomor yang sudah terpakai (mis. diisi manual) dilewati."""
+    kunci = PENGATURAN['kantong_terakhir'][0]
+    SystemConfig.objects.get_or_create(key=kunci, defaults={'value': ''})
+    cfg = SystemConfig.objects.select_for_update().get(key=kunci)
+    nomor = _naik(cfg.value.strip()) if cfg.value.strip().isdigit() else '000001'
+    while PesananFoto.objects.filter(nomor_kantong=nomor).exists():
+        nomor = _naik(nomor)
+    cfg.value = nomor
+    cfg.save(update_fields=['value'])
+    return nomor
+
+
+def _cek_kantong(nomor):
+    if not nomor:
+        return
+    dipakai = PesananFoto.objects.filter(nomor_kantong__iexact=nomor).exclude(status='batal').exclude(
+        order__status_global='batal',
+    ).select_related('order').first()
+    if dipakai:
+        raise ValidationError({'error': f'No. kantong {nomor} sudah dipakai pesanan {dipakai.order_id} ({dipakai.order.nama}).'})
 
 
 def _tahap(nama_pengaturan, label):
@@ -204,9 +247,14 @@ def terbitkan_dari_checkout(order, data, user, jumlah_bayar):
     if not isinstance(daftar_sesi, list) or not 1 <= len(daftar_sesi) <= paket.jumlah_sesi:
         raise ValidationError({'error': f'Jumlah jadwal sesi harus 1 sampai {paket.jumlah_sesi}.'})
 
+    nomor_kantong = str(data.get('nomor_kantong') or '').strip()[:30]
+    if nomor_kantong:
+        _cek_kantong(nomor_kantong)
+    else:
+        nomor_kantong = ambil_kantong_baru()
     pesanan = PesananFoto.objects.create(
         order=order, paket_item=paket_item, jenis=jenis, jumlah_orang=jumlah_orang,
-        nomor_kantong=str(data.get('nomor_kantong') or '')[:30],
+        nomor_kantong=nomor_kantong,
         background=str(data.get('background') or '')[:100],
     )
     durasi_bawaan = paket.durasi_menit or pengaturan()['durasi_default_menit'] or 30
