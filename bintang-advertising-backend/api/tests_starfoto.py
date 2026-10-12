@@ -175,6 +175,35 @@ class PesananStarfotoTests(_Dasar):
         self.assertEqual(res.status_code, 400)
         self.assertIn('Edit Foto', str(res.content))
 
+    def test_order_tidak_bisa_diselesaikan_sebelum_sesi_dikonfirmasi(self):
+        pesanan, sesi = self._pesanan_siap_konfirmasi()
+        url = f'/api/orders/{pesanan.order_id}/selesaikan/'
+        self.client.force_authenticate(self.kasir)
+        res = self.client.post(url, {}, format='json')
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('belum selesai', res.json()['error'])
+        self.client.force_authenticate(self.foto)
+        self.client.post(f'/api/starfoto/sesi/{sesi.id}/selesai/')
+        self.client.force_authenticate(self.kasir)
+        res = self.client.post(url, {}, format='json')
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('belum dikonfirmasi', res.json()['error'])
+        self.client.post(f'/api/starfoto/pesanan/{pesanan.id}/konfirmasi/', {
+            'pilihan_file': [{'nomor_file': '0001'}],
+            'spk': {'deadline': str(timezone.localdate()), 'deadline_jam': '17:00'},
+        }, format='json')
+        self.assertEqual(self.client.post(url, {}, format='json').status_code, 200)
+
+    def test_sesi_saya_mendatang_tampil_dengan_jadwalnya(self):
+        lusa = (timezone.now() + datetime.timedelta(days=2)).replace(microsecond=0)
+        res = self._checkout(sesi=[{'mulai': lusa.isoformat(), 'lokasi': 'studio'}])
+        self.assertEqual(res.status_code, 201, res.content)
+        self.client.force_authenticate(self.foto)
+        self.assertEqual(self.client.get('/api/starfoto/sesi-saya/').json(), [])
+        data = self.client.get('/api/starfoto/sesi-saya/', {'mendatang': 1}).json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['mulai'][:10], str(timezone.localtime(lusa).date()))
+
     def test_hak_akses(self):
         pesanan, sesi = self._pesanan_siap_konfirmasi()
         self.client.force_authenticate(self.lain)

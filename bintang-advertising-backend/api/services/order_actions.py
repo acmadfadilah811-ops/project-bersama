@@ -134,6 +134,15 @@ def selesaikan_order(order, actor):
     if order.status_global == 'batal':
         raise SelesaikanOrderError('Pesanan yang sudah dibatalkan tidak dapat diselesaikan.')
 
+    # Pesanan sesi foto StarFoto (2026-10-12): kasir tidak boleh menyelesaikan
+    # order sebelum sesi foto berjalan/selesai dan dikonfirmasi kasir.
+    from ..starfoto_models import PesananFoto
+    pesanan_foto = PesananFoto.objects.filter(order=order).first()
+    if pesanan_foto and pesanan_foto.status == 'sesi':
+        raise SelesaikanOrderError('Sesi foto pesanan ini belum selesai. Order baru bisa diselesaikan setelah sesi foto selesai.')
+    if pesanan_foto and pesanan_foto.status == 'menunggu_kasir':
+        raise SelesaikanOrderError('Sesi foto sudah selesai tetapi belum dikonfirmasi kasir (pilih file & usulan tambahan).')
+
     old_status = order.status_global
     order.status_global = 'selesai'
     order._current_user = actor

@@ -13,6 +13,16 @@ import { formatJadwal, formatRupiah, usePengaturanStarfoto } from '../hooks/useS
 // global) + Sesi Saya (mulai, usulkan tambahan, selesai).
 
 const hariIni = () => new Date().toLocaleDateString('sv-SE');
+const hariDari = (iso) => new Date(iso).toLocaleDateString('sv-SE');
+
+// "Hari ini" / "Besok" / "Rab, 14 Okt" untuk pengelompokan Sesi Saya.
+function labelHari(hari) {
+  const besok = new Date();
+  besok.setDate(besok.getDate() + 1);
+  if (hari === hariIni()) return 'Hari ini';
+  if (hari === besok.toLocaleDateString('sv-SE')) return 'Besok';
+  return new Date(`${hari}T00:00:00`).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short' });
+}
 const daftar = (data) => (Array.isArray(data) ? data : data?.results || []);
 
 const STATUS_SESI = {
@@ -42,6 +52,8 @@ export default function SesiFotoPage() {
   const { user } = useAuth();
   const [tab, setTab] = useState('saya');
   const [tanggal, setTanggal] = useState(hariIni());
+  // 'mendatang' = hari ini + jadwal ke depan; 'tanggal' = satu tanggal pilihan.
+  const [modeSaya, setModeSaya] = useState('mendatang');
   const [antrean, setAntrean] = useState([]);
   const [sesiSaya, setSesiSaya] = useState([]);
   const [pesanan, setPesanan] = useState({});
@@ -61,7 +73,7 @@ export default function SesiFotoPage() {
       // kantor -> Antrean (butuh absen) boleh gagal, Sesi Saya & dinas tetap tampil.
       const [a, s, p, d, r] = await Promise.allSettled([
         apiClient.get('/starfoto/antrean-sesi/'),
-        apiClient.get('/starfoto/sesi-saya/', { params: { tanggal } }),
+        apiClient.get('/starfoto/sesi-saya/', { params: modeSaya === 'mendatang' ? { mendatang: 1 } : { tanggal } }),
         apiClient.get('/starfoto/pesanan/', { params: { status: 'sesi,menunggu_kasir', page_size: 100 } }),
         apiClient.get('/starfoto/dinas-luar/aktif/'),
         apiClient.get('/starfoto/dinas-luar/'),
@@ -78,7 +90,7 @@ export default function SesiFotoPage() {
     } finally {
       setMemuat(false);
     }
-  }, [tanggal]);
+  }, [tanggal, modeSaya]);
 
   useEffect(() => { muat(); }, [muat]);
 
@@ -187,17 +199,34 @@ export default function SesiFotoPage() {
 
       {tab === 'saya' && (
         <div className="space-y-3">
-          <input
-            type="date" value={tanggal} onChange={(e) => setTanggal(e.target.value || hariIni())}
-            className="w-full rounded-xl border border-slate-300 bg-white p-2.5 text-sm"
-          />
-          {sesiSaya.map((sesi) => {
+          <div className="flex gap-2">
+            <button
+              type="button" onClick={() => setModeSaya('mendatang')}
+              className={`shrink-0 rounded-xl px-3 text-sm font-bold ${modeSaya === 'mendatang' ? 'bg-slate-800 text-white' : 'border border-slate-300 bg-white text-slate-600'}`}
+            >
+              Mendatang
+            </button>
+            <input
+              type="date" value={tanggal}
+              onChange={(e) => { setTanggal(e.target.value || hariIni()); setModeSaya('tanggal'); }}
+              className={`w-full rounded-xl border bg-white p-2.5 text-sm ${modeSaya === 'tanggal' ? 'border-slate-800' : 'border-slate-300 text-slate-400'}`}
+            />
+          </div>
+          {sesiSaya.map((sesi, i) => {
             const detail = pesanan[sesi.pesanan_id];
             const usulan = detail?.usulan || [];
             const saya = sesi.fotografer === user?.id ? 'Fotografer' : 'Asisten';
-            const bisaUsul = detail && ['sesi', 'menunggu_kasir'].includes(detail.status);
+            const hari = hariDari(sesi.mulai);
+            // Sesi hari lain hanya ditampilkan sebagai jadwal; Mulai & usulan pada hari sesi.
+            const hariH = hari === hariIni() || sesi.status === 'berlangsung';
+            const bisaUsul = hariH && detail && ['sesi', 'menunggu_kasir'].includes(detail.status);
+            const judulHari = modeSaya === 'mendatang' && (i === 0 || hariDari(sesiSaya[i - 1].mulai) !== hari);
             return (
-              <div key={sesi.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div key={sesi.id} className="space-y-2">
+              {judulHari && (
+                <p className="px-1 pt-1 text-xs font-bold uppercase tracking-wide text-slate-500">{labelHari(hari)}</p>
+              )}
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
                 <div className="mb-2 flex items-start justify-between gap-2">
                   <div>
                     <p className="font-bold text-slate-800">{sesi.pelanggan}</p>
@@ -220,8 +249,13 @@ export default function SesiFotoPage() {
                   </div>
                 )}
 
+                {!hariH && sesi.status === 'terjadwal' && (
+                  <p className="mt-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-500">
+                    Jadwal sesi: {labelHari(hari)}. Tombol Mulai Sesi muncul pada hari sesi.
+                  </p>
+                )}
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                  {sesi.status === 'terjadwal' && sesi.lokasi === 'outdoor' && !sesi.dinas_saya && (
+                  {hariH && sesi.status === 'terjadwal' && sesi.lokasi === 'outdoor' && !sesi.dinas_saya && (
                     <button
                       type="button" onClick={() => setDinasModal({ mode: 'mulai', sesi })}
                       className="col-span-2 flex items-center justify-center gap-2 rounded-xl bg-[#0088FF] py-3 text-sm font-bold text-white"
@@ -229,7 +263,7 @@ export default function SesiFotoPage() {
                       <Navigation size={16} /> Mulai Dinas (GPS + selfie)
                     </button>
                   )}
-                  {sesi.status === 'terjadwal' && (sesi.lokasi !== 'outdoor' || sesi.dinas_saya) && (
+                  {hariH && sesi.status === 'terjadwal' && (sesi.lokasi !== 'outdoor' || sesi.dinas_saya) && (
                     <button
                       type="button" disabled={proses === `mulai-${sesi.id}`}
                       onClick={() => aksi(`mulai-${sesi.id}`, () => apiClient.post(`/starfoto/sesi/${sesi.id}/mulai/`), ['Sesi dimulai', 'Selamat bekerja!'])}
@@ -256,10 +290,13 @@ export default function SesiFotoPage() {
                   )}
                 </div>
               </div>
+              </div>
             );
           })}
           {!memuat && !sesiSaya.length && (
-            <p className="py-10 text-center text-sm text-slate-400">Belum ada sesi Anda pada tanggal ini. Cek tab Antrean untuk mengambil sesi.</p>
+            <p className="py-10 text-center text-sm text-slate-400">
+              {modeSaya === 'mendatang' ? 'Belum ada sesi Anda hari ini maupun ke depan.' : 'Belum ada sesi Anda pada tanggal ini.'} Cek tab Antrean untuk mengambil sesi.
+            </p>
           )}
         </div>
       )}

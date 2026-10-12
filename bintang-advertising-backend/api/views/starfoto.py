@@ -135,12 +135,22 @@ class SesiSayaView(APIView):
     permission_classes = [IsAuthenticated, IsClockedInAtauDinasLuar]
 
     def get(self, request):
-        tanggal = parse_date(request.query_params.get('tanggal') or '') or timezone.localdate()
+        hari_ini = timezone.localdate()
+        if request.query_params.get('mendatang'):
+            # Semua sesi hari ini + sesi terjadwal 30 hari ke depan (2026-10-12),
+            # supaya fotografer melihat jadwalnya tanpa memilih tanggal satu per satu.
+            rentang = (Q(mulai__date=hari_ini) | Q(
+                mulai__date__gt=hari_ini, mulai__date__lte=hari_ini + datetime.timedelta(days=30),
+                status__in=['terjadwal', 'berlangsung'],
+            ))
+        else:
+            tanggal = parse_date(request.query_params.get('tanggal') or '') or hari_ini
+            rentang = Q(mulai__date=tanggal)
         qs = SesiFoto.objects.select_related(
             'pesanan__order', 'pesanan__paket_item', 'fotografer', 'asisten',
         ).filter(Q(fotografer=request.user) | Q(asisten=request.user)).filter(
-            Q(mulai__date=tanggal) | Q(status='berlangsung'),
-        ).exclude(pesanan__order__status_global='batal')
+            rentang | Q(status='berlangsung'),
+        ).exclude(pesanan__order__status_global='batal').order_by('mulai')
         data = SesiFotoSerializer(qs, many=True).data
         # Status dinas luar milik user per sesi outdoor (untuk tombol Mulai/Selesai Dinas).
         dinas = {d.sesi_id: d for d in DinasLuar.objects.filter(staff=request.user, sesi__in=[s.id for s in qs])}
