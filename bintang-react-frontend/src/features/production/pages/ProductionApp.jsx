@@ -698,10 +698,10 @@ export default function ProductionApp() {
   }
 
   return (
-    <div className="flex flex-col gap-2 p-2 h-screen w-screen bg-[#f1f5f9] text-[#0f172a] overflow-hidden font-sans text-[11px] select-none">
+    <div className="flex flex-col gap-2 p-2 min-h-screen w-full md:h-screen md:w-screen bg-[#f1f5f9] text-[#0f172a] md:overflow-hidden font-sans text-[11px] select-none">
       {/* TOP BAR (HEADER STATUS) */}
-      <div className="h-12 bg-white border border-[#e2e8f0] rounded-lg px-4 flex items-center justify-between shadow-sm shrink-0">
-        <div className="flex items-center gap-3">
+      <div className="md:h-12 bg-white border border-[#e2e8f0] rounded-lg px-3 py-2 md:px-4 md:py-0 flex items-center justify-between gap-2 shadow-sm shrink-0">
+        <div className="flex items-center gap-2 md:gap-3 min-w-0">
           <button
             onClick={() => (window.location.href = getDashboardUrl())}
             className="flex items-center gap-1 px-2.5 py-1 text-slate-600 hover:text-indigo-600 hover:bg-slate-50 border border-slate-200 rounded-md font-extrabold transition-all cursor-pointer text-[10px]"
@@ -710,18 +710,18 @@ export default function ProductionApp() {
             <ArrowLeft size={11} />
             <span>Kembali</span>
           </button>
-          <span className="text-slate-350 font-light text-slate-300">/</span>
+          <span className="hidden md:inline text-slate-300 font-light">/</span>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <div className="w-5 h-5 rounded bg-indigo-650 bg-indigo-600 text-white flex items-center justify-center font-black text-[10px]">
               P
             </div>
-            <div className="font-extrabold text-[12px] text-slate-800 tracking-wider uppercase">
+            <div className="hidden md:block font-extrabold text-[12px] text-slate-800 tracking-wider uppercase">
               Papan Produksi
             </div>
-            <span className="text-slate-300 mx-1">|</span>
+            <span className="hidden md:inline text-slate-300 mx-1">|</span>
             <div className="text-[10px] font-extrabold text-slate-500 tracking-wider uppercase flex items-center gap-1">
-              <span className="text-slate-400 text-[9px]">DIVISI:</span>
+              <span className="hidden md:inline text-slate-400 text-[9px]">DIVISI:</span>
               <span className="bg-indigo-50 text-indigo-650 text-indigo-600 px-2 py-0.5 rounded font-black text-[9px] uppercase border border-indigo-100">
                 {['owner', 'manager', 'admin'].includes(user?.role)
                   ? 'ADMIN'
@@ -731,8 +731,8 @@ export default function ProductionApp() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4 text-[10px]">
-          <span className="bg-[#f8fafc] border border-[#e2e8f0] px-3 py-1 rounded-full font-bold flex items-center gap-1.5 text-slate-700 capitalize">
+        <div className="flex items-center gap-4 text-[10px] shrink-0">
+          <span className="hidden md:flex bg-[#f8fafc] border border-[#e2e8f0] px-3 py-1 rounded-full font-bold items-center gap-1.5 text-slate-700 capitalize">
             <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
             <span>
               {user?.username} ({user?.role})
@@ -744,24 +744,24 @@ export default function ProductionApp() {
 
       {/* THREE-COLUMN GRID */}
       <div
-        className="flex-1 min-h-0 grid gap-2 transition-all duration-300 relative"
+        className="flex-1 min-h-0 grid grid-cols-1 md:[grid-template-columns:var(--kolom-papan)] gap-2 transition-all duration-300 relative"
         style={{
-          gridTemplateColumns: `${leftCollapsed ? '60px' : '220px'} 1fr ${rightCollapsed ? '0px' : '220px'}`,
+          '--kolom-papan': `${leftCollapsed ? '60px' : '220px'} 1fr ${rightCollapsed ? '0px' : '220px'}`,
         }}
       >
         {/* ================= PANEL KIRI ================= */}
-        <div className="relative flex flex-col gap-2 min-h-0 overflow-y-auto pr-0.5">
+        <div className="relative flex flex-col gap-2 min-h-0 md:overflow-y-auto md:pr-0.5">
           <button
             onClick={() => setLeftCollapsed(!leftCollapsed)}
-            className="absolute top-1 right-[-4px] z-10 w-4 h-4 rounded-full border border-slate-200 bg-white shadow-sm flex items-center justify-center font-extrabold text-slate-400 hover:text-indigo-600 hover:border-indigo-600 transition-all cursor-pointer"
+            className="hidden md:flex absolute top-1 right-[-4px] z-10 w-4 h-4 rounded-full border border-slate-200 bg-white shadow-sm items-center justify-center font-extrabold text-slate-400 hover:text-indigo-600 hover:border-indigo-600 transition-all cursor-pointer"
           >
             {leftCollapsed ? <ChevronRight size={10} /> : <ChevronLeft size={10} />}
           </button>
 
           {!leftCollapsed ? (
             <>
-              {/* Profile & Absensi Card */}
-              <div className="bg-white border border-[#e2e8f0] rounded-lg p-3 flex flex-col gap-2 shadow-sm shrink-0">
+              {/* Profile & Absensi Card -- di HP disembunyikan (absensi lewat menu utama). */}
+              <div className="hidden md:flex bg-white border border-[#e2e8f0] rounded-lg p-3 flex-col gap-2 shadow-sm shrink-0">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-extrabold text-sm uppercase">
                     {user?.username?.[0] || 'U'}
@@ -794,8 +794,8 @@ export default function ProductionApp() {
               </div>
 
               {/* Navigation Menu */}
-              <div className="bg-white border border-[#e2e8f0] rounded-lg p-3 flex flex-col gap-1 shadow-sm">
-                <div className="text-[8.5px] font-extrabold uppercase tracking-wide text-slate-400 border-b border-slate-100 pb-1.5 mb-1">
+              <div className="bg-white border border-[#e2e8f0] rounded-lg p-1.5 md:p-3 flex flex-row md:flex-col gap-1 shadow-sm overflow-x-auto">
+                <div className="hidden md:block text-[8.5px] font-extrabold uppercase tracking-wide text-slate-400 border-b border-slate-100 pb-1.5 mb-1">
                   NAVIGASI {isAdminMode ? 'ADMIN' : (['spv', 'kordiv'].includes(user?.role?.toLowerCase()) ? 'TIM' : 'STAFF')}
                 </div>
                 {menuItems.map((item) => {
@@ -805,9 +805,9 @@ export default function ProductionApp() {
                     <button
                       key={item.id}
                       onClick={() => handleTabChange(item.id)}
-                      className={`w-full flex items-center gap-2 p-2 rounded-md transition-all text-left text-[10.5px] cursor-pointer ${
+                      className={`shrink-0 whitespace-nowrap md:w-full flex items-center gap-2 p-2 rounded-md transition-all text-left text-[10.5px] cursor-pointer ${
                         isActive
-                          ? 'bg-indigo-50 text-indigo-600 font-bold border-l-2 border-indigo-600'
+                          ? 'bg-indigo-50 text-indigo-600 font-bold md:border-l-2 border-indigo-600'
                           : 'hover:bg-slate-50 text-slate-500 hover:text-slate-800'
                       }`}
                     >
@@ -821,8 +821,8 @@ export default function ProductionApp() {
               {/* Sub-menu Kanban Personal -- klik kategori -> panel tengah
                   full render kategori itu saja (bukan 4 kolom sekaligus). */}
               {!isAdminMode && activeTab === 'kanban_personal' && (
-                <div className="bg-white border border-[#e2e8f0] rounded-lg p-3 flex flex-col gap-1 shadow-sm">
-                  <div className="text-[8.5px] font-extrabold uppercase tracking-wide text-slate-400 border-b border-slate-100 pb-1.5 mb-1">
+                <div className="bg-white border border-[#e2e8f0] rounded-lg p-1.5 md:p-3 flex flex-row md:flex-col gap-1 shadow-sm overflow-x-auto">
+                  <div className="hidden md:block text-[8.5px] font-extrabold uppercase tracking-wide text-slate-400 border-b border-slate-100 pb-1.5 mb-1">
                     KANBAN PERSONAL
                   </div>
                   {[
@@ -836,14 +836,14 @@ export default function ProductionApp() {
                       <button
                         key={cat.id}
                         onClick={() => { setSelectedWorkspaceJob(null); setKanbanCategory(cat.id); }}
-                        className={`w-full flex items-center gap-2 p-2 rounded-md transition-all text-left text-[10.5px] cursor-pointer ${
+                        className={`shrink-0 whitespace-nowrap md:w-full flex items-center gap-2 p-2 rounded-md transition-all text-left text-[10.5px] cursor-pointer ${
                           isActive
-                            ? 'bg-indigo-50 text-indigo-600 font-bold border-l-2 border-indigo-600'
+                            ? 'bg-indigo-50 text-indigo-600 font-bold md:border-l-2 border-indigo-600'
                             : 'hover:bg-slate-50 text-slate-500 hover:text-slate-800'
                         }`}
                       >
                         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${cat.dot}`} />
-                        <span className="flex-1">{cat.label}</span>
+                        <span className="md:flex-1">{cat.label}</span>
                         <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full shrink-0 ${isActive ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}>
                           {cat.count}
                         </span>
@@ -883,7 +883,7 @@ export default function ProductionApp() {
         </div>
 
         {/* ================= PANEL TENGAH (WORKSPACE UTAMA) ================= */}
-        <div className="bg-white border border-[#e2e8f0] rounded-lg p-3 shadow-md flex flex-col min-h-0 overflow-y-auto">
+        <div className="bg-white border border-[#e2e8f0] rounded-lg p-2 md:p-3 shadow-md flex flex-col min-h-[60vh] md:min-h-0 md:overflow-y-auto">
           {/* Stats Bar */}
           {activeTab === 'global_list' && isAdminMode && (
             <div className="grid grid-cols-3 gap-2 mb-3 shrink-0">
@@ -955,16 +955,16 @@ export default function ProductionApp() {
 
         {/* ================= PANEL KANAN ================= */}
         {!rightCollapsed ? (
-          <div className="relative flex flex-col gap-2 min-h-0 overflow-y-auto pl-0.5">
+          <div className="relative flex flex-col gap-2 min-h-0 md:overflow-y-auto md:pl-0.5">
             <button
               onClick={() => setRightCollapsed(!rightCollapsed)}
-              className="absolute top-1 left-[-4px] z-10 w-4 h-4 rounded-full border border-slate-200 bg-white shadow-sm flex items-center justify-center font-extrabold text-slate-400 hover:text-indigo-600 hover:border-indigo-600 transition-all cursor-pointer"
+              className="hidden md:flex absolute top-1 left-[-4px] z-10 w-4 h-4 rounded-full border border-slate-200 bg-white shadow-sm items-center justify-center font-extrabold text-slate-400 hover:text-indigo-600 hover:border-indigo-600 transition-all cursor-pointer"
             >
               <ChevronRight size={10} />
             </button>
 
-            {/* Customer Details Context Widget */}
-            <div className="bg-white border border-[#e2e8f0] rounded-lg p-3 flex flex-col gap-2 shadow-sm shrink-0">
+            {/* Customer Details Context Widget -- di HP hanya saat ada tugas dipilih. */}
+            <div className={`${selectedWorkspaceJob ? 'flex' : 'hidden md:flex'} bg-white border border-[#e2e8f0] rounded-lg p-3 flex-col gap-2 shadow-sm shrink-0`}>
               <div className="text-[8.5px] font-extrabold uppercase tracking-wide text-slate-400 border-b border-slate-100 pb-1.5">
                 DATA KONSUMEN TERKAIT
               </div>
@@ -1014,7 +1014,7 @@ export default function ProductionApp() {
             </div>
 
             {/* Calendar Widget */}
-            <div className="bg-white border border-[#e2e8f0] rounded-lg p-3 flex flex-col gap-2 shadow-sm shrink-0">
+            <div className="hidden md:flex bg-white border border-[#e2e8f0] rounded-lg p-3 flex-col gap-2 shadow-sm shrink-0">
               <div className="text-[8.5px] font-extrabold uppercase tracking-wide text-slate-400 border-b border-slate-100 pb-1.5">
                 JADWAL KALENDER
               </div>
@@ -1099,7 +1099,7 @@ export default function ProductionApp() {
           </div>
         ) : (
           // Collapsed Right Handle
-          <div className="w-0 relative">
+          <div className="hidden md:block w-0 relative">
             <button
               onClick={() => setRightCollapsed(!rightCollapsed)}
               className="absolute top-1 left-[-11px] z-10 w-4 h-4 rounded-full border border-slate-200 bg-white shadow-sm flex items-center justify-center font-extrabold text-slate-400 hover:text-indigo-600 hover:border-indigo-600 transition-all cursor-pointer"
