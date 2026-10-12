@@ -25,12 +25,12 @@ class GerbangAbsensiHRTest(APITestCase):
         cache.clear()
         self.addCleanup(cache.clear)
         self.staff = CustomUser.objects.create_user(
-            username='staff.absen', password='Rahasia123!', role='staff', hr_employee_id=501,
+            username='staff.absen', password='Rahasia123!', role='staff', hr_employee_id=501, email='staff.absen@uji.local',
         )
-        self.owner = CustomUser.objects.create_user(username='owner.absen', password='Rahasia123!', role='owner')
+        self.owner = CustomUser.objects.create_user(username='owner.absen', password='Rahasia123!', role='owner', email='owner.absen@uji.local')
 
     def _login(self, username):
-        return self.client.post('/api/auth/login/', {'username': username, 'password': 'Rahasia123!'}, secure=True)
+        return self.client.post('/api/auth/login/', {'email': f'{username}@uji.local', 'password': 'Rahasia123!'}, secure=True)
 
     def test_login_ditolak_kalau_belum_absen(self):
         with mock.patch(TANYA, return_value=jawab('belum')):
@@ -84,7 +84,7 @@ class GerbangAbsensiHRTest(APITestCase):
         self.assertEqual(res.status_code, 200)
 
     def test_akun_belum_terhubung_hr_ditolak(self):
-        CustomUser.objects.create_user(username='kasir.lepas', password='Rahasia123!', role='kasir')
+        CustomUser.objects.create_user(username='kasir.lepas', password='Rahasia123!', role='kasir', email='kasir.lepas@uji.local')
         with mock.patch(TANYA) as tanya:
             res = self._login('kasir.lepas')
         self.assertEqual(res.status_code, 403)
@@ -108,10 +108,10 @@ class GerbangMatiTest(APITestCase):
     """Saklar mati (default, dan selalu mati saat tes lain) -> perilaku lama."""
 
     def test_login_tanpa_tanya_hr(self):
-        CustomUser.objects.create_user(username='staff.lama', password='Rahasia123!', role='staff')
+        CustomUser.objects.create_user(username='staff.lama', password='Rahasia123!', role='staff', email='staff.lama@uji.local')
         with mock.patch(TANYA) as tanya:
             res = self.client.post(
-                '/api/auth/login/', {'username': 'staff.lama', 'password': 'Rahasia123!'}, secure=True,
+                '/api/auth/login/', {'email': 'staff.lama@uji.local', 'password': 'Rahasia123!'}, secure=True,
             )
         self.assertEqual(res.status_code, 200)
         tanya.assert_not_called()

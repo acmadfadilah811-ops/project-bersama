@@ -10,10 +10,10 @@ class KunciAkunTests(APITestCase):
     def setUp(self):
         cache.clear()
         self.user = get_user_model().objects.create_user(
-            username='kunci_uji', password='SandiBenar2026x', role='staff')
+            username='kunci_uji', password='SandiBenar2026x', role='staff', email='kunci_uji@uji.local')
 
     def login(self, sandi, username='kunci_uji'):
-        return self.client.post('/api/auth/login/', {'username': username, 'password': sandi}, format='json')
+        return self.client.post('/api/auth/login/', {'email': f'{username}@uji.local', 'password': sandi}, format='json')
 
     def test_tiga_kali_salah_lalu_terkunci_10_menit_walau_sandi_benar(self):
         for i in range(2):
@@ -79,13 +79,13 @@ class KunciIpDanOtpTests(APITestCase):
     def setUp(self):
         cache.clear()
         U = get_user_model()
-        self.a = U.objects.create_user(username='ip_a', password='SandiA2026xx', role='staff', email='a@test.local')
-        self.b = U.objects.create_user(username='ip_b', password='SandiB2026xx', role='staff', email='b@test.local')
-        self.c = U.objects.create_user(username='ip_c', password='SandiC2026xx', role='staff', email='c@test.local')
-        self.d = U.objects.create_user(username='ip_d', password='SandiD2026xx', role='staff', email='d@test.local')
+        self.a = U.objects.create_user(username='ip_a', password='SandiA2026xx', role='staff', email='ip_a@uji.local')
+        self.b = U.objects.create_user(username='ip_b', password='SandiB2026xx', role='staff', email='ip_b@uji.local')
+        self.c = U.objects.create_user(username='ip_c', password='SandiC2026xx', role='staff', email='ip_c@uji.local')
+        self.d = U.objects.create_user(username='ip_d', password='SandiD2026xx', role='staff', email='ip_d@uji.local')
 
     def login(self, username, sandi, ip='9.9.9.9', otp=None):
-        data = {'username': username, 'password': sandi}
+        data = {'email': f'{username}@uji.local', 'password': sandi}
         if otp:
             data['otp'] = otp
         return self.client.post('/api/auth/login/', data, format='json', REMOTE_ADDR=ip)
@@ -113,7 +113,7 @@ class KunciIpDanOtpTests(APITestCase):
     def test_otp_unlock_membuka_akun_sendiri_walau_ip_terkunci_tanpa_membuka_utk_akun_lain(self):
         for u in (self.a, self.b, self.c):
             self.login(u.username, 'salah')
-        self.client.post('/api/auth/login/unlock-otp/', {'username': 'ip_a'}, format='json')
+        self.client.post('/api/auth/login/unlock-otp/', {'email': 'ip_a@uji.local'}, format='json')
         otp = self.ambil_otp()
         r = self.login('ip_a', 'SandiA2026xx', otp=otp)
         self.assertEqual(r.status_code, 200, r.content)   # akun a terbuka via OTP
@@ -124,14 +124,14 @@ class KunciIpDanOtpTests(APITestCase):
     def test_otp_salah_tidak_membuka_kunci(self):
         for u in (self.a, self.b, self.c):
             self.login(u.username, 'salah')
-        self.client.post('/api/auth/login/unlock-otp/', {'username': 'ip_a'}, format='json')
+        self.client.post('/api/auth/login/unlock-otp/', {'email': 'ip_a@uji.local'}, format='json')
         r = self.login('ip_a', 'SandiA2026xx', otp='000000')
         self.assertEqual(r.status_code, 429)
 
     def test_otp_sekali_pakai(self):
         for u in (self.a, self.b, self.c):
             self.login(u.username, 'salah')
-        self.client.post('/api/auth/login/unlock-otp/', {'username': 'ip_a'}, format='json')
+        self.client.post('/api/auth/login/unlock-otp/', {'email': 'ip_a@uji.local'}, format='json')
         otp = self.ambil_otp()
         self.assertEqual(self.login('ip_a', 'SandiA2026xx', otp=otp).status_code, 200)
         # ip masih terkunci utk akun lain; otp lama dipakai lagi -> tidak lagi valid
@@ -139,7 +139,7 @@ class KunciIpDanOtpTests(APITestCase):
         self.assertEqual(r.status_code, 429)
 
     def test_unlock_otp_request_akun_tidak_ada_tetap_respons_generik(self):
-        r = self.client.post('/api/auth/login/unlock-otp/', {'username': 'hantu_tidak_ada'}, format='json')
+        r = self.client.post('/api/auth/login/unlock-otp/', {'email': 'hantu_tidak_ada@uji.local'}, format='json')
         self.assertEqual(r.status_code, 200)
         self.assertIn('Jika akun ada', r.json()['detail'])
 
@@ -154,3 +154,40 @@ class KunciIpDanOtpTests(APITestCase):
         import re
         from django.core import mail
         return re.search(r'KODE: (\d{6})', mail.outbox[-1].body).group(1)
+
+
+class LoginEmailTests(APITestCase):
+    """Login ERP memakai email saja (keputusan user 2026-10-12)."""
+
+    def setUp(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+        U = get_user_model()
+        self.user = U.objects.create_user(username='email_uji', password='SandiBenar2026x', role='staff',
+                                          email='Email.Uji@Contoh.com')
+        self.owner = U.objects.create_user(username='owner_email', password='OwnerSandi2026x', role='owner',
+                                           email='owner_email@uji.local')
+
+    def test_username_ditolak_email_diterima_tanpa_peduli_huruf_besar(self):
+        r = self.client.post('/api/auth/login/', {'username': 'email_uji', 'password': 'SandiBenar2026x'}, format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('email', r.json()['detail'])
+        r = self.client.post('/api/auth/login/', {'email': ' email.uji@contoh.COM ', 'password': 'SandiBenar2026x'}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+
+    def test_akun_nonaktif_tidak_bisa_login(self):
+        self.user.is_active = False
+        self.user.save()
+        r = self.client.post('/api/auth/login/', {'email': 'email.uji@contoh.com', 'password': 'SandiBenar2026x'}, format='json')
+        self.assertEqual(r.status_code, 401)
+
+    def test_buat_akun_wajib_email_unik(self):
+        self.client.force_authenticate(self.owner)
+        data = {'username': 'akun_baru', 'password': 'SandiBaru2026x', 'role': 'staff'}
+        self.assertEqual(self.client.post('/api/auth/create-user/', data, format='json').status_code, 400)
+        r = self.client.post('/api/auth/create-user/', {**data, 'email': 'EMAIL.uji@contoh.com'}, format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('sudah dipakai', r.json()['error'])
+        r = self.client.post('/api/auth/create-user/', {**data, 'email': 'akun_baru@uji.local'}, format='json')
+        self.assertIn(r.status_code, (200, 201), r.content)
+        self.assertEqual(get_user_model().objects.get(username='akun_baru').email, 'akun_baru@uji.local')

@@ -170,6 +170,17 @@ class HRBridgeCreateAccountView(APIView):
         )
 
         existing = CustomUser.objects.filter(hr_employee_id=hr_employee_id).first()
+        # Email = identitas login ERP (2026-10-12): tidak boleh sama dengan akun aktif lain.
+        if email:
+            dobel = CustomUser.objects.filter(email__iexact=email, is_active=True)
+            if existing:
+                dobel = dobel.exclude(pk=existing.pk)
+            if dobel.exists():
+                return Response(
+                    {'error': f"Email '{email}' sudah dipakai akun Bintang lain; email login harus unik."},
+                    # 400, bukan 409: HR membaca 409 sebagai username bentrok dan mencoba kandidat lain.
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
         if existing:
             # Idempotent: panggilan berikutnya (mis. HR simpan ulang data
             # kerja yang sama) UPDATE akun yang sudah ada, tidak bikin dobel.

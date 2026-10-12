@@ -158,7 +158,7 @@ export default function Login() {
     setSuccessMsg('');
     try {
       const res = await apiClient.post('/auth/forgot-password/request/', {
-        username: forgotUsername.trim(),
+        email: forgotUsername.trim(),
       });
       const token = res.data.reset_token;
       const bolehLagi = Date.now() + (res.data.resend_after || 900) * 1000;
@@ -211,7 +211,7 @@ export default function Login() {
     setSuccessMsg('');
     try {
       const res = await apiClient.post('/auth/forgot-password/verify/', {
-        username: forgotUsername.trim(),
+        email: forgotUsername.trim(),
         otp: forgotOtp,
         new_password: forgotNewPassword,
         reset_token: forgotResetToken,
@@ -235,7 +235,7 @@ export default function Login() {
   const handleKirimOtpUnlock = async () => {
     setOtpUnlockLoading(true);
     try {
-      await apiClient.post('/auth/login/unlock-otp/', { username });
+      await apiClient.post('/auth/login/unlock-otp/', { email: username.trim() });
       setOtpUnlockDikirim(true);
     } finally {
       setOtpUnlockLoading(false);
@@ -247,7 +247,7 @@ export default function Login() {
     setLoading(true);
     setError('');
     try {
-      const payload = { username, password };
+      const payload = { email: username.trim(), password };
       if (otpUnlock) payload.otp = otpUnlock;
       const res = await apiClient.post('/auth/login/', payload);
       setKunciSampai(0);
@@ -397,8 +397,7 @@ export default function Login() {
               </div>
               <h2 className="text-xl font-bold text-slate-800 tracking-wide">Lupa Kata Sandi</h2>
               <p className="text-sm text-slate-500">
-                Masukkan username Anda. Kode OTP pemulihan sandi akan dikirim ke email terdaftar
-                Anda.
+                Masukkan email akun Anda. Kode OTP pemulihan sandi akan dikirim ke email tersebut.
               </p>
             </div>
 
@@ -410,17 +409,18 @@ export default function Login() {
               </div>
             )}
 
-            {/* Username Input */}
+            {/* Email Input */}
             <div className="flex h-[52px] shadow-sm rounded-lg overflow-hidden border border-slate-200 focus-within:border-blue-400 focus-within:ring-1 focus-within:ring-blue-400 transition-all bg-slate-50">
               <div className="w-[52px] h-full bg-slate-100 flex items-center justify-center text-slate-400 border-r border-slate-200">
                 <User size={20} strokeWidth={2.5} />
               </div>
               <input
-                type="text"
+                type="email"
+                autoComplete="email"
                 value={forgotUsername}
                 onChange={(e) => setForgotPasswordUsername(e.target.value)}
                 className="flex-1 h-full bg-transparent px-4 outline-none text-slate-800 placeholder-slate-400 text-sm font-semibold"
-                placeholder="Username"
+                placeholder="Email"
                 required
                 autoFocus
               />
@@ -584,7 +584,7 @@ export default function Login() {
               className="flex items-center justify-center gap-2 text-slate-400 hover:text-slate-700 text-sm transition-colors mt-2 cursor-pointer"
             >
               <ArrowLeft size={16} />
-              <span>Ganti Username</span>
+              <span>Ganti Email</span>
             </button>
           </form>
         ) : (
@@ -597,18 +597,19 @@ export default function Login() {
               </div>
             )}
 
-            {/* Username Input */}
+            {/* Email Input */}
             <div className="flex h-[52px] shadow-sm rounded-lg overflow-hidden border border-slate-200 focus-within:border-blue-400 focus-within:ring-1 focus-within:ring-blue-400 transition-all bg-slate-50">
               <div className="w-[52px] h-full bg-slate-100 flex items-center justify-center text-slate-400 border-r border-slate-200">
                 <User size={20} strokeWidth={2.5} />
               </div>
               <input
-                type="text"
-                id="username"
+                type="email"
+                id="email"
+                autoComplete="email"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className="flex-1 h-full bg-transparent px-4 outline-none text-slate-800 placeholder-slate-400 text-sm font-semibold"
-                placeholder="Username"
+                placeholder="Email"
                 required
                 autoFocus
               />

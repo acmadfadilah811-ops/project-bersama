@@ -14,17 +14,17 @@ class LupaPasswordTests(APITestCase):
     def setUp(self):
         cache.clear()
         self.user = get_user_model().objects.create_user(
-            username='operatora3', password='LamaSandi1', role='staff', email='op@contoh.test')
+            username='operatora3', password='LamaSandi1', role='staff', email='operatora3@contoh.test')
 
     def minta(self, username='operatora3'):
-        return self.client.post('/api/auth/forgot-password/request/', {'username': username}, format='json')
+        return self.client.post('/api/auth/forgot-password/request/', {'email': f'{username}@contoh.test'}, format='json')
 
     def ambil_otp(self):
         return re.search(r'(\d{6})', mail.outbox[-1].body).group(1)
 
     def verifikasi(self, token, otp, sandi, username='operatora3'):
         return self.client.post('/api/auth/forgot-password/verify/', {
-            'username': username, 'otp': otp, 'new_password': sandi, 'reset_token': token,
+            'email': f'{username}@contoh.test', 'otp': otp, 'new_password': sandi, 'reset_token': token,
         }, format='json')
 
     def test_alur_normal_reset_berhasil_dan_bisa_login(self):
@@ -47,7 +47,7 @@ class LupaPasswordTests(APITestCase):
     def test_kirim_ulang_setelah_15_menit_diizinkan_dan_otp_lama_mati(self):
         r1 = self.minta()
         otp_lama = self.ambil_otp()
-        cache.delete('pw_reset_cd:operatora3')   # simulasi jeda 15 menit habis
+        cache.delete('pw_reset_cd:operatora3@contoh.test')   # simulasi jeda 15 menit habis
         r2 = self.minta()
         self.assertEqual(r2.status_code, 200)
         self.assertEqual(len(mail.outbox), 2)
@@ -82,7 +82,7 @@ class LupaPasswordTests(APITestCase):
     def test_tanpa_reset_token_ditolak_seperti_bug_lama(self):
         self.minta()
         x = self.client.post('/api/auth/forgot-password/verify/', {
-            'username': 'operatora3', 'otp': self.ambil_otp(), 'new_password': 'SandiBaru2026x',
+            'email': 'operatora3@contoh.test', 'otp': self.ambil_otp(), 'new_password': 'SandiBaru2026x',
         }, format='json')
         self.assertEqual(x.status_code, 400)
 

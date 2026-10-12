@@ -123,6 +123,18 @@ class CustomUserSerializer(serializers.ModelSerializer):
         rep['file_pkwt'] = protected_media_url(instance.file_pkwt, self.context.get('request'))
         return rep
 
+    def validate_email(self, value):
+        # Email dipakai untuk login (2026-10-12): wajib & unik di antara akun aktif.
+        value = (value or '').strip().lower()
+        if '@' not in value:
+            raise serializers.ValidationError('Email wajib diisi karena dipakai untuk login.')
+        lain = CustomUser.objects.filter(email__iexact=value, is_active=True)
+        if self.instance is not None:
+            lain = lain.exclude(pk=self.instance.pk)
+        if lain.exists():
+            raise serializers.ValidationError('Email ini sudah dipakai akun lain.')
+        return value
+
     def validate(self, attrs):
         # Penempatan kerja harus konsisten: divisi milik satu unit bisnis tidak boleh
         # dipasang ke akun unit bisnis lain. Hanya diperiksa saat divisi/unit_bisnis

@@ -13,10 +13,10 @@ from users.models import SessionToken
 class LogoutMencabutSesiTests(APITestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user(
-            username='logout_uji', password='SandiLama2026x', role='staff')
+            username='logout_uji', password='SandiLama2026x', role='staff', email='logout_uji@uji.local')
 
     def login(self):
-        r = self.client.post('/api/auth/login/', {'username': 'logout_uji', 'password': 'SandiLama2026x'}, format='json')
+        r = self.client.post('/api/auth/login/', {'email': 'logout_uji@uji.local', 'password': 'SandiLama2026x'}, format='json')
         self.assertEqual(r.status_code, 200, r.content)
         return r.json()['access'], r.json()['refresh']
 
@@ -62,10 +62,10 @@ class VerifyLoginSessionTokenTests(APITestCase):
         # matikan sementara supaya alur verifikasi IP baru benar-benar teruji.
         with mock.patch.dict(os.environ, {'SECURITY_BYPASS_IP_VERIFICATION': 'False'}):
             # Login sukses pertama dari IP A supaya ada riwayat LOGIN_SUCCESS.
-            self.client.post('/api/auth/login/', {'username': 'verify_uji', 'password': 'SandiLama2026x'}, format='json',
+            self.client.post('/api/auth/login/', {'email': 'verify@test.local', 'password': 'SandiLama2026x'}, format='json',
                               REMOTE_ADDR='10.1.1.1')
             # Login kedua dari IP B -> requires_verification -> OTP dikirim, bukan token langsung.
-            r = self.client.post('/api/auth/login/', {'username': 'verify_uji', 'password': 'SandiLama2026x'}, format='json',
+            r = self.client.post('/api/auth/login/', {'email': 'verify@test.local', 'password': 'SandiLama2026x'}, format='json',
                                   REMOTE_ADDR='10.1.1.2')
             self.assertEqual(r.json().get('detail'), 'VERIFICATION_REQUIRED', r.content)
             temp_token = r.json()['temp_token']
@@ -86,11 +86,11 @@ class SessionRevokeBenarBenarMencabutTests(APITestCase):
     tetap sah dipakai selamanya."""
 
     def setUp(self):
-        self.owner = get_user_model().objects.create_user(username='owner_cabut', password='OwnerSandi2026x', role='owner')
-        self.staff = get_user_model().objects.create_user(username='staff_cabut', password='StaffSandi2026x', role='staff')
+        self.owner = get_user_model().objects.create_user(username='owner_cabut', password='OwnerSandi2026x', role='owner', email='owner_cabut@uji.local')
+        self.staff = get_user_model().objects.create_user(username='staff_cabut', password='StaffSandi2026x', role='staff', email='staff_cabut@uji.local')
 
     def login_staff(self):
-        r = self.client.post('/api/auth/login/', {'username': 'staff_cabut', 'password': 'StaffSandi2026x'}, format='json')
+        r = self.client.post('/api/auth/login/', {'email': 'staff_cabut@uji.local', 'password': 'StaffSandi2026x'}, format='json')
         self.assertEqual(r.status_code, 200, r.content)
         return r.json()['access'], r.json()['refresh']
 
@@ -152,7 +152,7 @@ class SatuAkunSatuSesiTests(APITestCase):
             email='dua_device@test.local')
 
     def login(self, **extra):
-        r = self.client.post('/api/auth/login/', {'username': 'dua_device_uji', 'password': 'SandiLama2026x'}, format='json', **extra)
+        r = self.client.post('/api/auth/login/', {'email': 'dua_device@test.local', 'password': 'SandiLama2026x'}, format='json', **extra)
         self.assertEqual(r.status_code, 200, r.content)
         return r.json()['access'], r.json()['refresh']
 
@@ -180,8 +180,8 @@ class SatuAkunSatuSesiTests(APITestCase):
         self.assertEqual(SessionToken.objects.filter(user=self.user, is_active=True).count(), 1)
 
     def test_login_baru_tidak_mencabut_sesi_user_lain(self):
-        other = get_user_model().objects.create_user(username='user_lain_uji', password='SandiLama2026x', role='staff')
-        r = self.client.post('/api/auth/login/', {'username': 'user_lain_uji', 'password': 'SandiLama2026x'}, format='json')
+        other = get_user_model().objects.create_user(username='user_lain_uji', password='SandiLama2026x', role='staff', email='user_lain_uji@uji.local')
+        r = self.client.post('/api/auth/login/', {'email': 'user_lain_uji@uji.local', 'password': 'SandiLama2026x'}, format='json')
         self.assertEqual(r.status_code, 200, r.content)
         other_session_id = SessionToken.objects.get(user=other, is_active=True).id
 
@@ -198,7 +198,7 @@ class SatuAkunSatuSesiTests(APITestCase):
         session1_id = SessionToken.objects.get(user=self.user, is_active=True).id
 
         with mock.patch.dict(os.environ, {'SECURITY_BYPASS_IP_VERIFICATION': 'False'}):
-            r = self.client.post('/api/auth/login/', {'username': 'dua_device_uji', 'password': 'SandiLama2026x'}, format='json',
+            r = self.client.post('/api/auth/login/', {'email': 'dua_device@test.local', 'password': 'SandiLama2026x'}, format='json',
                                   REMOTE_ADDR='10.2.2.2')
             self.assertEqual(r.json().get('detail'), 'VERIFICATION_REQUIRED', r.content)
             temp_token = r.json()['temp_token']

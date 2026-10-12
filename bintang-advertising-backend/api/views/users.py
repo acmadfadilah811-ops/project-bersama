@@ -117,6 +117,9 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         if request.user.role == 'manager' and target.role in ['owner', 'manager']:
             return Response({'error': 'Manager tidak boleh membuka kunci akun Owner atau Manager.'}, status=status.HTTP_403_FORBIDDEN)
         buka_kunci_login(target.username)
+        # Sejak login memakai email (2026-10-12) hitungan gagal dicatat per email.
+        if target.email:
+            buka_kunci_login(target.email.strip().lower())
         logger.warning('Kunci login %s dibuka oleh %s', target.username, request.user.username)
         return Response({'message': f'Kunci login untuk {target.username} dibuka.'})
 
@@ -163,6 +166,7 @@ class CreateUserView(APIView):
     def post(self, request):
         username = request.data.get('username', '').strip()
         password = request.data.get('password', '').strip()
+        email = str(request.data.get('email') or '').strip().lower()
         role     = request.data.get('role', 'staff')
         if role in ('owner', 'manager') and request.user.role != 'owner':
             return Response({'error': 'Hanya Owner yang dapat membuat akun Owner/Manager.'}, status=403)
@@ -180,6 +184,14 @@ class CreateUserView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # Login ERP memakai email (2026-10-12): wajib diisi & unik.
+        if '@' not in email:
+            return Response({'error': 'Email wajib diisi karena dipakai untuk login.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if CustomUser.objects.filter(email__iexact=email, is_active=True).exists():
+            return Response({'error': f'Email "{email}" sudah dipakai akun lain.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
         # Cek duplikat username
         if CustomUser.objects.filter(username=username).exists():
             return Response(
@@ -190,6 +202,7 @@ class CreateUserView(APIView):
         # Buat user baru
         user = CustomUser(
             username=username,
+            email=email,
             role=role,
             no_hp=no_hp,
             first_name=first_name,

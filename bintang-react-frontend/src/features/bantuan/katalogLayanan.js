@@ -42,9 +42,9 @@ export const KATALOG_LAYANAN = [
     judul: 'Masuk dan keluar aplikasi',
     ringkas: 'Login dengan username dan sandi yang sama untuk ERP, HR/mobile, dan CRM.',
     peran: ['*'],
-    kataKunci: ['login', 'masuk', 'logout', 'keluar', 'terkunci', 'otp', 'username'],
+    kataKunci: ['login', 'masuk', 'logout', 'keluar', 'terkunci', 'otp', 'username', 'email'],
     langkah: [
-      'Buka halaman login, isi Username dan Password, tekan MASUK.',
+      'Buka halaman login, isi Email dan Password, tekan MASUK.',
       'Bila login dari jaringan/perangkat baru, kode OTP dikirim ke email akun. Isi kode lalu tekan VERIFIKASI & MASUK.',
       'Salah sandi 3 kali berturut-turut membuat akun terkunci 10 menit. Tunggu, atau minta kode OTP pembuka kunci dari email.',
       'Untuk keluar, tekan Logout di bawah sidebar. Sesi juga berakhir otomatis setelah 30 menit tanpa aktivitas.',
@@ -62,7 +62,7 @@ export const KATALOG_LAYANAN = [
     kataKunci: ['lupa', 'password', 'sandi', 'reset', 'otp'],
     langkah: [
       'Di halaman login tekan Lupa Password?.',
-      'Isi username, tekan KIRIM KODE OTP. Kode dikirim ke email akun (kirim ulang baru bisa setelah 15 menit).',
+      'Isi email akun, tekan KIRIM KODE OTP. Kode dikirim ke email tersebut (kirim ulang baru bisa setelah 15 menit).',
       'Isi kode OTP dan sandi baru: minimal 8 karakter, ada huruf dan angka, tidak memuat username.',
       'Simpan, lalu login dengan sandi baru. Sandi baru juga berlaku di HR/mobile dan CRM.',
     ],

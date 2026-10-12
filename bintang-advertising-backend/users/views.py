@@ -196,6 +196,22 @@ def verifikasi_unlock_otp(username, otp_input):
     return True
 
 
+def identitas_login(request):
+    """Login ERP memakai EMAIL saja (keputusan user 2026-10-12). Field `email`
+    (atau `username` dari klien lama) dinormalkan huruf kecil; kunci gagal-login
+    & OTP buka kunci juga memakai nilai ini."""
+    return str(request.data.get("email") or request.data.get("username") or "").strip().lower()
+
+
+def akun_dari_email(email):
+    """Akun aktif pemilik `email`. None bila tidak ada ATAU dipakai lebih dari
+    satu akun aktif (email login wajib unik; dobel diperlakukan sebagai gagal)."""
+    if "@" not in email:
+        return None
+    akun = list(CustomUser.objects.filter(email__iexact=email, is_active=True)[:2])
+    return akun[0] if len(akun) == 1 else None
+
+
 class LoginUnlockOtpRequestView(APIView):
     """POST /api/auth/login/unlock-otp/ -- kirim OTP verifikasi ke email akun yang
     terkunci (akun atau IP), supaya pemilik akun bisa login lebih cepat daripada
@@ -205,9 +221,9 @@ class LoginUnlockOtpRequestView(APIView):
     throttle_classes = [PasswordResetRequestThrottle]
 
     def post(self, request):
-        username = str(request.data.get("username") or "").strip()
+        username = identitas_login(request)
         if username:
-            user = CustomUser.objects.filter(username=username).first()
+            user = akun_dari_email(username)
             if user and user.email:
                 otp = str(secrets.SystemRandom().randint(100000, 999999))
                 cache.set(unlock_otp_key(username), {"otp": otp, "attempts": 0}, OTP_UNLOCK_TTL)
@@ -252,12 +268,21 @@ class CustomLoginView(TokenObtainPairView):
     throttle_classes = [LoginRateThrottle]
 
     def post(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
         ip = _get_client_ip(request)
         ua = request.META.get("HTTP_USER_AGENT", "")
-        username_input = request.data.get("username", "")
-
-        username_input = str(username_input or "")
+        # Login memakai email (2026-10-12): email dipetakan ke username akun
+        # sebelum diteruskan ke SimpleJWT. Username lama tidak diterima lagi.
+        username_input = identitas_login(request)
+        if "@" not in username_input:
+            return Response(
+                {"detail": "Login memakai email. Masukkan email akun Anda, bukan username."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        akun_login = akun_dari_email(username_input)
+        serializer = self.get_serializer(data={
+            "username": akun_login.username if akun_login else username_input,
+            "password": request.data.get("password", ""),
+        })
         otp_input = str(request.data.get("otp", "") or "").strip()
         failure_key = kunci_login_key(username_input)
 
@@ -299,7 +324,7 @@ class CustomLoginView(TokenObtainPairView):
             ip_terkunci_sekarang = catat_gagal_ip(ip, username_input)
             # --- Login GAGAL ---
             SecurityAuditLog.objects.create(
-                user=CustomUser.objects.filter(username=username_input.strip()).first(),
+                user=akun_login,
                 username_input=username_input,
                 event="LOGIN_FAILED",
                 ip_address=ip,
@@ -327,7 +352,7 @@ class CustomLoginView(TokenObtainPairView):
                 }, status=429, headers={"Retry-After": str(DURASI_KUNCI_LOGIN)})
             return Response(
                 {
-                    "detail": "Username atau password salah.",
+                    "detail": "Email atau password salah.",
                     "sisa_percobaan": MAKS_GAGAL_LOGIN - attempts,
                 },
                 status=status.HTTP_401_UNAUTHORIZED,
@@ -895,7 +920,8 @@ class ForgotPasswordRequestView(APIView):
     throttle_classes = [PasswordResetRequestThrottle]
 
     def post(self, request):
-        username = str(request.data.get("username") or "").strip()
+        # Lupa password memakai email, sama seperti login (2026-10-12).
+        username = identitas_login(request)
         if not username:
             return Response({"detail": "Jika akun dan email valid, kode OTP akan dikirim."})
         cd_key = _reset_cooldown_key(username)
@@ -907,11 +933,11 @@ class ForgotPasswordRequestView(APIView):
                 "retry_after": int(sisa),
             }, status=429, headers={"Retry-After": str(int(sisa))})
         reset_token = uuid.uuid4().hex
-        user = CustomUser.objects.filter(username=username).first()
+        user = akun_dari_email(username)
         if user and user.email:
             otp = str(secrets.SystemRandom().randint(100000, 999999))
             cache.set(f"pw_reset:{reset_token}", {
-                "username": user.username, "otp": otp, "attempts": 0,
+                "username": username, "otp": otp, "attempts": 0,
             }, RESET_OTP_TTL)
             subject = "[StarPhoto & Advertising] Kode OTP Lupa Password"
             message = (
@@ -943,7 +969,7 @@ class ForgotPasswordVerifyView(APIView):
     throttle_classes = [PasswordResetVerifyThrottle]
 
     def post(self, request):
-        username = str(request.data.get("username") or "").strip()
+        username = identitas_login(request)
         otp = str(request.data.get("otp") or "").strip()
         new_password = request.data.get("new_password")
         reset_token = str(request.data.get("reset_token") or "").strip()
@@ -953,7 +979,7 @@ class ForgotPasswordVerifyView(APIView):
         state = cache.get(key)
         if not state or state.get("username") != username:
             return Response({"detail": "Kode OTP salah atau kedaluwarsa."}, status=400)
-        user = CustomUser.objects.filter(username=username).first()
+        user = akun_dari_email(username)
         if not user:
             cache.delete(key)
             return Response({"detail": "Kode OTP salah atau kedaluwarsa."}, status=400)

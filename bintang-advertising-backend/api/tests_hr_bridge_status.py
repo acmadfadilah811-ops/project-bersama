@@ -51,7 +51,7 @@ class HRBridgeSetStatusPerilakuTests(_BersihkanThrottleMixin, APITestCase):
         super().setUp()
         self.user = CustomUser.objects.create_user(
             username="staff_status_bridge", password="pw12345",
-            role="staff", hr_employee_id=501, is_active=True, status_karyawan="aktif",
+            role="staff", hr_employee_id=501, is_active=True, status_karyawan="aktif", email="staff_status_bridge@uji.local",
         )
 
     def test_nonaktifkan_akun_lewat_hr_employee_id(self):
@@ -88,6 +88,6 @@ class HRBridgeSetStatusPerilakuTests(_BersihkanThrottleMixin, APITestCase):
             self.client.post(URL, {"hr_employee_id": 501, "is_active": False}, format="json", **HEADERS)
 
         r = self.client.post(
-            "/api/auth/login/", {"username": "staff_status_bridge", "password": "pw12345"}, format="json",
+            "/api/auth/login/", {"email": "staff_status_bridge@uji.local", "password": "pw12345"}, format="json",
         )
         self.assertNotEqual(r.status_code, 200)
