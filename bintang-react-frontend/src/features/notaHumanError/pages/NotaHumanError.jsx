@@ -69,7 +69,7 @@ export default function NotaHumanError() {
   const peninjau = !!data?.peninjau;
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-3 md:p-6 space-y-4 md:space-y-5">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -87,14 +87,14 @@ export default function NotaHumanError() {
         </button>
       </div>
 
-      <div className="flex flex-wrap gap-3 items-end bg-white border border-slate-200 rounded-xl p-4">
+      <div className="grid grid-cols-2 md:flex md:flex-wrap gap-3 items-end bg-white border border-slate-200 rounded-xl p-3 md:p-4">
         <div>
           <label className="block text-[11px] font-semibold text-slate-500 mb-1">Bulan</label>
-          <input type="month" value={bulan} onChange={(e) => setBulan(e.target.value)} className="border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+          <input type="month" value={bulan} onChange={(e) => setBulan(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
         </div>
         <div>
           <label className="block text-[11px] font-semibold text-slate-500 mb-1">Status</label>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="border border-slate-300 rounded-lg px-3 py-2 text-sm">
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
             <option value="">Semua</option>
             <option value="menunggu_potong">Menunggu potong gaji</option>
             <option value="sudah_dipotong">Sudah dipotong gaji</option>
@@ -102,9 +102,9 @@ export default function NotaHumanError() {
           </select>
         </div>
         {peninjau && (
-          <div>
+          <div className="col-span-2 md:col-span-1">
             <label className="block text-[11px] font-semibold text-slate-500 mb-1">Staff</label>
-            <select value={staffId} onChange={(e) => setStaffId(e.target.value)} className="border border-slate-300 rounded-lg px-3 py-2 text-sm min-w-[180px]">
+            <select value={staffId} onChange={(e) => setStaffId(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm md:min-w-[180px]">
               <option value="">Semua staff</option>
               {daftarStaff.map((s) => <option key={s.id} value={s.id}>{s.nama}</option>)}
             </select>
@@ -120,7 +120,7 @@ export default function NotaHumanError() {
             ['Sudah dipotong gaji', ring.sudah_dipotong_gaji, 'Lewat slip gaji'],
             ['Lunas tunai', ring.lunas_tunai, 'Dibayar di kasir'],
           ].map(([judul, nilai, ket]) => (
-            <div key={judul} className="bg-white border border-slate-200 rounded-xl p-4">
+            <div key={judul} className="bg-white border border-slate-200 rounded-xl p-3 md:p-4">
               <div className="text-[11px] font-semibold text-slate-500">{judul}</div>
               <div className="text-lg font-bold text-slate-800 mt-1">{rupiah(nilai)}</div>
               <div className="text-[11px] text-slate-400">{ket}</div>
@@ -132,8 +132,8 @@ export default function NotaHumanError() {
       {error && <div className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-4 py-2">{error}</div>}
 
       <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto">
-        <table className="w-full text-xs text-left">
-          <thead className="bg-slate-50 text-slate-600 font-semibold">
+        <table className="w-full text-xs text-left max-md:block">
+          <thead className="bg-slate-50 text-slate-600 font-semibold max-md:hidden">
             <tr>
               <th className="px-4 py-3">Tanggal</th>
               {peninjau && <th className="px-4 py-3">Staff</th>}
@@ -145,27 +145,27 @@ export default function NotaHumanError() {
               {peninjau && <th className="px-4 py-3" />}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 text-slate-700">
+          <tbody className="divide-y divide-slate-100 text-slate-700 max-md:block">
             {loading ? (
-              <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">Memuat...</td></tr>
+              <tr className="max-md:block"><td colSpan={8} className="px-4 py-8 text-center text-slate-400 max-md:block">Memuat...</td></tr>
             ) : !data?.hasil?.length ? (
-              <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">Tidak ada nota human error pada periode ini.</td></tr>
+              <tr className="max-md:block"><td colSpan={8} className="px-4 py-8 text-center text-slate-400 max-md:block">Tidak ada nota human error pada periode ini.</td></tr>
             ) : (
               data.hasil.map((b) => (
-                <tr key={b.id} className="align-top">
-                  <td className="px-4 py-3 whitespace-nowrap">{tanggal(b.dibuat)}</td>
-                  {peninjau && <td className="px-4 py-3 font-semibold text-slate-800">{b.staff_nama}</td>}
-                  <td className="px-4 py-3">
+                <tr key={b.id} className="align-top max-md:grid max-md:grid-cols-2 max-md:gap-x-3 max-md:gap-y-2 max-md:p-3">
+                  <td className="px-4 py-3 max-md:p-0 whitespace-nowrap text-slate-500">{tanggal(b.dibuat)}</td>
+                  {peninjau && <td className="px-4 py-3 max-md:p-0 max-md:text-right font-semibold text-slate-800">{b.staff_nama}</td>}
+                  <td className="px-4 py-3 max-md:p-0 max-md:col-span-2 max-md:break-all">
                     <div className="font-semibold text-slate-800">{b.order_id}</div>
                     <div className="text-[10px] text-slate-400">Nota awal: {b.order_asal_id}</div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 max-md:p-0 max-md:col-span-2">
                     <div className="font-semibold">{b.pelanggan}</div>
                     <div className="text-[10px] text-slate-500">{b.item.join(', ')}</div>
                   </td>
-                  <td className="px-4 py-3 max-w-[260px] text-slate-600">{b.alasan}</td>
-                  <td className="px-4 py-3 text-right font-bold text-slate-800 whitespace-nowrap">{rupiah(b.nominal)}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 max-md:p-0 max-md:col-span-2 max-w-[260px] max-md:max-w-none text-slate-600">{b.alasan}</td>
+                  <td className="px-4 py-3 max-md:p-0 max-md:order-last max-md:text-left text-right font-bold text-slate-800 whitespace-nowrap">{rupiah(b.nominal)}</td>
+                  <td className="px-4 py-3 max-md:p-0">
                     <div className="text-slate-600">{b.metode_label}</div>
                     <span className={`inline-block mt-1 text-[10px] font-semibold border rounded px-1.5 py-0.5 ${WARNA_STATUS[b.status] || ''}`}>
                       {b.status_label}
@@ -175,7 +175,7 @@ export default function NotaHumanError() {
                     )}
                   </td>
                   {peninjau && (
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 max-md:p-0 max-md:text-right">
                       {b.status === 'menunggu_potong' && (
                         <button onClick={() => tandaiDipotong(b)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-300 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 whitespace-nowrap">
                           <CheckCircle2 size={12} /> Tandai dipotong

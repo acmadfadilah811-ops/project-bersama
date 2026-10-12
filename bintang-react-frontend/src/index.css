@@ -159,3 +159,32 @@ a:hover,
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
+
+/* Workspace SPK (Sheet1 · SPK Detail) di HP: tabel ala spreadsheet ditumpuk
+   jadi daftar label + isi, tanpa geser ke samping. Desktop tidak berubah. */
+@media (max-width: 767px) {
+  .spk-sheet,
+  .spk-sheet tbody {
+    display: block;
+    width: 100%;
+  }
+  .spk-sheet thead {
+    display: none;
+  }
+  .spk-sheet tr {
+    display: grid;
+    grid-template-columns: 1fr;
+    height: auto !important;
+    padding: 6px 0;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .spk-sheet td {
+    display: block;
+    border: none !important;
+    padding: 2px 8px;
+    white-space: normal;
+  }
+  .spk-sheet td:first-child {
+    display: none;
+  }
+}

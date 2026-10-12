@@ -437,7 +437,7 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
           )}
           <div className="h-4 w-px bg-slate-300 mx-0.5" />
           {/* Formula bar */}
-          <div className="flex items-center gap-1.5 flex-1 min-w-0 bg-white border border-[#ccc] rounded px-2 py-0.5">
+          <div className={`${activeSheet === 'notes' ? 'flex' : 'hidden md:flex'} items-center gap-1.5 flex-1 min-w-0 bg-white border border-[#ccc] rounded px-2 py-0.5`}>
             <span className="text-[9px] font-black font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 shrink-0">
               {activeCell ? `${COLS[activeCell.c]}${activeCell.r + 1}` : '—'}
             </span>
@@ -467,7 +467,7 @@ export default function WorkspaceSPK({ job, onClose, onStart, onComplete, saving
       <div className="flex-1 overflow-auto bg-white">
         {/* SHEET 1: DETAIL SPK */}
         {activeSheet === 'detail' && (
-          <table className="w-full border-collapse table-fixed text-[10.5px]">
+          <table className="spk-sheet w-full border-collapse table-fixed text-[10.5px]">
             <thead>
               <tr className="bg-[#f3f3f3] select-none text-slate-500 font-normal">
                 <th className="w-8 border border-[#ccc] bg-[#f3f3f3] text-[8.5px] font-bold py-1"></th>
