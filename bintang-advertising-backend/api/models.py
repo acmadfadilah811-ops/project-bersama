@@ -1519,3 +1519,5 @@ from .survei_models import *  # noqa: F401,F403
 from .starfoto_models import *  # noqa: F401,F403
 # Dinas luar staff (2026-10-11).
 from .dinas_models import *  # noqa: F401,F403
+# Order kasir dikirim ke CRM (2026-10-12).
+from .crm_push_models import *  # noqa: F401,F403
