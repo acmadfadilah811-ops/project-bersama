@@ -224,8 +224,8 @@ export default function KordivSpvTeamBoard({ role }) {
             </div>
           </div>
           <div className="overflow-x-auto max-h-[480px]">
-            <table className="w-full text-left text-xs">
-              <thead>
+            <table className="w-full text-left text-xs max-md:block">
+              <thead className="max-md:hidden">
                 <tr className="border-b border-slate-200 bg-slate-50/75 text-[10px] font-semibold text-slate-500 uppercase">
                   <th className="py-2 px-2.5">SPK</th>
                   <th className="py-2 px-2.5">Produk</th>
@@ -235,10 +235,10 @@ export default function KordivSpvTeamBoard({ role }) {
                   <th className="py-2 px-2.5 text-right">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 max-md:block">
                 {filteredJobs.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="py-8 text-center text-slate-400 text-[11px]">
+                  <tr className="max-md:block">
+                    <td colSpan={6} className="py-8 text-center text-slate-400 text-[11px] max-md:block">
                       Tidak ada job yang cocok.
                     </td>
                   </tr>
@@ -246,15 +246,15 @@ export default function KordivSpvTeamBoard({ role }) {
                   filteredJobs.map((job) => {
                     const dl = formatDeadline(job.deadline, job.deadline_jam);
                     return (
-                      <tr key={job.id} className="hover:bg-slate-50/80">
-                        <td className="py-2 px-2.5 font-mono font-bold text-indigo-700 align-top">{job.nomor_sumber || job.id}</td>
-                        <td className="py-2 px-2.5 align-top max-w-[160px] truncate" title={job.nama_produk}>{job.nama_produk}</td>
-                        <td className="py-2 px-2.5 align-top">
+                      <tr key={job.id} className="hover:bg-slate-50/80 max-md:grid max-md:grid-cols-2 max-md:gap-x-2 max-md:gap-y-1 max-md:py-2">
+                        <td className="py-2 px-2.5 max-md:py-0 font-mono font-bold text-indigo-700 align-top max-md:col-span-2 max-md:break-all">{job.nomor_sumber || job.id}</td>
+                        <td className="py-2 px-2.5 max-md:py-0 align-top max-w-[160px] max-md:max-w-none max-md:col-span-2 truncate font-medium" title={job.nama_produk}>{job.nama_produk}</td>
+                        <td className="py-2 px-2.5 max-md:py-0 align-top">
                           <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
                             {job.tahap_nama || '-'}
                           </span>
                         </td>
-                        <td className="py-2 px-2.5 align-top relative">
+                        <td className="py-2 px-2.5 max-md:py-0 align-top relative">
                           {job.pic_nama ? (
                             <span className="text-[11px] font-medium text-slate-800">{job.pic_nama}</span>
                           ) : (
@@ -287,7 +287,7 @@ export default function KordivSpvTeamBoard({ role }) {
                             </>
                           )}
                         </td>
-                        <td className="py-2 px-2.5 align-top">
+                        <td className="py-2 px-2.5 max-md:py-0 align-top">
                           {typeof dl === 'object' ? (
                             <span className={`text-[11px] font-medium ${dl.isPast ? 'text-red-600 font-bold' : 'text-slate-600'}`}>
                               {dl.label}
@@ -296,7 +296,7 @@ export default function KordivSpvTeamBoard({ role }) {
                             <span className="text-[11px] text-slate-400">{dl}</span>
                           )}
                         </td>
-                        <td className="py-2 px-2.5 text-right align-top">
+                        <td className="py-2 px-2.5 max-md:py-0 text-right max-md:text-left align-top">
                           <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold border ${STATUS_BADGE[job.status_pekerjaan] || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
                             {STATUS_LABEL[job.status_pekerjaan] || job.status_pekerjaan}
                           </span>

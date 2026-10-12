@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useEffect, useState } from 'react';
 import LockedScreen from './LockedScreen';
 import apiClient from '../api/apiClient';
-import { LayoutDashboard, CalendarClock, ShoppingCart, Kanban, User, Camera, Wand2 } from 'lucide-react';
+import { LayoutDashboard, CalendarClock, ShoppingCart, Kanban, User, Camera, Wand2, Users } from 'lucide-react';
 import { useMenuStarfoto } from '../features/starfoto/hooks/useMenuSesiFoto';
 
 export default function Layout() {
@@ -80,7 +80,18 @@ export default function Layout() {
     { path: '/profile', label: 'Profil', icon: User },
   ];
 
-  const mobileMenu = user?.role?.toLowerCase() === 'staff' ? mobileMenuStaff : mobileMenuOwner;
+  const mobileMenuSpvKordiv = [
+    { path: '/staff-dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/jobs', label: 'Produksi', icon: Kanban },
+    ...(tampilSesiFoto ? [{ path: '/sesi-foto', label: 'Sesi Foto', icon: Camera }] : []),
+    { path: '/ringkasan-tim', label: 'Tim', icon: Users },
+    { path: '/profile', label: 'Profil', icon: User },
+  ];
+
+  const peranLower = user?.role?.toLowerCase();
+  const mobileMenu = peranLower === 'staff'
+    ? mobileMenuStaff
+    : ['spv', 'kordiv'].includes(peranLower) ? mobileMenuSpvKordiv : mobileMenuOwner;
 
   // Fitur dengan tampilan full-screen + topbar sendiri (tanpa Topbar global).
   const fullScreenFeature =
