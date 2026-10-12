@@ -179,7 +179,12 @@ class HRBridgeCreateAccountView(APIView):
             existing.no_hp = no_hp or existing.no_hp
             existing.posisi = job_position or existing.posisi
             existing.role = role
-            existing.unit_bisnis = unit_bisnis
+            # Departemen tanpa unit (mis. Finance Accounting, dipakai kedua
+            # unit) TIDAK mengosongkan unit yang sudah diatur -- sebelumnya
+            # tiap simpan data karyawan di HR menghapus unit kasir StarFoto
+            # (temuan uji alur 2026-10-12). Pola sama dengan `atasan` di atas.
+            if unit_bisnis:
+                existing.unit_bisnis = unit_bisnis
             if atasan:
                 existing.atasan = atasan
             _isi_divisi_dari_departemen(existing, department)

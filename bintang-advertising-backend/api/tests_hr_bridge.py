@@ -114,6 +114,32 @@ class HRBridgeCreateAccountTests(APITestCase):
         user = CustomUser.objects.get(hr_employee_id=105)
         self.assertEqual(user.role, "spv")
 
+    def test_update_departemen_tanpa_unit_tidak_menghapus_unit_akun(self):
+        # Tiga panggilan di sini ikut menghitung kuota HRBridgeThrottle; kuota
+        # dikosongkan sesudahnya supaya tes kelas lain tidak kena 429.
+        from django.core.cache import cache
+        self.addCleanup(cache.clear)
+        self._post({
+            "hr_employee_id": 107, "first_name": "Kasir", "last_name": "Foto",
+            "job_position": "Kasir Foto", "department": "Fotografi",
+        })
+        user = CustomUser.objects.get(hr_employee_id=107)
+        self.assertEqual(user.unit_bisnis.nama, "StarFoto")
+        response = self._post({
+            "hr_employee_id": 107, "first_name": "Kasir", "last_name": "Foto",
+            "job_position": "Kasir Foto", "department": "Finance Accounting",
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        user.refresh_from_db()
+        self.assertEqual(user.unit_bisnis.nama, "StarFoto")
+        # Departemen dengan unit tetap menimpa.
+        self._post({
+            "hr_employee_id": 107, "first_name": "Kasir", "last_name": "Foto",
+            "job_position": "Kasir Foto", "department": "Digital Printing",
+        })
+        user.refresh_from_db()
+        self.assertEqual(user.unit_bisnis.nama, "Star Advertising")
+
     def test_username_otomatis_tidak_bentrok_kalau_nama_sama(self):
         self._post({
             "hr_employee_id": 106, "first_name": "Budi", "last_name": "Santoso",
