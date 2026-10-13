@@ -14,7 +14,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.db import transaction
-from django.db.models import F, Q, Count, Sum
+from django.db.models import F, Q, Count, Sum, Prefetch
 from django.http import HttpResponse
 
 
@@ -22,8 +22,9 @@ from .. import spk
 from ..permissions import filter_param_unit_bisnis, scoped_by_unit_bisnis
 from ..models import (
     Order, OrderItem, JobBoard, CustomUser, Contact, OrderActivityLog, TahapProses,
-    PengembalianOrder, OrderPayment, SaldoKasHarian,
+    PengembalianOrder, OrderPayment, SaldoKasHarian, PenggunaanMesin,
 )
+from ..marketing_models import CouponUsage
 from ..serializers import (
     OrderSerializer, OrderItemSerializer, JobBoardSerializer, PengembalianOrderSerializer
 )
@@ -67,7 +68,9 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        base_qs = Order.objects.prefetch_related(
+        # select_related + prefetch_related lengkap: daftar pesanan (Monitor Pesanan, Orders)
+        # sebelumnya ~14 query per pesanan (N+1) dan dipoll tiap beberapa detik.
+        base_qs = Order.objects.select_related('unit_bisnis', 'dilayani_oleh', 'asal_crm').prefetch_related(
             'items__jobs',
             'items__jobs__tahap',
             'items__jobs__tahap__divisi',
@@ -83,6 +86,14 @@ class OrderViewSet(viewsets.ModelViewSet):
             'activity_logs__user',
             'payments__dibuat_oleh',
             'payments__shift',
+            'items__addons',
+            'items__jobs__rincian_insentif',
+            Prefetch(
+                'items__jobs__penggunaan_mesin',
+                queryset=PenggunaanMesin.objects.select_related('mesin').order_by('-waktu'),
+            ),
+            'daftar_pengembalian',
+            Prefetch('coupon_usages', queryset=CouponUsage.objects.select_related('kupon')),
         ).order_by('-waktu', '-id')
         base_qs = scoped_by_unit_bisnis(base_qs, user)
         base_qs = filter_param_unit_bisnis(base_qs, self.request)

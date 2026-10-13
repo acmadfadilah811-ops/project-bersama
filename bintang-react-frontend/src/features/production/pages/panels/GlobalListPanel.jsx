@@ -18,7 +18,7 @@ import logoStarfoto from '../../../../assets/logo-starfoto.png';
 import OrderInputForm from '../../../orders/components/OrderInputForm';
 import { useAuth } from '../../../../context/AuthContext';
 import UnitBisnisFilter from '../../../../components/UnitBisnisFilter';
-import { bolehKelompokUnit, cocokUnit, hitungPerUnit } from '../../../../utils/unitBisnis';
+import { bolehKelompokUnit } from '../../../../utils/unitBisnis';
 import VoidOrderModal from '../../../kasir/components/VoidOrderModal';
 import VoidOrderOtpModal from '../../../kasir/components/VoidOrderOtpModal';
 import { uiConfirm } from '../../../../utils/dialog';
@@ -70,12 +70,21 @@ function timeAgo(dateStr) {
   return `${Math.floor(h / 24)}h lalu`;
 }
 
+const BATCH = 30;
+const JEDA_POLLING_MS = 20000;
+
 export default function GlobalListPanel() {
   const { businessSettings, user } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
+  // Pencarian dikirim ke server setelah jeda mengetik (400 ms).
+  const [searchKirim, setSearchKirim] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  // Daftar dimuat bertahap (BATCH pesanan) + tombol "Muat lebih banyak", bukan 1000 sekaligus.
+  const [tampil, setTampil] = useState(BATCH);
+  const [totalOrder, setTotalOrder] = useState(0);
+  const [statsData, setStatsData] = useState(null);
   // Pengelompokan per unit bisnis (owner/manager/admin); '' = semua unit.
   const [unitFilter, setUnitFilter] = useState('');
   const kelompokUnit = bolehKelompokUnit(user?.role);
@@ -145,18 +154,41 @@ export default function GlobalListPanel() {
     };
   }, []);
 
+  // Hanya respons permintaan TERBARU yang dipakai (filter/ketikan cepat tidak saling menimpa).
+  const permintaanRef = useRef(0);
+  const lewatiSpinnerRef = useRef(false);
+  const paramUnit = kelompokUnit && unitFilter ? unitFilter : '';
+
   const fetchOrders = useCallback(async (isSilent = false) => {
+    const nomor = ++permintaanRef.current;
     if (!isSilent) setLoading(true);
     try {
-      const res = await apiClient.get('/orders/', { params: { page: 1, page_size: 1000 } });
+      const params = { page: 1, page_size: tampil };
+      if (searchKirim) params.search = searchKirim;
+      if (filterStatus) params.status_global = filterStatus;
+      if (paramUnit) params.unit_bisnis = paramUnit;
+      const [res, st] = await Promise.all([
+        apiClient.get('/orders/', { params }),
+        apiClient
+          .get('/orders/stats/', { params: paramUnit ? { unit_bisnis: paramUnit } : {} })
+          .catch(() => null),
+      ]);
+      if (!mountedRef.current || nomor !== permintaanRef.current) return;
       const ordersData = Array.isArray(res.data) ? res.data : (res.data?.results || []);
-      if (mountedRef.current) setOrders(ordersData);
+      setOrders(ordersData);
+      setTotalOrder(Array.isArray(res.data) ? ordersData.length : (res.data?.count ?? ordersData.length));
+      if (st?.data) setStatsData(st.data);
     } catch (err) {
       console.error('Gagal memuat orders:', err);
     } finally {
-      if (mountedRef.current && !isSilent) setLoading(false);
+      if (mountedRef.current && !isSilent && nomor === permintaanRef.current) setLoading(false);
     }
-  }, []);
+  }, [tampil, searchKirim, filterStatus, paramUnit]);
+
+  useEffect(() => {
+    const id = setTimeout(() => setSearchKirim(search.trim()), 400);
+    return () => clearTimeout(id);
+  }, [search]);
 
   useEffect(() => {
     const loadAssignMetadata = async () => {
@@ -230,41 +262,34 @@ export default function GlobalListPanel() {
   };
 
   useEffect(() => {
-    fetchOrders();
+    // "Muat lebih banyak": tambah daftar tanpa menggantinya dengan spinner (posisi gulir tetap).
+    const tanpaSpinner = lewatiSpinnerRef.current;
+    lewatiSpinnerRef.current = false;
+    fetchOrders(tanpaSpinner);
 
-    // Background polling every 5 seconds
+    // Polling hanya saat tab terlihat (dulu tiap 5 detik dengan 1000 pesanan sekaligus).
     const intervalId = setInterval(() => {
-      fetchOrders(true); // Silent fetch
-    }, 5000);
+      if (document.visibilityState === 'visible') fetchOrders(true);
+    }, JEDA_POLLING_MS);
 
     return () => clearInterval(intervalId);
   }, [fetchOrders]);
 
-  const jumlahPerUnit = hitungPerUnit(orders, (o) => o.unit_bisnis);
-  const orderUnit = kelompokUnit ? orders.filter((o) => cocokUnit(o.unit_bisnis, unitFilter)) : orders;
+  // Pencarian, status, dan unit bisnis difilter di server; daftar ini sudah hasil filter.
+  const filtered = orders;
+  const jumlahPerUnit = statsData?.per_unit;
 
-  const filtered = orderUnit.filter((o) => {
-    const q = search.toLowerCase();
-    const matchSearch =
-      !q ||
-      (o.nama || '').toLowerCase().includes(q) ||
-      (o.id || '').toLowerCase().includes(q) ||
-      (o.nomor_wa || '').includes(q);
-    const matchStatus = !filterStatus || o.status_global === filterStatus;
-    return matchSearch && matchStatus;
-  });
-
-  // Stats (mengikuti unit bisnis yang dipilih)
+  // Stats mengikuti unit bisnis yang dipilih (dari /orders/stats/).
   const stats = {
-    total: orderUnit.length,
-    aktif: orderUnit.filter((o) => !['selesai', 'batal'].includes(o.status_global)).length,
-    ready: orderUnit.filter((o) => o.status_global === 'ready').length,
-    review: orderUnit.filter((o) => o.status_global === 'review').length,
-    selesai: orderUnit.filter((o) => o.status_global === 'selesai').length,
+    total: statsData?.total_count ?? 0,
+    aktif: Math.max(0, (statsData?.total_count ?? 0) - (statsData?.selesai ?? 0) - (statsData?.batal ?? 0)),
+    ready: statsData?.ready ?? 0,
+    review: statsData?.review ?? 0,
+    selesai: statsData?.selesai ?? 0,
   };
 
   return (
-    <div className="flex flex-col gap-3 h-full">
+    <div className="flex flex-col gap-3 min-h-full">
       {/* Header + Stats */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm shrink-0">
         <div className="flex justify-between items-start mb-3">
@@ -276,7 +301,7 @@ export default function GlobalListPanel() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={fetchOrders}
+              onClick={() => fetchOrders()}
               className="flex items-center gap-1 text-[11px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-lg cursor-pointer hover:bg-indigo-100 transition-all"
             >
               <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
@@ -320,7 +345,14 @@ export default function GlobalListPanel() {
 
       {kelompokUnit && (
         <div className="bg-white border border-slate-200 rounded-xl px-4 py-2 shadow-sm shrink-0">
-          <UnitBisnisFilter value={unitFilter} onChange={setUnitFilter} jumlah={jumlahPerUnit} />
+          <UnitBisnisFilter
+            value={unitFilter}
+            onChange={(v) => {
+              setUnitFilter(v);
+              setTampil(BATCH);
+            }}
+            jumlah={jumlahPerUnit}
+          />
         </div>
       )}
 
@@ -332,13 +364,19 @@ export default function GlobalListPanel() {
             type="text"
             placeholder="Cari nama, nomor nota, atau nomor WA..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setTampil(BATCH);
+            }}
             className="w-full text-xs pl-8 pr-3 py-1.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
           />
         </div>
         <select
           value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
+          onChange={(e) => {
+            setFilterStatus(e.target.value);
+            setTampil(BATCH);
+          }}
           className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 bg-white outline-none w-40"
         >
           <option value="">Semua Status</option>
@@ -351,7 +389,7 @@ export default function GlobalListPanel() {
       </div>
 
       {/* Order List */}
-      <div className="flex-1 overflow-y-auto min-h-0 flex flex-col gap-2 pb-24">
+      <div className="flex flex-col gap-2 pb-24 min-h-[60vh]">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-16 text-slate-400">
             <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mb-2" />
@@ -361,7 +399,7 @@ export default function GlobalListPanel() {
           <div className="bg-white border border-slate-200 rounded-xl py-16 flex flex-col items-center gap-2 text-slate-400">
             <FileText size={28} className="text-slate-300" />
             <p className="text-xs font-semibold">
-              {orders.length === 0
+              {!searchKirim && !filterStatus && !paramUnit
                 ? 'Belum ada order. Klik "+ Buat Order" untuk memulai.'
                 : 'Tidak ada order yang cocok dengan filter.'}
             </p>
@@ -718,6 +756,26 @@ export default function GlobalListPanel() {
               </div>
             );
           })
+        )}
+
+        {!loading && filtered.length > 0 && (
+          <div className="flex flex-col items-center gap-2 pt-2 text-[10.5px] text-slate-500">
+            <span>
+              Menampilkan {filtered.length} dari {totalOrder} pesanan
+            </span>
+            {filtered.length < totalOrder && (
+              <button
+                type="button"
+                onClick={() => {
+                  lewatiSpinnerRef.current = true;
+                  setTampil((n) => n + BATCH);
+                }}
+                className="px-4 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 font-bold hover:bg-slate-50 cursor-pointer"
+              >
+                Muat lebih banyak
+              </button>
+            )}
+          </div>
         )}
       </div>
 

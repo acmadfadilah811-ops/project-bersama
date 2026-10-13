@@ -11,8 +11,15 @@ import {
 /**
  * Tombol pilih unit bisnis.
  * `jumlah`: [{id, jumlah}] (id null = belum ditandai) untuk menampilkan angka di tiap tombol.
+ * `labelTanpaUnit`: nama tombol untuk baris tanpa unit (mis. 'Umum' untuk divisi).
  */
-export default function UnitBisnisFilter({ value, onChange, jumlah = null, className = '' }) {
+export default function UnitBisnisFilter({
+  value,
+  onChange,
+  jumlah = null,
+  className = '',
+  labelTanpaUnit = 'Belum ditandai',
+}) {
   const { user } = useAuth();
   const daftar = useDaftarUnitBisnis();
   if (!bolehKelompokUnit(user?.role) || daftar.length === 0) return null;
@@ -30,7 +37,7 @@ export default function UnitBisnisFilter({ value, onChange, jumlah = null, class
     ...daftar.map((u) => ({ nilai: String(u.id), label: u.nama, angka: hitung(u.id) })),
   ];
   if (belumDitandai) {
-    pilihan.push({ nilai: UNIT_BELUM_DITANDAI, label: 'Belum ditandai', angka: belumDitandai });
+    pilihan.push({ nilai: UNIT_BELUM_DITANDAI, label: labelTanpaUnit, angka: belumDitandai });
   }
 
   return (

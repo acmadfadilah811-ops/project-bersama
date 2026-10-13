@@ -3,6 +3,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db.models import QuerySet
 from .models import (
     UnitBisnis, Divisi, TahapProses, CustomUser, Contact, Order, OrderItem, JobBoard,
     InventoryItem, RestockHistory, ProductPrice, SystemConfig, FAQ,
@@ -387,12 +388,18 @@ class OrderItemSerializer(serializers.ModelSerializer):
         # stok, atau False untuk memicu potong dobel.
         read_only_fields = ['luas', 'stok_dikurangi']
 
+    @staticmethod
+    def _job_pertama(obj):
+        # Dari relasi yang sudah di-prefetch (sama dengan .first(): pk terkecil), tanpa query per item.
+        jobs = list(obj.jobs.all())
+        return min(jobs, key=lambda j: j.pk) if jobs else None
+
     def get_insentif(self, obj):
-        job = obj.jobs.first()
+        job = self._job_pertama(obj)
         return job.insentif if job else 0
 
     def get_biaya_desain(self, obj):
-        job = obj.jobs.first()
+        job = self._job_pertama(obj)
         return job.biaya_desain if job else 0
 
     def validate(self, attrs):
@@ -688,26 +695,46 @@ class OrderSerializer(serializers.ModelSerializer):
         }
 
     def get_pengembalian_aktif(self, obj):
-        retur = obj.daftar_pengembalian.exclude(status='Batal').first()
+        aktif = [r for r in obj.daftar_pengembalian.all() if r.status != 'Batal']
+        retur = min(aktif, key=lambda r: r.pk) if aktif else None
         if retur:
             return PengembalianOrderSerializer(retur, context=self.context).data
         return None
 
-    def _get_contact(self, nomor_wa):
+    def _semua_order(self, obj):
+        """Semua order yang sedang diserialisasi (satu halaman daftar), atau [obj] bila tunggal.
+        Child serializer dari many=True menyimpan daftarnya di `parent.instance`."""
+        sumber = getattr(getattr(self, 'parent', None), 'instance', None)
+        if sumber is None:
+            sumber = self.instance
+        if isinstance(sumber, (list, tuple)):
+            return list(sumber)
+        if isinstance(sumber, QuerySet):
+            return list(sumber)  # sudah terisi saat daftar diserialisasi: tanpa query baru
+        return [obj]
+
+    def _get_contact(self, nomor_wa, obj=None):
         """Contact di-cache per request. Sebelumnya tiap order memanggil
         Contact.objects.get() dua kali (total_spent + total_order), sehingga
-        daftar 8 order saja sudah 16 query hanya untuk data pelanggan."""
+        daftar 8 order saja sudah 16 query hanya untuk data pelanggan.
+        Kini satu query untuk seluruh halaman (bukan satu per order)."""
         cache = self.context.setdefault('_contact_cache', {})
         if nomor_wa not in cache:
-            cache[nomor_wa] = Contact.objects.filter(nomor_wa=nomor_wa).first()
+            nomor_semua = {nomor_wa}
+            if obj is not None:
+                nomor_semua.update(o.nomor_wa for o in self._semua_order(obj))
+            for c in Contact.objects.filter(nomor_wa__in=nomor_semua).select_related('customer'):
+                cache[c.nomor_wa] = c
+            for n in nomor_semua:
+                cache.setdefault(n, None)
         return cache[nomor_wa]
 
     def get_customer_total_spent(self, obj):
-        contact = self._get_contact(obj.nomor_wa)
+        contact = self._get_contact(obj.nomor_wa, obj)
         return contact.total_spent if contact else 0
 
     def get_customer_total_orders(self, obj):
-        contact = self._get_contact(obj.nomor_wa)
+        contact = self._get_contact(obj.nomor_wa, obj)
         return contact.total_order if contact else 0
 
     def get_kode_pelanggan(self, obj):
@@ -718,7 +745,7 @@ class OrderSerializer(serializers.ModelSerializer):
         sengaja dikirim sebagai kosong agar UI menampilkan tanda "-", bukan
         mengisi kolom kode dengan data yang keliru.
         """
-        contact = self._get_contact(obj.nomor_wa)
+        contact = self._get_contact(obj.nomor_wa, obj)
         customer = getattr(contact, 'customer', None) if contact else None
         return (getattr(customer, 'kode_pelanggan', '') or '').strip()
 
@@ -754,12 +781,10 @@ class OrderSerializer(serializers.ModelSerializer):
 
         # Kumpulkan job dari SEMUA order yang sedang diserialisasi (bukan hanya
         # order ini) supaya cukup satu query untuk seluruh halaman.
-        semua = self.instance if isinstance(self.instance, (list, tuple)) else None
-        if semua is None:
-            try:
-                semua = list(self.instance.all()) if hasattr(self.instance, 'all') else [obj]
-            except Exception:
-                semua = [obj]
+        try:
+            semua = self._semua_order(obj)
+        except Exception:
+            semua = [obj]
         job_ids = set()
         for o in semua:
             try:
@@ -772,7 +797,11 @@ class OrderSerializer(serializers.ModelSerializer):
         if job_ids:
             import re as _re
             pola = _re.compile(r'Job #(\d+)')
-            qs = RestockHistory.objects.filter(delta__lt=0, keterangan__icontains='Job #')
+            # Hanya riwayat milik job yang sedang ditampilkan (bukan seluruh riwayat bahan).
+            ids = '|'.join(str(i) for i in sorted(job_ids))
+            qs = RestockHistory.objects.filter(
+                delta__lt=0, keterangan__regex=rf'Job #({ids})([^0-9]|$)',
+            )
             for h in qs.select_related('item'):
                 m = pola.search(h.keterangan or '')
                 if not m:
@@ -816,7 +845,8 @@ class OrderSerializer(serializers.ModelSerializer):
     def get_kupon_info(self, obj):
         try:
             from api.marketing_models import CouponUsage
-            usage = CouponUsage.objects.filter(order=obj).select_related('kupon').first()
+            usages = list(obj.coupon_usages.all())  # di-prefetch viewset (kupon sudah ikut)
+            usage = min(usages, key=lambda u: u.pk) if usages else None
             if usage and usage.kupon:
                 return {
                     'kode': usage.kupon.kode,
