@@ -1009,4 +1009,4 @@ class ForgotPasswordVerifyView(APIView):
             ip_address=_get_client_ip(request), user_agent=request.META.get("HTTP_USER_AGENT", ""),
             keterangan="Reset password via OTP berhasil", berhasil=True,
         )
-        return Response({"detail": "Password berhasil diubah. Silakan login kembali."})
+        return Response({"detail": "Sandi Anda telah diperbarui. Silakan login ulang di aplikasi ERP, HR, CRM, atau mobile app dengan sandi baru."})
