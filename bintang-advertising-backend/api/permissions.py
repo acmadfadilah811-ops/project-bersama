@@ -22,6 +22,19 @@ def scoped_by_unit_bisnis(qs, user, field="unit_bisnis"):
     return qs
 
 
+def filter_param_unit_bisnis(qs, request, field="unit_bisnis"):
+    """Pengelompokan per unit bisnis di halaman Pesanan & Papan Kerja (owner/manager/admin):
+    ?unit_bisnis=<id> membatasi ke satu unit, ?unit_bisnis=none ke baris yang belum
+    ditandai unit. Diterapkan SETELAH scoped_by_unit_bisnis, jadi tidak pernah melebarkan
+    akses; nilai tak dikenal diabaikan (sama dengan tanpa filter)."""
+    mentah = str(request.query_params.get("unit_bisnis") or "").strip().lower()
+    if mentah == "none":
+        return qs.filter(**{f"{field}__isnull": True})
+    if mentah.isdigit():
+        return qs.filter(**{field: int(mentah)})
+    return qs
+
+
 def get_subordinate_user_ids(user):
     """
     Kumpulkan id `user` itu sendiri + seluruh bawahannya di struktur

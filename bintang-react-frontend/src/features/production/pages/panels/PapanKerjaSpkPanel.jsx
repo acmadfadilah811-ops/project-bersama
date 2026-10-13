@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../../../context/AuthContext';
 import { Kanban, Download, Grid } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
+import UnitBisnisFilter from '../../../../components/UnitBisnisFilter';
+import { bolehKelompokUnit, cocokUnit, hitungPerUnit } from '../../../../utils/unitBisnis';
 
 // Hook & Komponen
 import { useJobsData } from '../../hooks/useJobsData';
@@ -27,6 +29,16 @@ export default function PapanKerjaSpkPanel() {
     handleForward,
     handleExport,
   } = useJobsData();
+
+  // Pengelompokan per unit bisnis (owner/manager/admin); '' = semua unit. Unit sebuah SPK
+  // = unit pesanan/nota asalnya (lihat JobBoardSerializer.unit_bisnis).
+  const [unitFilter, setUnitFilter] = useState('');
+  const kelompokUnit = bolehKelompokUnit(user?.role);
+  const jumlahPerUnit = useMemo(() => hitungPerUnit(jobs, (j) => j.unit_bisnis), [jobs]);
+  const jobsUnit = useMemo(
+    () => (kelompokUnit ? jobs.filter((j) => cocokUnit(j.unit_bisnis, unitFilter)) : jobs),
+    [jobs, kelompokUnit, unitFilter]
+  );
 
   // State Modal
   const [editJob, setEditJob] = useState(null);
@@ -120,9 +132,9 @@ export default function PapanKerjaSpkPanel() {
       grid[0][idx] = { value: h, computed: h, isHeader: true };
     });
     
-    const maxJobs = Math.min(jobs.length, 25);
+    const maxJobs = Math.min(jobsUnit.length, 25);
     for (let i = 0; i < maxJobs; i++) {
-      const job = jobs[i];
+      const job = jobsUnit[i];
       const r = i + 1;
       const order = orderMap[job.order_item] || {};
       
@@ -151,7 +163,7 @@ export default function PapanKerjaSpkPanel() {
     }
     
     setSpreadsheetGrid(recalculateGrid(grid));
-  }, [jobs, orderMap]);
+  }, [jobsUnit, orderMap]);
 
   useEffect(() => {
     if (jobs.length > 0) {
@@ -161,10 +173,11 @@ export default function PapanKerjaSpkPanel() {
 
   const generatePivotTable = () => {
     const groups = {};
-    jobs.forEach((job) => {
+    jobsUnit.forEach((job) => {
       let key = 'Lainnya';
       if (pivotConfig.rowField === 'staff') key = job.pic_nama || 'Tanpa PIC';
       else if (pivotConfig.rowField === 'divisi') key = job.tahap_nama || 'Tanpa Tahap';
+      else if (pivotConfig.rowField === 'unit') key = job.unit_bisnis_nama || 'Belum ditandai';
       else if (pivotConfig.rowField === 'produk') {
         const order = orderMap[job.order_item] || {};
         key = order.jenisProduk || 'Tanpa Produk';
@@ -261,7 +274,10 @@ export default function PapanKerjaSpkPanel() {
           </p>
         </div>
         
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {kelompokUnit && (
+            <UnitBisnisFilter value={unitFilter} onChange={setUnitFilter} jumlah={jumlahPerUnit} />
+          )}
           <button
             onClick={handleExport}
             disabled={exporting}
@@ -294,6 +310,7 @@ export default function PapanKerjaSpkPanel() {
                       <option value="staff">Staf PIC</option>
                       <option value="divisi">Tahap Divisi</option>
                       <option value="produk">Produk / Jenis</option>
+                      {kelompokUnit && <option value="unit">Unit Bisnis</option>}
                     </select>
                   </div>
                   

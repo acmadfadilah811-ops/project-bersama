@@ -34,6 +34,8 @@ import KomplainModal from '../components/KomplainModal';
 import VoidOrderModal from '../../kasir/components/VoidOrderModal';
 import VoidOrderOtpModal from '../../kasir/components/VoidOrderOtpModal';
 import { uiConfirm } from '../../../utils/dialog';
+import UnitBisnisFilter from '../../../components/UnitBisnisFilter';
+import { bolehKelompokUnit } from '../../../utils/unitBisnis';
 
 export default function Orders() {
   const { user, businessSettings } = useAuth();
@@ -95,6 +97,10 @@ export default function Orders() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('all');
+  // Pengelompokan per unit bisnis (owner/manager/admin): '' = semua, '<id>' = satu unit, 'none' = belum ditandai.
+  const [unitFilter, setUnitFilter] = useState('');
+  const kelompokUnit = bolehKelompokUnit(user?.role);
+  const paramUnit = kelompokUnit && unitFilter ? `&unit_bisnis=${encodeURIComponent(unitFilter)}` : '';
 
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [isKomplainModalOpen, setIsKomplainModalOpen] = useState(false);
@@ -258,7 +264,7 @@ export default function Orders() {
   const fetchStats = async () => {
     try {
       setLoadingStats(true);
-      const res = await apiClient.get('/orders/stats/');
+      const res = await apiClient.get(`/orders/stats/?${paramUnit.slice(1)}`);
       setStatsData(res.data);
     } catch (err) {
       console.error('Gagal menarik statistik orders:', err);
@@ -280,7 +286,7 @@ export default function Orders() {
     try {
       if (!isSilent) setLoading(true);
       const res = await apiClient.get(
-        `/orders/?page=${page}&page_size=50&search=${encodeURIComponent(searchQuery)}&tab=${activeTab}`,
+        `/orders/?page=${page}&page_size=50&search=${encodeURIComponent(searchQuery)}&tab=${activeTab}${paramUnit}`,
         { signal: controller.signal }
       );
       if (res.data && res.data.results) {
@@ -303,7 +309,6 @@ export default function Orders() {
   };
 
   useEffect(() => {
-    fetchStats();
     apiClient
       .get('/users/')
       .then((res) => {
@@ -313,8 +318,13 @@ export default function Orders() {
   }, []);
 
   useEffect(() => {
+    fetchStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unitFilter]);
+
+  useEffect(() => {
     fetchOrders(false, currentPage);
-  }, [currentPage, activeTab]);
+  }, [currentPage, activeTab, unitFilter]);
 
   // FE-14: debounce pencarian agar tidak menembak API di setiap ketikan.
   useEffect(() => {
@@ -334,7 +344,7 @@ export default function Orders() {
     }, 15000);
 
     return () => clearInterval(intervalId);
-  }, [currentPage, searchQuery, activeTab]);
+  }, [currentPage, searchQuery, activeTab, unitFilter]);
 
   // Tutup dropdown jika user klik di luar area tabel
   useEffect(() => {
@@ -640,6 +650,18 @@ export default function Orders() {
         />
       </div>
 
+      {/* Pengelompokan per unit bisnis (owner/manager/admin) */}
+      {kelompokUnit && (
+        <UnitBisnisFilter
+          value={unitFilter}
+          jumlah={statsData.per_unit}
+          onChange={(nilai) => {
+            setUnitFilter(nilai);
+            setCurrentPage(1);
+          }}
+        />
+      )}
+
       {/* Filters & Search */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-1">
         <div className="flex gap-1 bg-slate-100/50 p-1 rounded-md border border-slate-200 overflow-x-auto">
@@ -743,6 +765,13 @@ export default function Orders() {
                         className={`px-3 py-2 font-bold ${isCancelled ? 'line-through text-slate-500' : 'text-slate-900'}`}
                       >
                         {order.id}
+                        {kelompokUnit && (
+                          <div>
+                            <span className="inline-block text-[9px] font-semibold text-slate-400">
+                              {order.unit_bisnis_nama || 'Belum ditandai'}
+                            </span>
+                          </div>
+                        )}
                       </td>
                       <td className="px-3 py-2">
                         <p

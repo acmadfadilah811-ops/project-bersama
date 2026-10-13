@@ -240,6 +240,10 @@ class JobBoardSerializer(serializers.ModelSerializer):
     pelanggan_wa      = serializers.SerializerMethodField()
     order_id          = serializers.SerializerMethodField()
     ukuran            = serializers.SerializerMethodField()
+    # Unit bisnis SPK (untuk pengelompokan Papan Kerja): unit pesanan/nota POS asalnya,
+    # bila tak ada unit divisi tahapnya.
+    unit_bisnis       = serializers.SerializerMethodField()
+    unit_bisnis_nama  = serializers.SerializerMethodField()
     # Ringkasan mesin yang dipakai untuk job ini -- ditampilkan di riwayat
     # pekerjaan staff (KanbanPersonal, job 'selesai') supaya staff & owner
     # sama-sama bisa lihat pertanggungjawaban penggunaan mesin per job tanpa
@@ -333,6 +337,25 @@ class JobBoardSerializer(serializers.ModelSerializer):
     def get_order_id(self, obj):
         # Hanya job dari alur order yang punya ID order; POS pakai nomor_sumber.
         return obj.order_item.order.id if obj.order_item_id else None
+
+    @staticmethod
+    def _unit_job(obj):
+        unit = None
+        if obj.order_item_id:
+            unit = obj.order_item.order.unit_bisnis
+        elif obj.pos_sale_item_id:
+            unit = obj.pos_sale_item.sale.unit_bisnis
+        if unit is None and obj.tahap_id and obj.tahap.divisi_id:
+            unit = obj.tahap.divisi.unit_bisnis
+        return unit
+
+    def get_unit_bisnis(self, obj):
+        unit = self._unit_job(obj)
+        return unit.id if unit else None
+
+    def get_unit_bisnis_nama(self, obj):
+        unit = self._unit_job(obj)
+        return unit.nama if unit else None
 
     def get_ukuran(self, obj):
         item = obj.order_item

@@ -9,6 +9,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.db import transaction
 from django.db.models import Case, Count, Prefetch, Q, Sum, Value, When
+from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404
 
 from ..models import (
@@ -17,8 +18,8 @@ from ..models import (
 )
 from ..serializers import JobBoardSerializer, TahapProsesSerializer
 from ..permissions import (
-    IsClockedIn, IsOwnerManagerAdminOrReadOnly, get_subordinate_divisi_ids, get_subordinate_user_ids,
-    scoped_by_unit_bisnis,
+    IsClockedIn, IsOwnerManagerAdminOrReadOnly, filter_param_unit_bisnis, get_subordinate_divisi_ids,
+    get_subordinate_user_ids, scoped_by_unit_bisnis,
 )
 
 from .inventory import catat_pemakaian_bahan
@@ -508,7 +509,10 @@ class JobBoardViewSet(viewsets.ModelViewSet):
             'pic_staff',
             'pic_staff__divisi',
             'order_item',
-            'order_item__order'
+            'order_item__order',
+            'order_item__order__unit_bisnis',
+            'pos_sale_item__sale__unit_bisnis',
+            'tahap__divisi__unit_bisnis',
         ).prefetch_related(
             # Riwayat pekerjaan staff (KanbanPersonal, job 'selesai') perlu
             # menampilkan mesin apa yang dipakai per job -- tanpa prefetch ini
@@ -582,6 +586,16 @@ class JobBoardViewSet(viewsets.ModelViewSet):
         tahap = self.request.query_params.get('tahap')
         if tahap:
             scoped_qs = scoped_qs.filter(tahap__nama__iexact=tahap.strip())
+
+        # Pengelompokan per unit bisnis (Papan Kerja owner/manager/admin). Unit sebuah SPK:
+        # unit pesanan / nota POS asalnya; bila tak ada, unit divisi tahapnya.
+        if self.request.query_params.get('unit_bisnis'):
+            scoped_qs = scoped_qs.annotate(unit_efektif=Coalesce(
+                'order_item__order__unit_bisnis_id',
+                'pos_sale_item__sale__unit_bisnis_id',
+                'tahap__divisi__unit_bisnis_id',
+            ))
+            scoped_qs = filter_param_unit_bisnis(scoped_qs, self.request, field='unit_efektif')
 
         # waktu_selesai sudah punya index gabungan (pic_staff, waktu_selesai)
         # -- dipakai kolom "Selesai" Kanban Personal supaya default terbatas

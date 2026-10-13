@@ -19,7 +19,7 @@ from django.http import HttpResponse
 
 
 from .. import spk
-from ..permissions import scoped_by_unit_bisnis
+from ..permissions import filter_param_unit_bisnis, scoped_by_unit_bisnis
 from ..models import (
     Order, OrderItem, JobBoard, CustomUser, Contact, OrderActivityLog, TahapProses,
     PengembalianOrder, OrderPayment, SaldoKasHarian,
@@ -85,6 +85,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             'payments__shift',
         ).order_by('-waktu', '-id')
         base_qs = scoped_by_unit_bisnis(base_qs, user)
+        base_qs = filter_param_unit_bisnis(base_qs, self.request)
 
         # ✅ Filter by nomor_wa if provided in query params (optimasi query detail customer)
         nomor_wa = self.request.query_params.get('nomor_wa')
@@ -781,6 +782,15 @@ class OrderViewSet(viewsets.ModelViewSet):
             ).values_list('order_item__order_id', flat=True)
             base_qs = base_qs.filter(id__in=my_order_ids)
             
+        # Jumlah pesanan per unit bisnis (untuk tombol pengelompokan) dihitung SEBELUM
+        # filter unit, supaya angkanya tetap utuh saat satu unit sedang dipilih.
+        per_unit = [
+            {'id': r['unit_bisnis_id'], 'nama': r['unit_bisnis__nama'], 'jumlah': r['jumlah']}
+            for r in base_qs.values('unit_bisnis_id', 'unit_bisnis__nama')
+            .annotate(jumlah=Count('id')).order_by('unit_bisnis__nama')
+        ]
+        base_qs = filter_param_unit_bisnis(base_qs, request)
+
         stats_agg = base_qs.aggregate(
             total_count=Count('id'),
             total_piutang=Sum('sisa_tagihan'),
@@ -808,6 +818,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             'ready': status_map.get('ready', 0),
             'selesai': status_map.get('selesai', 0),
             'batal': status_map.get('batal', 0),
+            'per_unit': per_unit,
         })
 
     @action(detail=True, methods=['get'], url_path='print-return')

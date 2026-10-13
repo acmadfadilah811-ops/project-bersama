@@ -17,6 +17,8 @@ import apiClient from '../../../../api/apiClient';
 import logoStarfoto from '../../../../assets/logo-starfoto.png';
 import OrderInputForm from '../../../orders/components/OrderInputForm';
 import { useAuth } from '../../../../context/AuthContext';
+import UnitBisnisFilter from '../../../../components/UnitBisnisFilter';
+import { bolehKelompokUnit, cocokUnit, hitungPerUnit } from '../../../../utils/unitBisnis';
 import VoidOrderModal from '../../../kasir/components/VoidOrderModal';
 import VoidOrderOtpModal from '../../../kasir/components/VoidOrderOtpModal';
 import { uiConfirm } from '../../../../utils/dialog';
@@ -74,6 +76,9 @@ export default function GlobalListPanel() {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  // Pengelompokan per unit bisnis (owner/manager/admin); '' = semua unit.
+  const [unitFilter, setUnitFilter] = useState('');
+  const kelompokUnit = bolehKelompokUnit(user?.role);
   const [showForm, setShowForm] = useState(false);
   const [expandedOrder, setExpandedOrder] = useState(null);
   // Pembatalan pesanan diselaraskan dengan alur Kasir (PosHistory.jsx): kasir
@@ -235,7 +240,10 @@ export default function GlobalListPanel() {
     return () => clearInterval(intervalId);
   }, [fetchOrders]);
 
-  const filtered = orders.filter((o) => {
+  const jumlahPerUnit = hitungPerUnit(orders, (o) => o.unit_bisnis);
+  const orderUnit = kelompokUnit ? orders.filter((o) => cocokUnit(o.unit_bisnis, unitFilter)) : orders;
+
+  const filtered = orderUnit.filter((o) => {
     const q = search.toLowerCase();
     const matchSearch =
       !q ||
@@ -246,13 +254,13 @@ export default function GlobalListPanel() {
     return matchSearch && matchStatus;
   });
 
-  // Stats
+  // Stats (mengikuti unit bisnis yang dipilih)
   const stats = {
-    total: orders.length,
-    aktif: orders.filter((o) => !['selesai', 'batal'].includes(o.status_global)).length,
-    ready: orders.filter((o) => o.status_global === 'ready').length,
-    review: orders.filter((o) => o.status_global === 'review').length,
-    selesai: orders.filter((o) => o.status_global === 'selesai').length,
+    total: orderUnit.length,
+    aktif: orderUnit.filter((o) => !['selesai', 'batal'].includes(o.status_global)).length,
+    ready: orderUnit.filter((o) => o.status_global === 'ready').length,
+    review: orderUnit.filter((o) => o.status_global === 'review').length,
+    selesai: orderUnit.filter((o) => o.status_global === 'selesai').length,
   };
 
   return (
@@ -309,6 +317,12 @@ export default function GlobalListPanel() {
           ))}
         </div>
       </div>
+
+      {kelompokUnit && (
+        <div className="bg-white border border-slate-200 rounded-xl px-4 py-2 shadow-sm shrink-0">
+          <UnitBisnisFilter value={unitFilter} onChange={setUnitFilter} jumlah={jumlahPerUnit} />
+        </div>
+      )}
 
       {/* Filters */}
       <div className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 shadow-sm shrink-0 flex gap-3">
@@ -379,6 +393,11 @@ export default function GlobalListPanel() {
                       <span className="font-mono text-[10px] text-slate-400 shrink-0">
                         {order.id}
                       </span>
+                      {kelompokUnit && (
+                        <span className="text-[9px] font-bold text-slate-500 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 shrink-0">
+                          {order.unit_bisnis_nama || 'Belum ditandai'}
+                        </span>
+                      )}
                       <span className="font-extrabold text-slate-800 text-xs truncate">
                         {order.nama}
                       </span>
