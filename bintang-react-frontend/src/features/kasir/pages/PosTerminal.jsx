@@ -1010,6 +1010,11 @@ export default function PosTerminal({ onToggleSidebar }) {
   const selectedCartItem = cart.find((i) => i.key === selectedCartItemKey);
 
   const handlePrintCheck = async () => {
+    // Pengaturan POS > Ext. Settings: "Non-aktifkan Cetak untuk pengecekan".
+    if (businessSettings?.pos_ext_settings?.disable_print_checking) {
+      notifyError('Cetak cek pesanan dinonaktifkan', 'Pesanan yang belum dibayar tidak boleh dicetak (Pengaturan POS).');
+      return;
+    }
     if (cart.length === 0) return;
 
     const subtotal = Number(getSubtotal());

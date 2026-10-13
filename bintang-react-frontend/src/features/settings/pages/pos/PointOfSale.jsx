@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { useTransaksiCrumb } from '../../../transaksi/components/TransaksiContext';
 import { uiConfirm } from '../../../../utils/dialog';
+import { getLogoUrl } from '../../../../utils/logo';
 
 const POS_TABS = [
   { id: 'pengaturan', label: 'Pengaturan' },
@@ -56,7 +57,7 @@ const POS_MENUS = [
 ];
 
 const EXT_SETTINGS_KEYS = [
-  { key: 'hide_packet_item_resi', title: 'Sembunyikan item paket di resi', desc: 'Aktifkan jika Anda tidak ingin rincian dari item paket tercetak di resi' },
+  { key: 'hide_packet_item_resi', notApplicable: 'isi paket (paket tercetak sebagai satu baris)', title: 'Sembunyikan item paket di resi', desc: 'Aktifkan jika Anda tidak ingin rincian dari item paket tercetak di resi' },
   { key: 'merge_qty_item_resi', title: 'Gabungkan Qty item di resi', desc: 'Aktifkan jika Anda ingin di resi item yang sama digabungkan untuk penghematan' },
   { key: 'print_total_qty_resi', title: 'Cetak total qty item di resi', desc: 'Aktifkan jika ingin cetak total qty item pesanan di resi' },
   { key: 'print_note_item_resi', title: 'Cetak catatan item di resi', desc: 'Aktifkan jika ingin cetak catatan item pesanan di resi' },
@@ -252,13 +253,15 @@ export default function PointOfSale() {
   };
 
   // State & tindakan untuk Catatan Resi, Email Laporan, & POS Pass Key (dari Backend)
-  const [namaBisnis, setNamaBisnis] = useState('Avicena CRM');
+  const [namaBisnis, setNamaBisnis] = useState('StarPhoto & Advertising');
   
   // Resi States
   const [resiJudul, setResiJudul] = useState('Resi Pembelian');
   const [resiJudulEmail, setResiJudulEmail] = useState('Resi Pembelian');
   const [resiCatatan, setResiCatatan] = useState('Terima Kasih Atas Kunjungan Anda');
   const [resiSembunyikanNoPesanan, setResiSembunyikanNoPesanan] = useState(false);
+  // Identitas yang ikut tercetak di resi (diatur di Pengaturan > Bisnis); hanya dibaca untuk pratinjau.
+  const [profilCetak, setProfilCetak] = useState({ alamat: '', telepon: '', syarat: '', logo: '' });
   const [showAlertBanner, setShowAlertBanner] = useState(true);
 
   // Email Laporan States
@@ -389,11 +392,17 @@ export default function PointOfSale() {
     try {
       const res = await apiClient.get('/business-settings/');
       if (res.data) {
-        setNamaBisnis(res.data.nama_bisnis || 'Avicena CRM');
+        setNamaBisnis(res.data.nama_bisnis || 'StarPhoto & Advertising');
         setResiJudul(res.data.pos_resi_judul || 'Resi Pembelian');
         setResiJudulEmail(res.data.pos_resi_judul_email || 'Resi Pembelian');
         setResiCatatan(res.data.pos_resi_catatan || 'Terima Kasih Atas Kunjungan Anda');
         setResiSembunyikanNoPesanan(!!res.data.pos_resi_sembunyikan_no_pesanan);
+        setProfilCetak({
+          alamat: res.data.alamat || '',
+          telepon: res.data.no_telepon || '',
+          syarat: res.data.invoice_terms || '',
+          logo: res.data.logo_url || '',
+        });
         setEmailPenerima(res.data.pos_email_penerima || '');
         setEmailKirimOtomatis(!!res.data.pos_email_kirim_otomatis);
         
@@ -1302,6 +1311,8 @@ export default function PointOfSale() {
                           <div className="pr-6">
                             <p className="text-[11px] leading-relaxed font-semibold text-slate-600">
                               Hasil cetak Resi akan disesuaikan dengan pengaturan Jumlah Kolom pada Pengaturan Printer di aplikasi POS Anda.
+                              Judul, catatan, dan penyembunyian nomor di bawah berlaku untuk resi cetak, resi WhatsApp/PDF, email, dan struk online.
+                              Nama, logo, alamat, telepon, rekening, serta syarat &amp; ketentuan diatur di Pengaturan &gt; Bisnis.
                             </p>
                           </div>
                           <button
@@ -1420,114 +1431,61 @@ export default function PointOfSale() {
                         </p>
                       </div>
 
-                      {/* Receipt Mockup Paper */}
-                      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-md font-mono text-[11px] text-slate-850 space-y-3 flex-1 flex flex-col select-none max-w-[340px] mx-auto w-full">
-                        {/* Receipt Header */}
+                      {/* Pratinjau resi: contoh pesanan toko cetak + data asli dari Pengaturan */}
+                      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-md font-mono text-[11px] text-slate-800 space-y-3 flex-1 flex flex-col select-none max-w-[340px] mx-auto w-full">
                         <div className="text-center space-y-1">
-                          <h5 className="font-extrabold text-xs uppercase tracking-wide">{namaBisnis}</h5>
-                          <div className="text-[9px] text-slate-500 font-semibold space-y-0.5">
-                            <p>03 Okt 2022 09:00</p>
-                            <div className="flex justify-between px-2">
-                              <span>Kasir: Budiman</span>
-                              <span>Pelanggan: Jerompolin</span>
-                            </div>
-                            {!resiSembunyikanNoPesanan && (
-                              <p className="font-mono text-[9px] border border-dashed border-slate-200 py-0.5 px-1 bg-slate-50 rounded mt-1">
-                                #1231230129312093
-                              </p>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Dashed Line */}
-                        <div className="border-t border-dashed border-slate-300 my-1"></div>
-
-                        {/* Queue Info */}
-                        <div className="text-center font-bold text-[10px] text-slate-700 bg-slate-50 py-1 rounded">
-                          Antrian B01 (DINE-IN)
-                        </div>
-
-                        {/* Title of Receipt (Judul resi) */}
-                        <div className="text-center font-extrabold uppercase text-[10px] text-slate-900 tracking-wide mt-1">
-                          {resiJudul ? resiJudul : 'Resi Pembelian'}
-                        </div>
-
-                        {/* Dashed Line */}
-                        <div className="border-t border-dashed border-slate-300 my-1"></div>
-
-                        {/* Receipt Items */}
-                        <div className="space-y-2 text-[10px] font-medium">
-                          <div className="flex justify-between">
-                            <span className="font-bold">Burger - Cheese</span>
-                            <span className="font-bold">Rp. 24.000</span>
-                          </div>
-                          <div className="flex justify-between text-slate-500 text-[9px] px-2 font-semibold">
-                            <span>Rp. 12.000</span>
-                            <span>x2</span>
-                          </div>
-
-                          <div className="flex justify-between">
-                            <span className="font-bold">Fried Fries</span>
-                            <span className="font-bold">Rp. 15.000</span>
-                          </div>
-                          <div className="flex justify-between text-slate-500 text-[9px] px-2 font-semibold">
-                            <span>Rp. 15.000</span>
-                            <span>x1</span>
-                          </div>
-
-                          <div className="flex justify-between">
-                            <span className="font-bold">Paket Hemat</span>
-                            <span className="font-bold">Rp. 105.000</span>
-                          </div>
-                          <div className="flex justify-between text-slate-500 text-[9px] px-2 font-semibold">
-                            <span>Rp. 35.000</span>
-                            <span>x3</span>
-                          </div>
-                        </div>
-
-                        {/* Dashed Line */}
-                        <div className="border-t border-dashed border-slate-300 my-1"></div>
-
-                        {/* Totals Section */}
-                        <div className="space-y-1 text-[9px] text-slate-650 font-semibold">
-                          <div className="flex justify-between">
-                            <span>Subtotal</span>
-                            <span>Rp. 144.000</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Service charge 0.01%</span>
-                            <span>Rp. 14</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>PPN 11%</span>
-                            <span>Rp. 15.840</span>
-                          </div>
-                          <div className="flex justify-between text-slate-900 font-extrabold text-[10px] border-t border-dotted border-slate-200 pt-1 mt-1 font-mono">
-                            <span>Total</span>
-                            <span>Rp. 159.854</span>
-                          </div>
-                          <div className="flex justify-between text-slate-700">
-                            <span>Tunai</span>
-                            <span>Rp. 160.000</span>
-                          </div>
-                          <div className="flex justify-between text-slate-700">
-                            <span>Kembali</span>
-                            <span>Rp. 146</span>
-                          </div>
-                        </div>
-
-                        {/* Dashed Line */}
-                        <div className="border-t border-dashed border-slate-300 my-1"></div>
-
-                        {/* Operator info and Catatan Resi */}
-                        <div className="text-center text-[9px] text-slate-500 space-y-2 mt-auto font-semibold">
-                          <p>Dilayani oleh : Budiman</p>
-                          {resiCatatan && (
-                            <p className="text-[10px] text-slate-800 font-bold italic tracking-wide break-words border-t border-slate-100 pt-2 whitespace-pre-line">
-                              {resiCatatan}
-                            </p>
+                          {profilCetak.logo && (
+                            <img src={getLogoUrl(profilCetak.logo)} alt="" className="mx-auto h-10 object-contain" style={{ filter: 'grayscale(1) contrast(1.4)' }} />
                           )}
+                          <h5 className="font-extrabold text-xs uppercase tracking-wide">{namaBisnis}</h5>
+                          {profilCetak.alamat && <p className="text-[9px] text-slate-500 whitespace-pre-line">{profilCetak.alamat}</p>}
+                          {profilCetak.telepon && <p className="text-[9px] text-slate-500">Telp: {profilCetak.telepon}</p>}
+                          <div className="font-extrabold uppercase text-[10px] text-slate-900 tracking-wide pt-1">
+                            {resiJudul ? resiJudul : 'Resi Pembelian'}
+                          </div>
+                          <p className="text-[9px] text-slate-500 font-semibold">13/10/26 09:00</p>
                         </div>
+
+                        <div className="border-t border-dashed border-slate-300"></div>
+
+                        <div className="space-y-0.5 text-[9px] text-slate-600 font-semibold">
+                          {!resiSembunyikanNoPesanan && (
+                            <div className="flex justify-between"><span>Nota:</span><span className="font-bold">POS-20261013-0001</span></div>
+                          )}
+                          <div className="flex justify-between"><span>Kasir:</span><span>Kasir 1</span></div>
+                          <div className="flex justify-between"><span>Pelanggan:</span><span>Budi Santoso</span></div>
+                        </div>
+
+                        <div className="border-t border-dashed border-slate-300"></div>
+
+                        <div className="space-y-2 text-[10px] font-medium">
+                          <div>
+                            <div className="flex justify-between"><span className="font-bold">Banner Flexi 3x1 m</span><span className="font-bold">Rp 150.000</span></div>
+                            <div className="text-slate-500 text-[9px]">2 pcs x Rp 75.000</div>
+                          </div>
+                          <div>
+                            <div className="flex justify-between"><span className="font-bold">Stiker Vinyl A3</span><span className="font-bold">Rp 45.000</span></div>
+                            <div className="text-slate-500 text-[9px]">3 pcs x Rp 15.000</div>
+                          </div>
+                        </div>
+
+                        <div className="border-t border-dashed border-slate-300"></div>
+
+                        <div className="space-y-1 text-[9px] text-slate-600 font-semibold">
+                          <div className="flex justify-between"><span>Subtotal</span><span>Rp 195.000</span></div>
+                          <div className="flex justify-between text-slate-900 font-extrabold text-[10px] border-t border-dotted border-slate-200 pt-1 mt-1">
+                            <span>Total</span><span>Rp 195.000</span>
+                          </div>
+                          <div className="flex justify-between"><span>Dibayar</span><span>Rp 200.000</span></div>
+                          <div className="flex justify-between"><span>Kembalian</span><span>Rp 5.000</span></div>
+                        </div>
+
+                        {(resiCatatan || profilCetak.syarat) && (
+                          <div className="text-center text-[9px] text-slate-500 space-y-2 mt-auto font-semibold border-t border-dashed border-slate-300 pt-2">
+                            {resiCatatan && <p className="text-[10px] text-slate-800 font-bold break-words whitespace-pre-line">{resiCatatan}</p>}
+                            {profilCetak.syarat && <p className="text-left text-[8px] whitespace-pre-line">{profilCetak.syarat}</p>}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

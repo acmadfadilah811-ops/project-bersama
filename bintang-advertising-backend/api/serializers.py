@@ -928,6 +928,9 @@ class BusinessSettingsSerializer(serializers.Serializer):
     logo_url        = serializers.CharField(required=False, allow_blank=True)
     logo_file       = serializers.ImageField(required=False, write_only=True)
     deskripsi       = serializers.CharField(required=False, allow_blank=True)
+    # Dicetak di resi/invoice: slogan di bawah nama bisnis & teks cara bayar (rekening).
+    tagline         = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    info_pembayaran = serializers.CharField(max_length=500, required=False, allow_blank=True)
     
     # Keuangan & Invoice
     ppn_default     = serializers.IntegerField(required=False, default=11)
@@ -1013,6 +1016,8 @@ class BusinessSettingsSerializer(serializers.Serializer):
         'mata_uang':    'bisnis_mata_uang',
         'logo_url':     'bisnis_logo_url',
         'deskripsi':    'bisnis_deskripsi',
+        'tagline':      'bisnis_tagline',
+        'info_pembayaran': 'bisnis_info_pembayaran',
         
         # Keuangan & Invoice
         'ppn_default':   'bisnis_ppn_default',
@@ -1089,6 +1094,8 @@ class BusinessSettingsSerializer(serializers.Serializer):
         """Baca semua key bisnis dari SystemConfig."""
         result = {}
         defaults = {
+            'tagline': 'Solusi Cetak & Promosi Terpercaya',
+            'info_pembayaran': '',
             'ppn_default': 11,
             'invoice_terms': '',
             'order_prefix': 'ORD',

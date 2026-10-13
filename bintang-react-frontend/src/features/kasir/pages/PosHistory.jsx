@@ -785,9 +785,11 @@ export default function PosHistory({ onToggleSidebar }) {
                   <div className="absolute bottom-full right-0 mb-2 w-48 bg-white rounded-xl shadow-2xl border border-slate-200 py-1.5 z-50 text-xs font-bold text-slate-800 animate-fade-in">
                     <button
                       type="button"
-                      disabled={sendingWa}
+                      disabled={sendingWa || !!businessSettings?.pos_ext_settings?.disable_reprint}
+                      title={businessSettings?.pos_ext_settings?.disable_reprint ? 'Cetak ulang dinonaktifkan di Pengaturan POS' : undefined}
                       onClick={async () => {
                         setShowActionDropdown(false);
+                        if (businessSettings?.pos_ext_settings?.disable_reprint) return;
                         // ReceiptPrint dirender di luar dropdown (hidden, hanya
                         // muncul saat print:block). QZ Tray atau dialog browser
                         // dipilih oleh konfigurasi perangkat kasir. Halaman ini

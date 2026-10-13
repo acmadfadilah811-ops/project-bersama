@@ -69,14 +69,25 @@ def _nama_user(user):
 
 
 def _info_toko():
-    from ..models import SystemConfig
-    from .pos_receipt_whatsapp import _info_bisnis_resi
+    """Identitas toko di halaman resi publik, dari Pengaturan Toko (pengaturan_cetak.py)."""
+    from django.conf import settings
 
-    info = _info_bisnis_resi()
-    tambahan = dict(SystemConfig.objects.filter(key__in=['bisnis_logo_url', 'pos_resi_catatan']).values_list('key', 'value'))
-    info['logo_url'] = tambahan.get('bisnis_logo_url') or ''
-    info['catatan_kaki'] = tambahan.get('pos_resi_catatan') or 'Terima kasih atas kunjungan Anda'
-    return info
+    from .pengaturan_cetak import ambil
+
+    cfg = ambil()
+    logo = cfg['logo_url']
+    if logo and not logo.startswith(('http://', 'https://', '/')):
+        from django.core.files.storage import default_storage
+
+        try:
+            logo = default_storage.url(logo)
+        except Exception:
+            logo = f"{settings.MEDIA_URL}{logo}"
+    return {
+        'nama': cfg['nama'], 'alamat': cfg['alamat'], 'telepon': cfg['telepon'],
+        'logo_url': logo, 'catatan_kaki': cfg['catatan'],
+        'judul': cfg['judul'], 'sembunyikan_nomor': cfg['sembunyikan_nomor'],
+    }
 
 
 def _angka(x):

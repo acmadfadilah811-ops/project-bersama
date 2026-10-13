@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { FileText, MessageCircle, Printer, X } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
+import { useAuth } from '../../../context/AuthContext';
 import OrderInvoicePrint from './OrderInvoicePrint';
 import { requestBrowserPrint } from '../../printing/services/printService';
 import KirimIdPesananButton from './KirimIdPesananButton';
@@ -15,6 +16,7 @@ import KirimIdPesananButton from './KirimIdPesananButton';
  */
 export default function InvoiceModal({ order, onClose }) {
   const [sendingInvoice, setSendingInvoice] = useState(false);
+  const { businessSettings } = useAuth();
 
   if (!order) return null;
 
@@ -55,7 +57,7 @@ export default function InvoiceModal({ order, onClose }) {
   return (
     <>
       {/* dibayarSekarang = 0: ini cetak ulang, bukan pencatatan pembayaran baru */}
-      <OrderInvoicePrint order={order} dibayarSekarang={0} metode={null} isReprint />
+      <OrderInvoicePrint order={order} dibayarSekarang={0} metode={null} settings={businessSettings} isReprint />
 
       <div className="fixed inset-0 z-[9999] flex items-center justify-center p-5 print:hidden">
         <div className="absolute inset-0 bg-slate-900/45 backdrop-blur-sm" onClick={onClose} />

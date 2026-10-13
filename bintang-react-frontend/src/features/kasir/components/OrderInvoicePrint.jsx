@@ -1,5 +1,6 @@
 import React from 'react';
 import logoStarfoto from '../../../assets/logo-starfoto.png';
+import { cetakConfig } from '../../printing/services/receiptConfig';
 
 /**
  * Faktur untuk pesanan (Order), bukan nota POS.
@@ -11,6 +12,9 @@ import logoStarfoto from '../../../assets/logo-starfoto.png';
  */
 export default function OrderInvoicePrint({ order, dibayarSekarang, metode, settings, isReprint }) {
   if (!order) return null;
+
+  // Identitas toko, info pembayaran, dan syarat dibaca dari Pengaturan (receiptConfig).
+  const cfg = cetakConfig(settings);
 
   const formatCurrency = (val) =>
     new Intl.NumberFormat('id-ID', {
@@ -43,14 +47,12 @@ export default function OrderInvoicePrint({ order, dibayarSekarang, metode, sett
     <div className="print-area hidden print:block bg-white p-8 text-black font-sans text-xs min-h-screen">
       <div className="flex justify-between items-start border-b-2 border-slate-900 pb-4 mb-6">
         <div className="flex items-center gap-4">
-          <img src={logoStarfoto} alt="StarPhoto & Advertising" className="h-16 w-auto" />
+          <img src={cfg.logoUrl || logoStarfoto} alt={cfg.nama} className="h-16 w-auto" />
           <div>
-            <h1 className="text-xl font-black uppercase tracking-wide">
-              {settings?.nama_bisnis || 'StarPhoto & Advertising'}
-            </h1>
-            <p className="text-[10px] text-slate-500 font-semibold mt-1">
-              Solusi Cetak &amp; Promosi Terpercaya
-            </p>
+            <h1 className="text-xl font-black uppercase tracking-wide">{cfg.nama}</h1>
+            {cfg.tagline && <p className="text-[10px] text-slate-500 font-semibold mt-1">{cfg.tagline}</p>}
+            {cfg.alamat && <p className="text-[10px] text-slate-500 whitespace-pre-line">{cfg.alamat}</p>}
+            {cfg.telepon && <p className="text-[10px] text-slate-500">Telp: {cfg.telepon}</p>}
           </div>
         </div>
         <div className="text-right">
@@ -148,8 +150,21 @@ export default function OrderInvoicePrint({ order, dibayarSekarang, metode, sett
         </div>
       </div>
 
+      {cfg.infoPembayaran && (
+        <div className="mt-8 text-[10px] text-slate-500">
+          <p className="font-bold text-slate-700">Metode Pembayaran:</p>
+          <p className="whitespace-pre-line max-w-xs">{cfg.infoPembayaran}</p>
+        </div>
+      )}
+      {cfg.syarat && (
+        <div className="mt-4 text-[10px] text-slate-500">
+          <p className="font-bold text-slate-700">Syarat &amp; Ketentuan:</p>
+          <p className="whitespace-pre-line">{cfg.syarat}</p>
+        </div>
+      )}
+
       <div className="mt-10 pt-4 border-t border-slate-200 text-center text-[10px] text-slate-500">
-        <p>Terima kasih atas kepercayaan Anda.</p>
+        <p className="whitespace-pre-line">{cfg.catatan || 'Terima kasih atas kepercayaan Anda.'}</p>
         <p className="mt-0.5">Faktur ini sah tanpa tanda tangan basah.</p>
       </div>
     </div>

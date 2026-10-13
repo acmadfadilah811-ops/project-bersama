@@ -1939,13 +1939,14 @@ export default function Orders() {
 
               <div className="flex justify-between items-end mt-10">
                 <div className="flex gap-12">
+                  {(businessSettings?.info_pembayaran || businessSettings?.deskripsi) && (
                   <div className="text-[10px] text-slate-500 space-y-1 self-start">
                     <p className="font-bold text-slate-700">Metode Pembayaran:</p>
-                    <p className="max-w-[220px]">
-                      {businessSettings?.deskripsi ||
-                        `Transfer BCA: 1234567890 a/n ${businessSettings?.nama_bisnis || 'StarPhoto & Advertising'}`}
+                    <p className="max-w-[220px] whitespace-pre-line">
+                      {businessSettings.info_pembayaran || businessSettings.deskripsi}
                     </p>
                   </div>
+                )}
                   <div className="text-center w-36">
                     <p className="mb-12 text-slate-500">Tanda Terima,</p>
                     <p className="font-bold border-t border-slate-400 pt-1 text-slate-800">
@@ -1960,6 +1961,12 @@ export default function Orders() {
                   </p>
                 </div>
               </div>
+              {businessSettings?.invoice_terms && (
+                <div className="mt-6 text-[10px] text-slate-500">
+                  <p className="font-bold text-slate-700">Syarat &amp; Ketentuan:</p>
+                  <p className="whitespace-pre-line">{businessSettings.invoice_terms}</p>
+                </div>
+              )}
             </div>
 
             <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-2 no-print">

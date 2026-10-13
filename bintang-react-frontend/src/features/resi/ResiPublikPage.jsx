@@ -121,8 +121,13 @@ export default function ResiPublikPage() {
 
         <div className="mt-5 flex items-center justify-between border-y border-slate-100 py-3">
           <div>
-            <p className="text-[11px] text-slate-500">{data.jenis === 'order' ? 'No. Pesanan' : 'No. Resi'}</p>
-            <p className="text-sm font-bold text-slate-900">{data.nomor}</p>
+            {data.toko?.judul && <p className="text-[11px] font-semibold uppercase text-slate-500">{data.toko.judul}</p>}
+            {!data.toko?.sembunyikan_nomor && (
+              <>
+                <p className="text-[11px] text-slate-500">{data.jenis === 'order' ? 'No. Pesanan' : 'No. Resi'}</p>
+                <p className="text-sm font-bold text-slate-900">{data.nomor}</p>
+              </>
+            )}
             <p className="text-[11px] text-slate-500">{waktu(data.waktu)}</p>
           </div>
           <span className={`rounded-full px-3 py-1 text-xs font-bold ${st.kelas}`}>{st.teks}</span>

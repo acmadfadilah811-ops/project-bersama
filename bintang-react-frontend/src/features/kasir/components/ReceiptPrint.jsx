@@ -1,16 +1,20 @@
 import React from 'react';
 import logoStarfoto from '../../../assets/logo-starfoto.png';
 import { getLocalPrinterSettings } from '../../printing/services/printService';
+import { cetakConfig, itemUntukCetak, judulDokumen, totalQtyItem } from '../../printing/services/receiptConfig';
 
 export default function ReceiptPrint({ receipt, settings }) {
   if (!receipt) return null;
 
-  const extSettings = settings?.pos_ext_settings || {};
+  // Semua pengaturan cetak (identitas toko, judul, catatan, syarat, toggle resi)
+  // dibaca lewat receiptConfig supaya sama dengan jalur cetak lain.
+  const cfg = cetakConfig(settings);
   const { paperSize } = getLocalPrinterSettings();
-  const isA4Layout = !!extSettings.pos_custom_resi_windows;
-  const isPaperSaving = !!extSettings.enable_paper_saving;
+  const isA4Layout = cfg.a4;
+  const isPaperSaving = cfg.hematKertas;
   const thermalWidth = paperSize === '58mm' ? '48mm' : '72mm';
-  const documentTitle = receipt.documentTitle || settings?.pos_resi_judul || 'RESI PEMBELIAN';
+  const documentTitle = judulDokumen(receipt, cfg);
+  const logoSrc = cfg.logoUrl || logoStarfoto;
   const isReprint = !!receipt.isReprint;
   const formatReceiptDateTime = (value) => new Intl.DateTimeFormat('id-ID', {
     dateStyle: 'short',
@@ -27,36 +31,11 @@ export default function ReceiptPrint({ receipt, settings }) {
     }).format(val);
   };
 
-  // 1. Process items based on merge setting
-  let itemsToPrint = receipt.items || [];
-  if (extSettings.merge_qty_item_resi) {
-    const merged = {};
-    itemsToPrint.forEach((item) => {
-      // Create a unique key for grouping (using product and variant snapshots or ids)
-      const key = item.variant
-        ? `v-${item.product}-${item.variant}`
-        : `p-${item.product}`;
-      if (merged[key]) {
-        merged[key].qty = parseFloat(merged[key].qty || 0) + parseFloat(item.qty || 0);
-        merged[key].subtotal = parseFloat(merged[key].subtotal || 0) + parseFloat(item.subtotal || 0);
-        merged[key].addons = [...(merged[key].addons || []), ...(item.addons || [])];
-      } else {
-        merged[key] = { ...item, addons: [...(item.addons || [])] };
-      }
-    });
-    itemsToPrint = Object.values(merged);
-  }
-
-  // 2. Hide packet items if setting is active
-  if (extSettings.hide_packet_item_resi) {
-    // If the snapshot name indicates a package child or has a tag, we could filter.
-    // In this codebase, package items are usually children. Let's filter out
-    // items whose snapshot starts with spaces or has indicators, if any, or just keep as is.
-    itemsToPrint = itemsToPrint.filter(item => !item.nama_snapshot?.startsWith('  ') && !item.nama_snapshot?.startsWith('- '));
-  }
-
-  // Calculate total qty
-  const totalQty = itemsToPrint.reduce((sum, item) => sum + parseFloat(item.qty || 0), 0);
+  // Item sama digabung bila "Gabungkan Qty item di resi" aktif. (Paket tercetak
+  // sebagai satu baris -- isi paket memang tidak pernah dicetak -- jadi
+  // "Sembunyikan item paket" tidak berlaku.)
+  const itemsToPrint = itemUntukCetak(receipt.items, cfg);
+  const totalQty = totalQtyItem(itemsToPrint);
 
   // Render A4/Carbon Copy invoice layout
   if (isA4Layout) {
@@ -65,20 +44,22 @@ export default function ReceiptPrint({ receipt, settings }) {
         {/* Header */}
         <div className="flex justify-between items-start border-b-2 border-slate-900 pb-4 mb-6">
           <div className="flex items-center gap-4">
-            <img src={logoStarfoto} alt="StarPhoto & Advertising" className="h-16 w-auto" />
+            <img src={logoSrc} alt={cfg.nama} className="h-16 w-auto" />
             <div>
-              <h1 className="text-xl font-black uppercase tracking-wide">{settings?.nama_bisnis || 'StarPhoto & Advertising'}</h1>
-              <p className="text-[10px] text-slate-500 font-semibold mt-1">Solusi Cetak & Promosi Terpercaya</p>
+              <h1 className="text-xl font-black uppercase tracking-wide">{cfg.nama}</h1>
+              {cfg.tagline && <p className="text-[10px] text-slate-500 font-semibold mt-1">{cfg.tagline}</p>}
+              {cfg.alamat && <p className="text-[10px] text-slate-500 whitespace-pre-line">{cfg.alamat}</p>}
+              {cfg.telepon && <p className="text-[10px] text-slate-500">Telp: {cfg.telepon}</p>}
             </div>
           </div>
           <div className="text-right">
-            <h2 className="text-lg font-extrabold uppercase tracking-wide text-slate-700">{receipt.documentTitle || 'Faktur Penjualan (POS)'}</h2>
+            <h2 className="text-lg font-extrabold uppercase tracking-wide text-slate-700">{documentTitle}</h2>
             {isReprint && (
               <p className="text-[11px] font-black uppercase tracking-widest text-rose-600 border border-rose-300 rounded px-2 py-0.5 inline-block mt-1">
                 SALINAN
               </p>
             )}
-            {!settings?.pos_resi_sembunyikan_no_pesanan && (
+            {!cfg.sembunyikanNomor && (
               <p className="text-[10px] font-black text-slate-900 mt-1">No. Invoice: {receipt.nomor}</p>
             )}
             <p className="text-[10px] text-slate-500 font-semibold">Tanggal: {formatReceiptDateTime(receipt.created_at)}</p>
@@ -136,7 +117,7 @@ export default function ReceiptPrint({ receipt, settings }) {
                     <td className="py-1 text-right text-[10px] pr-2">{formatCurrency(addon.subtotal)}</td>
                   </tr>
                 ))}
-                {extSettings.print_note_item_resi && item.catatan && (
+                {cfg.catatanItem && item.catatan && (
                   <tr className="bg-slate-50/50">
                     <td></td>
                     <td colSpan="4" className="py-1 px-3 text-[10px] text-slate-500 italic font-semibold">
@@ -211,7 +192,7 @@ export default function ReceiptPrint({ receipt, settings }) {
                 </div>
               </>
             )}
-            {extSettings.print_total_qty_resi && (
+            {cfg.totalQty && (
               <div className="text-[10px] text-slate-400 font-bold pt-2 border-t border-dashed border-slate-100">
                 TOTAL QTY ITEM: {totalQty}
               </div>
@@ -219,10 +200,15 @@ export default function ReceiptPrint({ receipt, settings }) {
           </div>
         </div>
 
-        {/* Footer Settings Text */}
-        {settings?.pos_resi_catatan && (
-          <div className="text-center text-[10px] text-slate-400 font-semibold mt-16 pt-4 border-t border-dashed border-slate-200">
-            {settings.pos_resi_catatan}
+        {/* Footer: syarat & ketentuan dan catatan dari Pengaturan */}
+        {(cfg.syarat || cfg.catatan) && (
+          <div className="text-center text-[10px] text-slate-400 font-semibold mt-16 pt-4 border-t border-dashed border-slate-200 space-y-1">
+            {cfg.syarat && (
+              <p className="whitespace-pre-line text-left">
+                <span className="font-bold text-slate-500">Syarat &amp; Ketentuan: </span>{cfg.syarat}
+              </p>
+            )}
+            {cfg.catatan && <p className="whitespace-pre-line">{cfg.catatan}</p>}
           </div>
         )}
       </div>
@@ -240,12 +226,14 @@ export default function ReceiptPrint({ receipt, settings }) {
         {/* Printer thermal monokrom: grayscale+kontras supaya logo (perisai biru)
             tidak jadi bercak abu-abu kabur saat di-dither. */}
         <img
-          src={logoStarfoto}
-          alt="StarPhoto & Advertising"
+          src={logoSrc}
+          alt={cfg.nama}
           className="mx-auto block"
           style={{ width: '80%', height: 'auto', filter: 'grayscale(1) contrast(1.4)' }}
         />
-        <h2 className="text-xs font-black uppercase tracking-wider">{settings?.nama_bisnis || 'StarPhoto & Advertising'}</h2>
+        <h2 className="text-xs font-black uppercase tracking-wider">{cfg.nama}</h2>
+        {cfg.alamat && <p className="text-[8px] leading-tight whitespace-pre-line">{cfg.alamat}</p>}
+        {cfg.telepon && <p className="text-[8px] leading-tight">Telp: {cfg.telepon}</p>}
         <h3 className="text-[10px] font-bold uppercase">{documentTitle}</h3>
         {isReprint && (
           <p className="text-[10px] font-black uppercase tracking-widest border border-black px-2 py-0.5 inline-block">
@@ -260,7 +248,7 @@ export default function ReceiptPrint({ receipt, settings }) {
 
       {/* Metadata */}
       <div className="space-y-0.5 text-[9px]">
-        {!settings?.pos_resi_sembunyikan_no_pesanan && (
+        {!cfg.sembunyikanNomor && (
           <div className="flex justify-between">
             <span>Nota:</span>
             <span className="font-bold">{receipt.nomor}</span>
@@ -298,7 +286,7 @@ export default function ReceiptPrint({ receipt, settings }) {
                 <span>{formatCurrency(addon.subtotal)}</span>
               </div>
             ))}
-            {extSettings.print_note_item_resi && item.catatan && (
+            {cfg.catatanItem && item.catatan && (
               <div className="text-[8px] text-slate-600 italic pl-2">
                 * Note: {item.catatan}
               </div>
@@ -360,16 +348,17 @@ export default function ReceiptPrint({ receipt, settings }) {
         )}
       </div>
 
-      {extSettings.print_total_qty_resi && (
+      {cfg.totalQty && (
         <div className="text-[8px] text-center mt-2 font-bold text-slate-600">
           TOTAL QTY ITEM: {totalQty}
         </div>
       )}
 
-      {/* Footer Catatan Settings */}
-      {settings?.pos_resi_catatan && (
-        <div className="text-center text-[9px] mt-4 pt-2 border-t border-dashed border-black break-words leading-tight whitespace-pre-line font-medium text-slate-700">
-          {settings.pos_resi_catatan}
+      {/* Footer: catatan resi dan syarat & ketentuan dari Pengaturan */}
+      {(cfg.catatan || cfg.syarat) && (
+        <div className="text-center text-[9px] mt-4 pt-2 border-t border-dashed border-black break-words leading-tight whitespace-pre-line font-medium text-slate-700 space-y-1">
+          {cfg.catatan && <p>{cfg.catatan}</p>}
+          {cfg.syarat && <p className="text-[8px] text-left">{cfg.syarat}</p>}
         </div>
       )}
     </div>

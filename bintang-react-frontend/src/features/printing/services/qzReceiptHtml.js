@@ -1,3 +1,5 @@
+import { cetakConfig, itemUntukCetak, judulDokumen, totalQtyItem } from './receiptConfig';
+
 const PAPER_WIDTH_MM = {
   '58mm': 58,
   '80mm': 80,
@@ -22,18 +24,22 @@ export function getPaperWidthInches(paperSize) {
 }
 
 export function buildQzReceiptHtml({ receipt, settings, paperSize }) {
-  const isA4 = paperSize === 'a4' || settings?.pos_ext_settings?.pos_custom_resi_windows;
+  // Pengaturan cetak sama persis dengan cetak browser (ReceiptPrint): judul, alamat,
+  // telepon, catatan, syarat, sembunyikan nomor, gabung qty, catatan item, total qty.
+  const cfg = cetakConfig(settings);
+  const isA4 = paperSize === 'a4' || cfg.a4;
   const widthMm = isA4 ? PAPER_WIDTH_MM.a4 : (PAPER_WIDTH_MM[paperSize] || PAPER_WIDTH_MM['80mm']);
-  const items = receipt?.items || [];
+  const items = itemUntukCetak(receipt?.items, cfg);
   const itemRows = items.map((item) => `
     <tr>
       <td><strong>${escapeHtml(item.nama_snapshot || item.nama || 'Item')}</strong><br>
         <small>${escapeHtml(item.qty || 0)} ${escapeHtml(item.uom_kode || 'pcs')} x ${escapeHtml(formatCurrency(item.harga_snapshot ?? item.harga))}</small>
+        ${cfg.catatanItem && item.catatan ? `<br><small><em>* ${escapeHtml(item.catatan)}</em></small>` : ''}
       </td>
       <td class="right">${escapeHtml(formatCurrency(item.subtotal ?? item.hargaTotal))}</td>
     </tr>`).join('');
   const customer = receipt?.pelanggan_name || receipt?.customerName;
-  const documentTitle = receipt?.documentTitle || settings?.pos_resi_judul || 'RESI PEMBELIAN';
+  const documentTitle = judulDokumen(receipt, cfg);
   const isReprint = !!receipt?.isReprint;
 
   return `<!doctype html>
@@ -44,13 +50,16 @@ export function buildQzReceiptHtml({ receipt, settings, paperSize }) {
   h1, h2, p { margin: 0; } .center { text-align: center; } .right { text-align: right; white-space: nowrap; }
   .divider { border-top: 1px dashed #000; margin: 8px 0; } table { width: 100%; border-collapse: collapse; }
   td { padding: 3px 0; vertical-align: top; } small { font-size: 0.85em; } .total { font-weight: 700; font-size: 1.1em; }
+  .kecil { font-size: 0.85em; white-space: pre-line; }
 </style></head><body>
-  <div class="center"><h1>${escapeHtml(settings?.nama_bisnis || 'BINTANG ADVERTISING')}</h1>
+  <div class="center"><h1>${escapeHtml(cfg.nama)}</h1>
+  ${cfg.alamat ? `<p class="kecil">${escapeHtml(cfg.alamat)}</p>` : ''}
+  ${cfg.telepon ? `<p class="kecil">Telp: ${escapeHtml(cfg.telepon)}</p>` : ''}
   <h2>${escapeHtml(documentTitle)}</h2>
   ${isReprint ? '<p class="total">*** SALINAN ***</p>' : ''}
   <p>${escapeHtml(new Date(receipt?.created_at || Date.now()).toLocaleString('id-ID'))}</p></div>
   <div class="divider"></div>
-  <table><tr><td>Nota</td><td class="right">${escapeHtml(receipt?.nomor || '-')}</td></tr>
+  <table>${cfg.sembunyikanNomor ? '' : `<tr><td>Nota</td><td class="right">${escapeHtml(receipt?.nomor || '-')}</td></tr>`}
   <tr><td>Kasir</td><td class="right">${escapeHtml(receipt?.kasir_name || 'POS')}</td></tr>
   ${customer ? `<tr><td>Pelanggan</td><td class="right">${escapeHtml(customer)}</td></tr>` : ''}</table>
   <div class="divider"></div><table>${itemRows}</table><div class="divider"></div>
@@ -60,6 +69,8 @@ export function buildQzReceiptHtml({ receipt, settings, paperSize }) {
   <tr class="total"><td>Total</td><td class="right">${escapeHtml(formatCurrency(receipt?.total))}</td></tr>
   ${receipt?.isDraft ? '<tr><td colspan="2" class="total">STATUS: BELUM DIBAYAR</td></tr>' : `<tr><td>Dibayar</td><td class="right">${escapeHtml(formatCurrency(receipt?.dibayar))}</td></tr>
   <tr><td>Kembalian</td><td class="right">${escapeHtml(formatCurrency(receipt?.kembalian))}</td></tr>`}</table>
-  ${settings?.pos_resi_catatan ? `<div class="divider"></div><p class="center">${escapeHtml(settings.pos_resi_catatan)}</p>` : ''}
+  ${cfg.totalQty ? `<p class="center kecil">TOTAL QTY ITEM: ${escapeHtml(totalQtyItem(items))}</p>` : ''}
+  ${cfg.catatan ? `<div class="divider"></div><p class="center kecil">${escapeHtml(cfg.catatan)}</p>` : ''}
+  ${cfg.syarat ? `<div class="divider"></div><p class="kecil">${escapeHtml(cfg.syarat)}</p>` : ''}
 </body></html>`;
 }

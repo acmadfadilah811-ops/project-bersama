@@ -3,6 +3,7 @@
 import base64
 import io
 import logging
+from xml.sax.saxutils import escape
 
 from django.db import transaction
 
@@ -125,19 +126,11 @@ def _tanggal_panjang(value):
 
 
 def _info_bisnis():
-    """Nama/alamat/telepon/deskripsi bisnis dari SystemConfig (Pengaturan
-    Toko), dengan default yang sama dengan yang dipakai layar cetak Invoice
-    A4/SPK di frontend (GlobalListPanel.jsx) supaya invoice WA konsisten
-    dengan dokumen yang sudah dicetak kasir/produksi."""
-    from ..models import SystemConfig
-    keys = ['bisnis_nama', 'bisnis_alamat', 'bisnis_no_telepon', 'bisnis_deskripsi']
-    values = {row.key: row.value for row in SystemConfig.objects.filter(key__in=keys)}
-    return {
-        'nama': values.get('bisnis_nama') or 'StarPhoto & Advertising',
-        'alamat': values.get('bisnis_alamat') or 'Jl. Produksi No. 123, Kota',
-        'telepon': values.get('bisnis_no_telepon') or '0812-3456-7890',
-        'deskripsi': values.get('bisnis_deskripsi') or '',
-    }
+    """Identitas bisnis, info pembayaran, dan syarat invoice dari Pengaturan Toko
+    (lihat pengaturan_cetak.py). Isian kosong = barisnya tidak dicetak; tidak ada
+    lagi alamat/telepon/rekening karangan."""
+    from .pengaturan_cetak import ambil
+    return ambil()
 
 
 def susun_invoice_dp_pdf(order):
@@ -208,10 +201,14 @@ def susun_invoice_dp_pdf(order):
         header_left = [logo, Spacer(1, 3 * mm)] + header_left
     header_right = [
         Paragraph(f'INVOICE - {order.nama.upper()} - #{order.id}', right_title),
-        Paragraph(biz['nama'], right_sub_bold),
-        Paragraph(biz['alamat'], right_sub),
-        Paragraph(f"WA: {biz['telepon']}", right_sub),
+        Paragraph(escape(biz['nama']), right_sub_bold),
     ]
+    if biz['alamat']:
+        header_right.append(Paragraph(escape(biz['alamat']), right_sub))
+    if biz['telepon']:
+        header_right.append(Paragraph(f"WA: {escape(biz['telepon'])}", right_sub))
+    if biz['tagline']:
+        header_right.append(Paragraph(escape(biz['tagline']), right_sub))
     header_table = Table([[header_left, header_right]], colWidths=[usable_width * 0.5, usable_width * 0.5])
     header_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
@@ -372,11 +369,12 @@ def susun_invoice_dp_pdf(order):
         elements.append(Spacer(1, 6 * mm))
 
     # --- Metode pembayaran + tanda tangan ---
-    metode_text = biz['deskripsi'] or f"Transfer BCA: 1234567890 a/n {biz['nama']}"
-    payment_block = [
-        Paragraph('Metode Pembayaran:', ParagraphStyle('InvPayLabel', fontName='Helvetica-Bold', fontSize=8, textColor=colors.HexColor('#334155'))),
-        Paragraph(metode_text, sub_style),
-    ]
+    payment_block = []
+    if biz['info_pembayaran']:
+        payment_block = [
+            Paragraph('Metode Pembayaran:', ParagraphStyle('InvPayLabel', fontName='Helvetica-Bold', fontSize=8, textColor=colors.HexColor('#334155'))),
+            Paragraph(escape(biz['info_pembayaran']).replace('\n', '<br/>'), sub_style),
+        ]
     sign_label_style = ParagraphStyle('InvSignLabel', fontName='Helvetica-Bold', fontSize=9, textColor=dark, alignment=1)
     sign_caption_style = ParagraphStyle('InvSignCaption', fontName='Helvetica', fontSize=8, textColor=slate500, alignment=1)
 
@@ -397,6 +395,19 @@ def susun_invoice_dp_pdf(order):
         ('LEFTPADDING', (0, 0), (-1, -1), 0), ('RIGHTPADDING', (0, 0), (-1, -1), 6),
     ]))
     elements.append(footer_table)
+
+    if biz['syarat']:
+        elements.append(Spacer(1, 8 * mm))
+        elements.append(Paragraph(
+            'Syarat &amp; Ketentuan:',
+            ParagraphStyle('InvTermsLabel', fontName='Helvetica-Bold', fontSize=8, textColor=colors.HexColor('#334155')),
+        ))
+        elements.append(Paragraph(escape(biz['syarat']).replace('\n', '<br/>'), cell_small))
+    if biz['catatan']:
+        elements.append(Spacer(1, 6 * mm))
+        elements.append(Paragraph(escape(biz['catatan']).replace('\n', '<br/>'), ParagraphStyle(
+            'InvFootNote', fontName='Helvetica', fontSize=8, textColor=slate500, alignment=1,
+        )))
 
     doc.build(elements)
     return buffer.getvalue()

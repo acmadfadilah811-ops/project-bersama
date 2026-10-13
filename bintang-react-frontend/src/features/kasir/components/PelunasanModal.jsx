@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Loader2, MessageCircle, Printer, Wallet, X } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
+import { useAuth } from '../../../context/AuthContext';
 import NumericInput from '../../../components/NumericInput';
 import OrderInvoicePrint from './OrderInvoicePrint';
 import KirimIdPesananButton from './KirimIdPesananButton';
@@ -14,6 +15,7 @@ import { requestBrowserPrint } from '../../printing/services/printService';
  * Jadi tidak ada logika keuangan yang diduplikasi di sini.
  */
 export default function PelunasanModal({ order, onClose, onSelesai }) {
+  const { businessSettings } = useAuth();
   const sisaAwal = Math.max(0, Number(order?.sisa_tagihan || 0));
 
   const [jumlah, setJumlah] = useState(sisaAwal);
@@ -88,7 +90,7 @@ export default function PelunasanModal({ order, onClose, onSelesai }) {
   return (
     <>
       {orderLunas && (
-        <OrderInvoicePrint order={orderLunas} dibayarSekarang={jumlahNum} metode={metode} />
+        <OrderInvoicePrint order={orderLunas} dibayarSekarang={jumlahNum} metode={metode} settings={businessSettings} />
       )}
 
       <div className="fixed inset-0 z-[9999] flex items-center justify-center p-5 print:hidden">

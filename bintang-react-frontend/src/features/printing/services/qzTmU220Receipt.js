@@ -1,3 +1,5 @@
+import { cetakConfig, itemUntukCetak, judulDokumen, totalQtyItem } from './receiptConfig';
+
 const ESC = '\x1B';
 const LF = '\x0A';
 const TM_U220_COLUMNS = 36;
@@ -54,18 +56,23 @@ function formatDate(value) {
 }
 
 export function buildTmU220Receipt(receipt, settings) {
-  const storeName = toText(settings?.nama_usaha || settings?.business_name || 'StarPhoto & Advertising');
+  // Pengaturan sama dengan jalur cetak lain (receiptConfig). Dulu nama toko dibaca dari
+  // kunci yang tidak ada (nama_usaha) dan judul/catatan selalu teks tetap.
+  const cfg = cetakConfig(settings);
+  const storeName = toText(cfg.nama);
   const customer = toText(receipt?.pelanggan_name || receipt?.customer_name || 'Pelanggan umum');
-  const items = Array.isArray(receipt?.items) ? receipt.items : [];
+  const items = itemUntukCetak(receipt?.items, cfg);
   const lines = [
     ESC + '@',
     ESC + 'a' + '\x01',
     ...wrap(storeName),
-    'RESI PENJUALAN',
+    ...(cfg.alamat ? wrap(cfg.alamat) : []),
+    ...(cfg.telepon ? wrap(`Telp: ${cfg.telepon}`) : []),
+    ...wrap(judulDokumen(receipt, cfg).toUpperCase()),
     ...(receipt?.isReprint ? [ESC + 'E' + '\x01', '*** SALINAN ***', ESC + 'E' + '\x00'] : []),
     ESC + 'a' + '\x00',
     divider(),
-    ...row('No.', receipt?.nomor || '-'),
+    ...(cfg.sembunyikanNomor ? [] : row('No.', receipt?.nomor || '-')),
     ...row('Tanggal', formatDate(receipt?.created_at)),
     ...row('Pelanggan', customer),
     divider(),
@@ -75,6 +82,7 @@ export function buildTmU220Receipt(receipt, settings) {
     lines.push(...wrap(item?.nama_snapshot || item?.nama_produk || item?.product_name || 'Item'));
     const quantity = `${toNumber(item?.qty)} ${toText(item?.uom_kode || item?.satuan || 'pcs')}`;
     lines.push(...row(`${quantity} x ${money(item?.harga_snapshot ?? item?.harga)}`, money(item?.subtotal)));
+    if (cfg.catatanItem && item?.catatan) lines.push(...wrap(`* ${item.catatan}`));
   });
 
   lines.push(divider(), ...row('Subtotal', money(receipt?.subtotal)));
@@ -86,12 +94,12 @@ export function buildTmU220Receipt(receipt, settings) {
     ESC + 'E' + '\x00',
     ...row('Dibayar', money(receipt?.dibayar)),
     ...row('Kembalian', money(receipt?.kembalian)),
-    divider(),
-    ESC + 'a' + '\x01',
-    'Terima kasih',
-    ESC + 'a' + '\x00',
-    '', '', '',
   );
+  if (cfg.totalQty) lines.push(...row('Total qty', String(totalQtyItem(items))));
+  lines.push(divider());
+  if (cfg.catatan) lines.push(ESC + 'a' + '\x01', ...wrap(cfg.catatan), ESC + 'a' + '\x00');
+  if (cfg.syarat) lines.push(...wrap(cfg.syarat));
+  lines.push('', '', '');
   return lines.join(LF);
 }
 

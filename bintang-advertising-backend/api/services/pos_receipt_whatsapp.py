@@ -4,6 +4,7 @@ import base64
 import io
 import logging
 import re
+from xml.sax.saxutils import escape
 
 from django.db import transaction
 from django.utils import timezone
@@ -60,10 +61,14 @@ def _baris_item_resi(item):
 
 
 def susun_resi(sale):
+    from .pengaturan_cetak import ambil, judul_dengan_nomor
+
+    cfg = ambil()
     total_diskon = hitung_total_diskon_resi(sale)
     baris_item = '\n'.join(_baris_item_resi(item) for item in sale.items.all())
+    penutup = f"\n\n{cfg['catatan']}" if cfg['catatan'] else ''
     return (
-        f'*Resi Transaksi {sale.nomor}*\n\n'
+        f"*{judul_dengan_nomor(cfg['judul'], sale.nomor, cfg['sembunyikan_nomor'])}*\n\n"
         f'Tanggal: {format_waktu_dokumen(sale.created_at)}\n\n'
         f'{baris_item}\n\n'
         f'Subtotal: Rp {sale.subtotal:,.0f}\n'
@@ -72,8 +77,8 @@ def susun_resi(sale):
         f'*Total: Rp {sale.total:,.0f}*\n'
         f'Metode Bayar: {sale.metode_bayar}\n'
         f'Dibayar: Rp {sale.dibayar:,.0f}\n'
-        f'Kembalian: Rp {sale.kembalian:,.0f}\n\n'
-        'Terima kasih telah berbelanja.'
+        f'Kembalian: Rp {sale.kembalian:,.0f}'
+        f'{penutup}'
     )
 
 
@@ -97,18 +102,11 @@ def sale_siap_diambil(sale):
 
 
 def _info_bisnis_resi():
-    """Nama/alamat/telepon bisnis dari SystemConfig — header resi POS
-    disamakan dengan resi Order (GlobalListPanel.jsx) supaya kedua dokumen
-    yang dikirim lewat WA sama-sama membawa identitas bisnis, bukan cuma
-    daftar item polos."""
-    from ..models import SystemConfig
-    keys = ['bisnis_nama', 'bisnis_alamat', 'bisnis_no_telepon']
-    values = {row.key: row.value for row in SystemConfig.objects.filter(key__in=keys)}
-    return {
-        'nama': values.get('bisnis_nama') or 'StarPhoto & Advertising',
-        'alamat': values.get('bisnis_alamat') or 'Jl. Produksi No. 123, Kota',
-        'telepon': values.get('bisnis_no_telepon') or '0812-3456-7890',
-    }
+    """Identitas bisnis untuk header resi POS. Alamat/telepon yang belum diisi
+    dikembalikan kosong (barisnya tidak dicetak) -- bukan lagi alamat/telepon
+    karangan (lihat pengaturan_cetak.py)."""
+    from .pengaturan_cetak import ambil
+    return ambil()
 
 
 def susun_resi_pdf(sale):
@@ -138,11 +136,17 @@ def susun_resi_pdf(sale):
 
     logo = logo_flowable(tinggi=14 * mm, align='CENTER')
     elements = [logo, Spacer(1, 3 * mm)] if logo is not None else []
+    from .pengaturan_cetak import judul_dengan_nomor
+
     elements += [
-        Paragraph(f'RESI - {sale.nomor}', title_style),
-        Paragraph(biz['nama'], small_center),
-        Paragraph(biz['alamat'], biz_style),
-        Paragraph(f"Telp: {biz['telepon']}", biz_style),
+        Paragraph(escape(judul_dengan_nomor(biz['judul'].upper(), sale.nomor, biz['sembunyikan_nomor'])), title_style),
+        Paragraph(escape(biz['nama']), small_center),
+    ]
+    if biz['alamat']:
+        elements.append(Paragraph(escape(biz['alamat']), biz_style))
+    if biz['telepon']:
+        elements.append(Paragraph(f"Telp: {escape(biz['telepon'])}", biz_style))
+    elements += [
         Spacer(1, 6),
         Paragraph(format_waktu_dokumen(sale.created_at), small_center),
     ]
@@ -231,8 +235,9 @@ def susun_resi_pdf(sale):
         ('BOTTOMPADDING', (0, total_row_idx), (-1, total_row_idx), 4),
     ]))
     elements.append(summary_table)
-    elements.append(Spacer(1, 12))
-    elements.append(Paragraph('Terima kasih telah berbelanja.', small_center))
+    if biz['catatan']:
+        elements.append(Spacer(1, 12))
+        elements.append(Paragraph(escape(biz['catatan']).replace('\n', '<br/>'), small_center))
 
     doc.build(elements)
     return buffer.getvalue()

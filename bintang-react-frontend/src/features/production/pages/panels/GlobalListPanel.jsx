@@ -752,12 +752,12 @@ export default function GlobalListPanel() {
                 <h3 className="font-bold text-[10px] text-slate-500 mt-1">
                   {businessSettings?.nama_bisnis || 'StarPhoto & Advertising'}
                 </h3>
-                <p className="text-[10px] text-slate-400 mt-0.5">
-                  {businessSettings?.alamat || 'Jl. Produksi No. 123, Kota'}
-                </p>
-                <p className="text-[10px] text-slate-400">
-                  Telp: {businessSettings?.no_telepon || '0812-3456-7890'}
-                </p>
+                {businessSettings?.alamat && (
+<p className="text-[10px] text-slate-400 mt-0.5 whitespace-pre-line">{businessSettings.alamat}</p>
+)}
+                {businessSettings?.no_telepon && (
+<p className="text-[10px] text-slate-400">Telp: {businessSettings.no_telepon}</p>
+)}
               </div>
 
               <div className="space-y-1 mb-4 text-[11px]">
@@ -878,12 +878,12 @@ export default function GlobalListPanel() {
                   <p className="text-slate-500 font-bold text-[10px] mt-0.5">
                     {businessSettings?.nama_bisnis || 'StarPhoto & Advertising'}
                   </p>
-                  <p className="text-slate-550 text-slate-500 mt-0.5">
-                    {businessSettings?.alamat || 'Jl. Produksi No. 123, Kota'}
-                  </p>
-                  <p className="text-slate-550 text-slate-500">
-                    WA: {businessSettings?.no_telepon || '0812-3456-7890'}
-                  </p>
+                  {businessSettings?.alamat && (
+<p className="text-slate-550 text-slate-500 mt-0.5 whitespace-pre-line">{businessSettings.alamat}</p>
+)}
+                  {businessSettings?.no_telepon && (
+<p className="text-slate-550 text-slate-500">WA: {businessSettings.no_telepon}</p>
+)}
                 </div>
               </div>
 
@@ -998,13 +998,14 @@ export default function GlobalListPanel() {
 
               <div className="flex justify-between items-end mt-10">
                 <div className="flex gap-12">
+                  {(businessSettings?.info_pembayaran || businessSettings?.deskripsi) && (
                   <div className="text-[10px] text-slate-500 space-y-1 self-start">
                     <p className="font-bold text-slate-700">Metode Pembayaran:</p>
-                    <p className="max-w-[220px]">
-                      {businessSettings?.deskripsi ||
-                        `Transfer BCA: 1234567890 a/n ${businessSettings?.nama_bisnis || 'StarPhoto & Advertising'}`}
+                    <p className="max-w-[220px] whitespace-pre-line">
+                      {businessSettings.info_pembayaran || businessSettings.deskripsi}
                     </p>
                   </div>
+                )}
                   <div className="text-center w-36">
                     <p className="mb-12 text-slate-500">Tanda Terima,</p>
                     <p className="font-bold border-t border-slate-400 pt-1 text-slate-800">
@@ -1019,6 +1020,12 @@ export default function GlobalListPanel() {
                   </p>
                 </div>
               </div>
+              {businessSettings?.invoice_terms && (
+                <div className="mt-6 text-[10px] text-slate-500">
+                  <p className="font-bold text-slate-700">Syarat &amp; Ketentuan:</p>
+                  <p className="whitespace-pre-line">{businessSettings.invoice_terms}</p>
+                </div>
+              )}
             </div>
 
             <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-2 no-print">
@@ -1078,12 +1085,12 @@ export default function GlobalListPanel() {
                   <p className="text-slate-500 font-bold text-[10px] mt-0.5">
                     {businessSettings?.nama_bisnis || 'StarPhoto & Advertising'}
                   </p>
-                  <p className="text-slate-500 mt-0.5">
-                    {businessSettings?.alamat || 'Jl. Produksi No. 123, Kota'}
-                  </p>
-                  <p className="text-slate-500">
-                    WA: {businessSettings?.no_telepon || '0812-3456-7890'}
-                  </p>
+                  {businessSettings?.alamat && (
+<p className="text-slate-500 mt-0.5 whitespace-pre-line">{businessSettings.alamat}</p>
+)}
+                  {businessSettings?.no_telepon && (
+<p className="text-slate-500">WA: {businessSettings.no_telepon}</p>
+)}
                 </div>
               </div>
 

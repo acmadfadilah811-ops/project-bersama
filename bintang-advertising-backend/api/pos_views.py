@@ -475,6 +475,11 @@ class POSSaleViewSet(viewsets.ModelViewSet):
         qzReceiptHtml.js/qzTmU220Receipt.js), dan di sini dicatat berapa
         kali & kapan terakhir supaya bisa ditelusuri kalau ada dispute nota
         ganda."""
+        if pos_settings.ext('disable_reprint'):
+            return Response(
+                {'error': 'Cetak ulang resi dinonaktifkan di Pengaturan POS.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         sale = self.get_object()
         POSSale.objects.filter(pk=sale.pk).update(
             jumlah_cetak_ulang=F('jumlah_cetak_ulang') + 1,
@@ -508,14 +513,20 @@ class POSSaleViewSet(viewsets.ModelViewSet):
         except DjangoValidationError:
             return Response({'error': 'Alamat email tidak valid.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        subject = f"Resi Transaksi {sale.nomor}"
+        from .services.pengaturan_cetak import ambil as ambil_cetak, judul_dengan_nomor
+
+        cfg = ambil_cetak()
+        subject = judul_dengan_nomor(cfg['judul_email'], sale.nomor, cfg['sembunyikan_nomor'])
         baris_item = '\n'.join(
             f"- {it.nama_snapshot} x{it.qty} = Rp {it.subtotal:,.0f}"
             for it in sale.items.all()
         )
+        kepala = [cfg['nama'], cfg['alamat'], f"Telp: {cfg['telepon']}" if cfg['telepon'] else '']
+        kepala = '\n'.join(b for b in kepala if b)
+        nomor_baris = '' if cfg['sembunyikan_nomor'] else f"Nomor: {sale.nomor}\n"
         message = (
-            f"Terima kasih telah berbelanja.\n\n"
-            f"Nomor: {sale.nomor}\n"
+            f"{kepala}\n\n"
+            f"{nomor_baris}"
             f"Tanggal: {format_waktu_dokumen(sale.created_at)}\n\n"
             f"{baris_item}\n\n"
             f"Subtotal: Rp {sale.subtotal:,.0f}\n"
@@ -526,6 +537,8 @@ class POSSaleViewSet(viewsets.ModelViewSet):
             f"Dibayar: Rp {sale.dibayar:,.0f}\n"
             f"Kembalian: Rp {sale.kembalian:,.0f}\n"
         )
+        if cfg['catatan']:
+            message += f"\n{cfg['catatan']}\n"
         try:
             send_mail(subject, message, None, [email], fail_silently=False)
         except Exception:

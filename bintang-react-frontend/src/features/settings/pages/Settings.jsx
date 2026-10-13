@@ -149,6 +149,8 @@ export default function Settings() {
     mata_uang: 'IDR',
     logo_url: '',
     deskripsi: '',
+    tagline: 'Solusi Cetak & Promosi Terpercaya',
+    info_pembayaran: '',
     ppn_default: 11,
     invoice_terms: '',
     order_prefix: 'ORD',
@@ -290,6 +292,8 @@ export default function Settings() {
       formData.append('no_telepon', bisnis.no_telepon || '');
       formData.append('mata_uang', bisnis.mata_uang || 'IDR');
       formData.append('deskripsi', bisnis.deskripsi || '');
+      formData.append('tagline', bisnis.tagline || '');
+      formData.append('info_pembayaran', bisnis.info_pembayaran || '');
       
       // Keuangan & Invoice
       formData.append('ppn_default', bisnis.ppn_default !== undefined ? bisnis.ppn_default : 11);
@@ -817,7 +821,7 @@ export default function Settings() {
                     <div className="space-y-5 animate-fade-in">
                       <div>
                         <h4 className="font-bold text-slate-800 text-base">Umum & Profil Bisnis</h4>
-                        <p className="text-xs text-slate-400">Atur profil dasar perusahaan dan logo utama.</p>
+                        <p className="text-xs text-slate-400">Atur profil dasar perusahaan dan logo utama. Nama, logo, alamat, dan telepon dicetak di resi dan faktur; isian yang kosong tidak dicetak.</p>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-1.5">
@@ -915,6 +919,38 @@ export default function Settings() {
                         </div>
                         <div className="space-y-1.5 sm:col-span-2">
                           <label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
+                            Slogan / Tagline
+                          </label>
+                          <input
+                            type="text"
+                            maxLength={150}
+                            value={bisnis.tagline || ''}
+                            onChange={(e) => setBisnis({ ...bisnis, tagline: e.target.value })}
+                            placeholder="Solusi Cetak & Promosi Terpercaya"
+                            className={inputCls}
+                          />
+                          <p className="text-[10px] text-slate-400">
+                            Dicetak di bawah nama bisnis pada faktur/invoice. Kosongkan bila tidak perlu.
+                          </p>
+                        </div>
+                        <div className="space-y-1.5 sm:col-span-2">
+                          <label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
+                            Info Pembayaran / Rekening
+                          </label>
+                          <textarea
+                            rows={3}
+                            maxLength={500}
+                            value={bisnis.info_pembayaran || ''}
+                            onChange={(e) => setBisnis({ ...bisnis, info_pembayaran: e.target.value })}
+                            placeholder={'Transfer BCA 1234567890 a/n ...\nQRIS: tersedia di kasir'}
+                            className={`${inputCls} resize-none`}
+                          />
+                          <p className="text-[10px] text-slate-400">
+                            Dicetak sebagai &ldquo;Metode Pembayaran&rdquo; di faktur/invoice pelanggan. Kosong = bagian ini tidak dicetak.
+                          </p>
+                        </div>
+                        <div className="space-y-1.5 sm:col-span-2">
+                          <label className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
                             Deskripsi Bisnis
                           </label>
                           <textarea
@@ -964,7 +1000,7 @@ export default function Settings() {
                         </div>
                         <div className="space-y-1.5 sm:col-span-2">
                           <label className="text-sm font-medium text-slate-700">
-                            Syarat & Ketentuan Struk (Terms & Conditions)
+                            Syarat & Ketentuan Resi / Faktur
                           </label>
                           <textarea
                             rows={4}
@@ -974,7 +1010,7 @@ export default function Settings() {
                             className={inputCls}
                           />
                           <p className="text-[10px] text-slate-400">
-                            Teks ini akan dicetak di bagian paling bawah pada invoice/struk pesanan.
+                            Dicetak di bagian bawah resi kasir, faktur/invoice, dan PDF invoice WhatsApp. Kosongkan bila tidak perlu.
                           </p>
                         </div>
                       </div>
