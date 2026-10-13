@@ -76,6 +76,20 @@ class HRBridgeSetStatusPerilakuTests(_BersihkanThrottleMixin, APITestCase):
         self.assertTrue(self.user.is_active)
         self.assertEqual(self.user.status_karyawan, "aktif")
 
+    def test_akun_owner_tidak_dinonaktifkan_dari_hr(self):
+        owner = CustomUser.objects.create_user(
+            username="owner_status_bridge", password="pw12345", role="owner", is_superuser=True,
+            hr_employee_id=502, is_active=True, status_karyawan="aktif", email="owner_status_bridge@uji.local",
+        )
+        with mock.patch.dict(os.environ, {"HR_BRIDGE_API_KEY": KEY}):
+            r = self.client.post(URL, {"hr_employee_id": 502, "is_active": False}, format="json", **HEADERS)
+
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.data.get("skipped"))
+        owner.refresh_from_db()
+        self.assertTrue(owner.is_active)
+        self.assertEqual(owner.status_karyawan, "aktif")
+
     def test_hr_employee_id_tidak_ditemukan_skip_bukan_error(self):
         with mock.patch.dict(os.environ, {"HR_BRIDGE_API_KEY": KEY}):
             r = self.client.post(URL, {"hr_employee_id": 99999, "is_active": False}, format="json", **HEADERS)

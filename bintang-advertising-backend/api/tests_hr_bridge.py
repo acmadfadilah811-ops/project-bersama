@@ -114,6 +114,21 @@ class HRBridgeCreateAccountTests(APITestCase):
         user = CustomUser.objects.get(hr_employee_id=105)
         self.assertEqual(user.role, "spv")
 
+    def test_update_tidak_menurunkan_role_owner_atau_superuser(self):
+        owner = CustomUser.objects.create_user(
+            username="owner_tertaut", password="pw12345", role="owner", is_superuser=True,
+            hr_employee_id=900, email="owner_tertaut@uji.local",
+        )
+        response = self._post({
+            "hr_employee_id": 900, "first_name": "Admin", "last_name": "Utama",
+            "email": "owner_tertaut@uji.local", "job_position": "Staff Admin", "department": "Digital Printing",
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        owner.refresh_from_db()
+        self.assertEqual(owner.role, "owner")
+        self.assertTrue(owner.is_superuser)
+        self.assertTrue(owner.is_active)
+
     def test_update_departemen_tanpa_unit_tidak_menghapus_unit_akun(self):
         # Tiga panggilan di sini ikut menghitung kuota HRBridgeThrottle; kuota
         # dikosongkan sesudahnya supaya tes kelas lain tidak kena 429.

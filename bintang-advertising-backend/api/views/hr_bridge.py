@@ -101,6 +101,13 @@ class HRBridgeThrottle(AnonRateThrottle):
     rate = '30/min'
 
 
+def akun_utama(user):
+    """Owner/superuser dikelola langsung di ERP: jembatan HR tidak boleh mengubah
+    role-nya atau menonaktifkannya (mis. admin HR yang tertaut ke akun Owner ERP
+    diarsipkan atau diberi jabatan lain di HR)."""
+    return user.role == 'owner' or user.is_superuser
+
+
 def _cek_hr_bridge_api_key(request):
     """Return None kalau valid, atau Response 401/500 kalau tidak. Fail-
     closed: key WAJIB dikonfigurasi di server, bukan opsional. Dipakai
@@ -189,7 +196,8 @@ class HRBridgeCreateAccountView(APIView):
             existing.email = email or existing.email
             existing.no_hp = no_hp or existing.no_hp
             existing.posisi = job_position or existing.posisi
-            existing.role = role
+            if not akun_utama(existing):
+                existing.role = role
             # Departemen tanpa unit (mis. Finance Accounting, dipakai kedua
             # unit) TIDAK mengosongkan unit yang sudah diatur -- sebelumnya
             # tiap simpan data karyawan di HR menghapus unit kasir StarFoto
@@ -299,6 +307,8 @@ class HRBridgeSetStatusView(APIView):
         user = CustomUser.objects.filter(hr_employee_id=hr_employee_id).first()
         if not user:
             return Response({'skipped': True, 'reason': 'Belum punya akun Bintang.'}, status=status.HTTP_200_OK)
+        if akun_utama(user):
+            return Response({'skipped': True, 'reason': 'Akun Owner/superuser tidak diubah dari HR.'}, status=status.HTTP_200_OK)
 
         # Selaras dengan CustomUserSerializer.update(): status_karyawan
         # adalah sumber kebenaran, is_active mengikutinya. Reaktivasi

@@ -76,6 +76,10 @@ def hapus_akun_dari_hr(hr_employee_id):
     user = CustomUser.objects.select_for_update().filter(hr_employee_id=hr_employee_id).first()
     if user is None:
         return {'skipped': True, 'reason': 'Belum punya akun Bintang.'}
+    if user.role == 'owner' or user.is_superuser:
+        # Akun utama dikelola di ERP: menghapus/mengarsipkan karyawan HR yang tertaut
+        # tidak boleh mengunci Owner (sandi dibuat tak bisa dipakai, email dikosongkan).
+        return {'skipped': True, 'reason': 'Akun Owner/superuser tidak diubah dari HR.'}
 
     bersih, alasan = bisa_dihapus_bersih(user)
     if bersih:

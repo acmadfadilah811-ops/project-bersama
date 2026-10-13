@@ -67,10 +67,20 @@ class HRHapusAkunTests(APITestCase):
         self.assertEqual(self.hapus(704).data['mode'], 'nonaktif')
         self.assertEqual(CustomUser.objects.get(hr_employee_id=705).atasan_id, spv.id)
 
-    def test_owner_tidak_pernah_dihapus_keras(self):
+    def test_owner_tidak_diubah_dari_hr(self):
         self.akun(706, 'owner.uji', role='owner')
-        self.assertEqual(self.hapus(706).data['mode'], 'nonaktif')
-        self.assertTrue(CustomUser.objects.filter(hr_employee_id=706).exists())
+        self.assertTrue(self.hapus(706).data['skipped'])
+        owner = CustomUser.objects.get(hr_employee_id=706)
+        self.assertTrue(owner.is_active)
+        self.assertTrue(owner.has_usable_password())
+        self.assertEqual(owner.email, 'owner.uji@uji.test')
+
+    def test_superuser_tidak_diubah_dari_hr(self):
+        akun = self.akun(710, 'super.uji')
+        akun.is_superuser = True
+        akun.save(update_fields=['is_superuser'])
+        self.assertTrue(self.hapus(710).data['skipped'])
+        self.assertTrue(CustomUser.objects.get(hr_employee_id=710).is_active)
 
     def test_sesi_login_dicabut(self):
         user = self.akun(707, 'sesi.aktif')
