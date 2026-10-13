@@ -10,6 +10,7 @@ fail-closed bila belum dikonfigurasi. Aturan bisnis: services/crm_order.py.
 - GET  /api/bridge/crm/riwayat-pelanggan/?nomor=  semua transaksi Bintang satu pelanggan
 - GET  /api/bridge/crm/laporan-penjualan/?mulai=&selesai=  omzet per kanal/bulan + pertumbuhan pelanggan
 - GET  /api/bridge/crm/rekap-sales/    ?mulai=&selesai=[&crm_user_ids=1,2]  realisasi target per Sales
+- GET  /api/bridge/crm/pelanggan-dorman/?hari=60[&min_transaksi=1]  pelanggan yang lama tidak order; ?nomor=a,b = cek order terakhir nomor tertentu
 """
 
 import logging
@@ -23,6 +24,7 @@ from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 
 from ..services import crm_order as svc
+from ..services.crm_dorman import pelanggan_dorman
 from ..services.crm_laporan import laporan_penjualan
 from ..services.crm_riwayat import riwayat_pelanggan
 
@@ -105,6 +107,14 @@ class CrmRiwayatPelangganView(_Dasar):
         if self._auth_error:
             return self._auth_error
         return Response(riwayat_pelanggan(request.query_params.get('nomor')))
+
+
+class CrmPelangganDormanView(_Dasar):
+    def get(self, request):
+        if self._auth_error:
+            return self._auth_error
+        q = request.query_params
+        return Response(pelanggan_dorman(q.get('hari'), q.get('min_transaksi'), q.get('nomor')))
 
 
 class CrmLaporanPenjualanView(_Dasar):
