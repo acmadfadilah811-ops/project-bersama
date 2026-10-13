@@ -1,4 +1,7 @@
 """AKS-03: akun terkunci sementara setelah beberapa kali gagal login."""
+import os
+from unittest import mock
+
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from rest_framework.test import APITestCase
@@ -191,3 +194,39 @@ class LoginEmailTests(APITestCase):
         r = self.client.post('/api/auth/create-user/', {**data, 'email': 'akun_baru@uji.local'}, format='json')
         self.assertIn(r.status_code, (200, 201), r.content)
         self.assertEqual(get_user_model().objects.get(username='akun_baru').email, 'akun_baru@uji.local')
+
+
+class KunciIpDimatikanTests(APITestCase):
+    """Saklar SECURITY_DISABLE_IP_LOCKOUT=true mematikan kunci IP, bukan kunci akun."""
+
+    def setUp(self):
+        cache.clear()
+        patcher = mock.patch.dict(os.environ, {'SECURITY_DISABLE_IP_LOCKOUT': 'true'})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        U = get_user_model()
+        for n in 'abcd':
+            U.objects.create_user(username=f'ip_{n}', password=f'Sandi{n.upper()}2026xx', role='staff', email=f'ip_{n}@uji.local')
+
+    def login(self, username, sandi, ip='9.9.9.9'):
+        return self.client.post('/api/auth/login/', {'email': f'{username}@uji.local', 'password': sandi}, format='json', REMOTE_ADDR=ip)
+
+    def test_banyak_akun_gagal_dari_satu_ip_tidak_mengunci_ip(self):
+        for u in ('ip_a', 'ip_b', 'ip_c'):
+            self.assertEqual(self.login(u, 'salah').status_code, 401)   # tidak ada 429 kunci IP
+        self.assertEqual(self.login('ip_d', 'SandiD2026xx').status_code, 200)
+
+    def test_kunci_akun_tetap_berlaku(self):
+        for _ in range(3):
+            self.login('ip_a', 'salah')
+        r = self.login('ip_a', 'SandiA2026xx')
+        self.assertEqual(r.status_code, 429)
+        self.assertEqual(r.json()['cakupan_kunci'], 'akun')
+
+    def test_saklar_mati_kunci_ip_berlaku_seperti_biasa(self):
+        with mock.patch.dict(os.environ, {'SECURITY_DISABLE_IP_LOCKOUT': 'false'}):
+            for u in ('ip_a', 'ip_b', 'ip_c'):
+                self.login(u, 'salah')
+            r = self.login('ip_d', 'SandiD2026xx')
+        self.assertEqual(r.status_code, 429)
+        self.assertEqual(r.json()['cakupan_kunci'], 'ip')

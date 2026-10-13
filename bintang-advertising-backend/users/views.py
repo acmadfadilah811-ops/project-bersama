@@ -149,6 +149,13 @@ DURASI_KUNCI_IP = 10 * 60
 OTP_UNLOCK_TTL = 5 * 60
 
 
+def kunci_ip_nonaktif():
+    """Saklar sementara (env SECURITY_DISABLE_IP_LOCKOUT=true): matikan pemblokiran IP
+    yang gagal login ke beberapa akun berbeda -- berguna saat banyak akun masuk dari
+    satu IP kantor (UAT). Kunci per-AKUN (3x salah) tidak ikut dimatikan."""
+    return os.getenv("SECURITY_DISABLE_IP_LOCKOUT", "False").lower() == "true"
+
+
 def ip_fail_key(ip):
     return f"login_ip_fail:{ip}"
 
@@ -293,7 +300,7 @@ class CustomLoginView(TokenObtainPairView):
         if otp_verified:
             buka_kunci_login(username_input)
         else:
-            sisa_ip = sisa_waktu_kunci_ip(ip)
+            sisa_ip = 0 if kunci_ip_nonaktif() else sisa_waktu_kunci_ip(ip)
             if sisa_ip:
                 return Response({
                     "detail": "IP ini diblokir sementara karena beberapa akun berbeda gagal login dari sini.",
@@ -321,7 +328,7 @@ class CustomLoginView(TokenObtainPairView):
             terkunci_sekarang = attempts >= MAKS_GAGAL_LOGIN
             if terkunci_sekarang:
                 cache.set(f"{failure_key}:locked", timezone.now().timestamp(), DURASI_KUNCI_LOGIN)
-            ip_terkunci_sekarang = catat_gagal_ip(ip, username_input)
+            ip_terkunci_sekarang = False if kunci_ip_nonaktif() else catat_gagal_ip(ip, username_input)
             # --- Login GAGAL ---
             SecurityAuditLog.objects.create(
                 user=akun_login,
