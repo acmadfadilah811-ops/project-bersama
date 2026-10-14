@@ -10,6 +10,27 @@ import { uiConfirm } from '../../../utils/dialog';
 
 const daftar = (data) => (Array.isArray(data) ? data : data?.results || []);
 
+// Foto asli hasil edit tetap di PC editor; yang diunggah hanya salinan kecil
+// (maks 1600px, sama dengan ukuran pratinjau server) supaya file belasan MB
+// tidak membebani jaringan & server (2026-10-15). Gagal dikecilkan -> file asli.
+const SISI_MAKS = 1600;
+async function kecilkanFoto(berkas) {
+  try {
+    const bitmap = await createImageBitmap(berkas, { imageOrientation: 'from-image' });
+    const skala = Math.min(1, SISI_MAKS / Math.max(bitmap.width, bitmap.height));
+    const kanvas = document.createElement('canvas');
+    kanvas.width = Math.round(bitmap.width * skala);
+    kanvas.height = Math.round(bitmap.height * skala);
+    kanvas.getContext('2d').drawImage(bitmap, 0, 0, kanvas.width, kanvas.height);
+    bitmap.close?.();
+    const blob = await new Promise((ok) => kanvas.toBlob(ok, 'image/jpeg', 0.88));
+    if (!blob || blob.size >= berkas.size) return berkas;
+    return new File([blob], `${berkas.name.replace(/\.[^.]+$/, '')}.jpg`, { type: 'image/jpeg' });
+  } catch {
+    return berkas;
+  }
+}
+
 // Pratinjau ada di jalur terlindung (butuh login) -> diambil sebagai blob.
 function GambarTerlindung({ url, alt }) {
   const [src, setSrc] = useState('');
@@ -36,7 +57,7 @@ function KartuEdit({ p, onBerubah }) {
     try {
       for (const berkas of files) {
         const fd = new FormData();
-        fd.append('foto', berkas);
+        fd.append('foto', await kecilkanFoto(berkas));
         if (pilihanId) fd.append('pilihan_file', String(pilihanId));
         await apiClient.post(`/starfoto/pesanan/${p.id}/pratinjau/`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       }
@@ -127,7 +148,7 @@ function KartuEdit({ p, onBerubah }) {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
-        <p className="text-xs text-slate-500">{draf.length} pratinjau siap dikirim · watermark dipasang otomatis.</p>
+        <p className="text-xs text-slate-500">{draf.length} pratinjau siap dikirim · watermark dipasang otomatis · foto asli tetap di PC, yang diunggah hanya versi kecil.</p>
         <button
           type="button" onClick={kirim} disabled={!draf.length || mengirim}
           className="flex items-center gap-2 rounded-xl bg-[#0088FF] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40"
