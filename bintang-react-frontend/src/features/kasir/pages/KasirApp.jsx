@@ -19,6 +19,8 @@ import KasirPelangganSupplier from './KasirPelangganSupplier';
 import PrinterSettings from '../../printing/pages/PrinterSettings';
 import WhatsAppChat from '../../whatsapp/pages/WhatsAppChat';
 import { X } from 'lucide-react';
+import { useAuth } from '../../../context/AuthContext';
+import { isKasirStarfoto } from '../../../utils/unitBisnis';
 
 export default function KasirApp() {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -29,6 +31,9 @@ export default function KasirApp() {
   const isTerminalMode = true;
 
   const handleToggleSidebar = () => setShowSidebarDrawer((prev) => !prev);
+  const { user } = useAuth();
+  // Kasir StarFoto: tanpa fitur WA dulu (order WA lewat Terminal); antrean hanya order staff & CRM.
+  const tanpaWa = isKasirStarfoto(user);
 
   return (
     <KasirProvider>
@@ -72,8 +77,20 @@ export default function KasirApp() {
               {/* Satu antrean untuk order WhatsApp & order dibantu staff (walk-in) --
                   sebelumnya 2 menu terpisah ("Antrean WA" / "Bantuan Staff"),
                   digabung atas permintaan user 2026-09-06. */}
-              <Route path="antrean-wa" element={<WaOrderQueue sumber="wa,staff,crm" judulAntrean="Antrean Online & Offline" onToggleSidebar={handleToggleSidebar} />} />
-              <Route path="wa-live" element={<WhatsAppChat onToggleSidebar={handleToggleSidebar} />} />
+              <Route
+                path="antrean-wa"
+                element={
+                  tanpaWa ? (
+                    <WaOrderQueue key="tanpa-wa" sumber="staff,crm" judulAntrean="Antrean Order Staff" onToggleSidebar={handleToggleSidebar} />
+                  ) : (
+                    <WaOrderQueue sumber="wa,staff,crm" judulAntrean="Antrean Online & Offline" onToggleSidebar={handleToggleSidebar} />
+                  )
+                }
+              />
+              <Route
+                path="wa-live"
+                element={tanpaWa ? <Navigate to="/kasir/terminal" replace /> : <WhatsAppChat onToggleSidebar={handleToggleSidebar} />}
+              />
               <Route path="pelanggan-supplier" element={<KasirPelangganSupplier onToggleSidebar={handleToggleSidebar} />} />
               <Route path="riwayat" element={<PosHistory onToggleSidebar={handleToggleSidebar} />} />
               <Route path="riwayat-void" element={<RiwayatVoid onToggleSidebar={handleToggleSidebar} />} />

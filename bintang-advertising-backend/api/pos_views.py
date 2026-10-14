@@ -148,9 +148,30 @@ class POSSaleViewSet(viewsets.ModelViewSet):
         from django.utils.dateparse import parse_date
         from .finance_models import CashTransaction
 
+        from .models import UnitBisnis
+        from .permissions import filter_param_unit_bisnis
+
         tgl = parse_date(request.query_params.get('tanggal') or '') or timezone.localdate()
         kasir_id = request.query_params.get('kasir')
         shift_id = request.query_params.get('shift')
+
+        # Rekap dipisah per unit bisnis (2026-10-14): kasir StarFoto & kasir Star
+        # Advertising masing-masing hanya melihat unitnya (scoped_by_unit_bisnis);
+        # owner/manager/admin melihat semua, bisa memilih satu unit (?unit_bisnis=),
+        # dan mendapat rincian per unit (`per_unit`).
+        def per_unit_scope(qs, field):
+            qs = scoped_by_unit_bisnis(qs, request.user, field=field)
+            return filter_param_unit_bisnis(qs, request, field=field)
+
+        per_unit = {}
+
+        def catat_unit(uid, kunci, nilai, transaksi=0):
+            baris = per_unit.setdefault(uid, {
+                'total_penjualan': Decimal('0'), 'jumlah_transaksi': 0,
+                'total_pendapatan_lain': Decimal('0'), 'total_pengeluaran': Decimal('0'),
+            })
+            baris[kunci] += nilai
+            baris['jumlah_transaksi'] += transaksi
 
         # --- Pemasukan dari penjualan POS ---
         sales = POSSale.objects.filter(status='paid').prefetch_related('items__product')
@@ -163,6 +184,7 @@ class POSSaleViewSet(viewsets.ModelViewSet):
             sales = sales.filter(created_at__date=tgl)
         if kasir_id:
             sales = sales.filter(kasir_id=kasir_id)
+        sales = per_unit_scope(sales, 'unit_bisnis')
 
         total_penjualan = Decimal('0')
         total_modal = Decimal('0')
@@ -174,6 +196,7 @@ class POSSaleViewSet(viewsets.ModelViewSet):
             jumlah_transaksi += 1
             metode = s.metode_bayar or 'Cash'
             per_metode[metode] = per_metode.get(metode, Decimal('0')) + total
+            catat_unit(s.unit_bisnis_id, 'total_penjualan', total, 1)
             for it in s.items.all():
                 if it.product:
                     total_modal += (it.product.harga_beli or Decimal('0')) * (it.qty or Decimal('0'))
@@ -186,6 +209,8 @@ class POSSaleViewSet(viewsets.ModelViewSet):
             order_payments = order_payments.filter(dibuat_pada__date=tgl)
         if kasir_id:
             order_payments = order_payments.filter(dibuat_oleh_id=kasir_id)
+        # Uang DP/pelunasan masuk laci kasir penerimanya -> unit kasir tersebut.
+        order_payments = per_unit_scope(order_payments.select_related('dibuat_oleh'), 'dibuat_oleh__unit_bisnis')
 
         for p in order_payments:
             jumlah = Decimal(str(p.jumlah or 0))
@@ -193,6 +218,7 @@ class POSSaleViewSet(viewsets.ModelViewSet):
             jumlah_transaksi += 1
             metode = p.metode_pembayaran or 'tunai'
             per_metode[metode] = per_metode.get(metode, Decimal('0')) + jumlah
+            catat_unit(p.dibuat_oleh.unit_bisnis_id if p.dibuat_oleh_id else None, 'total_penjualan', jumlah, 1)
 
         # --- Pendapatan/Pengeluaran lain (CashTransaction) ---
         ct = CashTransaction.objects.select_related('tipe_transaksi', 'staff')
@@ -202,6 +228,7 @@ class POSSaleViewSet(viewsets.ModelViewSet):
             ct = ct.filter(waktu__date=tgl)
         if kasir_id:
             ct = ct.filter(staff_id=kasir_id)
+        ct = per_unit_scope(ct, 'staff__unit_bisnis')
 
         pendapatan_lain, pengeluaran = [], []
         total_pendapatan_lain = Decimal('0')
@@ -216,13 +243,17 @@ class POSSaleViewSet(viewsets.ModelViewSet):
                 'staff': t.staff.username if t.staff else '',
                 'waktu': t.waktu,
             }
+            uid = t.staff.unit_bisnis_id if t.staff_id else None
             if t.arah == 'pendapatan':
                 pendapatan_lain.append(entri)
                 total_pendapatan_lain += t.jumlah or Decimal('0')
+                catat_unit(uid, 'total_pendapatan_lain', t.jumlah or Decimal('0'))
             else:
                 pengeluaran.append(entri)
                 total_pengeluaran += t.jumlah or Decimal('0')
+                catat_unit(uid, 'total_pengeluaran', t.jumlah or Decimal('0'))
 
+        nama_unit = dict(UnitBisnis.objects.values_list('id', 'nama'))
         total_pemasukan = total_penjualan + total_pendapatan_lain
         laba_kotor = total_penjualan - total_modal
         arus_kas_bersih = total_pemasukan - total_pengeluaran
@@ -243,6 +274,16 @@ class POSSaleViewSet(viewsets.ModelViewSet):
             ],
             'pendapatan_lain': pendapatan_lain,
             'pengeluaran': pengeluaran,
+            'unit_bisnis_kasir': getattr(getattr(request.user, 'unit_bisnis', None), 'nama', None),
+            'per_unit': [
+                {
+                    'id': uid,
+                    'nama': nama_unit.get(uid) if uid else None,
+                    **{k: v for k, v in baris.items()},
+                    'arus_kas_bersih': baris['total_penjualan'] + baris['total_pendapatan_lain'] - baris['total_pengeluaran'],
+                }
+                for uid, baris in sorted(per_unit.items(), key=lambda kv: (kv[0] is None, nama_unit.get(kv[0]) or ''))
+            ],
         })
 
     def _validasi_aturan_pos(self, items, status_val):

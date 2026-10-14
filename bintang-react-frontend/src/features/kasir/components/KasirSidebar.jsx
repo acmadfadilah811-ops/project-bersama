@@ -25,6 +25,7 @@ import {
   Camera,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
+import { isKasirStarfoto } from '../../../utils/unitBisnis';
 import { useKasir } from '../context/KasirContext';
 
 const getAvatarUrl = (path) => {
@@ -48,16 +49,22 @@ export default function KasirSidebar({ isCollapsed, setIsCollapsed }) {
   const userRole = user?.role?.toLowerCase();
   const isOwnerOrAdmin = ['owner', 'admin', 'manager'].includes(userRole);
   const isStarfoto = isOwnerOrAdmin || /starfoto/i.test(user?.unit_bisnis_nama || '') || daftarSesiFoto.length > 0;
+  const tanpaWa = isKasirStarfoto(user);
 
   const navItems = [
     { path: '/kasir/dashboard', label: 'Dashboard Kasir', icon: LayoutDashboard },
     { path: '/kasir/terminal', label: 'Terminal POS', icon: CreditCard, highlight: true },
     { path: '/kasir/produk', label: 'Katalog Produk', icon: Package },
     { path: '/kasir/pesanan', label: 'Pesanan & Pelunasan', icon: PackageCheck, badge: siapDiambilCount },
-    { path: '/kasir/antrean-wa', label: 'Antrean Online & Offline', icon: MessageCircle, badge: waOrderCount },
+    {
+      path: '/kasir/antrean-wa',
+      label: tanpaWa ? 'Antrean Order Staff' : 'Antrean Online & Offline',
+      icon: MessageCircle,
+      badge: waOrderCount,
+    },
     // Kasir StarFoto (2026-10-11): konfirmasi sesi foto & jadwal studio.
     ...(isStarfoto ? [{ path: '/kasir/sesi-foto', label: 'Sesi Foto', icon: Camera, badge: daftarSesiFoto.length }] : []),
-    { path: '/kasir/wa-live', label: 'WA Live', icon: MessageSquare },
+    ...(tanpaWa ? [] : [{ path: '/kasir/wa-live', label: 'WA Live', icon: MessageSquare }]),
     { path: '/kasir/pelanggan-supplier', label: 'Pelanggan', icon: Users },
     { path: '/kasir/riwayat', label: 'Riwayat Transaksi', icon: History },
     { path: '/kasir/riwayat-void', label: 'Riwayat Void', icon: Ban },

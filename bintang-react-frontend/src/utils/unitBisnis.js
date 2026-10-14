@@ -42,6 +42,14 @@ export function unitKaryawanBelumDiatur(role, unitNama) {
   return !unitNama && !ROLE_SEMUA_UNIT.includes(role);
 }
 
+/**
+ * Kasir unit StarFoto (2026-10-14): fitur WA (antrean order WA, WA Live) belum dipakai;
+ * order WA StarFoto sudah masuk lewat Terminal Kasir. Antrean tetap ada untuk order staff/CRM.
+ */
+export function isKasirStarfoto(user) {
+  return String(user?.role || '').toLowerCase() === 'kasir' && /starfoto/i.test(user?.unit_bisnis_nama || '');
+}
+
 let cacheDaftarUnit = null;
 
 export function useDaftarUnitBisnis() {

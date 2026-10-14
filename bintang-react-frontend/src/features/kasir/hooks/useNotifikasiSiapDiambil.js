@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import apiClient from '../../../api/apiClient';
 import { notify } from '../../../utils/notify';
+import { useAuth } from '../../../context/AuthContext';
+import { isKasirStarfoto } from '../../../utils/unitBisnis';
 import {
   gabungPesananMasuk,
   gabungPesananSiap,
@@ -66,6 +68,9 @@ function bunyiPendek() {
  * sekali di KasirProvider, jadi aktif di semua halaman kasir.
  */
 export function useNotifikasiSiapDiambil() {
+  const { user } = useAuth();
+  // Kasir StarFoto belum memakai antrean WA (order WA lewat Terminal): hitung order staff/CRM saja.
+  const sumberMasuk = isKasirStarfoto(user) ? 'staff,crm' : 'wa,staff,crm';
   const [jumlahSiap, setJumlahSiap] = useState(0);
   // Daftar pesanan yang menunggu tindakan kasir -- isi badge merah di sidebar
   // (Antrean Online & Offline, Pesanan & Pelunasan) dan daftar di lonceng.
@@ -91,7 +96,7 @@ export function useNotifikasiSiapDiambil() {
       const [resOrder, resPos, resMasuk, resSesi, resApproval] = await Promise.all([
         apiClient.get('/orders/', { params: { status_global: 'ready' } }),
         apiClient.get('/pos/sales/produksi/', { params: { status_produksi: 'ready' } }),
-        apiClient.get('/orders/', { params: { status_global: 'review', sumber: 'wa,staff,crm' } }),
+        apiClient.get('/orders/', { params: { status_global: 'review', sumber: sumberMasuk } }),
         apiClient.get('/starfoto/pesanan/', { params: { status: 'menunggu_kasir' } }).catch(() => ({ data: [] })),
         apiClient.get('/starfoto/approval-tertunda/').catch(() => ({ data: [] })),
       ]);
@@ -175,7 +180,7 @@ export function useNotifikasiSiapDiambil() {
       // polling berikutnya. Baseline sengaja TIDAK direset.
       console.error('Gagal memuat notifikasi kasir:', error);
     }
-  }, [tambahKeRiwayat]);
+  }, [tambahKeRiwayat, sumberMasuk]);
 
   useEffect(() => {
     muat();

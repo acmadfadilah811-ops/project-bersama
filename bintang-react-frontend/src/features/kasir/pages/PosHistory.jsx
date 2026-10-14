@@ -12,6 +12,8 @@ import VoidOrderOtpModal from '../components/VoidOrderOtpModal';
 import ReturOrderOtpModal from '../components/ReturOrderOtpModal';
 import { getPrintErrorMessage, printReceipt } from '../../printing/services/printService';
 import { todayISO } from '../../../utils/date';
+import UnitBisnisFilter from '../../../components/UnitBisnisFilter';
+import { bolehKelompokUnit, cocokUnit, hitungPerUnit } from '../../../utils/unitBisnis';
 
 const ORDER_STATUS_LABEL = {
   draft: 'DRAFT',
@@ -79,6 +81,10 @@ export default function PosHistory({ onToggleSidebar }) {
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  // Riwayat dipisah per unit bisnis (2026-10-14): kasir hanya menerima transaksi unitnya
+  // dari server; owner/manager/admin bisa memilih unit lewat tombol di bawah.
+  const [unitFilter, setUnitFilter] = useState('');
+  const kelompokUnit = bolehKelompokUnit(user?.role);
   const [paymentFilter, setPaymentFilter] = useState('ALL');
   const [showPaymentFilterModal, setShowPaymentFilterModal] = useState(false);
   const [selectedSale, setSelectedSale] = useState(null);
@@ -159,6 +165,8 @@ export default function PosHistory({ onToggleSidebar }) {
             day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
           }),
           kasir_name: item.kasir_name || '-',
+          unit_bisnis: item.unit_bisnis ?? null,
+          unit_nama: item.unit_bisnis_nama || '',
           pelanggan_name: item.pelanggan_name || '',
           pelanggan: item.pelanggan || null, // PK Contact = nomor_wa, dipakai utk Kirim Resi WA
           metode_bayar: (item.metode_bayar || 'CASH').toUpperCase(),
@@ -195,6 +203,8 @@ export default function PosHistory({ onToggleSidebar }) {
             day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
           }),
           kasir_name: order.dilayani_oleh_nama || '-',
+          unit_bisnis: order.unit_bisnis ?? null,
+          unit_nama: order.unit_bisnis_nama || '',
           pelanggan_name: order.nama || '',
           pelanggan: order.nomor_wa || null,
           metode_bayar: (order.metode_pembayaran || '-').toUpperCase(),
@@ -246,7 +256,7 @@ export default function PosHistory({ onToggleSidebar }) {
 
   useEffect(() => {
     setPage(1);
-  }, [searchTerm, paymentFilter, dateFrom, dateTo, cariSemua]);
+  }, [searchTerm, paymentFilter, dateFrom, dateTo, cariSemua, unitFilter]);
 
   const handleKirimResiWaSubmit = async (e) => {
     e.preventDefault();
@@ -470,6 +480,7 @@ export default function PosHistory({ onToggleSidebar }) {
       (item.items_summary || '').toLowerCase().includes(searchTerm.toLowerCase());
 
     if (!matchSearch) return false;
+    if (kelompokUnit && !cocokUnit(item.unit_bisnis, unitFilter)) return false;
 
     if (paymentFilter === 'ALL') return true;
     return item.metode_bayar.toUpperCase() === paymentFilter.toUpperCase();
@@ -494,6 +505,16 @@ export default function PosHistory({ onToggleSidebar }) {
       <PosHeaderBar
         onToggleSidebar={onToggleSidebar}
       />
+
+      {kelompokUnit && (
+        <div className="bg-white border-b border-slate-200 px-4 py-1.5 shrink-0">
+          <UnitBisnisFilter
+            value={unitFilter}
+            onChange={setUnitFilter}
+            jumlah={hitungPerUnit(sales, (s) => s.unit_bisnis)}
+          />
+        </div>
+      )}
 
       {/* Sub-Header Blue Bar SS 1, 2, 3 */}
       <div className="bg-[#0088FF] px-4 py-2 text-white flex items-center justify-between shadow-sm shrink-0 gap-4 text-xs font-semibold border-t border-white/10">
@@ -597,6 +618,11 @@ export default function PosHistory({ onToggleSidebar }) {
                     <div className="min-w-0 flex-1">
                       <div className="font-extrabold text-slate-900 text-xs tracking-tight flex items-center gap-1.5 flex-wrap">
                         <span>{sale.nomor}</span>
+                        {kelompokUnit && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                            {sale.unit_nama || 'Belum ditandai'}
+                          </span>
+                        )}
                         {sale.tipe === 'order' && (
                           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700">
                             {sale.sumber_label}
@@ -690,7 +716,10 @@ export default function PosHistory({ onToggleSidebar }) {
               </div>
               <div className="flex items-center gap-2 text-slate-700">
                 <User size={16} className="text-slate-600 shrink-0" />
-                <span>{selectedSale.kasir_name}</span>
+                <span>
+                  {selectedSale.kasir_name}
+                  {selectedSale.unit_nama ? ` · ${selectedSale.unit_nama}` : ''}
+                </span>
               </div>
               <div className="flex items-center gap-2 text-slate-600">
                 <User size={16} className="text-slate-600 shrink-0" />

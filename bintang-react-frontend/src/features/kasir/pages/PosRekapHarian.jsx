@@ -13,6 +13,9 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
+import { useAuth } from '../../../context/AuthContext';
+import UnitBisnisFilter from '../../../components/UnitBisnisFilter';
+import { bolehKelompokUnit } from '../../../utils/unitBisnis';
 
 /**
  * Rekap Harian Kasir — tab Pemasukan & Pengeluaran.
@@ -27,6 +30,11 @@ export default function PosRekapHarian({ onToggleSidebar }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // Rekap per unit bisnis (2026-10-14): kasir otomatis unitnya sendiri (server);
+  // owner/manager/admin memilih unit atau melihat rincian semua unit.
+  const { user } = useAuth();
+  const kelompokUnit = bolehKelompokUnit(user?.role);
+  const [unitFilter, setUnitFilter] = useState('');
 
   // Navigasi tanggal prev/next -- sebelumnya cuma date-picker polos, kasir
   // harus buka kalender tiap kali mau lihat hari sebelumnya (permintaan
@@ -48,7 +56,8 @@ export default function PosRekapHarian({ onToggleSidebar }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiClient.get('/pos/sales/rekap-harian/', { params: { tanggal } });
+      const params = kelompokUnit && unitFilter ? { tanggal, unit_bisnis: unitFilter } : { tanggal };
+      const res = await apiClient.get('/pos/sales/rekap-harian/', { params });
       setData(res.data);
     } catch (err) {
       console.error('Error fetching rekap harian:', err);
@@ -56,7 +65,7 @@ export default function PosRekapHarian({ onToggleSidebar }) {
     } finally {
       setLoading(false);
     }
-  }, [tanggal]);
+  }, [tanggal, kelompokUnit, unitFilter]);
 
   useEffect(() => {
     fetchRekap();
@@ -73,6 +82,7 @@ export default function PosRekapHarian({ onToggleSidebar }) {
   const penjualanPerMetode = data?.penjualan_per_metode || [];
   const pendapatanLain = data?.pendapatan_lain || [];
   const pengeluaran = data?.pengeluaran || [];
+  const perUnit = data?.per_unit || [];
 
   const cards = [
     {
@@ -131,6 +141,7 @@ export default function PosRekapHarian({ onToggleSidebar }) {
             <h4 className="font-extrabold text-slate-800 text-lg">Rekap Harian</h4>
             <p className="text-xs text-slate-500 font-semibold font-mono uppercase tracking-wider">
               Pemasukan &amp; Pengeluaran Kas
+              {!kelompokUnit && data?.unit_bisnis_kasir ? ` · ${data.unit_bisnis_kasir}` : ''}
             </p>
           </div>
         </div>
@@ -174,6 +185,14 @@ export default function PosRekapHarian({ onToggleSidebar }) {
           </button>
         </div>
       </div>
+
+      {kelompokUnit && (
+        <UnitBisnisFilter
+          value={unitFilter}
+          onChange={setUnitFilter}
+          jumlah={!unitFilter ? perUnit.map((u) => ({ id: u.id, jumlah: u.jumlah_transaksi })) : null}
+        />
+      )}
 
       {error ? (
         <div className="py-16 text-center">
@@ -222,6 +241,36 @@ export default function PosRekapHarian({ onToggleSidebar }) {
               <span className="font-black text-slate-800">{formatCurrency(r.total_modal)}</span>
             </div>
           </div>
+
+          {/* Rincian per unit bisnis -- owner/manager/admin saat melihat semua unit */}
+          {kelompokUnit && !unitFilter && perUnit.length > 0 && (
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 text-slate-500 text-left">
+                    <th className="px-4 py-2.5 font-bold">Unit Bisnis</th>
+                    <th className="px-4 py-2.5 font-bold text-right">Transaksi</th>
+                    <th className="px-4 py-2.5 font-bold text-right">Penjualan</th>
+                    <th className="px-4 py-2.5 font-bold text-right">Pendapatan Lain</th>
+                    <th className="px-4 py-2.5 font-bold text-right">Pengeluaran</th>
+                    <th className="px-4 py-2.5 font-bold text-right">Arus Kas Bersih</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {perUnit.map((u) => (
+                    <tr key={u.id ?? 'tanpa-unit'}>
+                      <td className="px-4 py-2.5 font-bold text-slate-800">{u.nama || 'Belum ditandai'}</td>
+                      <td className="px-4 py-2.5 text-right text-slate-600">{u.jumlah_transaksi}</td>
+                      <td className="px-4 py-2.5 text-right text-slate-700">{formatCurrency(u.total_penjualan)}</td>
+                      <td className="px-4 py-2.5 text-right text-slate-700">{formatCurrency(u.total_pendapatan_lain)}</td>
+                      <td className="px-4 py-2.5 text-right text-slate-700">{formatCurrency(u.total_pengeluaran)}</td>
+                      <td className="px-4 py-2.5 text-right font-black text-slate-900">{formatCurrency(u.arus_kas_bersih)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* ── Pemasukan ── */}

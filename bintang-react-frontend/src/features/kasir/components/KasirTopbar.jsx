@@ -24,6 +24,7 @@ import {
   ShoppingCart,
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
+import { isKasirStarfoto } from '../../../utils/unitBisnis';
 import { useDynamicIsland } from '../../../context/DynamicIslandContext';
 import { useKasir } from '../context/KasirContext';
 import apiClient from '../../../api/apiClient';
@@ -126,12 +127,17 @@ export default function KasirTopbar() {
     { path: '/kasir/terminal', label: 'Terminal', icon: CreditCard },
     { path: '/kasir/produk', label: 'Produk', icon: Package },
     { path: '/kasir/pesanan', label: 'Pesanan', icon: PackageCheck },
-    { path: '/kasir/antrean-wa', label: 'Antrean Online & Offline', icon: MessageCircle, badge: waOrderCount },
-    { path: '/kasir/wa-live', label: 'WA Live', icon: MessageSquare },
+    {
+      path: '/kasir/antrean-wa',
+      label: isKasirStarfoto(user) ? 'Antrean Order Staff' : 'Antrean Online & Offline',
+      icon: MessageCircle,
+      badge: waOrderCount,
+    },
+    ...(isKasirStarfoto(user) ? [] : [{ path: '/kasir/wa-live', label: 'WA Live', icon: MessageSquare }]),
     { path: '/kasir/riwayat', label: 'Riwayat', icon: History },
     { path: '/kasir/shift', label: 'Kas & Shift', icon: Wallet },
     { path: '/kasir/ringkasan-shift-v2', label: 'Ringkasan', icon: BellRing },
-    { path: '/kasir/pengaturan-wa', label: 'Pengaturan WA', icon: Settings },
+    ...(isKasirStarfoto(user) ? [] : [{ path: '/kasir/pengaturan-wa', label: 'Pengaturan WA', icon: Settings }]),
   ];
 
   return (
