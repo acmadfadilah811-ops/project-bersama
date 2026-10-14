@@ -97,6 +97,9 @@ export function buildTmU220Receipt(receipt, settings) {
   );
   if (cfg.totalQty) lines.push(...row('Total qty', String(totalQtyItem(items))));
   lines.push(divider());
+  // Pesanan foto: jadwal & lokasi sesi (outdoor + alamat).
+  (receipt?.info_sesi || []).forEach((baris) => lines.push(...wrap(baris)));
+  if ((receipt?.info_sesi || []).length) lines.push(divider());
   if (cfg.catatan) lines.push(ESC + 'a' + '\x01', ...wrap(cfg.catatan), ESC + 'a' + '\x00');
   if (cfg.syarat) lines.push(...wrap(cfg.syarat));
   lines.push('', '', '');

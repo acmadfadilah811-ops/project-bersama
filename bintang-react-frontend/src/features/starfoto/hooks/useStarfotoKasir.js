@@ -67,9 +67,25 @@ export function payloadStarfoto(data) {
   };
 }
 
+// Baris keterangan sesi untuk resi cetak, sama dengan services/starfoto.ringkasan_sesi_foto.
+export function ringkasanSesi(data) {
+  if (!data?.sesi) return [];
+  return data.sesi
+    .filter((s, i) => i === 0 || s.mulai)
+    .map((s, i) => {
+      const tempat = s.lokasi === 'outdoor' ? `OUTDOOR - ${String(s.alamat || '').trim()}` : 'Studio';
+      const jadwal = s.mulai
+        ? new Date(s.mulai).toLocaleString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : '';
+      return `Sesi ${i + 1}: ${tempat}${jadwal ? ` · ${jadwal}` : ''}`;
+    });
+}
+
 export function galatData(data) {
   if (!data) return 'Isi data pesanan foto dulu.';
   if (data.jenis === 'booking_wa' && !data.sesi[0]?.mulai) return 'Booking wajib punya jadwal sesi pertama.';
+  const tanpaAlamat = data.sesi.findIndex((s, i) => (i === 0 || s.mulai) && s.lokasi === 'outdoor' && !String(s.alamat || '').trim());
+  if (tanpaAlamat >= 0) return `Sesi ${tanpaAlamat + 1} outdoor: isi alamat/tempat lokasi.`;
   return '';
 }
 

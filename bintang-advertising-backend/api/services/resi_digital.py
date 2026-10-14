@@ -64,6 +64,11 @@ def _status_pesanan(order):
     return foto[0] if foto else order.get_status_global_display()
 
 
+def _sesi_foto(order):
+    from .starfoto import ringkasan_sesi_foto
+    return ringkasan_sesi_foto(order)
+
+
 def _samarkan(nomor):
     nomor = str(nomor or '')
     return (nomor[:4] + '*' * max(0, len(nomor) - 7) + nomor[-3:]) if len(nomor) > 7 else nomor
@@ -155,6 +160,7 @@ def data_resi_order(order):
         'waktu': order.waktu.isoformat(),
         'status': status,
         'status_pesanan': _status_pesanan(order),
+        'sesi_foto': _sesi_foto(order),
         'kasir': '',
         'dilayani_oleh': '',
         'pelanggan': {'nama': order.nama or '', 'nomor_wa': _samarkan(order.nomor_wa)},

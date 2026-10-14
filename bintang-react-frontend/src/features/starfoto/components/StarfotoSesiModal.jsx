@@ -37,6 +37,11 @@ export default function StarfotoSesiModal({ paket, item, pengaturan, awal, total
       setGalat('Booking wajib punya jadwal sesi pertama.');
       return;
     }
+    const tanpaAlamat = sesi.findIndex((s, i) => (i === 0 || s.mulai) && s.lokasi === 'outdoor' && !String(s.alamat || '').trim());
+    if (tanpaAlamat >= 0) {
+      setGalat(`Sesi ${tanpaAlamat + 1} outdoor: isi alamat/tempat lokasi.`);
+      return;
+    }
     const terisi = sesi.filter((s, i) => i === 0 || s.mulai);
     onSimpan({
       data: {
@@ -110,8 +115,8 @@ export default function StarfotoSesiModal({ paket, item, pengaturan, awal, total
                 </select>
                 {s.lokasi === 'outdoor' && (
                   <input
-                    value={s.alamat} onChange={(e) => ubahSesi(i, 'alamat', e.target.value)} placeholder="Alamat lokasi"
-                    className="flex-1 rounded-lg border border-slate-300 p-2"
+                    value={s.alamat} onChange={(e) => ubahSesi(i, 'alamat', e.target.value)} placeholder="Alamat / nama tempat (wajib)"
+                    className={`flex-1 rounded-lg border p-2 ${String(s.alamat || '').trim() ? 'border-slate-300' : 'border-amber-400 bg-amber-50'}`}
                   />
                 )}
               </div>

@@ -36,9 +36,25 @@ function InfoSesi({ sesi }) {
   return (
     <div className="space-y-1 text-sm text-slate-600">
       <p className="flex items-center gap-1.5"><Clock size={14} /> {formatJadwal(sesi.mulai)} · {sesi.durasi_menit} menit</p>
-      <p className="flex items-center gap-1.5">
-        <MapPin size={14} /> {sesi.lokasi === 'outdoor' ? `Outdoor${sesi.alamat ? ` — ${sesi.alamat}` : ''}` : 'Studio'}
-      </p>
+      {sesi.lokasi === 'outdoor' ? (
+        <p className="flex flex-wrap items-center gap-1.5">
+          <MapPin size={14} />
+          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-bold text-amber-800">Outdoor · Dinas Luar</span>
+          <span className="font-semibold text-slate-800">{sesi.alamat || 'Alamat belum diisi — tanyakan ke kasir'}</span>
+          {sesi.alamat && (
+            <a
+              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(sesi.alamat)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-bold text-blue-600 underline"
+            >
+              Buka di Maps
+            </a>
+          )}
+        </p>
+      ) : (
+        <p className="flex items-center gap-1.5"><MapPin size={14} /> Studio</p>
+      )}
       <p className="flex items-center gap-1.5">
         <Users size={14} /> {sesi.jumlah_orang} orang
         {sesi.nomor_kantong ? ` · Kantong ${sesi.nomor_kantong}` : ''}

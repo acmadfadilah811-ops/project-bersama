@@ -364,6 +364,13 @@ def susun_invoice_dp_pdf(order):
     elements.append(totals_wrapper)
     elements.append(Spacer(1, 12 * mm))
 
+    # Pesanan foto: jadwal & lokasi sesi (outdoor + alamat) -- 2026-10-14.
+    from .starfoto import ringkasan_sesi_foto
+    sesi_foto = ringkasan_sesi_foto(order)
+    for baris in sesi_foto:
+        elements.append(Paragraph(f'<b>{escape(baris)}</b>', cell_small))
+    if sesi_foto:
+        elements.append(Spacer(1, 4 * mm))
     if order.catatan_pelanggan:
         elements.append(Paragraph(f'Catatan: {order.catatan_pelanggan}', cell_small))
         elements.append(Spacer(1, 6 * mm))

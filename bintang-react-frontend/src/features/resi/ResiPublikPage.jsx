@@ -136,6 +136,9 @@ export default function ResiPublikPage() {
         <div className="mt-3 space-y-1 text-xs text-slate-600">
           {data.pelanggan?.nama && <p>Pelanggan: <b className="text-slate-800">{data.pelanggan.nama}</b></p>}
           {data.status_pesanan && <p>Status pesanan: <b className="text-slate-800">{data.status_pesanan}</b></p>}
+          {(data.sesi_foto || []).map((baris) => (
+            <p key={baris} className="font-semibold text-slate-800">{baris}</p>
+          ))}
           {data.dilayani_oleh && <p>Dilayani oleh: {data.dilayani_oleh}</p>}
           {data.kasir && <p>Kasir: {data.kasir}</p>}
         </div>

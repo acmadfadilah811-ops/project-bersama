@@ -70,6 +70,7 @@ export function buildQzReceiptHtml({ receipt, settings, paperSize }) {
   ${receipt?.isDraft ? '<tr><td colspan="2" class="total">STATUS: BELUM DIBAYAR</td></tr>' : `<tr><td>Dibayar</td><td class="right">${escapeHtml(formatCurrency(receipt?.dibayar))}</td></tr>
   <tr><td>Kembalian</td><td class="right">${escapeHtml(formatCurrency(receipt?.kembalian))}</td></tr>`}</table>
   ${cfg.totalQty ? `<p class="center kecil">TOTAL QTY ITEM: ${escapeHtml(totalQtyItem(items))}</p>` : ''}
+  ${(receipt?.info_sesi || []).length ? `<div class="divider"></div>${receipt.info_sesi.map((b) => `<p class="kecil"><strong>${escapeHtml(b)}</strong></p>`).join('')}` : ''}
   ${cfg.catatan ? `<div class="divider"></div><p class="center kecil">${escapeHtml(cfg.catatan)}</p>` : ''}
   ${cfg.syarat ? `<div class="divider"></div><p class="kecil">${escapeHtml(cfg.syarat)}</p>` : ''}
 </body></html>`;

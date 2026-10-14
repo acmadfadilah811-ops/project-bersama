@@ -31,7 +31,7 @@ import PaymentSuccessModal from '../components/PaymentSuccessModal';
 import ReceiptPrint from '../components/ReceiptPrint';
 import SpkPublishModal from '../components/SpkPublishModal';
 import StarfotoSesiModal from '../../starfoto/components/StarfotoSesiModal';
-import useStarfotoKasir, { galatData, payloadStarfoto } from '../../starfoto/hooks/useStarfotoKasir';
+import useStarfotoKasir, { galatData, payloadStarfoto, ringkasanSesi } from '../../starfoto/hooks/useStarfotoKasir';
 import StarfotoKatalogPanel, { StarfotoTabBar } from '../../starfoto/components/StarfotoKatalogPanel';
 import StarfotoPesananPanel from '../../starfoto/components/StarfotoPesananPanel';
 import { uiConfirm } from '../../../utils/dialog';
@@ -945,6 +945,8 @@ export default function PosTerminal({ onToggleSidebar }) {
         method: order.metode_pembayaran,
         sisa_tagihan: Number(order.sisa_tagihan),
         catatan: order.catatan_pelanggan || cartNotes,
+        // Pesanan foto: jadwal & lokasi sesi (outdoor + alamat) dicetak di resi.
+        info_sesi: starfoto.item ? ringkasanSesi(starfoto.data) : [],
         items: cart.map((item) => ({
           ...item,
           nama_snapshot: item.nama,

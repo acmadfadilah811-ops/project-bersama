@@ -144,7 +144,11 @@ export default function StarfotoPesananPanel({
                   <option value="outdoor">Outdoor</option>
                 </select>
                 {s.lokasi === 'outdoor' && (
-                  <input value={s.alamat} onChange={(e) => ubahSesi(i, 'alamat', e.target.value)} placeholder="Alamat lokasi" className="flex-1 rounded-lg border border-slate-300 p-2" />
+                  <input
+                    value={s.alamat} onChange={(e) => ubahSesi(i, 'alamat', e.target.value)}
+                    placeholder="Alamat / nama tempat (wajib)"
+                    className={`flex-1 rounded-lg border p-2 ${String(s.alamat || '').trim() ? 'border-slate-300' : 'border-amber-400 bg-amber-50'}`}
+                  />
                 )}
               </div>
             </div>

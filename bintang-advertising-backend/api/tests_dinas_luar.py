@@ -33,6 +33,30 @@ class DinasLuarTests(_Dasar):
         payload.update(data)
         return self.client.post('/api/starfoto/dinas-luar/mulai/', payload, format='multipart')
 
+    def test_sesi_outdoor_wajib_ada_alamat(self):
+        self.client.force_authenticate(self.kasir)
+        mulai = (timezone.now() + datetime.timedelta(minutes=30)).replace(microsecond=0)
+        res = self._checkout(sesi=[{'mulai': mulai.isoformat(), 'lokasi': 'outdoor', 'alamat': '  '}])
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('alamat', res.content.decode())
+        self.assertTrue(DinasLuar.objects.none().count() == 0)
+
+    def test_dinas_sesi_outdoor_membawa_alamat_sesi(self):
+        sesi = self._pesanan_outdoor().sesi.get()
+        self.client.force_authenticate(self.foto)
+        res = self._mulai_dinas(sesi_id=sesi.id)
+        self.assertEqual(res.status_code, 201, res.content)
+        self.assertEqual(DinasLuar.objects.get(sesi=sesi, staff=self.foto).alamat, 'Pantai Teluk Penyu')
+
+    def test_resi_dan_invoice_memuat_sesi_outdoor(self):
+        from .services.resi_digital import _sesi_foto
+        from .services.order_invoice_whatsapp import susun_invoice_dp_pdf
+        pesanan = self._pesanan_outdoor()
+        baris = _sesi_foto(pesanan.order)
+        self.assertEqual(len(baris), 1)
+        self.assertIn('OUTDOOR - Pantai Teluk Penyu', baris[0])
+        self.assertTrue(susun_invoice_dp_pdf(pesanan.order).startswith(b'%PDF'))
+
     def test_sesi_outdoor_wajib_dinas_lalu_selesai(self):
         sesi = self._pesanan_outdoor().sesi.get()
         self.client.force_authenticate(self.foto)

@@ -286,6 +286,10 @@ def terbitkan_dari_checkout(order, data, user, jumlah_bayar):
             'outdoor' if paket.lokasi == 'outdoor' else 'studio'
         )
         durasi = _int(raw.get('durasi_menit') or durasi_bawaan, 'Durasi sesi', 1)
+        # Sesi outdoor wajib punya alamat/tempat: fotografer berangkat dinas luar ke
+        # sana dan alamat ikut ke catatan Dinas Luar (2026-10-14).
+        if lokasi == 'outdoor' and not str(raw.get('alamat') or '').strip():
+            raise ValidationError({'error': f'Sesi {urutan} outdoor: alamat/tempat lokasi wajib diisi.'})
         if not data.get('abaikan_bentrok'):
             _cek_bentrok(mulai, durasi, lokasi)
         jadwal.append(SesiFoto.objects.create(
@@ -643,6 +647,20 @@ def status_pesanan_foto(order, panggilan='Kak'):
         jadwal = timezone.localtime(berikut.mulai).strftime('%d/%m/%Y %H:%M')
         return (f'Menunggu Sesi Foto ({jadwal})', f'Kami tunggu {panggilan} di sesi foto {jadwal}. 📸')
     return ('Menunggu Sesi Foto', f'Kami tunggu {panggilan} di sesi foto. 📸')
+
+
+def ringkasan_sesi_foto(order):
+    """Baris keterangan sesi untuk resi/invoice, mis. 'Sesi 1: OUTDOOR - Pantai
+    Teluk Penyu · 16/10/2026 10:00'. Kosong bila bukan pesanan foto (2026-10-14)."""
+    pesanan = PesananFoto.objects.filter(order=order).first()
+    if pesanan is None:
+        return []
+    baris = []
+    for s in pesanan.sesi.exclude(status='batal').order_by('urutan'):
+        tempat = f'OUTDOOR - {s.alamat}' if s.lokasi == 'outdoor' else 'Studio'
+        jadwal = timezone.localtime(s.mulai).strftime('%d/%m/%Y %H:%M') if s.mulai else ''
+        baris.append(f'Sesi {s.urutan}: {tempat}' + (f' · {jadwal}' if jadwal else ''))
+    return baris
 
 
 def deskripsi_job_sesi(job):

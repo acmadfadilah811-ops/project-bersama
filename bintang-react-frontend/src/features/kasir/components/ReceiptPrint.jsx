@@ -134,6 +134,11 @@ export default function ReceiptPrint({ receipt, settings }) {
         <div className="flex justify-between items-start">
           {/* Notes / Tanda Tangan */}
           <div className="w-1/2 space-y-8">
+            {(receipt.info_sesi || []).length > 0 && (
+              <div className="text-[10px] text-slate-700 font-bold max-w-sm space-y-0.5">
+                {receipt.info_sesi.map((baris) => <p key={baris}>{baris}</p>)}
+              </div>
+            )}
             {receipt.catatan && (
               <div className="text-[10px] text-slate-500 font-semibold bg-slate-50 border border-slate-100 rounded-xl p-3 max-w-sm">
                 <span className="font-bold block text-slate-600 mb-0.5">Catatan Faktur:</span>
@@ -351,6 +356,12 @@ export default function ReceiptPrint({ receipt, settings }) {
       {cfg.totalQty && (
         <div className="text-[8px] text-center mt-2 font-bold text-slate-600">
           TOTAL QTY ITEM: {totalQty}
+        </div>
+      )}
+
+      {(receipt.info_sesi || []).length > 0 && (
+        <div className="text-[9px] mt-2 pt-2 border-t border-dashed border-black font-bold text-slate-800 space-y-0.5 break-words">
+          {receipt.info_sesi.map((baris) => <p key={baris}>{baris}</p>)}
         </div>
       )}
 
