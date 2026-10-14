@@ -15,10 +15,31 @@ from django.utils import timezone
 
 from api.permissions import IsOwnerOrManager
 from api.services.insights_bridge import build_combined_insights
-from api.wa_logic import get_ai_client
+from api.wa_logic import get_ai_client, get_ai_config_value
 
 from . import ai_business_analyst
 from .executive_dashboard_views import _period
+
+
+def _client_dan_model():
+    """Client & model AI khusus Business Analyst (2026-10-14).
+
+    Bisa memakai API key/base URL/model sendiri (SystemConfig ai_ba_* atau env
+    AI_BUSINESS_ANALYST_*) terpisah dari bot WA; bila key khusus kosong,
+    memakai client bersama bot WA seperti sebelumnya."""
+    from openai import OpenAI
+    model = (
+        get_ai_config_value('ai_ba_model', 'AI_BUSINESS_ANALYST_MODEL')
+        or os.getenv('KOBOI_MODEL', 'gemini-2.5-pro')
+    )
+    api_key = get_ai_config_value('ai_ba_api_key', 'AI_BUSINESS_ANALYST_API_KEY')
+    if not api_key:
+        return get_ai_client(), model
+    base_url = (
+        get_ai_config_value('ai_ba_base_url', 'AI_BUSINESS_ANALYST_BASE_URL')
+        or get_ai_config_value('ai_koboi_base_url', 'KOBOI_BASE_URL', 'https://api.koboillm.com/v1')
+    )
+    return OpenAI(api_key=api_key, base_url=base_url, timeout=15.0), model
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +196,7 @@ class AiBusinessAnalystChatView(APIView):
         if error:
             return error
 
-        client = get_ai_client()
+        client, model_name = _client_dan_model()
         if client is None:
             return Response(
                 {'error': 'AI belum dikonfigurasi (KOBOI_API_KEY kosong). Hubungi admin.'},
@@ -210,8 +231,6 @@ class AiBusinessAnalystChatView(APIView):
             hari_ini=timezone.localdate().strftime('%d %B %Y'),
             data=json.dumps(data_snapshot, ensure_ascii=False, default=str),
         )
-        model_name = os.getenv('AI_BUSINESS_ANALYST_MODEL') or os.getenv('KOBOI_MODEL', 'gemini-2.5-pro')
-
         full_messages = [{'role': 'system', 'content': system_prompt}, *messages]
 
         max_retries = 2
