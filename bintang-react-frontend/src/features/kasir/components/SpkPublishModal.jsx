@@ -17,8 +17,33 @@ import { getApiErrorMessage } from '../../../utils/apiError';
  * Akun kasir hanya boleh menujukan SPK ke antrean divisi; penunjukan staff
  * tertentu adalah wewenang kepala divisi/manager. Pembatasan ini juga
  * ditegakkan backend di api/spk.py — UI hanya menyembunyikan opsinya.
+ *
+ * `modeStarfoto` (kasir StarFoto, 2026-10-15): tujuan dipilih lewat tombol
+ * Staff Fotografer / Editor / Operator Cetak (divisi unit StarFoto) seperti
+ * pilihan divisi Star Advertising, langsung ke tahap pertama divisi tersebut.
  */
-export default function SpkPublishModal({ judul, keterangan, onTerbitkan, onClose, wajib = false, labelBatal = 'Nanti saja' }) {
+const ALUR_STARFOTO = [
+  { cocok: /foto/i, label: 'Staff Fotografer', ket: 'Difoto dulu oleh fotografer' },
+  { cocok: /edit/i, label: 'Editor', ket: 'File diedit dulu sebelum dicetak' },
+  { cocok: /operator|cetak/i, label: 'Operator Cetak', ket: 'Langsung dicetak' },
+];
+
+function tujuanStarfoto(divisiList, tahapList) {
+  const milikStarfoto = divisiList.filter((d) => /starfoto/i.test(d.unit_bisnis_nama || ''));
+  return ALUR_STARFOTO.map((a) => {
+    const divisi = milikStarfoto.find((d) => a.cocok.test(d.nama));
+    if (!divisi) return null;
+    // Tahap pertama divisi (urutan, lalu id) -- Fotografer punya Sesi & Asisten berurutan sama.
+    const tahap = tahapList
+      .filter((t) => String(t.divisi) === String(divisi.id))
+      .sort((x, y) => (x.urutan - y.urutan) || (x.id - y.id))[0];
+    return { ...a, divisi, tahapId: tahap ? String(tahap.id) : '' };
+  }).filter(Boolean);
+}
+
+export default function SpkPublishModal({
+  judul, keterangan, onTerbitkan, onClose, wajib = false, labelBatal = 'Nanti saja', modeStarfoto = false,
+}) {
   const { user } = useAuth();
   const bolehPilihStaff = (user?.role || '').toLowerCase() !== 'kasir';
 
@@ -81,16 +106,28 @@ export default function SpkPublishModal({ judul, keterangan, onTerbitkan, onClos
 
   useEffect(() => { setTahapId(''); }, [divisiId, tipeEfektif]);
 
-  const bisaKirim = (tipeEfektif === 'divisi' ? !!divisiId : !!staffId) && !!deadline;
+  const pilihanStarfoto = useMemo(
+    () => (modeStarfoto ? tujuanStarfoto(divisiList, tahapList) : []),
+    [modeStarfoto, divisiList, tahapList],
+  );
+  const pakaiPilihanStarfoto = modeStarfoto && tipeEfektif === 'divisi' && pilihanStarfoto.length > 0;
+  const [tujuanStarfotoId, setTujuanStarfotoId] = useState('');
+  const tujuanStarfotoAktif = pilihanStarfoto.find((p) => String(p.divisi.id) === tujuanStarfotoId);
+
+  const bisaKirim = (pakaiPilihanStarfoto ? !!tujuanStarfotoAktif : tipeEfektif === 'divisi' ? !!divisiId : !!staffId) && !!deadline;
 
   const kirim = async () => {
     if (!bisaKirim || mengirim) return;
     setMengirim(true); setError('');
-    const payload = tipeEfektif === 'staff'
-      ? { staff_id: staffId, deadline }
-      : { divisi_id: divisiId, deadline };
+    const payload = pakaiPilihanStarfoto
+      ? { divisi_id: String(tujuanStarfotoAktif.divisi.id), deadline }
+      : tipeEfektif === 'staff'
+        ? { staff_id: staffId, deadline }
+        : { divisi_id: divisiId, deadline };
     if (deadlineJam) payload.deadline_jam = deadlineJam;
-    if (tahapId) payload.tahap_id = tahapId;
+    if (pakaiPilihanStarfoto) {
+      if (tujuanStarfotoAktif.tahapId) payload.tahap_id = tujuanStarfotoAktif.tahapId;
+    } else if (tahapId) payload.tahap_id = tahapId;
     try {
       await onTerbitkan(payload);
     } catch (err) {
@@ -140,7 +177,31 @@ export default function SpkPublishModal({ judul, keterangan, onTerbitkan, onClos
                 </p>
               )}
 
-              {tipeEfektif === 'divisi' ? (
+              {pakaiPilihanStarfoto ? (
+                <div>
+                  <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 5 }}>Arahkan ke</span>
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    {pilihanStarfoto.map((p) => {
+                      const aktif = String(p.divisi.id) === tujuanStarfotoId;
+                      return (
+                        <button
+                          key={p.divisi.id}
+                          type="button"
+                          onClick={() => setTujuanStarfotoId(String(p.divisi.id))}
+                          style={{
+                            textAlign: 'left', padding: '10px 12px', borderRadius: 10, cursor: 'pointer',
+                            border: `1px solid ${aktif ? '#0088FF' : '#cbd5e1'}`,
+                            background: aktif ? '#eff6ff' : '#fff',
+                          }}
+                        >
+                          <span style={{ display: 'block', fontSize: 13, fontWeight: 800, color: aktif ? '#0088FF' : '#1e293b' }}>{p.label}</span>
+                          <span style={{ display: 'block', fontSize: 11.5, color: '#64748b', marginTop: 2 }}>{p.ket} · divisi {p.divisi.nama}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : tipeEfektif === 'divisi' ? (
                 <>
                   <label style={{ display: 'block' }}>
                     <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 5 }}>Divisi</span>

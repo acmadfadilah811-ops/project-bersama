@@ -1469,6 +1469,7 @@ export default function PosTerminal({ onToggleSidebar }) {
       {pendingPayment && !starfoto.item && (
         <SpkPublishModal
           judul="Tujuan SPK Produksi"
+          modeStarfoto={starfoto.modeAktif}
           keterangan={pendingPayment.paymentType === 'dp'
             ? 'DP akan dicatat dan SPK langsung masuk ke antrean global divisi yang dipilih.'
             : 'Pembayaran lunas dan SPK akan disimpan bersamaan ke antrean global divisi yang dipilih.'}
