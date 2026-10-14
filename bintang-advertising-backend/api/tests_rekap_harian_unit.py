@@ -46,3 +46,15 @@ class RekapHarianUnitTests(APITestCase):
     def test_owner_bisa_memilih_satu_unit(self):
         data = self._get(self.owner, f'?unit_bisnis={self.adv.id}')
         self.assertEqual(Decimal(str(data['ringkasan']['total_penjualan'])), Decimal('30000'))
+
+
+class PosSaleFilterUnitTests(RekapHarianUnitTests):
+    """?unit_bisnis= pada /pos/sales/ membuang transaksi yang belum bertanda unit (Pesanan & Pelunasan kasir StarFoto)."""
+
+    def test_kasir_starfoto_strict_tanpa_transaksi_tak_bertanda(self):
+        POSSale.objects.create(nomor='R-NULL', total=Decimal('1000'), status='paid', metode_bayar='Cash')
+        self.client.force_authenticate(self.k_foto)
+        semua = {s['nomor'] for s in self.client.get('/api/pos/sales/?page=1&page_size=100').json()['results']}
+        self.assertEqual(semua, {'R-F1', 'R-NULL'})
+        strict = {s['nomor'] for s in self.client.get(f'/api/pos/sales/?page=1&page_size=100&unit_bisnis={self.foto.id}').json()['results']}
+        self.assertEqual(strict, {'R-F1'})

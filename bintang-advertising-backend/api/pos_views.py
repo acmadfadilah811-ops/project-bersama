@@ -66,6 +66,10 @@ class POSSaleViewSet(viewsets.ModelViewSet):
             if pos_settings.sembunyikan_transaksi_perangkat_lain():
                 qs = qs.filter(kasir=user)
         qs = scoped_by_unit_bisnis(qs, user)
+        # ?unit_bisnis=<id>: hanya unit itu (tanpa transaksi yang belum bertanda unit),
+        # dipakai kasir StarFoto di Pesanan & Pelunasan (2026-10-14).
+        from .permissions import filter_param_unit_bisnis
+        qs = filter_param_unit_bisnis(qs, self.request)
         return qs
 
     @action(detail=False, methods=['post'], url_path='verify-passkey', throttle_classes=[PasskeyRateThrottle])

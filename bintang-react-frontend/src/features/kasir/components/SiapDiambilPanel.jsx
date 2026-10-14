@@ -16,6 +16,8 @@ import {
   X as XIcon,
 } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
+import { useAuth } from '../../../context/AuthContext';
+import { paramUnitKasirStarfoto } from '../../../utils/unitBisnis';
 import PelunasanModal from './PelunasanModal';
 import { formatTanggalJam, teksPosisi } from '../utils/posisiProduksi';
 import InvoiceModal from './InvoiceModal';
@@ -170,16 +172,21 @@ export default function SiapDiambilPanel({ ringkas = false }) {
     items: (sale.items || []).map((it) => ({ id: it.id, jenis_produk: it.nama_snapshot, jobs: it.jobs || [] })),
   });
 
+  // Kasir StarFoto: hanya pesanan StarFoto (2026-10-14).
+  const { user } = useAuth();
+  const unitKasir = paramUnitKasirStarfoto(user).unit_bisnis;
+
   const muat = useCallback(async (tampilkanSpinner = false) => {
     if (tampilkanSpinner) setMemuat(true);
+    const u = unitKasir ? { unit_bisnis: unitKasir } : {};
     try {
       const [resReady, resDesain, resProses, resSelesai, resPosReady, resPosProses] = await Promise.all([
-        apiClient.get('/orders/', { params: { status_global: 'ready' } }),
-        apiClient.get('/orders/', { params: { status_global: 'desain' } }),
-        apiClient.get('/orders/', { params: { status_global: 'proses' } }),
-        apiClient.get('/orders/', { params: { status_global: 'selesai' } }),
-        apiClient.get('/pos/sales/produksi/', { params: { status_produksi: 'ready' } }),
-        apiClient.get('/pos/sales/produksi/', { params: { status_produksi: 'proses' } }),
+        apiClient.get('/orders/', { params: { status_global: 'ready', ...u } }),
+        apiClient.get('/orders/', { params: { status_global: 'desain', ...u } }),
+        apiClient.get('/orders/', { params: { status_global: 'proses', ...u } }),
+        apiClient.get('/orders/', { params: { status_global: 'selesai', ...u } }),
+        apiClient.get('/pos/sales/produksi/', { params: { status_produksi: 'ready', ...u } }),
+        apiClient.get('/pos/sales/produksi/', { params: { status_produksi: 'proses', ...u } }),
       ]);
       setSiap([...(resReady.data || []), ...(resPosReady.data || []).map(normalisasiPosSale)]);
       setProses([
@@ -201,7 +208,7 @@ export default function SiapDiambilPanel({ ringkas = false }) {
     } finally {
       setMemuat(false);
     }
-  }, []);
+  }, [unitKasir]);
 
   useEffect(() => {
     muat(true);

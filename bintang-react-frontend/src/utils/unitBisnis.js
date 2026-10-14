@@ -50,6 +50,14 @@ export function isKasirStarfoto(user) {
   return String(user?.role || '').toLowerCase() === 'kasir' && /starfoto/i.test(user?.unit_bisnis_nama || '');
 }
 
+/**
+ * Parameter API agar kasir StarFoto hanya menerima pesanan StarFoto (tanpa pesanan
+ * yang belum bertanda unit, mis. order WA/manual unit lain). Kosong untuk peran lain.
+ */
+export function paramUnitKasirStarfoto(user) {
+  return isKasirStarfoto(user) && user?.unit_bisnis ? { unit_bisnis: user.unit_bisnis } : {};
+}
+
 let cacheDaftarUnit = null;
 
 export function useDaftarUnitBisnis() {
