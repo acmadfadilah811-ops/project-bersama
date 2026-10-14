@@ -99,6 +99,21 @@ class InvoiceDpWhatsAppTests(APITestCase):
             tindakan='GAGAL_KIRIM_INVOICE_DP_WA',
         ).exists())
 
+    @patch(
+        'api.services.order_invoice_whatsapp.whatsapp_client.send_media_message',
+        return_value={'key': {'id': 'MSG-LUNAS'}},
+    )
+    def test_pesanan_kasir_langsung_lunas_juga_dikirimi_invoice(self, send_media_message):
+        Order.objects.filter(pk=self.order.pk).update(dp_dibayar=50000, sisa_tagihan=0)
+        result = kirim_invoice_dp_whatsapp(order_id=self.order.id, otomatis=True)
+        self.assertEqual(result['status'], 'sent')
+        self.assertTrue(send_media_message.call_args.args[4].startswith('Invoice-'))
+        self.assertNotIn('Invoice-DP', send_media_message.call_args.args[4])
+        self.assertIn('LUNAS', send_media_message.call_args.kwargs.get('caption'))
+        self.assertTrue(OrderActivityLog.objects.filter(order=self.order, tindakan='KIRIM_INVOICE_WA').exists())
+        # Otomatis tidak dikirim dua kali.
+        self.assertTrue(kirim_invoice_dp_whatsapp(order_id=self.order.id, otomatis=True).get('duplicate'))
+
     def test_ringkasan_invoice_menampilkan_diskon_item(self):
         ringkasan = hitung_ringkasan_invoice_dp(self.order)
 

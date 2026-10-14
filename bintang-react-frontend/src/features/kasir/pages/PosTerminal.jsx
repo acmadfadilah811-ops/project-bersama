@@ -834,6 +834,18 @@ export default function PosTerminal({ onToggleSidebar }) {
     }
   };
 
+  // Pesanan foto (2026-10-14): jatuh tempo DP otomatis = tanggal sesi pertama yang
+  // sudah diisi di form pesanan; DP minimal = persen paket (atau pengaturan StarFoto),
+  // dibulatkan ke atas seperti di server (services/starfoto.dp_minimal).
+  const jatuhTempoBawaan = starfoto.item ? (starfoto.data?.sesi?.[0]?.mulai || '').slice(0, 10) : '';
+  const dpMinimal = (() => {
+    if (!starfoto.item || !starfoto.paket) return { nominal: 0, persen: null };
+    const persen = starfoto.paket.dp_minimal_persen != null
+      ? Number(starfoto.paket.dp_minimal_persen)
+      : Number(starfoto.pengaturan?.dp_minimal_persen ?? 50);
+    return { nominal: persen > 0 ? Math.ceil((getTotal() * persen) / 100) : 0, persen: persen > 0 ? persen : null };
+  })();
+
   const handlePublishSpkAndCheckout = async (spkPayload, pembayaran = pendingPayment) => {
     if (!pembayaran) return;
     // Pesanan foto selalu lewat checkout pesanan (DP maupun lunas) supaya
@@ -1416,6 +1428,9 @@ export default function PosTerminal({ onToggleSidebar }) {
         subtotalAmount={Number(getSubtotal()) + cart.reduce((sum, item) => sum + itemDiscountTotal(item), 0)}
         discountAmount={cart.reduce((sum, item) => sum + itemDiscountTotal(item), 0) + Math.max(0, Number(getSubtotal()) + Number(getTaxAmount()) - Number(getTotal()))}
         onConfirmPayment={handleConfirmPayment}
+        defaultDueDate={jatuhTempoBawaan}
+        minDp={dpMinimal.nominal}
+        minDpPersen={dpMinimal.persen}
       />
 
       {starfoto.modalTerbuka && starfoto.item && starfoto.paket && (

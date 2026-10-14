@@ -211,7 +211,10 @@ export default function PosHistory({ onToggleSidebar }) {
           status: isBatal ? 'VOID' : (ORDER_STATUS_LABEL[order.status_global] || order.status_global || '').toUpperCase(),
           status_global: order.status_global,
           sumber: order.sumber || 'manual',
-          sumber_label: ORDER_SUMBER_LABEL[order.sumber] || 'Order Manual',
+          // Order kasir yang lunas tidak diberi label "(DP)" (2026-10-14).
+          sumber_label: order.sumber === 'pos' && sisaTagihan <= 0
+            ? 'Order via Kasir'
+            : ORDER_SUMBER_LABEL[order.sumber] || 'Order Manual',
           is_void: isBatal,
           total: Number(order.total_harga || 0),
           dp_dibayar: dpDibayar,

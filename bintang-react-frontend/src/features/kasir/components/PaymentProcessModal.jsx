@@ -9,6 +9,10 @@ export default function PaymentProcessModal({
   subtotalAmount = 0,
   discountAmount = 0,
   onConfirmPayment,
+  // Jatuh tempo bawaan DP (mis. tanggal sesi foto pertama) dan DP minimal (Rp) -- 2026-10-14.
+  defaultDueDate = '',
+  minDp = 0,
+  minDpPersen = null,
 }) {
   const [selectedMethod, setSelectedMethod] = useState('CASH');
   const [paymentType, setPaymentType] = useState('lunas');
@@ -20,9 +24,9 @@ export default function PaymentProcessModal({
       setPayAmountStr(String(Math.round(totalAmount)));
       setSelectedMethod('CASH');
       setPaymentType('lunas');
-      setDueDate('');
+      setDueDate(defaultDueDate || '');
     }
-  }, [isOpen, totalAmount]);
+  }, [isOpen, totalAmount, defaultDueDate]);
 
   const currentPayAmount = parseFloat(payAmountStr) || 0;
   const changeAmount = Math.max(0, currentPayAmount - totalAmount);
@@ -55,6 +59,10 @@ export default function PaymentProcessModal({
     }
     if (paymentType === 'dp' && (currentPayAmount <= 0 || currentPayAmount >= totalAmount)) {
       alert('Nominal DP harus lebih dari Rp0 dan lebih kecil dari total tagihan. Untuk pembayaran penuh, pilih Lunas.');
+      return;
+    }
+    if (paymentType === 'dp' && minDp > 0 && currentPayAmount < minDp) {
+      alert(`DP minimal Rp ${Math.round(minDp).toLocaleString('id-ID')}${minDpPersen ? ` (${minDpPersen}% dari total)` : ''}.`);
       return;
     }
     if (paymentType === 'dp' && !dueDate) {
@@ -170,7 +178,7 @@ export default function PaymentProcessModal({
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setPaymentType('dp'); setPayAmountStr(''); }}
+                  onClick={() => { setPaymentType('dp'); setPayAmountStr(minDp > 0 ? String(Math.round(minDp)) : ''); }}
                   className={`rounded-lg px-2.5 py-2 text-xs font-extrabold border transition-all ${paymentType === 'dp' ? 'bg-amber-400 text-slate-900 border-amber-200' : 'bg-white/10 text-white border-white/30 hover:bg-white/20'}`}
                 >
                   DP / Uang Muka
@@ -183,12 +191,20 @@ export default function PaymentProcessModal({
                     <div className="flex justify-between"><span>Subtotal Item</span><span>Rp {Math.round(subtotalAmount).toLocaleString('id-ID')}</span></div>
                     <div className="flex justify-between"><span>Diskon</span><span>-Rp {Math.round(discountAmount).toLocaleString('id-ID')}</span></div>
                     <div className="flex justify-between font-extrabold"><span>Total Harga</span><span>Rp {Math.round(totalAmount).toLocaleString('id-ID')}</span></div>
+                    {minDp > 0 && (
+                      <div className="flex justify-between font-extrabold text-amber-800">
+                        <span>DP Minimal{minDpPersen ? ` (${minDpPersen}%)` : ''}</span>
+                        <span>Rp {Math.round(minDp).toLocaleString('id-ID')}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between"><span>DP / Uang Muka</span><span>Rp {Math.round(currentPayAmount).toLocaleString('id-ID')}</span></div>
                     <div className="flex justify-between"><span>Metode Pembayaran</span><span>{paymentMethods.find((item) => item.id === selectedMethod)?.label || selectedMethod}</span></div>
                     <div className="flex justify-between font-extrabold text-amber-800"><span>Sisa Tagihan</span><span>Rp {Math.max(0, Math.round(totalAmount - currentPayAmount)).toLocaleString('id-ID')}</span></div>
                   </div>
                   <label className="block">
-                    <span className="mb-1 block font-extrabold">Jatuh Tempo</span>
+                    <span className="mb-1 block font-extrabold">
+                      Jatuh Tempo{defaultDueDate && dueDate === defaultDueDate ? ' (otomatis dari jadwal sesi)' : ''}
+                    </span>
                     <input
                       type="date"
                       min={todayISO()}

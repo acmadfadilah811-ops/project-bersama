@@ -423,20 +423,27 @@ def _catat_hasil(order, tindakan, keterangan):
 
 
 def kirim_invoice_dp_whatsapp(*, order_id, otomatis=False):
-    """Kirim invoice DP tanpa menggagalkan Order, jurnal, atau SPK yang sudah sah."""
+    """Kirim invoice pesanan kasir (DP atau langsung lunas) tanpa menggagalkan
+    Order, jurnal, atau SPK yang sudah sah. Sejak 2026-10-14 pesanan yang
+    langsung lunas di kasir (mis. pesanan foto StarFoto) juga dikirimi invoice,
+    sama seperti pesanan DP."""
     with transaction.atomic():
         order = (Order.objects.select_for_update()
                  .prefetch_related('items')
                  .get(pk=order_id))
         if order.reorder_dari_id:
             return {'ok': False, 'status': 'skipped', 'reason': 'reorder_human_error'}
-        if order.dp_dibayar <= 0 or order.sisa_tagihan <= 0:
+        if order.dp_dibayar <= 0:
             return {'ok': False, 'status': 'skipped', 'reason': 'not_dp_order'}
+        lunas = order.sisa_tagihan <= 0
+        label = 'Invoice' if lunas else 'Invoice DP'
+        tindakan_ok = 'KIRIM_INVOICE_WA' if lunas else 'KIRIM_INVOICE_DP_WA'
+        tindakan_gagal = 'GAGAL_KIRIM_INVOICE_WA' if lunas else 'GAGAL_KIRIM_INVOICE_DP_WA'
 
         if otomatis and OrderActivityLog.objects.filter(
             order=order,
-            tindakan='KIRIM_INVOICE_DP_WA',
-            keterangan__startswith='Invoice DP otomatis terkirim',
+            tindakan=tindakan_ok,
+            keterangan__startswith=f'{label} otomatis terkirim',
         ).exists():
             return {'ok': True, 'status': 'sent', 'duplicate': True}
 
@@ -444,8 +451,8 @@ def kirim_invoice_dp_whatsapp(*, order_id, otomatis=False):
         if not destination:
             _catat_hasil(
                 order,
-                'GAGAL_KIRIM_INVOICE_DP_WA',
-                'Invoice DP otomatis tidak dikirim: nomor WhatsApp pelanggan tidak valid.',
+                tindakan_gagal,
+                f'{label} otomatis tidak dikirim: nomor WhatsApp pelanggan tidak valid.',
             )
             return {'ok': False, 'status': 'skipped', 'reason': 'invalid_number'}
 
@@ -461,9 +468,9 @@ def kirim_invoice_dp_whatsapp(*, order_id, otomatis=False):
             base64.b64encode(invoice_pdf).decode('ascii'),
             'document',
             'application/pdf',
-            f'Invoice-DP-{nomor_invoice}.pdf',
-            caption=f'Invoice DP {nomor_invoice}. {baris_id_lacak(nomor_invoice)} Lihat struk online & beri penilaian: '
-                    f'{url_resi("order", order.id)}',
+            f'{label.replace(" ", "-")}-{nomor_invoice}.pdf',
+            caption=f'{label} {nomor_invoice}{" (LUNAS)" if lunas else ""}. {baris_id_lacak(nomor_invoice)} '
+                    f'Lihat struk online & beri penilaian: {url_resi("order", order.id)}',
         )
     except Exception:
         logger.exception('Pengiriman invoice DP WhatsApp gagal untuk order_id=%s.', order_id)
@@ -474,15 +481,15 @@ def kirim_invoice_dp_whatsapp(*, order_id, otomatis=False):
         if result:
             _catat_hasil(
                 order,
-                'KIRIM_INVOICE_DP_WA',
-                f'Invoice DP otomatis terkirim ke WhatsApp {destination}.',
+                tindakan_ok,
+                f'{label} otomatis terkirim ke WhatsApp {destination}.',
             )
             return {'ok': True, 'status': 'sent', 'number': destination}
 
         _catat_hasil(
             order,
-            'GAGAL_KIRIM_INVOICE_DP_WA',
-            'Invoice DP otomatis gagal dikirim karena gateway WhatsApp tidak menerima dokumen.',
+            tindakan_gagal,
+            f'{label} otomatis gagal dikirim karena gateway WhatsApp tidak menerima dokumen.',
         )
         return {'ok': False, 'status': 'failed', 'reason': 'gateway_unavailable'}
 
