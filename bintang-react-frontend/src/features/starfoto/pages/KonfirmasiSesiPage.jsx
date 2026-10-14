@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MessageCircle, Plus, RefreshCw, Send, ThumbsUp, Trash2 } from 'lucide-react';
+import { Check, MessageCircle, Plus, RefreshCw, Send, ThumbsUp, Trash2, X } from 'lucide-react';
 import PosHeaderBar from '../../kasir/components/PosHeaderBar';
 import apiClient from '../../../api/apiClient';
 import { useAuth } from '../../../context/AuthContext';
@@ -32,10 +32,17 @@ function FormKonfirmasi({ pesanan, onSelesai }) {
   const [tanpaEdit, setTanpaEdit] = useState(Number(pesanan.jumlah_edit || 0) === 0);
 
   const usulan = pesanan.usulan.filter((u) => u.status === 'usulan');
-  const putusan = (id) => keputusan[id] || { setuju: true, alasan: '' };
+  // Belum diputuskan = setuju null; kasir wajib memilih Setujui/Tolak (2026-10-14).
+  const putusan = (id) => keputusan[id] || { setuju: null, alasan: '' };
+  const belumDiputus = usulan.filter((u) => putusan(u.id).setuju === null).length;
   const ubahFile = (i, kunci, nilai) => setFiles((prev) => prev.map((f, idx) => (idx === i ? { ...f, [kunci]: nilai } : f)));
   const jumlahFile = files.filter((f) => f.nomor_file.trim()).length;
-  const tambahanDisetujui = usulan.reduce((s, u) => s + (putusan(u.id).setuju ? Number(u.harga_satuan) * u.qty : 0), 0);
+  const tambahanDisetujui = usulan.reduce((s, u) => s + (putusan(u.id).setuju === true ? Number(u.harga_satuan) * u.qty : 0), 0);
+  const alasanBlokir = [
+    belumDiputus ? `pilih Setujui/Tolak untuk ${belumDiputus} usulan tambahan` : '',
+    !jumlahFile ? 'isi minimal 1 No. file yang dipilih pelanggan' : '',
+    !deadline ? 'isi deadline SPK' : '',
+  ].filter(Boolean);
 
   const simpan = async () => {
     setMenyimpan(true);
@@ -73,16 +80,19 @@ function FormKonfirmasi({ pesanan, onSelesai }) {
                 <span className="font-bold text-slate-700">{formatRupiah(Number(u.harga_satuan) * u.qty)}</span>
               </div>
               <div className="mt-2 flex gap-2">
-                {[[true, 'Setujui'], [false, 'Tolak']].map(([nilai, label]) => (
+                {[[true, 'Setujui', Check], [false, 'Tolak', X]].map(([nilai, label, Ikon]) => (
                   <button
-                    key={label} type="button"
+                    key={label} type="button" aria-pressed={p.setuju === nilai}
                     onClick={() => setKeputusan((prev) => ({ ...prev, [u.id]: { ...p, setuju: nilai } }))}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-bold ${p.setuju === nilai ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600'}`}
+                    className={`inline-flex cursor-pointer items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-bold ${
+                      p.setuju === nilai ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-100'
+                    }`}
                   >
-                    {label}
+                    <Ikon size={13} /> {label}
                   </button>
                 ))}
-                {!p.setuju && (
+                {p.setuju === null && <span className="self-center text-xs text-amber-700">Belum diputuskan</span>}
+                {p.setuju === false && (
                   <input
                     value={p.alasan} placeholder="Alasan ditolak"
                     onChange={(e) => setKeputusan((prev) => ({ ...prev, [u.id]: { ...p, alasan: e.target.value } }))}
@@ -145,8 +155,11 @@ function FormKonfirmasi({ pesanan, onSelesai }) {
         <p className="mt-1 text-xs text-slate-400">Penagihan dilakukan di Pesanan & Pelunasan setelah konfirmasi.</p>
       </div>
 
+      {alasanBlokir.length > 0 && (
+        <p className="rounded-lg bg-amber-50 p-2 text-xs text-amber-800">Sebelum konfirmasi: {alasanBlokir.join('; ')}.</p>
+      )}
       <button
-        type="button" onClick={simpan} disabled={menyimpan || !jumlahFile || !deadline}
+        type="button" onClick={simpan} disabled={menyimpan || alasanBlokir.length > 0}
         className="w-full rounded-xl bg-slate-800 py-2.5 font-bold text-white disabled:opacity-40"
       >
         {menyimpan ? 'Menyimpan...' : tanpaEdit ? 'Konfirmasi & Kirim ke Cetak' : 'Konfirmasi & Kirim ke Editor'}
@@ -352,7 +365,15 @@ export default function KonfirmasiSesiPage({ onToggleSidebar }) {
                   {aktif.status === 'menunggu_kasir' ? (
                     <FormKonfirmasi key={aktif.id} pesanan={aktif} onSelesai={() => { setDipilih(null); muat(); }} />
                   ) : (
-                    <p className="text-sm text-slate-500">Sesi belum selesai. Konfirmasi tersedia setelah fotografer menekan Selesai.</p>
+                    <div className="space-y-2 text-sm text-slate-500">
+                      <p>Sesi belum selesai. Konfirmasi tersedia setelah fotografer menekan Selesai.</p>
+                      {aktif.usulan.some((u) => u.status === 'usulan') && (
+                        <p className="rounded-lg bg-amber-50 p-2 text-xs text-amber-800">
+                          Usulan tambahan ({aktif.usulan.filter((u) => u.status === 'usulan').map((u) => `${u.nama} ×${u.qty}`).join(', ')})
+                          disetujui/ditolak di sini setelah sesi selesai, bersamaan dengan konfirmasi file.
+                        </p>
+                      )}
+                    </div>
                   )}
                   <button type="button" onClick={() => navigate(`/kasir/pesanan?cari=${aktif.order}`)} className="text-xs font-bold text-slate-600 underline">
                     Buka di Pesanan & Pelunasan
