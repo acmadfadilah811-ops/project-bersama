@@ -174,6 +174,27 @@ def post_stock_adjustment_journal(document, actor, amount, *, direction, source_
         raise ValidationError(getattr(exc, 'messages', [str(exc)])) from exc
 
 
+def isi_stok_pertama(product, variant, qty_lama, qty_baru, actor):
+    """Qty diisi dari form edit untuk produk/varian yang BELUM PERNAH punya stok
+    (qty 0, tanpa pergerakan stok maupun lapisan FIFO) = stok awal, bukan selisih
+    opname (2026-10-14: banyak produk StarFoto hasil impor masih kosong). Dicatat
+    lewat catat_saldo_awal_stok -- pergerakan 'Saldo Awal' + lapisan FIFO + jurnal
+    Persediaan / Saldo Awal (ekuitas), sama dengan saat produk dibuat dengan qty,
+    supaya tidak menggembungkan laba/rugi lewat akun Penyesuaian.
+    True bila jalur ini dipakai; False -> pemanggil memakai Stok Opname biasa."""
+    if Decimal(str(qty_lama or 0)) != 0 or Decimal(str(qty_baru or 0)) <= 0:
+        return False
+    if ProductStockMovement.objects.filter(product=product, variant=variant).exists():
+        return False
+    if StockLayer.objects.filter(product=product, variant=variant).exists():
+        return False
+    owner = variant if variant is not None else product
+    with transaction.atomic():
+        type(owner).objects.filter(pk=owner.pk).update(qty_stok=qty_baru)
+        catat_saldo_awal_stok(product, variant, qty_baru, owner.harga_beli, timezone.localdate(), actor)
+    return True
+
+
 def catat_saldo_awal_stok(product, variant, qty, harga_beli, tanggal, actor):
     """Jejak akuntansi stok awal produk/varian BARU (dipanggil dari
     ProductViewSet/ProductVariantViewSet.perform_create dan import_products
@@ -674,7 +695,12 @@ class ProductViewSet(viewsets.ModelViewSet):
         if old_harga_jual != product.harga_jual_toko:
             changes.append(f"Mengubah harga jual dari Rp. {old_harga_jual:,.2f} menjadi Rp. {product.harga_jual_toko:,.2f}".replace(",", "."))
 
-        if new_qty_stok is not None and old_qty_stok != new_qty_stok:
+        if new_qty_stok is not None and old_qty_stok != new_qty_stok and isi_stok_pertama(
+            product, None, old_qty_stok, new_qty_stok, self.request.user,
+        ):
+            product.refresh_from_db(fields=['qty_stok'])
+            changes.append(f"Mengisi stok awal {new_qty_stok} (dicatat sebagai Saldo Awal persediaan)")
+        elif new_qty_stok is not None and old_qty_stok != new_qty_stok:
             today = timezone.localdate()
             nomor = _next_document_number(StockOpnameDocument, f"OP{today.strftime('%y%m%d')}")
             doc = StockOpnameDocument.objects.create(
@@ -1574,7 +1600,15 @@ class ProductVariantViewSet(viewsets.ModelViewSet):
 
         variant = serializer.save()
 
-        if new_qty_stok is not None and old_qty_stok != new_qty_stok:
+        if new_qty_stok is not None and old_qty_stok != new_qty_stok and isi_stok_pertama(
+            variant.product, variant, old_qty_stok, new_qty_stok, self.request.user,
+        ):
+            variant.refresh_from_db(fields=['qty_stok'])
+            ProductActivityLog.objects.create(
+                product=variant.product, user=self.request.user,
+                aksi=f"Mengisi stok awal varian '{variant.nama_varian}' {new_qty_stok} (dicatat sebagai Saldo Awal persediaan)",
+            )
+        elif new_qty_stok is not None and old_qty_stok != new_qty_stok:
             today = timezone.localdate()
             nomor = _next_document_number(StockOpnameDocument, f"OP{today.strftime('%y%m%d')}")
             doc = StockOpnameDocument.objects.create(
@@ -1588,6 +1622,10 @@ class ProductVariantViewSet(viewsets.ModelViewSet):
             )
             post_stock_opname_document(doc, self.request.user)
             variant.refresh_from_db(fields=['qty_stok'])
+            ProductActivityLog.objects.create(
+                product=variant.product, user=self.request.user,
+                aksi=f"Menyesuaikan stok varian '{variant.nama_varian}' dari {old_qty_stok} menjadi {new_qty_stok} (opname {nomor})",
+            )
 
 class ProductPackageViewSet(UnitBisnisScopedMixin, viewsets.ModelViewSet):
     queryset = ProductPackage.objects.all().order_by('nama')

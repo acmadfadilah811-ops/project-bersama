@@ -684,6 +684,8 @@ export default function ProductDetailPage({ product, onBack, onUpdated, categori
         }
         if (qtyBaru !== Number(product.qty_stok || 0)) {
           payload.qty_stok = qtyBaru;
+          // Stok yang diisi harus dilacak, kalau tidak penjualan tidak memotongnya.
+          if (qtyBaru > 0 && !lacakInventoriEdit) payload.lacak_inventori = true;
         }
         payload.on_hold_qty = parseFloat(onHoldQtyEdit) || 0;
         payload.qty_fast_moving = parseFloat(qtyFastMovingEdit) || 0;
@@ -1876,7 +1878,7 @@ export default function ProductDetailPage({ product, onBack, onUpdated, categori
                 {/* Qty Stok: perubahan dicatat server sebagai Stok Opname otomatis. */}
                 <div style={{ padding: '8px 0 10px 0' }}>
                   <div style={{ fontSize: 13, color: '#64748b', marginBottom: 6 }}>
-                    Qty Stok <span style={{ fontWeight: 400 }}>(perubahan dicatat sebagai Stok Opname otomatis; selisih masuk akun Penyesuaian. Barang datang dari supplier catat lewat Pembelian / Stok Masuk)</span>
+                    Qty Stok <span style={{ fontWeight: 400 }}>(produk yang belum pernah punya stok: dicatat sebagai Saldo Awal; selanjutnya perubahan dicatat sebagai Stok Opname otomatis. Semua tercatat di Pergerakan Stok, log produk, dan jurnal. Barang datang dari supplier catat lewat Pembelian / Stok Masuk)</span>
                   </div>
                   {hasVariant ? (
                     <InfoBox text="Refer Ke varian" />

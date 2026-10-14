@@ -286,6 +286,8 @@ export default function ProductsPage() {
   const [trackInventory, setTrackInventory] = useState(false);
   const [formRack, setFormRack] = useState('');
   const [formQtyStok, setFormQtyStok] = useState('');
+  // Modal per satuan untuk nilai stok awal (jurnal Persediaan) -- 2026-10-14.
+  const [formHargaBeli, setFormHargaBeli] = useState('');
   const [formStokMinimum, setFormStokMinimum] = useState('');
   const [formQtyFastMoving, setFormQtyFastMoving] = useState('');
   const [hasVariants, setHasVariants] = useState(false);
@@ -453,6 +455,7 @@ export default function ProductsPage() {
     setTrackInventory(false);
     setFormRack('');
     setFormQtyStok('');
+    setFormHargaBeli('');
     setFormStokMinimum('');
     setFormQtyFastMoving('');
     setHasVariants(false);
@@ -475,6 +478,14 @@ export default function ProductsPage() {
 
   const handleSaveProduct = async () => {
     if (!formNama.trim() || saving) return;
+    const qtyAwal = parseFloat(String(formQtyStok || '').replace(',', '.')) || 0;
+    const hargaBeli = Number(String(formHargaBeli || '').replace(/[^0-9]/g, '')) || 0;
+    if (trackInventory && !hasVariants && qtyAwal > 0 && hargaBeli <= 0) {
+      const lanjut = await uiConfirm(
+        'Harga beli (modal) belum diisi. Stok awal akan bernilai Rp0 di persediaan dan HPP penjualannya Rp0. Tetap simpan?'
+      );
+      if (!lanjut) return;
+    }
     setSaving(true);
     try {
       const trackingAtProductLevel = trackInventory;
@@ -487,7 +498,8 @@ export default function ProductsPage() {
         harga_online_sama: onlinePriceSame,
         lacak_inventori: trackInventory,
         rack: trackingAtProductLevel ? formRack || '' : '',
-        qty_stok: trackingAtProductLevel ? formQtyStok || 0 : 0,
+        qty_stok: trackingAtProductLevel ? qtyAwal : 0,
+        harga_beli: trackingAtProductLevel ? hargaBeli : 0,
         stok_minimum: trackingAtProductLevel ? formStokMinimum || 0 : 0,
         qty_fast_moving: trackingAtProductLevel ? formQtyFastMoving || 0 : 0,
         has_variant: hasVariants,
@@ -861,15 +873,27 @@ export default function ProductsPage() {
               </div>
               <div className="pi-create-row">
                 <div className="pi-row-label-desc">
-                  <span className="pi-row-label">Jumlah stok yang tersedia saat ini</span>
+                  <span className="pi-row-label">Stok awal (qty)</span>
                   <span className="pi-row-desc">
-                    Jika produk ini memiliki beberapa varian/pilihan, maka sistem akan mengecek ketersediaan stok berdasarkan masing-masing varian/pilihan.
+                    Jumlah stok yang ada sekarang. Dicatat sebagai Saldo Awal di Pergerakan Stok dan dijurnal ke Persediaan.
+                    Produk bervarian: isi stok di tiap varian.
                   </span>
                 </div>
                 <div className="pi-row-input">
-                  <input type="text" placeholder="Masukkan angka contoh: 1234" value={formQtyStok} onChange={(e) => setFormQtyStok(e.target.value)} />
+                  <input type="text" inputMode="decimal" placeholder="Contoh: 25" value={formQtyStok} onChange={(e) => setFormQtyStok(e.target.value)} />
                 </div>
               </div>
+              {!hasVariants && (
+                <div className="pi-create-row">
+                  <div className="pi-row-label-desc">
+                    <span className="pi-row-label">Harga beli (modal per satuan)</span>
+                    <span className="pi-row-desc">Dipakai untuk nilai stok awal dan HPP saat produk terjual.</span>
+                  </div>
+                  <div className="pi-row-input">
+                    <input type="text" inputMode="numeric" placeholder="Contoh: 15000" value={formHargaBeli} onChange={(e) => setFormHargaBeli(e.target.value)} />
+                  </div>
+                </div>
+              )}
               <div className="pi-create-row">
                 <div className="pi-row-label-desc">
                   <span className="pi-row-label">Peringatan Sisa Stok</span>
