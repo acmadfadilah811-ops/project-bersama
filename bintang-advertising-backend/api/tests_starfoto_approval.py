@@ -9,7 +9,7 @@ from PIL import Image
 
 from .models import JobBoard, SystemConfig
 from .services import starfoto_approval as svc
-from .starfoto_models import PesananFoto
+from .starfoto_models import PesananFoto, PratinjauEdit
 from .tests_starfoto import _Dasar
 
 
@@ -81,6 +81,9 @@ class ApprovalTests(_Dasar):
 
         # Putaran 2: tautan lama usang, keputusan lewat tautan baru.
         pesanan = self._unggah_dan_kirim(pesanan)
+        # File pratinjau putaran 1 dihapus dari server saat putaran 2 dikirim.
+        self.assertEqual(PratinjauEdit.objects.get(pesanan=pesanan, putaran=1).berkas.name, '')
+        self.assertNotEqual(PratinjauEdit.objects.get(pesanan=pesanan, putaran=2).berkas.name, '')
         self.client.force_authenticate(None)
         self.assertEqual(self.client.get(f'/api/approval-foto/{token}/').json()['status'], 'usang')
         token2 = svc.buat_token(pesanan)
@@ -89,6 +92,10 @@ class ApprovalTests(_Dasar):
         self.assertEqual(res.status_code, 200, res.content)
         pesanan.refresh_from_db()
         self.assertEqual((pesanan.approval_status, pesanan.approval_oleh), ('disetujui', 'pelanggan'))
+        # Disetujui -> semua file pratinjau dihapus dari server, riwayat keputusan tetap.
+        self.assertFalse(PratinjauEdit.objects.filter(pesanan=pesanan).exclude(berkas='').exists())
+        self.assertEqual(PratinjauEdit.objects.get(pesanan=pesanan, putaran=2).keputusan, 'setuju')
+        self.assertEqual(self.client.get(f'/api/approval-foto/{token2}/foto/{foto2}/').status_code, 404)
 
         # SPK Cetak terbit; operator selesai -> Siap Diambil.
         job_cetak = JobBoard.objects.get(order_item=pesanan.paket_item, tahap=self.t_cetak)

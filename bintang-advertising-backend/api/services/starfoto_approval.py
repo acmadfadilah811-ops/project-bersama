@@ -74,6 +74,20 @@ def beri_watermark(berkas):
     return ContentFile(keluaran.getvalue(), name='pratinjau.jpg')
 
 
+def buang_berkas_pratinjau(qs):
+    """Hapus file pratinjau dari server; barisnya tetap (riwayat keputusan &
+    catatan pelanggan). Foto asli hasil edit ada di PC editor, server hanya
+    perlu pratinjau selama pelanggan belum memutuskan (2026-10-15).
+    File baru dihapus setelah transaksi tersimpan."""
+    jumlah = 0
+    for foto in qs.exclude(berkas=''):
+        nama, storage = foto.berkas.name, foto.berkas.storage
+        PratinjauEdit.objects.filter(pk=foto.pk).update(berkas='')
+        transaction.on_commit(lambda nama=nama, storage=storage: storage.delete(nama))
+        jumlah += 1
+    return jumlah
+
+
 def buat_token(pesanan):
     return signing.dumps({'p': pesanan.pk, 'r': pesanan.approval_putaran}, salt=SALT, compress=True)
 
@@ -212,6 +226,7 @@ def kirim_ke_pelanggan(pesanan_id, user):
         if not job.pic_staff_id and user.role in ('staff', 'spv', 'kordiv'):
             job.pic_staff = user
         job.save()
+    buang_berkas_pratinjau(pesanan.pratinjau.filter(putaran__lt=putaran))
     pesanan.approval_status, pesanan.approval_putaran = 'menunggu', putaran
     pesanan.approval_dikirim_pada, pesanan.approval_oleh = sekarang, ''
     pesanan.save(update_fields=['approval_status', 'approval_putaran', 'approval_dikirim_pada', 'approval_oleh'])
@@ -251,7 +266,7 @@ def data_publik(token):
 
 def berkas_publik(token, foto_id):
     pesanan, putaran_token = baca_token(token)
-    foto = pesanan.pratinjau.filter(pk=foto_id, putaran=putaran_token).first()
+    foto = pesanan.pratinjau.filter(pk=foto_id, putaran=putaran_token).exclude(berkas='').first()
     if foto is None:
         raise TokenTidakValid('Foto tidak ditemukan.')
     return foto.berkas
@@ -297,6 +312,7 @@ def putuskan(pesanan_id, keputusan, oleh, user=None):
         keterangan = f'Pelanggan minta revisi hasil edit (revisi ke-{pesanan.approval_putaran}); SPK Edit dibuka lagi.'
     else:
         pesanan.approval_status = 'disetujui'
+        buang_berkas_pratinjau(pesanan.pratinjau.all())
         tahap_cetak = _tahap('tahap_cetak_id', 'Cetak')
         spk.terbitkan([pesanan.paket_item], field='order_item', tahap=tahap_cetak, staff=None,
                       deadline=deadline, deadline_jam=deadline_jam)

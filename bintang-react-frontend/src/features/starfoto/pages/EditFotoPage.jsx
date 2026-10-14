@@ -35,6 +35,7 @@ async function kecilkanFoto(berkas) {
 function GambarTerlindung({ url, alt }) {
   const [src, setSrc] = useState('');
   useEffect(() => {
+    if (!url) return undefined;
     let aktif = true;
     let objek = '';
     apiClient.get(url, { responseType: 'blob' })
@@ -42,6 +43,7 @@ function GambarTerlindung({ url, alt }) {
       .catch(() => {});
     return () => { aktif = false; if (objek) URL.revokeObjectURL(objek); };
   }, [url]);
+  if (!url) return <div className="flex h-32 w-full items-center justify-center rounded-lg bg-slate-100 p-2 text-center text-xs text-slate-400">Pratinjau sudah dihapus dari server</div>;
   return src ? <img src={src} alt={alt} className="h-32 w-full rounded-lg object-cover" /> : <div className="h-32 w-full animate-pulse rounded-lg bg-slate-100" />;
 }
 
