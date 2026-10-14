@@ -480,6 +480,14 @@ export default function PosTerminal({ onToggleSidebar }) {
     setRightPanelMode('itemDetail');
   };
 
+  // Tombol "Kembali ke Pesanan Foto" di katalog StarFoto -- hanya bila ada paket di keranjang.
+  const kembaliKePesananFoto = starfoto.item
+    ? () => {
+        setSelectedCartItemKey(starfoto.item.key);
+        setRightPanelMode('itemDetail');
+      }
+    : undefined;
+
   const handleTambahPigura = (produk, varian) => {
     addToCart(produk, { ...varian, harga: Number(varian.harga_jual_toko || 0) });
     notifySuccess('Pigura ditambahkan', `${produk.nama} (${varian.nama_varian})`);
@@ -1299,6 +1307,11 @@ export default function PosTerminal({ onToggleSidebar }) {
               setSelectedCartItemKey(null);
               setRightPanelMode('catalog');
             }}
+            onTambahProduk={(tab) => {
+              setSelectedCartItemKey(null);
+              setRightPanelMode('catalog');
+              setTabStarfoto(tab);
+            }}
           />
         ) : rightPanelMode === 'itemDetail' && selectedCartItem ? (
           <PosItemDetailPanel
@@ -1322,10 +1335,11 @@ export default function PosTerminal({ onToggleSidebar }) {
             paketAktifId={starfoto.paket?.id}
             onPilihPaket={handlePilihPaketFoto}
             onTambahPigura={handleTambahPigura}
+            onKembaliPesanan={kembaliKePesananFoto}
           />
         ) : starfoto.modeAktif ? (
           <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-            <StarfotoTabBar tab={tabStarfoto} setTab={setTabStarfoto} />
+            <StarfotoTabBar tab={tabStarfoto} setTab={setTabStarfoto} onKembaliPesanan={kembaliKePesananFoto} />
             {katalogBiasa}
           </div>
         ) : (

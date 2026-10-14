@@ -13,9 +13,19 @@ export const TAB_STARFOTO = [
   { id: 'lain', label: 'Produk Lain', icon: Package },
 ];
 
-export function StarfotoTabBar({ tab, setTab }) {
+export function StarfotoTabBar({ tab, setTab, onKembaliPesanan }) {
   return (
-    <div className="flex shrink-0 items-center justify-center gap-10 border-b border-blue-400/40 bg-[#0088FF] px-6 pt-3 text-white">
+    <div className="relative flex shrink-0 items-center justify-center gap-10 border-b border-blue-400/40 bg-[#0088FF] px-6 pt-3 text-white">
+      {/* Kembali ke form pesanan foto setelah menambah pigura/produk lain (2026-10-14). */}
+      {onKembaliPesanan && (
+        <button
+          type="button"
+          onClick={onKembaliPesanan}
+          className="absolute left-4 top-2 inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-[#0088FF] shadow-sm hover:bg-blue-50"
+        >
+          <Camera size={13} /> Kembali ke Pesanan Foto
+        </button>
+      )}
       {TAB_STARFOTO.map(({ id, label, icon: Ikon }) => (
         <button
           key={id} type="button" onClick={() => setTab(id)}
@@ -125,10 +135,10 @@ function KatalogPigura({ onTambahPigura }) {
   );
 }
 
-export default function StarfotoKatalogPanel({ tab, setTab, paketList, paketAktifId, onPilihPaket, onTambahPigura }) {
+export default function StarfotoKatalogPanel({ tab, setTab, paketList, paketAktifId, onPilihPaket, onTambahPigura, onKembaliPesanan }) {
   return (
     <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#0088FF]">
-      <StarfotoTabBar tab={tab} setTab={setTab} />
+      <StarfotoTabBar tab={tab} setTab={setTab} onKembaliPesanan={onKembaliPesanan} />
       <div className="flex-1 overflow-y-auto p-4">
         {tab === 'paket'
           ? <KatalogPaket paketList={paketList} paketAktifId={paketAktifId} onPilihPaket={onPilihPaket} />

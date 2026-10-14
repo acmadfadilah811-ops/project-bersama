@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Camera, Minus, Plus, Trash2, X } from 'lucide-react';
+import { Camera, Frame, Minus, Package, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import { ambilAddonPaket, formatRupiah } from '../hooks/useStarfoto';
 import { aturAddon, galatData, sesuaikanTambahOrang } from '../hooks/useStarfotoKasir';
 
@@ -21,7 +21,9 @@ function Stepper({ nilai, onUbah, min = 0 }) {
   );
 }
 
-export default function StarfotoPesananPanel({ paket, item, data, setData, pengaturan, totalKeranjang, onUbahItem, onHapus, onTutup }) {
+export default function StarfotoPesananPanel({
+  paket, item, data, setData, pengaturan, totalKeranjang, onUbahItem, onHapus, onTutup, onTambahProduk,
+}) {
   const [addons, setAddons] = useState([]);
 
   useEffect(() => {
@@ -59,6 +61,28 @@ export default function StarfotoPesananPanel({ paket, item, data, setData, penga
           <button type="button" onClick={onTutup} className="rounded-full p-2 text-white/80 hover:bg-white/10 hover:text-white" aria-label="Tutup"><X size={16} /></button>
         </div>
       </div>
+
+      {/* Pintasan menambah item lain ke pesanan yang sama (2026-10-14). */}
+      {onTambahProduk && (
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-5 py-2.5">
+          <span className="text-xs font-semibold text-slate-500">Tambah ke pesanan:</span>
+          {[
+            ['pigura', 'Pigura', Frame],
+            ['lain', 'Produk Lain', Package],
+            ['paket', 'Ganti Paket Foto', RefreshCw],
+          ].map(([tab, label, Ikon]) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => onTambahProduk(tab)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#0088FF] px-3 py-1.5 text-xs font-bold text-[#0088FF] hover:bg-blue-50"
+            >
+              {tab === 'paket' ? <Ikon size={13} /> : <Plus size={13} />}
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto px-5 py-4 text-sm">
         {paket.isi_paket && <p className="mb-4 rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs leading-relaxed text-slate-600">{paket.isi_paket}</p>}
