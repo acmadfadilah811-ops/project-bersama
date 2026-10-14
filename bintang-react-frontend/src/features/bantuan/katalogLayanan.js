@@ -894,7 +894,7 @@ export const KATALOG_LAYANAN = [
     kataKunci: ['dashboard', 'ringkasan', 'ai', 'analisis', 'eksekutif'],
     langkah: [
       'Buka Dashboard. Tab Ringkasan berisi angka utama, tab Operasional berisi absensi, persetujuan void, dan komplain.',
-      'Tab AI Business Analyst: tanya analisis kesehatan atau strategi perusahaan.',
+      'Tab AI Business Analyst (khusus Owner/Admin): tanya analisis kesehatan atau strategi perusahaan.',
     ],
     halaman: '/dashboard-eksekutif',
     endpoint: ['GET /api/insights/combined/', 'POST /api/ai-business-analyst/chat/'],

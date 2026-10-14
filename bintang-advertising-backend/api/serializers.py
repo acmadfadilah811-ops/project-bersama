@@ -115,8 +115,10 @@ class CustomUserSerializer(serializers.ModelSerializer):
             'negara', 'alamat', 'bio', 'foto_profil', 'last_login', 'date_joined',
             'status_karyawan', 'jenis_kontrak', 'kontrak_mulai', 'kontrak_selesai',
             'no_kpj', 'bpjs_kes', 'file_pkwt', 'nip', 'unit_bisnis', 'unit_bisnis_nama', 'posisi',
-            'atasan', 'atasan_nama',
+            'atasan', 'atasan_nama', 'is_active', 'diarsipkan',
         ]
+        # Arsip hanya lewat aksi /users/{id}/arsip/ (wajib akun nonaktif).
+        read_only_fields = ['is_active', 'diarsipkan']
 
     def to_representation(self, instance):
         rep = super().to_representation(instance)
@@ -174,6 +176,7 @@ class CustomUserSerializer(serializers.ModelSerializer):
                 instance.is_active = False
             elif instance.status_karyawan in ['aktif', 'cuti']:
                 instance.is_active = True
+                instance.diarsipkan = False
             instance.save()
 
         return instance

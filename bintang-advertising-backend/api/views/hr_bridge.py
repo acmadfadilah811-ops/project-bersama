@@ -316,7 +316,9 @@ class HRBridgeSetStatusView(APIView):
         # cuti terpisah dari aktif/nonaktif, jadi default paling aman.
         user.status_karyawan = 'aktif' if is_active else 'nonaktif'
         user.is_active = is_active
-        user.save(update_fields=['status_karyawan', 'is_active'])
+        if is_active:
+            user.diarsipkan = False  # diaktifkan lagi dari HR -> keluar dari arsip
+        user.save(update_fields=['status_karyawan', 'is_active', 'diarsipkan'])
 
         return Response({
             'id': user.id, 'hr_employee_id': user.hr_employee_id,

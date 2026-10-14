@@ -60,6 +60,22 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         denied = self._guard_role_change(request, self.get_object())
         return denied or super().destroy(request, *args, **kwargs)
 
+    @action(detail=True, methods=['post'], url_path='arsip')
+    def arsip(self, request, pk=None):
+        """Arsipkan/kembalikan akun nonaktif dari daftar Manajemen Karyawan.
+        Body: {"arsip": true|false}. Hanya akun nonaktif yang bisa diarsipkan
+        (2026-10-14)."""
+        target = self.get_object()
+        denied = self._guard_role_change(request, target)
+        if denied:
+            return denied
+        arsip = bool(request.data.get('arsip', True))
+        if arsip and target.is_active:
+            return Response({'error': 'Hanya akun nonaktif yang bisa diarsipkan.'}, status=status.HTTP_400_BAD_REQUEST)
+        target.diarsipkan = arsip
+        target.save(update_fields=['diarsipkan'])
+        return Response(self.get_serializer(target).data)
+
     def get_queryset(self):
         queryset = CustomUser.objects.all()
         role = self.request.query_params.get('role')

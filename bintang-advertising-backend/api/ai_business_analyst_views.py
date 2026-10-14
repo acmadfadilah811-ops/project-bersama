@@ -13,7 +13,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from django.utils import timezone
 
-from api.permissions import IsOwnerOrManager
+from api.permissions import IsOwnerOrAdmin
 from api.services.insights_bridge import build_combined_insights
 from api.wa_logic import get_ai_client, get_ai_config_value
 
@@ -126,7 +126,7 @@ class AiBusinessAnalystView(APIView):
     dst) — dibatasi owner/manager, sama seperti Dashboard Eksekutif.
     """
 
-    permission_classes = [IsAuthenticated, IsOwnerOrManager]
+    permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
 
     def get(self, request):
         period, error = _period(request)
@@ -183,7 +183,7 @@ class AiBusinessAnalystChatView(APIView):
     status HTTP yang sesuai kalau gagal.
     """
 
-    permission_classes = [IsAuthenticated, IsOwnerOrManager]
+    permission_classes = [IsAuthenticated, IsOwnerOrAdmin]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'ai_chat'
 

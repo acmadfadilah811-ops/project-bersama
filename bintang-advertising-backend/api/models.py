@@ -128,6 +128,9 @@ class CustomUser(AbstractUser):
     
     # TAMBAHAN FIELD HR / KEPEGAWAIAN
     status_karyawan = models.CharField(max_length=20, default='aktif', help_text="aktif, cuti, nonaktif")
+    # Akun nonaktif (mis. dinonaktifkan dari HR) yang disembunyikan dari daftar
+    # Manajemen Karyawan. Diaktifkan lagi = otomatis keluar dari arsip (2026-10-14).
+    diarsipkan = models.BooleanField(default=False)
     jenis_kontrak = models.CharField(max_length=20, default='tetap', help_text="tetap, kontrak, magang, freelance")
     kontrak_mulai = models.DateField(null=True, blank=True)
     kontrak_selesai = models.DateField(null=True, blank=True)

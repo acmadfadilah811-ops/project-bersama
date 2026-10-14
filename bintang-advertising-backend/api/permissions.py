@@ -94,6 +94,16 @@ class IsOwnerOrManager(BasePermission):
             getattr(request.user, 'role', '') in ['owner', 'manager', 'admin']
         )
 
+class IsOwnerOrAdmin(BasePermission):
+    """Hanya Owner atau Admin (mis. AI Business Analyst; manager tidak -- 2026-10-14)."""
+    def has_permission(self, request, view):
+        return bool(
+            request.user and
+            request.user.is_authenticated and
+            getattr(request.user, 'role', '') in ['owner', 'admin']
+        )
+
+
 class IsStrictOwnerOrManager(BasePermission):
     """
     Hanya Owner atau Manager saja (tanpa Admin dan Kasir).

@@ -1,3 +1,5 @@
+import { Navigate } from 'react-router-dom';
+import { useAuth } from '../../../context/AuthContext';
 import ExecutiveNav from '../components/ExecutiveNav';
 import AiChatPanel from '../components/AiChatPanel';
 
@@ -5,6 +7,9 @@ import AiChatPanel from '../components/AiChatPanel';
 // Ringkasan & Operasional -- halaman ini khusus tempat menganalisisnya
 // lewat tanya-jawab AI, bukan menampilkan ulang chart/tabel statis.
 export default function AiBusinessAnalyst() {
+  const { user } = useAuth();
+  // Khusus owner & admin (backend juga menolak role lain).
+  if (user && !['owner', 'admin'].includes(user.role)) return <Navigate to="/dashboard-eksekutif" replace />;
   return (
     <div className="space-y-4 w-full max-w-7xl mx-auto px-4 pb-4 flex flex-col h-[calc(100vh-2rem)]">
       <ExecutiveNav />
