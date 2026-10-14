@@ -12,19 +12,50 @@ import {
   ShieldCheck,
   FileText,
   Save,
+  Search,
+  Building2,
 } from 'lucide-react';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/id';
+import UnitBisnisFilter from '../../../components/UnitBisnisFilter';
+import { cocokUnit, hitungPerUnit } from '../../../utils/unitBisnis';
 
 dayjs.extend(relativeTime);
 dayjs.locale('id');
+
+const ROLE_LABEL = {
+  owner: 'Owner',
+  manager: 'Manager',
+  admin: 'Admin',
+  staff: 'Staff',
+  kasir: 'Kasir',
+  spv: 'SPV',
+  kordiv: 'Kordiv',
+  sales: 'Sales',
+  admin_finance: 'Admin Finance',
+  spv_finance: 'SPV Finance',
+};
+
+// Role yang tidak dibatasi satu unit bisnis (melihat gabungan semua unit).
+const ROLE_SEMUA_UNIT = ['owner', 'manager', 'admin', 'admin_finance', 'spv_finance'];
+
+// Jabatan = jabatan dari HR (posisi); bila kosong pakai nama role.
+const namaJabatan = (emp) => emp.posisi || ROLE_LABEL[emp.role] || emp.role || '-';
+
+// Unit bisnis tempat karyawan bertugas. Role lintas-unit tampil "Semua unit".
+const namaUnit = (emp) =>
+  emp.unit_bisnis_nama || (ROLE_SEMUA_UNIT.includes(emp.role) ? 'Semua unit' : 'Unit belum diatur');
+const unitBelumDiatur = (emp) => !emp.unit_bisnis_nama && !ROLE_SEMUA_UNIT.includes(emp.role);
 
 export default function Employees() {
   const [employees, setEmployees] = useState([]);
   const [divisiList, setDivisiList] = useState([]);
   const [unitList, setUnitList] = useState([]);
   const [loading, setLoading] = useState(true);
+  // Cari karyawan + kelompok per unit bisnis (admin tahu siapa jabatan apa di unit mana).
+  const [cari, setCari] = useState('');
+  const [unitFilter, setUnitFilter] = useState('');
 
   // State untuk Modal
   const [selectedEmployee, setSelectedEmployee] = useState(null);
@@ -161,6 +192,16 @@ export default function Employees() {
     }
   };
 
+  const kata = cari.trim().toLowerCase();
+  const karyawanTampil = employees.filter(
+    (e) =>
+      cocokUnit(e.unit_bisnis, unitFilter) &&
+      (!kata ||
+        [e.username, e.posisi, e.role, e.divisi_nama, e.unit_bisnis_nama, e.email]
+          .filter(Boolean)
+          .some((v) => String(v).toLowerCase().includes(kata)))
+  );
+
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-10">
       <div>
@@ -170,9 +211,34 @@ export default function Employees() {
         </p>
       </div>
 
+      {/* Cari & kelompok per unit bisnis */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <UnitBisnisFilter
+          value={unitFilter}
+          onChange={setUnitFilter}
+          jumlah={hitungPerUnit(employees, (e) => e.unit_bisnis)}
+          labelTanpaUnit="Tanpa unit"
+        />
+        <div className="relative w-full md:w-72 shrink-0">
+          <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
+          <input
+            type="text"
+            value={cari}
+            onChange={(e) => setCari(e.target.value)}
+            placeholder="Cari nama, jabatan, atau divisi..."
+            className="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:ring-1 focus:ring-slate-900 outline-none bg-white"
+          />
+        </div>
+      </div>
+
       {/* Grid Karyawan */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {employees.map((emp) => (
+        {karyawanTampil.length === 0 && (
+          <p className="col-span-full text-center text-xs text-slate-400 italic py-10">
+            Tidak ada karyawan yang cocok dengan filter.
+          </p>
+        )}
+        {karyawanTampil.map((emp) => (
           <div
             key={emp.id}
             onClick={() => openModal(emp)}
@@ -205,10 +271,24 @@ export default function Employees() {
               </div>
 
               <h3 className="text-base font-bold text-slate-900 capitalize">{emp.username}</h3>
-              <div className="flex items-center gap-1 text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full mt-1 capitalize border border-indigo-100">
-                <Briefcase size={10} />
-                {emp.role} {emp.divisi_nama ? `— ${emp.divisi_nama}` : ''}
+              <div className="flex items-center gap-1 text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full mt-1 border border-indigo-100 max-w-full">
+                <Briefcase size={10} className="shrink-0" />
+                <span className="truncate" title="Jabatan">{namaJabatan(emp)}</span>
               </div>
+              <div
+                className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full mt-1 border max-w-full ${
+                  unitBelumDiatur(emp)
+                    ? 'text-amber-700 bg-amber-50 border-amber-200'
+                    : 'text-slate-600 bg-slate-50 border-slate-200'
+                }`}
+              >
+                <Building2 size={10} className="shrink-0" />
+                <span className="truncate" title="Unit bisnis">{namaUnit(emp)}</span>
+              </div>
+              <p className="mt-1 text-[10px] text-slate-400 font-medium text-center">
+                {ROLE_LABEL[emp.role] || emp.role}
+                {emp.divisi_nama ? ` • Divisi ${emp.divisi_nama}` : ''}
+              </p>
               {emp.role === 'staff' && !emp.divisi && (
                 <div className="mt-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
                   Belum berdivisi
@@ -265,10 +345,12 @@ export default function Employees() {
                   <h2 className="text-xl font-bold text-slate-800 capitalize">
                     {selectedEmployee.username}
                   </h2>
-                  <p className="text-sm text-slate-500 font-medium capitalize">
-                    {selectedEmployee.role}{' '}
-                    {selectedEmployee.divisi_nama ? `• ${selectedEmployee.divisi_nama}` : ''}
-                    {selectedEmployee.unit_bisnis_nama ? ` • ${selectedEmployee.unit_bisnis_nama}` : ''}
+                  <p className="text-sm text-slate-600 font-semibold">
+                    {namaJabatan(selectedEmployee)} • {namaUnit(selectedEmployee)}
+                  </p>
+                  <p className="text-xs text-slate-400 font-medium">
+                    {ROLE_LABEL[selectedEmployee.role] || selectedEmployee.role}
+                    {selectedEmployee.divisi_nama ? ` • Divisi ${selectedEmployee.divisi_nama}` : ''}
                   </p>
                 </div>
               </div>
