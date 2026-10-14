@@ -34,10 +34,8 @@ const angka = (v) => new Intl.NumberFormat('id-ID').format(Number(v) || 0);
 const persen = (v) => `${angka(v)}%`;
 
 function Delta({ value }) {
-  // null = tidak ada periode pembanding. Menampilkan "0%" akan menyesatkan.
-  if (value === null || value === undefined) {
-    return <span className="text-xs text-slate-400">Tanpa pembanding</span>;
-  }
+  // null = tidak ada periode pembanding: tidak ditampilkan (bukan "0%" yang menyesatkan).
+  if (value === null || value === undefined) return null;
   const naik = value >= 0;
   const Icon = naik ? TrendingUp : TrendingDown;
   return (
@@ -56,6 +54,35 @@ function KpiCard({ item }) {
       </p>
       <div className="mt-2"><Delta value={item.delta} /></div>
     </article>
+  );
+}
+
+/** Pendapatan per unit bisnis (POS lunas + order tidak batal, definisi sama dengan KPI Pendapatan). */
+function PendapatanPerUnit({ rows }) {
+  if (!rows?.length) return null;
+  return (
+    <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+      <h2 className="font-bold text-slate-900 mb-4">Pendapatan per Unit Bisnis</h2>
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+        {rows.map((r) => (
+          <div key={r.id ?? 'tanpa-unit'} className="rounded-xl border border-slate-200 p-4">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                {r.nama || 'Belum ditandai'}
+              </p>
+              <Delta value={r.delta} />
+            </div>
+            <p className="mt-2 text-xl font-black text-slate-900">{money(r.pendapatan)}</p>
+            <div className="mt-3 h-1.5 rounded-full bg-slate-100">
+              <div className="h-1.5 rounded-full bg-slate-700" style={{ width: `${Math.min(100, r.porsi)}%` }} />
+            </div>
+            <p className="mt-1.5 text-xs text-slate-500">
+              {persen(r.porsi)} dari total · {angka(r.transaksi)} transaksi
+            </p>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -194,9 +221,6 @@ export default function ExecutiveDashboard() {
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-black text-slate-900">Ringkasan</h1>
-          <p className="text-xs text-slate-500 mt-1">
-            {bintang.periode.label} · dibanding {bintang.periode.pembanding}
-          </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex bg-slate-100 rounded-lg p-1">
@@ -229,12 +253,13 @@ export default function ExecutiveDashboard() {
         {bintang.kpi.map((item) => <KpiCard key={item.key} item={item} />)}
       </section>
 
+      <PendapatanPerUnit rows={bintang.per_unit} />
+
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
         <section className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="font-bold text-slate-900">Tren Bulanan</h2>
-              <p className="text-xs text-slate-500">HPP dan laba kotor menyusun total pendapatan</p>
             </div>
             <div className="flex items-center gap-4">
               <Legend adaRugi={bintang.tren.some((r) => r.laba_kotor < 0)} />
@@ -265,8 +290,7 @@ export default function ExecutiveDashboard() {
 
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
         <section className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-          <h2 className="font-bold text-slate-900">Produk Terlaris</h2>
-          <p className="text-xs text-slate-500 mb-4">Berdasarkan nilai penjualan POS</p>
+          <h2 className="font-bold text-slate-900 mb-4">Produk Terlaris</h2>
           <BarTerlaris rows={bintang.produk_terlaris} />
         </section>
 
@@ -304,10 +328,29 @@ export default function ExecutiveDashboard() {
             : <TidakTersedia sistem="karyawan" />}
         </SectionCard>
 
-        <SectionCard title="Kehadiran Hari Ini" subtitle={hr.attendance ? `Periode terpantau: ${hr.attendance.period.from_date} – ${hr.attendance.period.to_date}` : undefined}>
+        <SectionCard title="Kehadiran Hari Ini">
           {hr.attendance ? (
             <div className="space-y-4">
               <p className="text-2xl font-black text-slate-900">{persen(hr.attendance.attendance_rate_today)}</p>
+              {hr.attendance.per_unit?.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 mb-1.5">Per unit bisnis</p>
+                  <ul className="text-sm text-slate-700 space-y-1">
+                    {hr.attendance.per_unit.map((u) => (
+                      <li key={u.unit_bisnis || 'tanpa-unit'} className="flex justify-between gap-3">
+                        <span>{u.unit_bisnis || 'Tanpa unit'}</span>
+                        <span>
+                          <span className="font-bold">{persen(u.attendance_rate_today)}</span>
+                          <span className="text-slate-500">
+                            {' '}· {angka(u.present_today)}/{angka(u.total_employees)} hadir
+                            {u.late_count > 0 ? ` · ${angka(u.late_count)}× telat` : ''}
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <div>
                 <p className="text-xs font-semibold text-slate-500 mb-1.5">Sering telat</p>
                 {hr.attendance.frequently_late.length
@@ -332,7 +375,7 @@ export default function ExecutiveDashboard() {
           ) : <TidakTersedia sistem="kehadiran" />}
         </SectionCard>
 
-        <SectionCard title="Tren Cuti" subtitle="Disetujui / menunggu / ditolak per bulan">
+        <SectionCard title="Tren Cuti">
           {hr.leave_trend
             ? <MonthlyTrendChart rows={hr.leave_trend.months} format={angka} series={[
                 { key: 'approved', label: 'Disetujui', color: STATUS.good.color },
@@ -342,7 +385,7 @@ export default function ExecutiveDashboard() {
             : <TidakTersedia sistem="tren cuti" />}
         </SectionCard>
 
-        <SectionCard title="Tren Lembur" subtitle="Jam lembur disetujui per bulan — biaya tersembunyi">
+        <SectionCard title="Tren Lembur">
           {hr.overtime_trend
             ? <MonthlyTrendChart rows={hr.overtime_trend.months} format={(v) => `${angka(v)} jam`} series={[
                 { key: 'overtime_hours', label: 'Jam Lembur', color: SERIES.hpp.color },
@@ -363,7 +406,7 @@ export default function ExecutiveDashboard() {
       {/* ===== Marketing & Penjualan (CRM) ===== */}
       <h2 className="text-lg font-black text-slate-900 pt-2">Marketing &amp; Penjualan</h2>
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
-        <SectionCard title="Leads &amp; Konversi" subtitle="Leads baru vs. terkonversi per bulan">
+        <SectionCard title="Leads &amp; Konversi">
           {crm.leads
             ? <MonthlyTrendChart rows={crm.leads.months} format={angka} series={[
                 { key: 'new_leads', label: 'Leads Baru', color: SERIES.hpp.color },

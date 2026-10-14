@@ -14,11 +14,11 @@ memberi ringkasan lintas periode untuk manajemen.
 from datetime import date, timedelta
 from decimal import Decimal
 
-from django.db.models import DecimalField, ExpressionWrapper, F, Sum
+from django.db.models import Count, DecimalField, ExpressionWrapper, F, Sum
 from django.db.models.functions import TruncMonth
 from django.utils import timezone
 
-from .models import Order
+from .models import Order, UnitBisnis
 from .pos_models import POSSale, POSSaleItem
 from .product_models import Product, ProductStockMovement, StockProductionDocument
 
@@ -59,6 +59,43 @@ def _pendapatan(mulai, akhir):
         waktu__date__gte=mulai, waktu__date__lte=akhir
     ).exclude(status_global='batal').aggregate(v=Sum('total_harga'))['v'] or ZERO
     return pos + order
+
+
+def _pendapatan_per_unit(mulai, akhir):
+    """{unit_bisnis_id|None: (pendapatan, jumlah transaksi)} -- definisi sama dengan _pendapatan."""
+    hasil = {}
+
+    def tambah(qs, kolom_total):
+        for r in qs.values('unit_bisnis_id').annotate(v=Sum(kolom_total), n=Count('pk')).order_by():
+            nilai, jumlah = hasil.get(r['unit_bisnis_id'], (ZERO, 0))
+            hasil[r['unit_bisnis_id']] = (nilai + (r['v'] or ZERO), jumlah + r['n'])
+
+    tambah(POSSale.objects.filter(status='paid', created_at__date__gte=mulai, created_at__date__lte=akhir), 'total')
+    tambah(Order.objects.filter(waktu__date__gte=mulai, waktu__date__lte=akhir).exclude(status_global='batal'), 'total_harga')
+    return hasil
+
+
+def _per_unit(mulai, akhir, sebelum_mulai, sebelum_akhir):
+    """Pendapatan per unit bisnis + pembanding periode lalu + porsi dari total."""
+    sekarang = _pendapatan_per_unit(mulai, akhir)
+    lalu = _pendapatan_per_unit(sebelum_mulai, sebelum_akhir)
+    total = sum((v for v, _ in sekarang.values()), ZERO)
+    nama = dict(UnitBisnis.objects.values_list('id', 'nama'))
+    unit_ids = list(UnitBisnis.objects.filter(is_active=True).order_by('nama').values_list('id', flat=True))
+    if None in sekarang or None in lalu:
+        unit_ids.append(None)  # transaksi yang belum bertanda unit
+    rows = []
+    for uid in unit_ids:
+        nilai, jumlah = sekarang.get(uid, (ZERO, 0))
+        rows.append({
+            'id': uid,
+            'nama': nama.get(uid) if uid else None,
+            'pendapatan': float(nilai),
+            'transaksi': jumlah,
+            'porsi': round(float(nilai / total * 100), 1) if total else 0,
+            'delta': _delta(nilai, lalu.get(uid, (ZERO, 0))[0]),
+        })
+    return rows
 
 
 def _hpp(mulai, akhir):
@@ -181,6 +218,7 @@ def build(period='ytd'):
             {'key': 'transaksi', 'label': 'Transaksi POS', 'value': transaksi, 'delta': None,
              'format': 'angka'},
         ],
+        'per_unit': _per_unit(mulai, akhir, sebelum_mulai, sebelum_akhir),
         'tren': _tren(mulai, akhir),
         'produk_terlaris': _produk_terlaris(mulai, akhir),
         'stok': stok,

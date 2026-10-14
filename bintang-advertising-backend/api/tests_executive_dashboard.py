@@ -90,3 +90,33 @@ class ExecutiveDashboardTest(APITestCase):
         self.client.force_authenticate(self.owner)
         kpi = {k['key']: k for k in self.client.get(URL).json()['kpi']}
         self.assertIsNone(kpi['pendapatan']['delta'])
+
+
+class PendapatanPerUnitTest(APITestCase):
+    """Dashboard owner: pendapatan dipecah per unit bisnis (2026-10-14)."""
+
+    def setUp(self):
+        from .models import Order, UnitBisnis
+        self.foto = UnitBisnis.objects.get_or_create(nama='StarFoto')[0]
+        self.adv = UnitBisnis.objects.get_or_create(nama='Star Advertising')[0]
+        self.owner = get_user_model().objects.create_user(username='own_unit_exec', password='x', role='owner')
+        POSSale.objects.create(nomor='POS-U-1', total=Decimal('100000'), status='paid', unit_bisnis=self.foto)
+        POSSale.objects.create(nomor='POS-U-2', total=Decimal('50000'), status='hold', unit_bisnis=self.foto)
+        Order.objects.create(id='ORD-EXU-1', nama='A', nomor_wa='628100', sumber='manual', unit_bisnis=self.adv,
+                             total_harga=300000)
+        Order.objects.create(id='ORD-EXU-2', nama='B', nomor_wa='628101', sumber='manual', total_harga=100000)
+
+    def test_pendapatan_per_unit_dan_belum_ditandai(self):
+        from .models import Order
+        # update(): Order.save() menghitung ulang total dari item, di sini total diset langsung.
+        Order.objects.filter(pk='ORD-EXU-1').update(waktu=timezone.now(), total_harga=300000)
+        Order.objects.filter(pk='ORD-EXU-2').update(waktu=timezone.now(), total_harga=100000)
+        self.client.force_authenticate(self.owner)
+        rows = {r['nama']: r for r in self.client.get(URL, {'period': 'mtd'}).json()['per_unit']}
+        self.assertEqual(rows['StarFoto']['pendapatan'], 100000.0)  # POS hold tidak dihitung
+        self.assertEqual(rows['StarFoto']['transaksi'], 1)
+        self.assertEqual(rows['Star Advertising']['pendapatan'], 300000.0)
+        self.assertEqual(rows[None]['pendapatan'], 100000.0)
+        self.assertEqual(rows['Star Advertising']['porsi'], 60.0)
+        kpi = {k['key']: k['value'] for k in self.client.get(URL, {'period': 'mtd'}).json()['kpi']}
+        self.assertEqual(sum(r['pendapatan'] for r in rows.values()), kpi['pendapatan'])
