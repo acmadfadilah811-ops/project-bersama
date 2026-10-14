@@ -38,7 +38,7 @@ const ROLE_LABEL = {
 };
 
 // Role yang tidak dibatasi satu unit bisnis (melihat gabungan semua unit).
-const ROLE_SEMUA_UNIT = ['owner', 'manager', 'admin', 'admin_finance', 'spv_finance'];
+const ROLE_SEMUA_UNIT = ['owner', 'manager', 'admin', 'admin_finance', 'spv_finance', 'sales'];
 
 // Jabatan = jabatan dari HR (posisi); bila kosong pakai nama role.
 const namaJabatan = (emp) => emp.posisi || ROLE_LABEL[emp.role] || emp.role || '-';
