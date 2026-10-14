@@ -19,7 +19,12 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/id';
 import UnitBisnisFilter from '../../../components/UnitBisnisFilter';
-import { cocokUnit, hitungPerUnit } from '../../../utils/unitBisnis';
+import {
+  cocokUnit,
+  hitungPerUnit,
+  namaUnitKaryawan,
+  unitKaryawanBelumDiatur,
+} from '../../../utils/unitBisnis';
 
 dayjs.extend(relativeTime);
 dayjs.locale('id');
@@ -37,16 +42,12 @@ const ROLE_LABEL = {
   spv_finance: 'SPV Finance',
 };
 
-// Role yang tidak dibatasi satu unit bisnis (melihat gabungan semua unit).
-const ROLE_SEMUA_UNIT = ['owner', 'manager', 'admin', 'admin_finance', 'spv_finance', 'sales'];
-
 // Jabatan = jabatan dari HR (posisi); bila kosong pakai nama role.
 const namaJabatan = (emp) => emp.posisi || ROLE_LABEL[emp.role] || emp.role || '-';
 
 // Unit bisnis tempat karyawan bertugas. Role lintas-unit tampil "Semua unit".
-const namaUnit = (emp) =>
-  emp.unit_bisnis_nama || (ROLE_SEMUA_UNIT.includes(emp.role) ? 'Semua unit' : 'Unit belum diatur');
-const unitBelumDiatur = (emp) => !emp.unit_bisnis_nama && !ROLE_SEMUA_UNIT.includes(emp.role);
+const namaUnit = (emp) => namaUnitKaryawan(emp.role, emp.unit_bisnis_nama);
+const unitBelumDiatur = (emp) => unitKaryawanBelumDiatur(emp.role, emp.unit_bisnis_nama);
 
 export default function Employees() {
   const [employees, setEmployees] = useState([]);

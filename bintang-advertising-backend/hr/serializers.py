@@ -7,6 +7,12 @@ from api.protected_media import protected_media_url
 class AbsensiSerializer(serializers.ModelSerializer):
     staff_nama = serializers.CharField(source="staff.username", read_only=True)
     divisi_nama = serializers.CharField(source="staff.divisi.nama", read_only=True, default=None)
+    # Keterangan pegawai di data absensi (username akan diganti nama asli, jadi admin perlu
+    # tahu jabatan & unit bisnisnya): jabatan dari HR, role akun, dan unit bisnis.
+    jabatan = serializers.CharField(source="staff.posisi", read_only=True, default="")
+    staff_role = serializers.CharField(source="staff.role", read_only=True)
+    unit_bisnis = serializers.IntegerField(source="staff.unit_bisnis_id", read_only=True, default=None)
+    unit_bisnis_nama = serializers.CharField(source="staff.unit_bisnis.nama", read_only=True, default=None)
     durasi_kerja_jam = serializers.FloatField(read_only=True)
     sudah_clock_out = serializers.BooleanField(read_only=True)
     diverifikasi_oleh_nama = serializers.CharField(
@@ -20,6 +26,10 @@ class AbsensiSerializer(serializers.ModelSerializer):
             "staff",
             "staff_nama",
             "divisi_nama",
+            "jabatan",
+            "staff_role",
+            "unit_bisnis",
+            "unit_bisnis_nama",
             "tanggal",
             "jam_masuk",
             "jam_keluar",

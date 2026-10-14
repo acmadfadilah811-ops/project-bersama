@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Search, FileSpreadsheet, Info, AlertCircle, Save, X } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
+import UnitBisnisFilter from '../../../components/UnitBisnisFilter';
+import {
+  hitungPerUnit,
+  cocokUnit,
+  namaUnitKaryawan,
+  unitKaryawanBelumDiatur,
+} from '../../../utils/unitBisnis';
 import { todayISO } from '../../../utils/date';
 
 export default function Attendance() {
@@ -13,6 +20,8 @@ export default function Attendance() {
   const [selectedDate, setSelectedDate] = useState(todayISO);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDivisi, setSelectedDivisi] = useState('Semua Divisi');
+  // Pengelompokan per unit bisnis (owner/manager): '' = semua unit.
+  const [unitFilter, setUnitFilter] = useState('');
   const [divisiList, setDivisiList] = useState([]);
 
   // State untuk Modals (Detail & Jadwal)
@@ -86,9 +95,11 @@ export default function Attendance() {
     const query = searchQuery.toLowerCase();
     const matchSearch =
       (item.staff_nama && item.staff_nama.toLowerCase().includes(query)) ||
-      (item.divisi_nama && item.divisi_nama.toLowerCase().includes(query));
+      (item.divisi_nama && item.divisi_nama.toLowerCase().includes(query)) ||
+      (item.jabatan && item.jabatan.toLowerCase().includes(query)) ||
+      (item.unit_bisnis_nama && item.unit_bisnis_nama.toLowerCase().includes(query));
     const matchDivisi = selectedDivisi === 'Semua Divisi' || item.divisi_nama === selectedDivisi;
-    return matchSearch && matchDivisi;
+    return matchSearch && matchDivisi && cocokUnit(item.unit_bisnis, unitFilter);
   });
 
   // Hitung ringkasan dinamis dari data yang sudah difilter
@@ -134,6 +145,9 @@ export default function Attendance() {
     return {
       id: item.id,
       nama: item.staff_nama,
+      jabatan: item.jabatan || '',
+      unit: namaUnitKaryawan(item.staff_role, item.unit_bisnis_nama),
+      unitBelumDiatur: unitKaryawanBelumDiatur(item.staff_role, item.unit_bisnis_nama),
       divisi: item.divisi_nama || 'Belum Ditentukan',
       status: item.status.toUpperCase(),
       masuk: formatTime(item.jam_masuk),
@@ -174,7 +188,7 @@ export default function Attendance() {
     setExporting(true);
     try {
       const response = await apiClient.get('/export/absensi/', {
-        params: { tanggal: selectedDate },
+        params: unitFilter ? { tanggal: selectedDate, unit_bisnis: unitFilter } : { tanggal: selectedDate },
         responseType: 'blob',
       });
       const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -246,12 +260,20 @@ export default function Attendance() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Cari nama atau divisi..."
+              placeholder="Cari nama, jabatan, unit, atau divisi..."
               className="w-full pl-2.5 pr-8 py-1.5 border border-slate-300 rounded-md text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
             />
             <Search size={12} className="absolute right-2.5 top-2 text-slate-400" />
           </div>
         </div>
+
+        {/* Kelompok per unit bisnis */}
+        <UnitBisnisFilter
+          value={unitFilter}
+          onChange={setUnitFilter}
+          jumlah={hitungPerUnit(absensiList, (a) => a.unit_bisnis)}
+          labelTanpaUnit="Tanpa unit"
+        />
 
         {/* Kotak Status Kehadiran */}
         <div className="border border-slate-200 rounded-md overflow-hidden">
@@ -319,6 +341,7 @@ export default function Attendance() {
               <thead className="border-b border-slate-200 text-slate-500 bg-slate-50/50">
                 <tr>
                   <th className="py-2 px-2 font-semibold">Nama Staff</th>
+                  <th className="py-2 px-2 font-semibold">Unit Bisnis</th>
                   <th className="py-2 px-2 font-semibold">Divisi</th>
                   <th className="py-2 px-2 font-semibold">Status</th>
                   <th className="py-2 px-2 font-semibold text-center">Jam Masuk</th>
@@ -333,7 +356,23 @@ export default function Attendance() {
                 {attendanceData.length > 0 ? (
                   attendanceData.map((row) => (
                     <tr key={row.id} className="hover:bg-blue-50/30 transition-colors">
-                      <td className="py-2 px-2 font-bold capitalize">{row.nama}</td>
+                      <td className="py-2 px-2">
+                        <div className="font-bold capitalize">{row.nama}</div>
+                        {row.jabatan && (
+                          <div className="text-[10px] font-medium text-slate-400">{row.jabatan}</div>
+                        )}
+                      </td>
+                      <td className="py-2 px-2">
+                        <span
+                          className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                            row.unitBelumDiatur
+                              ? 'text-amber-700 bg-amber-50 border-amber-200'
+                              : 'text-slate-600 bg-slate-50 border-slate-200'
+                          }`}
+                        >
+                          {row.unit}
+                        </span>
+                      </td>
                       <td className="py-2 px-2 text-slate-500">
                         <div className="flex items-center gap-1.5 text-[10px] uppercase font-semibold">
                           {row.divisi === 'Belum Ditentukan' && (
@@ -445,7 +484,7 @@ export default function Attendance() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan="9" className="py-8 text-center text-slate-400">
+                    <td colSpan="10" className="py-8 text-center text-slate-400">
                       Tidak ada data absensi untuk tanggal atau kriteria ini.
                     </td>
                   </tr>

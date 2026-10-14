@@ -8,7 +8,7 @@ from rest_framework.views import APIView
 from rest_framework.decorators import action
 
 from api.models import JobBoard
-from api.permissions import IsOwnerOrManager, IsStrictOwnerOrManager
+from api.permissions import IsOwnerOrManager, IsStrictOwnerOrManager, filter_param_unit_bisnis
 from api.services.hr_leave_status_bridge import cek_status_cuti_libur
 
 from .models import Absensi, Kontrak, StaffAnnouncement, DailyAttendanceSession, UnlockRequest, Akun, TransaksiBukuBesar, SlipGaji
@@ -298,10 +298,11 @@ class AbsensiListView(APIView):
             base_qs = Absensi.objects.filter(tanggal__month=b_int, tanggal__year=t_int)
 
         if user.role in ("owner", "manager"):
-            qs = base_qs.select_related("staff", "staff__divisi")
+            qs = base_qs.select_related("staff", "staff__divisi", "staff__unit_bisnis")
             staff_id = request.query_params.get("staff_id")
             if staff_id:
                 qs = qs.filter(staff_id=staff_id)
+            qs = filter_param_unit_bisnis(qs, request, field="staff__unit_bisnis")
         else:
             qs = base_qs.filter(staff=user)
 

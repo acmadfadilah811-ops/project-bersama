@@ -322,16 +322,22 @@ class ExportAbsensiView(APIView):
             ws = wb.active
             ws.title = f"Absensi {tanggal}"
 
-            headers = ['Nama Staff', 'Divisi', 'Status Kehadiran', 'Waktu Masuk', 'Waktu Keluar', 'Durasi Kerja (Jam)', 'Keterangan']
+            headers = ['Nama Staff', 'Jabatan', 'Unit Bisnis', 'Divisi', 'Status Kehadiran', 'Waktu Masuk', 'Waktu Keluar', 'Durasi Kerja (Jam)', 'Keterangan']
             ws.append(headers)
 
-            absensi = Absensi.objects.filter(tanggal=tanggal).select_related('staff', 'staff__divisi').order_by('staff__username')
+            absensi = Absensi.objects.filter(tanggal=tanggal).select_related(
+                'staff', 'staff__divisi', 'staff__unit_bisnis'
+            ).order_by('staff__unit_bisnis__nama', 'staff__username')
+            from api.permissions import filter_param_unit_bisnis
+            absensi = filter_param_unit_bisnis(absensi, request, field='staff__unit_bisnis')
 
             for a in absensi:
                 masuk = a.jam_masuk.strftime('%H:%M:%S') if a.jam_masuk else '-'
                 keluar = a.jam_keluar.strftime('%H:%M:%S') if a.jam_keluar else '-'
                 ws.append([
                     a.staff.get_full_name() or a.staff.username,
+                    a.staff.posisi or a.staff.role,
+                    a.staff.unit_bisnis.nama if a.staff.unit_bisnis else 'Semua unit / belum diatur',
                     a.staff.divisi.nama if a.staff.divisi else 'Belum Ditentukan',
                     a.get_status_display(),
                     masuk,

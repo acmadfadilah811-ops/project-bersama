@@ -29,6 +29,19 @@ export function hitungPerUnit(baris, ambilUnitId) {
   return Array.from(peta, ([id, jumlah]) => ({ id, jumlah }));
 }
 
+// Role yang tidak dibatasi satu unit bisnis (melihat gabungan semua unit).
+export const ROLE_SEMUA_UNIT = ['owner', 'manager', 'admin', 'admin_finance', 'spv_finance', 'sales'];
+
+/** Nama unit karyawan untuk ditampilkan; role lintas-unit tanpa unit tampil "Semua unit". */
+export function namaUnitKaryawan(role, unitNama) {
+  return unitNama || (ROLE_SEMUA_UNIT.includes(role) ? 'Semua unit' : 'Unit belum diatur');
+}
+
+/** Karyawan yang seharusnya punya unit tetapi belum diisi. */
+export function unitKaryawanBelumDiatur(role, unitNama) {
+  return !unitNama && !ROLE_SEMUA_UNIT.includes(role);
+}
+
 let cacheDaftarUnit = null;
 
 export function useDaftarUnitBisnis() {
