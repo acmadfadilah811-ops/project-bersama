@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import useProductionData from './hooks/useProductionData';
 import { todayISO } from '../../../utils/date';
@@ -606,6 +607,12 @@ export default function ProductionApp() {
       .filter((row) => row.info)
       .sort((a, b) => b.info.jamBerlalu - a.info.jamBerlalu);
   }, [isAdminMode, jobs, globalJobs, ambangAntreanJam, ambangDikerjakanJam]);
+
+  // Staff fotografer/asisten StarFoto bekerja lewat menu Sesi Foto saja (2026-10-14):
+  // papan kerja tidak menangani usulan tambahan & penutupan sesi.
+  if (user?.role?.toLowerCase() === 'staff' && menuStarfoto.sesi) {
+    return <Navigate to="/sesi-foto" replace />;
+  }
 
   if (error) {
     return (

@@ -403,8 +403,12 @@ export default function Sidebar() {
   ];
   // Menu "Buat Order" staff tampil untuk semua staff, termasuk fotografer/asisten StarFoto
   // (sempat disembunyikan 2026-10-12, dikembalikan 2026-10-14).
+  // Staff fotografer/asisten StarFoto: Sesi Foto menggantikan Papan Kerja (2026-10-14).
+  const gantiPapanKerja = userRole === 'staff' && menuStarfoto.sesi;
   const baseMenu = menuTambahan.length
-    ? menuDasar.flatMap((item) => (item.path === '/produksi' ? [item, ...menuTambahan] : [item]))
+    ? menuDasar.flatMap((item) => (
+      item.path === '/produksi' ? (gantiPapanKerja ? menuTambahan : [item, ...menuTambahan]) : [item]
+    ))
     : menuDasar;
 
   // Filter menu berdasarkan perizinan hak akses dinamis

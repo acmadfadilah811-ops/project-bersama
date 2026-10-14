@@ -127,6 +127,12 @@ class PesananStarfotoTests(_Dasar):
         # Papan kerja tidak boleh menyelesaikan SPK sesi.
         job_sesi = JobBoard.objects.get(order_item=pesanan.paket_item, tahap=self.t_sesi)
         self.assertEqual(self.client.post(f'/api/jobs/{job_sesi.id}/complete/').status_code, 400)
+        # ...termasuk lewat tombol Teruskan/Selesai (forward) -- celah yang dipakai 2026-10-14.
+        for data in ({'aksi': 'selesai'}, {'aksi': 'forward', 'tahap_id': self.t_edit.id}):
+            self.assertEqual(self.client.post(f'/api/jobs/{job_sesi.id}/forward/', data, format='json').status_code, 400)
+        job_sesi.refresh_from_db()
+        self.assertNotEqual(job_sesi.status_pekerjaan, 'selesai')
+        self.assertFalse(JobBoard.objects.filter(order_item=pesanan.paket_item, tahap=self.t_edit).exists())
 
         self.assertEqual(self.client.post(f'/api/starfoto/sesi/{sesi.id}/selesai/').status_code, 200)
         pesanan.refresh_from_db()

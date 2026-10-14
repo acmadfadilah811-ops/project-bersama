@@ -1893,6 +1893,13 @@ class ForwardJobView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        if aksi in ('forward', 'selesai'):
+            # SPK Sesi/Asisten/Edit pesanan foto ditutup lewat menu Sesi Foto / Edit Foto,
+            # bukan diteruskan dari papan kerja (2026-10-14: forward menandai SPK sesi selesai
+            # padahal sesinya masih berlangsung, dan SPK Edit terbit sebelum dikonfirmasi kasir).
+            from ..services.starfoto import cek_boleh_selesai
+            cek_boleh_selesai(job)
+
         if aksi == 'gagal':
             with transaction.atomic():
                 job.status_pekerjaan = 'gagal'
