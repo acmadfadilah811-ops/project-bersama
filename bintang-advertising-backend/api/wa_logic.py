@@ -316,6 +316,11 @@ def format_tracking(order, panggilan="Kak", tampil_harga=True):
         'batal': 'Dibatalkan / Cancel',
     }
     status_display = status_map.get(order.status_global, order.status_global.upper())
+    # Pesanan foto StarFoto belum diproduksi sebelum sesi selesai (2026-10-14).
+    from .services.starfoto import deskripsi_job_sesi, status_pesanan_foto
+    status_foto = status_pesanan_foto(order, panggilan)
+    if status_foto:
+        status_display = status_foto[0]
 
     lines = [
         f"📦 *STATUS PESANAN ({order.id})*",
@@ -333,7 +338,7 @@ def format_tracking(order, panggilan="Kak", tampil_harga=True):
             lines.append(f"\n  *{i}. {item.jenis_produk}* (qty: {item.qty})")
             latest_job = item.jobs.order_by('-id').first()
             if latest_job:
-                emoji, deskripsi = STATUS_LABEL.get(
+                emoji, deskripsi = deskripsi_job_sesi(latest_job) or STATUS_LABEL.get(
                     latest_job.status_pekerjaan,
                     ('🔄', latest_job.status_pekerjaan)
                 )
@@ -361,7 +366,9 @@ def format_tracking(order, panggilan="Kak", tampil_harga=True):
                 if 'cetak' in tahap_lower or 'print' in tahap_lower or 'proses' in tahap_lower or 'produksi' in tahap_lower or 'cetak' in divisi_lower or 'print' in divisi_lower or 'produksi' in divisi_lower:
                     has_proses_job = True
 
-    if status == 'batal':
+    if status_foto:
+        footer = f"\n_{status_foto[1]}_"
+    elif status == 'batal':
         footer = f"\n_Pesanan ini telah dibatalkan. Silakan hubungi kami jika ada pertanyaan. 🙏_"
     elif status == 'selesai':
         footer = f"\n_Pesanan {panggilan} sudah selesai diserahterimakan. Terima kasih banyak atas kepercayaan Kakak pada {get_business_name()}! 😊_"

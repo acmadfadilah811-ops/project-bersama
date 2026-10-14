@@ -317,3 +317,33 @@ class KlaimGlobalSesiTests(_Dasar):
         self.client.force_authenticate(self.asisten)
         self.assertEqual(self.client.post(f'/api/jobs/{job.id}/claim/').status_code, 200)
         self.assertEqual(pesanan.sesi.get().asisten, self.asisten)
+
+
+class StatusPesananFotoUntukPelangganTests(_Dasar):
+    """Resi online & tracking WA tidak menampilkan "Dalam Proses Produksi" sebelum
+    sesi foto selesai dan dikonfirmasi kasir (2026-10-14)."""
+
+    def test_status_mengikuti_tahap_sesi(self):
+        from .services.resi_digital import _status_pesanan
+        from .wa_logic import format_tracking
+
+        res = self._checkout()
+        order = Order.objects.get(pk=res.json()['id'])
+        self.assertEqual(order.status_global, 'proses')
+        self.assertTrue(_status_pesanan(order).startswith('Menunggu Sesi Foto'))
+        teks = format_tracking(order)
+        self.assertIn('Menunggu Sesi Foto', teks)
+        self.assertNotIn('Dalam Proses Produksi', teks)
+        self.assertIn('Menunggu sesi foto', teks)
+
+        sesi = order.pesanan_foto.sesi.get()
+        self.client.force_authenticate(self.foto)
+        self.client.post(f'/api/starfoto/sesi/{sesi.id}/mulai/')
+        self.assertEqual(_status_pesanan(order), 'Sesi Foto Berlangsung')
+        self.client.post(f'/api/starfoto/sesi/{sesi.id}/selesai/')
+        self.assertEqual(_status_pesanan(order), 'Sesi Foto Selesai')
+
+        # Setelah kasir mengonfirmasi, pesanan masuk produksi (edit/cetak).
+        from .starfoto_models import PesananFoto
+        PesananFoto.objects.filter(pk=order.pesanan_foto.pk).update(status='dikonfirmasi')
+        self.assertEqual(_status_pesanan(order), 'Dalam Proses Produksi')

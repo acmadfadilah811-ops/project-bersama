@@ -57,6 +57,13 @@ def ambil_transaksi(token):
     return jenis, obj
 
 
+def _status_pesanan(order):
+    # Pesanan foto StarFoto sebelum produksi: status sesi, bukan "Dalam Proses Produksi".
+    from .starfoto import status_pesanan_foto
+    foto = status_pesanan_foto(order)
+    return foto[0] if foto else order.get_status_global_display()
+
+
 def _samarkan(nomor):
     nomor = str(nomor or '')
     return (nomor[:4] + '*' * max(0, len(nomor) - 7) + nomor[-3:]) if len(nomor) > 7 else nomor
@@ -147,7 +154,7 @@ def data_resi_order(order):
         'nomor': order.id,
         'waktu': order.waktu.isoformat(),
         'status': status,
-        'status_pesanan': order.get_status_global_display(),
+        'status_pesanan': _status_pesanan(order),
         'kasir': '',
         'dilayani_oleh': '',
         'pelanggan': {'nama': order.nama or '', 'nomor_wa': _samarkan(order.nomor_wa)},

@@ -620,6 +620,43 @@ def konfirmasi(pesanan_id, user, data):
     return pesanan, jobs
 
 
+# ---------------------------------------------------------------- status untuk pelanggan
+def status_pesanan_foto(order, panggilan='Kak'):
+    """Status pesanan foto untuk resi online & tracking WA (2026-10-14).
+
+    Sebelum sesi foto selesai dan dikonfirmasi kasir, pesanan foto belum masuk
+    produksi -- jangan tampil "Dalam Proses Produksi". Mengembalikan
+    (label, keterangan) atau None bila bukan pesanan foto / sudah tahap produksi
+    (pemanggil memakai status pesanan biasa)."""
+    if order.status_global in ('ready', 'selesai', 'batal'):
+        return None
+    pesanan = PesananFoto.objects.filter(order=order).first()
+    if pesanan is None or pesanan.status in ('dikonfirmasi', 'batal'):
+        return None
+    if pesanan.status == 'menunggu_kasir':
+        return ('Sesi Foto Selesai', f'Sesi foto {panggilan} sudah selesai. Foto segera masuk proses edit. 📸')
+    sesi = list(pesanan.sesi.exclude(status='batal').order_by('urutan'))
+    if any(s.status == 'berlangsung' for s in sesi):
+        return ('Sesi Foto Berlangsung', f'Sesi foto {panggilan} sedang berlangsung. 📸')
+    berikut = next((s for s in sesi if s.status == 'terjadwal'), None)
+    if berikut is not None:
+        jadwal = timezone.localtime(berikut.mulai).strftime('%d/%m/%Y %H:%M')
+        return (f'Menunggu Sesi Foto ({jadwal})', f'Kami tunggu {panggilan} di sesi foto {jadwal}. 📸')
+    return ('Menunggu Sesi Foto', f'Kami tunggu {panggilan} di sesi foto. 📸')
+
+
+def deskripsi_job_sesi(job):
+    """Deskripsi SPK Sesi/Asisten Foto untuk pelanggan (bukan 'dikerjakan tim produksi')."""
+    if not job.tahap_id or job.tahap_id not in _tahap_id_sesi():
+        return None
+    return {
+        'antrean': ('📸', 'Menunggu sesi foto'),
+        'dikerjakan': ('📸', 'Sesi foto berlangsung'),
+        'kendala': ('⚠️', 'Sesi foto terkendala — kami hubungi Kakak'),
+        'selesai': ('✅', 'Sesi foto selesai'),
+    }.get(job.status_pekerjaan)
+
+
 # ---------------------------------------------------------------- kait papan kerja
 def pesanan_dari_job(job):
     if not job.order_item_id:
