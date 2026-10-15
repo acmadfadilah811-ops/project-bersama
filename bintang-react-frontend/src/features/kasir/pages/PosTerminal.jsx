@@ -1077,6 +1077,11 @@ export default function PosTerminal({ onToggleSidebar }) {
       }
     } catch (error) {
       notifyError('Cetak cek pesanan gagal', getPrintErrorMessage(error));
+    } finally {
+      // Dulu cek pesanan tetap ter-render setelah dicetak; saat resi pembayaran
+      // dicetak, dua resi bertumpuk di posisi yang sama sehingga teks penutup
+      // ("Terima kasih...") tampak di tengah/atas resi (2026-10-15).
+      setCheckReceipt(null);
     }
   };
 
@@ -1493,7 +1498,7 @@ export default function PosTerminal({ onToggleSidebar }) {
         transactionData={lastTransaction}
         onNewOrder={handleNewOrder}
       />
-      <ReceiptPrint receipt={checkReceipt} settings={businessSettings} />
+      {!showSuccessModal && <ReceiptPrint receipt={checkReceipt} settings={businessSettings} />}
     </div>
   );
 }
