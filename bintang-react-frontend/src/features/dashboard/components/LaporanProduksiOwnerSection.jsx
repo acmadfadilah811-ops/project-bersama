@@ -6,10 +6,19 @@ const FILTER_OPTIONS = [
   { id: 'harian', label: 'Hari Ini' },
   { id: 'mingguan', label: 'Minggu Ini' },
   { id: 'bulanan', label: 'Bulan Ini' },
+  { id: 'bulan_lalu', label: 'Bulan Lalu' },
+  { id: 'rentang', label: 'Rentang' },
 ];
 
+// Tanggal lokal (WIB). toISOString() memakai UTC sehingga awal bulan/hari
+// bergeser mundur satu hari (2026-10-15).
 function toISODate(d) {
-  return d.toISOString().slice(0, 10);
+  return d.toLocaleDateString('sv-SE');
+}
+
+function keTanggal(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d);
 }
 
 function rentangMinggu(base) {
@@ -29,6 +38,9 @@ function hitungRentang(mode) {
     const mulai = new Date(now.getFullYear(), now.getMonth(), 1);
     const selesai = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     return [mulai, selesai];
+  }
+  if (mode === 'bulan_lalu') {
+    return [new Date(now.getFullYear(), now.getMonth() - 1, 1), new Date(now.getFullYear(), now.getMonth(), 0)];
   }
   return [now, now];
 }
@@ -55,7 +67,16 @@ export default function LaporanProduksiOwnerSection() {
 
   const handleFilterChange = (mode) => {
     setFilterMode(mode);
-    setRange(hitungRentang(mode));
+    // Rentang kustom mulai dari rentang yang sedang tampil, lalu diubah lewat input tanggal.
+    if (mode !== 'rentang') setRange(hitungRentang(mode));
+  };
+
+  const ubahTanggal = (posisi, iso) => {
+    if (!iso) return;
+    setRange((prev) => {
+      const baru = posisi === 0 ? [keTanggal(iso), prev[1]] : [prev[0], keTanggal(iso)];
+      return baru[0] > baru[1] ? [baru[1], baru[0]] : baru;
+    });
   };
 
   const fetchAll = useCallback(async () => {
@@ -122,6 +143,19 @@ export default function LaporanProduksiOwnerSection() {
               </button>
             ))}
           </div>
+          {filterMode === 'rentang' && (
+            <div className="flex items-center gap-1">
+              <input
+                type="date" value={dariISO} onChange={(e) => ubahTanggal(0, e.target.value)}
+                className="text-[11px] border border-slate-200 rounded-lg px-2 py-1 focus:outline-none" aria-label="Dari tanggal"
+              />
+              <span className="text-[11px] text-slate-400">s/d</span>
+              <input
+                type="date" value={sampaiISO} onChange={(e) => ubahTanggal(1, e.target.value)}
+                className="text-[11px] border border-slate-200 rounded-lg px-2 py-1 focus:outline-none" aria-label="Sampai tanggal"
+              />
+            </div>
+          )}
           <select
             value={divisiFilter}
             onChange={(e) => setDivisiFilter(e.target.value)}
