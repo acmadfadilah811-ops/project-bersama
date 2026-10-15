@@ -1,14 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import apiClient from '../../../api/apiClient';
+import LeaderboardStaff from '../components/LeaderboardStaff';
 import { useAuth } from '../../../context/AuthContext';
 import {
   ShoppingCart,
   TrendingUp,
   Package,
   Users,
-  Crown,
-  Trophy,
-  Medal,
   MoreHorizontal,
   Clock,
   Activity,
@@ -1082,144 +1080,7 @@ export default function Dashboard() {
         {/* TAB 2: PAPAN KERJA (SPK) */}
         {activeTab === 'spk' && (
           <div className="grid grid-cols-1 gap-5">
-            {/* Leaderboard Staff podium + list */}
-            <div className="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm flex flex-col w-full">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-50 shrink-0">
-                <div>
-                  <h2 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                    <Crown size={14} className="text-amber-500" /> Leaderboard Staff
-                  </h2>
-                  <p className="text-[10px] text-slate-400 mt-0.5">
-                    Pemeringkat performa staff berdasarkan penyelesaian tugas.
-                  </p>
-                </div>
-              </div>
-
-              {/* Podium (Top 3) */}
-              {data?.top_staff?.length > 0 && (
-                <div className="py-4 bg-gradient-to-b from-indigo-50/10 to-white border-b border-slate-50 flex justify-center items-end gap-5 shrink-0 select-none">
-                  {/* Peringkat 2 */}
-                  {data.top_staff[1] && (
-                    <div className="flex flex-col items-center w-24">
-                      <div className="relative">
-                        <div className="w-10 h-10 rounded-full border-2 border-slate-300 bg-slate-50 flex items-center justify-center font-bold text-slate-600 text-xs uppercase shadow shadow-inner">
-                          {data.top_staff[1].nama.charAt(0)}
-                        </div>
-                        <span className="absolute -bottom-1 -right-1 w-4.5 h-4.5 bg-slate-300 text-slate-800 rounded-full flex items-center justify-center font-black text-[8.5px] border border-white">
-                          2
-                        </span>
-                      </div>
-                      <span className="text-[9.5px] font-bold text-slate-700 capitalize mt-1.5 truncate w-full text-center">
-                        {data.top_staff[1].nama}
-                      </span>
-                      <span className="text-[8px] text-slate-400 font-extrabold uppercase mt-0.5">
-                        {data.top_staff[1].jumlah_job_selesai} Jobs
-                      </span>
-                      <span className="text-[9px] text-indigo-650 font-black mt-0.5">
-                        {formatRupiah(data.top_staff[1].total_insentif)}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Peringkat 1 */}
-                  {data.top_staff[0] && (
-                    <div className="flex flex-col items-center w-28 -translate-y-1">
-                      <div className="relative">
-                        <Crown size={14} className="text-amber-500 absolute -top-3 left-1/2 -translate-x-1/2 drop-shadow animate-bounce" />
-                        <div className="w-12 h-12 rounded-full border-3 border-amber-400 bg-amber-50 flex items-center justify-center font-black text-slate-800 text-sm uppercase shadow-md">
-                          {data.top_staff[0].nama.charAt(0)}
-                        </div>
-                        <span className="absolute -bottom-1 -right-1 w-5 h-5 bg-amber-400 text-white rounded-full flex items-center justify-center font-black text-[9px] border-2 border-white">
-                          1
-                        </span>
-                      </div>
-                      <span className="text-xs font-black text-slate-900 capitalize mt-1.5 truncate w-full text-center">
-                        {data.top_staff[0].nama}
-                      </span>
-                      <span className="text-[9px] text-amber-600 font-extrabold uppercase mt-0.5">
-                        {data.top_staff[0].jumlah_job_selesai} Jobs
-                      </span>
-                      <span className="text-[9px] text-emerald-600 font-black mt-0.5">
-                        {formatRupiah(data.top_staff[0].total_insentif)}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Peringkat 3 */}
-                  {data.top_staff[2] && (
-                    <div className="flex flex-col items-center w-24">
-                      <div className="relative">
-                        <div className="w-10 h-10 rounded-full border-2 border-orange-200 bg-orange-50/20 flex items-center justify-center font-bold text-orange-850 text-orange-800 text-xs uppercase shadow shadow-inner">
-                          {data.top_staff[2].nama.charAt(0)}
-                        </div>
-                        <span className="absolute -bottom-1 -right-1 w-4.5 h-4.5 bg-orange-300 text-orange-950 rounded-full flex items-center justify-center font-black text-[8.5px] border border-white">
-                          3
-                        </span>
-                      </div>
-                      <span className="text-[9.5px] font-bold text-slate-700 capitalize mt-1.5 truncate w-full text-center">
-                        {data.top_staff[2].nama}
-                      </span>
-                      <span className="text-[8px] text-slate-400 font-extrabold uppercase mt-0.5">
-                        {data.top_staff[2].jumlah_job_selesai} Jobs
-                      </span>
-                      <span className="text-[9px] text-orange-600 font-black mt-0.5">
-                        {formatRupiah(data.top_staff[2].total_insentif)}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Table Header */}
-              <div className="grid grid-cols-12 px-5 py-2 bg-slate-50 border-b border-slate-100 text-[8.5px] font-black text-slate-400 uppercase tracking-widest shrink-0">
-                <div className="col-span-1">#</div>
-                <div className="col-span-4">Nama Staff</div>
-                <div className="col-span-3">Role</div>
-                <div className="col-span-2 text-center">Job Selesai</div>
-                <div className="col-span-2 text-right">Total Insentif</div>
-              </div>
-
-              {/* Table List */}
-              <div className="divide-y divide-slate-50 max-h-[300px] overflow-y-auto custom-scrollbar">
-                {data?.top_staff?.length > 0 ? (
-                  data.top_staff.map((staff, i) => {
-                    const rankIcons = [
-                      <Trophy key={0} size={12} className="text-amber-500" />,
-                      <Medal key={1} size={12} className="text-slate-450" />,
-                      <Medal key={2} size={12} className="text-orange-400" />,
-                    ];
-                    return (
-                      <div
-                        key={i}
-                        className="grid grid-cols-12 px-5 py-2.5 items-center hover:bg-slate-50/50 transition-colors text-[10.5px]"
-                      >
-                        <div className="col-span-1 flex items-center">
-                          {rankIcons[i] || (
-                            <span className="text-[9px] font-black text-slate-400">{i + 1}</span>
-                          )}
-                        </div>
-                        <div className="col-span-4 font-bold text-slate-800 capitalize truncate">
-                          {staff.nama}
-                        </div>
-                        <div className="col-span-3">
-                          <span className="text-[8px] bg-slate-100 text-slate-500 border border-slate-200/80 px-1.5 py-0.5 rounded font-black uppercase tracking-wider">
-                            Staff
-                          </span>
-                        </div>
-                        <div className="col-span-2 text-center font-black text-slate-700">
-                          {staff.jumlah_job_selesai}
-                        </div>
-                        <div className="col-span-2 text-right font-black text-emerald-600">
-                          {formatRupiah(staff.total_insentif)}
-                        </div>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div className="py-8 text-center text-slate-300 text-xs">Data belum tersedia</div>
-                )}
-              </div>
-            </div>
+            <LeaderboardStaff />
           </div>
         )}
 

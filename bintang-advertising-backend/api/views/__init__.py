@@ -36,7 +36,8 @@ from .config import (
     SystemConfigViewSet, FAQViewSet, BusinessSettingsView
 )
 from .dashboard import (
-    DashboardView
+    DashboardView,
+    LeaderboardStaffView,
 )
 from .users import (
     CustomUserViewSet, CreateUserView,

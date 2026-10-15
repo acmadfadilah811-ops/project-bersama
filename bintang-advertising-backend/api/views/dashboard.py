@@ -6,10 +6,68 @@ from django.db.models import Sum, Count, Q, F
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from ..permissions import IsOwnerOrManager
+from ..permissions import IsOwnerOrManager, filter_param_unit_bisnis
 
 from ..models import Order, OrderItem, JobBoard, CustomUser, InventoryItem
 from ..pos_models import POSSale
+
+PERIODE_LEADERBOARD = ('bulan_ini', 'bulan_lalu', 'semua')
+
+
+def _rentang_periode(periode, now):
+    awal_bulan = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if periode == 'bulan_lalu':
+        awal_lalu = (awal_bulan - timedelta(days=1)).replace(day=1)
+        return awal_lalu, awal_bulan
+    if periode == 'semua':
+        return None, None
+    return awal_bulan, None
+
+
+def hitung_leaderboard(periode='bulan_ini', request=None, batas=10):
+    """Peringkat staff & kordiv aktif menurut SPK selesai pada periode (2026-10-15).
+
+    Dulu hanya role 'staff', sepanjang masa, akun nonaktif ikut, dan username yang
+    tampil. Unit = unit bisnis akun (?unit_bisnis= seperti halaman Pesanan)."""
+    mulai, sampai = _rentang_periode(periode, timezone.localtime(timezone.now()))
+    syarat = Q(my_tasks__status_pekerjaan='selesai')
+    if mulai:
+        syarat &= Q(my_tasks__waktu_selesai__gte=mulai)
+    if sampai:
+        syarat &= Q(my_tasks__waktu_selesai__lt=sampai)
+    qs = CustomUser.objects.filter(role__in=['staff', 'kordiv'], is_active=True)
+    if request is not None:
+        qs = filter_param_unit_bisnis(qs, request)
+    qs = qs.select_related('unit_bisnis', 'divisi').annotate(
+        jumlah_job_selesai=Count('my_tasks', filter=syarat),
+        total_insentif=Sum('my_tasks__insentif', filter=syarat),
+    ).filter(jumlah_job_selesai__gt=0).order_by('-jumlah_job_selesai', '-total_insentif', 'username')[:batas]
+    return [
+        {
+            'id': u.id,
+            'nama': u.get_full_name() or u.username,
+            'username': u.username,
+            'role': u.role,
+            'jabatan': u.posisi or (u.divisi.nama if u.divisi_id else ''),
+            'unit_bisnis': u.unit_bisnis_id,
+            'unit_bisnis_nama': u.unit_bisnis.nama if u.unit_bisnis_id else '',
+            'jumlah_job_selesai': u.jumlah_job_selesai,
+            'total_insentif': u.total_insentif or 0,
+        }
+        for u in qs
+    ]
+
+
+class LeaderboardStaffView(APIView):
+    """GET /api/dashboard/leaderboard/?periode=bulan_ini|bulan_lalu|semua&unit_bisnis=<id|none>"""
+    permission_classes = [IsOwnerOrManager]
+
+    def get(self, request):
+        periode = request.query_params.get('periode') or 'bulan_ini'
+        if periode not in PERIODE_LEADERBOARD:
+            periode = 'bulan_ini'
+        return Response({'periode': periode, 'hasil': hitung_leaderboard(periode, request)})
+
 
 class DashboardView(APIView):
     permission_classes = [IsOwnerOrManager]
@@ -93,24 +151,8 @@ class DashboardView(APIView):
             for s in ['antrean', 'dikerjakan', 'selesai', 'gagal', 'kendala']
         }
 
-        # --- Top Staff (berdasarkan jumlah job selesai) ---
-        top_staff_qs = CustomUser.objects.filter(role='staff').annotate(
-            jumlah_job_selesai=Count(
-                'my_tasks', filter=Q(my_tasks__status_pekerjaan='selesai')
-            ),
-            total_insentif=Sum(
-                'my_tasks__insentif', filter=Q(my_tasks__status_pekerjaan='selesai')
-            )
-        ).order_by('-jumlah_job_selesai')[:5]
-
-        top_staff = [
-            {
-                'nama': u.username,
-                'jumlah_job_selesai': u.jumlah_job_selesai,
-                'total_insentif': u.total_insentif or 0,
-            }
-            for u in top_staff_qs
-        ]
+        # --- Top Staff bulan ini (staff & kordiv aktif; sama dengan leaderboard) ---
+        top_staff = hitung_leaderboard('bulan_ini', batas=5)
 
         # --- Stok Kritis (stok di bawah minimum) ---
         stok_kritis_qs = InventoryItem.objects.filter(stok__lt=F('min_stok'))
