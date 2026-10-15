@@ -657,7 +657,8 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── LAPORAN EKSEKUTIF (kedepankan data lintas perusahaan utk owner) ── */}
+      {/* ── LAPORAN EKSEKUTIF: disembunyikan untuk owner (2026-10-15, owner punya menu Dashboard Eksekutif) ── */}
+      {user?.role !== 'owner' && (
       <a
         href="/dashboard-eksekutif"
         className="flex flex-wrap items-center gap-4 bg-[#4F46E5] text-white rounded-[22px] p-5 shadow-sm hover:bg-[#4338CA] transition-all"
@@ -673,6 +674,7 @@ export default function Dashboard() {
         </div>
         <span className="text-xs font-bold bg-white/15 px-4 py-2 rounded-full shrink-0">Buka Laporan →</span>
       </a>
+      )}
 
       {/* ── APP SWITCHER (Premium Horizontal Cards) ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
