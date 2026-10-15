@@ -23,7 +23,7 @@ export function getPaperWidthInches(paperSize) {
   return (PAPER_WIDTH_MM[paperSize] || PAPER_WIDTH_MM['80mm']) / 25.4;
 }
 
-export function buildQzReceiptHtml({ receipt, settings, paperSize }) {
+export function buildQzReceiptHtml({ receipt, settings, paperSize, logoDataUrl = '' }) {
   // Pengaturan cetak sama persis dengan cetak browser (ReceiptPrint): judul, alamat,
   // telepon, catatan, syarat, sembunyikan nomor, gabung qty, catatan item, total qty.
   const cfg = cetakConfig(settings);
@@ -51,8 +51,9 @@ export function buildQzReceiptHtml({ receipt, settings, paperSize }) {
   .divider { border-top: 1px dashed #000; margin: 8px 0; } table { width: 100%; border-collapse: collapse; }
   td { padding: 3px 0; vertical-align: top; } small { font-size: 0.85em; } .total { font-weight: 700; font-size: 1.1em; }
   .kecil { font-size: 0.85em; white-space: pre-line; }
+  .logo { display: block; margin: 0 auto 4px; width: ${isA4 ? '35mm' : '80%'}; height: auto; filter: grayscale(1) contrast(1.4); }
 </style></head><body>
-  <div class="center"><h1>${escapeHtml(cfg.nama)}</h1>
+  <div class="center">${logoDataUrl ? `<img class="logo" src="${logoDataUrl}" alt="">` : ''}<h1>${escapeHtml(cfg.nama)}</h1>
   ${cfg.alamat ? `<p class="kecil">${escapeHtml(cfg.alamat)}</p>` : ''}
   ${cfg.telepon ? `<p class="kecil">Telp: ${escapeHtml(cfg.telepon)}</p>` : ''}
   <h2>${escapeHtml(documentTitle)}</h2>

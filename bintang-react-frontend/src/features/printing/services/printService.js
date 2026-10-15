@@ -51,11 +51,30 @@ export function requestBrowserPrint() {
   return true;
 }
 
+// Logo resi sering belum selesai dimuat saat dialog cetak dibuka (resi baru
+// saja dirender) sehingga tercetak kosong. Tunggu semua gambar di area cetak,
+// maksimal 3 detik (2026-10-15).
+function tungguGambarCetak(batasMs = 3000) {
+  if (typeof document === 'undefined') return Promise.resolve();
+  const gambar = [...document.querySelectorAll('.receipt-print-area img, .print-area img')]
+    .filter((img) => img.src && !img.complete);
+  if (!gambar.length) return Promise.resolve();
+  const semua = Promise.all(gambar.map((img) => new Promise((selesai) => {
+    img.addEventListener('load', selesai, { once: true });
+    img.addEventListener('error', selesai, { once: true });
+  })));
+  return Promise.race([semua, new Promise((selesai) => setTimeout(selesai, batasMs))]);
+}
+
+function duaFrame() {
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => window.requestAnimationFrame(resolve));
+  });
+}
+
 export function requestBrowserPrintAfterRender() {
   if (typeof window === 'undefined') return;
-  window.requestAnimationFrame(() => {
-    window.requestAnimationFrame(() => requestBrowserPrint());
-  });
+  duaFrame().then(() => tungguGambarCetak()).then(() => requestBrowserPrint());
 }
 
 export async function printReceipt({ receipt, businessSettings, localSettings = getLocalPrinterSettings() }) {
@@ -78,8 +97,7 @@ export async function printReceiptAfterRender(payload) {
   if (payload.localSettings?.connectionMode === 'qz' || getLocalPrinterSettings().connectionMode === 'qz') {
     return printReceipt(payload);
   }
-  await new Promise((resolve) => {
-    window.requestAnimationFrame(() => window.requestAnimationFrame(resolve));
-  });
+  await duaFrame();
+  await tungguGambarCetak();
   return printReceipt(payload);
 }

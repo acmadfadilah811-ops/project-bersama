@@ -1,6 +1,8 @@
 import qz from 'qz-tray';
 import apiClient from '../../../api/apiClient';
 import { buildQzReceiptHtml, getPaperWidthInches } from './qzReceiptHtml';
+import { cetakConfig } from './receiptConfig';
+import logoBawaan from '../../../assets/logo-starfoto.png';
 import { buildTmU220Receipt, TM_U220_70_PROFILE } from './qzTmU220Receipt';
 
 let securityConfigured = false;
@@ -52,6 +54,33 @@ export async function getQzPrinters() {
   }
 }
 
+// Logo resi untuk QZ Tray (2026-10-15): QZ merender HTML sendiri dan tidak
+// bisa memuat path relatif/terlindung, jadi logo diubah ke data URL dulu.
+// Disimpan per URL supaya tidak diunduh ulang tiap cetak. Gagal -> tanpa logo.
+const cacheLogo = new Map();
+async function logoSebagaiDataUrl(url) {
+  if (!url) return '';
+  if (cacheLogo.has(url)) return cacheLogo.get(url);
+  try {
+    // Logo unggahan (/media/...) diambil lewat origin yang sama supaya tidak
+    // terhalang CORS/mixed content bila API mengirim URL absolut.
+    const sumber = url.includes('/media/') ? url.slice(url.indexOf('/media/')) : url;
+    const res = await fetch(sumber);
+    if (!res.ok) throw new Error(String(res.status));
+    const blob = await res.blob();
+    const dataUrl = await new Promise((resolve, reject) => {
+      const pembaca = new FileReader();
+      pembaca.onload = () => resolve(pembaca.result);
+      pembaca.onerror = reject;
+      pembaca.readAsDataURL(blob);
+    });
+    cacheLogo.set(url, dataUrl);
+    return dataUrl;
+  } catch {
+    return '';
+  }
+}
+
 export async function printQzReceipt({ receipt, settings, printerName, paperSize, printerProfile }) {
   if (!printerName) throw new QZTrayError('Pilih printer QZ Tray terlebih dahulu.');
 
@@ -62,13 +91,17 @@ export async function printQzReceipt({ receipt, settings, printerName, paperSize
       margins: 0,
       scaleContent: false,
     });
+    // TM-U220 (dot-matrix, perintah teks) tidak mencetak gambar -> tanpa logo.
+    const logoDataUrl = printerProfile === TM_U220_70_PROFILE
+      ? ''
+      : (await logoSebagaiDataUrl(cetakConfig(settings).logoUrl)) || (await logoSebagaiDataUrl(logoBawaan));
     const data = printerProfile === TM_U220_70_PROFILE
       ? [{ type: 'raw', format: 'command', flavor: 'plain', data: buildTmU220Receipt(receipt, settings) }]
       : [{
         type: 'pixel',
         format: 'html',
         flavor: 'plain',
-        data: buildQzReceiptHtml({ receipt, settings, paperSize }),
+        data: buildQzReceiptHtml({ receipt, settings, paperSize, logoDataUrl }),
         options: { pageWidth: getPaperWidthInches(settings?.pos_ext_settings?.pos_custom_resi_windows ? 'a4' : paperSize) },
       }];
     await qz.print(config, data);
