@@ -66,7 +66,7 @@ function InfoSesi({ sesi }) {
           <p className="font-bold text-slate-700">Insentif {formatRupiah(sesi.insentif.total)}</p>
           {sesi.insentif.rincian.map((r, i) => (
             <p key={i} className="text-slate-500">
-              {r.nama}: {formatRupiah(r.nominal)}{r.catatan ? ` (${r.catatan})` : ''}
+              {r.nama}: {formatRupiah(r.nominal)}
             </p>
           ))}
           {!sesi.insentif.rincian.length && <p className="text-slate-400">Belum ada insentif untuk sesi ini.</p>}

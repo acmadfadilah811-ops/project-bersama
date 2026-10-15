@@ -49,8 +49,8 @@ export default function JobCard({ job, orderInfo, onOpenWorkspace, ambangAntrean
       {job?.insentif > 0 && (job.rincian_insentif || []).length > 0 && (
         <div className="mt-1 space-y-0.5">
           {job.rincian_insentif.map((r) => (
-            <p key={r.id} className="truncate text-[9px] text-slate-500" title={r.catatan || r.nama}>
-              {r.nama}: Rp {Number(r.nominal).toLocaleString('id-ID')}{r.catatan ? ` · ${r.catatan}` : ''}
+            <p key={r.id} className="truncate text-[9px] text-slate-500">
+              {r.nama}: Rp {Number(r.nominal).toLocaleString('id-ID')}
             </p>
           ))}
         </div>

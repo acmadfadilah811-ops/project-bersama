@@ -51,14 +51,6 @@ def nominal_aturan_produk(aturan, qty, luas):
     return int(round(aturan.nominal * qty))
 
 
-def _label_cara(aturan, qty, luas):
-    if aturan.cara_hitung == InsentifProduk.CARA_FLAT:
-        return 'flat per SPK'
-    if aturan.cara_hitung == InsentifProduk.CARA_M2:
-        return f'Rp{aturan.nominal:,} x {luas:g} m2'.replace(',', '.')
-    return f'Rp{aturan.nominal:,} x {qty:g}'.replace(',', '.')
-
-
 @transaction.atomic
 def terapkan_otomatis(job):
     """Tambahkan baris insentif otomatis untuk divisi tahap SPK ini.
@@ -78,8 +70,8 @@ def terapkan_otomatis(job):
                 job=job, aturan_produk=aturan,
                 defaults={
                     'nama': f'Insentif {aturan.product.nama}'[:100],
+                    # Hanya nominal; rumus hitungan tidak ditampilkan di SPK.
                     'nominal': nominal_aturan_produk(aturan, qty, luas),
-                    'catatan': _label_cara(aturan, qty, luas)[:255],
                     'otomatis': True,
                 },
             )
