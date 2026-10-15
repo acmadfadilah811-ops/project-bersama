@@ -458,6 +458,26 @@ def sinkron_petugas(job):
         pesanan.sesi.update(asisten=job.pic_staff)
 
 
+def insentif_sesi(sesi, user=None, peran=None):
+    """Insentif SPK Sesi/Asisten Foto yang ditampilkan ke fotografer (2026-10-15).
+
+    `user`: SPK milik user ini (menu Sesi Saya). `peran`: SPK yang belum
+    diambil untuk peran itu (Antrean Sesi). None bila belum ada SPK."""
+    if peran in PERAN_TAHAP:
+        tahap_ids = {pengaturan()[PERAN_TAHAP[peran][0]]} - {None}
+    else:
+        tahap_ids = _tahap_id_sesi()
+    qs = JobBoard.objects.filter(order_item_id=sesi.pesanan.paket_item_id, tahap_id__in=tahap_ids)
+    qs = qs.filter(pic_staff=user) if user is not None else qs.filter(pic_staff__isnull=True)
+    job = qs.prefetch_related('rincian_insentif').order_by('-id').first()
+    if job is None:
+        return None
+    return {
+        'total': job.insentif,
+        'rincian': [{'nama': r.nama, 'nominal': r.nominal, 'catatan': r.catatan} for r in job.rincian_insentif.all()],
+    }
+
+
 def antrean_sesi(user):
     """Sesi yang belum punya fotografer/asisten di divisi user: [(sesi, peran)]."""
     hasil = []

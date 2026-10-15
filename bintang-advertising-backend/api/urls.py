@@ -17,7 +17,7 @@ from .views.starfoto_approval import (
 )
 from .views.hr_kredensial_bridge import HRBridgeKredensialView
 from .views.hr_organisasi_bridge import HROrganisasiView
-from .views.insentif import JenisInsentifViewSet, JobInsentifView, InsentifPekerjaanDetailView
+from .views.insentif import JenisInsentifViewSet, InsentifProdukViewSet, JobInsentifView, InsentifPekerjaanDetailView
 from .views import DashboardView, LeaderboardStaffView, CreateUserView, AssignOrderView, ForwardJobView, InventoryRestockView, JobMaterialDeductView, EvolutionWebhookView, BusinessSettingsView, StaffPerformanceReportView, HealthCheckView, KomplainViewSet, ContactStatsView, ProductionCustomerLiteView
 from .export_views import ExportOrdersView, ExportInventoryView, ExportJobsView, ExportContactsView, ExportAbsensiView, ExportStaffPerformanceView, ExportStockMovementView, ExportCustomersView, ExportProductsView, ExportCustomerNotesView, ExportCashTransactionsView, ExportSalesItemsByBrandView, ExportSalesDetailsView
 from . import product_views
@@ -56,6 +56,7 @@ router = DefaultRouter()
 
 router.register(r'divisi', views.DivisiViewSet)
 router.register(r'jenis-insentif', JenisInsentifViewSet)
+router.register(r'insentif-produk', InsentifProdukViewSet, basename='insentif-produk')
 router.register(r'unit-bisnis', views.UnitBisnisViewSet)
 router.register(r'tahap-proses', views.TahapProsesViewSet)
 router.register(r'users', views.CustomUserViewSet)

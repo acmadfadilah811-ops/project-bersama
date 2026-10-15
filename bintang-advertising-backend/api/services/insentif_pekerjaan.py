@@ -13,7 +13,7 @@ from django.db import transaction
 from django.db.models import Q, Sum
 from rest_framework.exceptions import ValidationError
 
-from ..insentif_models import InsentifPekerjaan, JenisInsentif
+from ..insentif_models import InsentifPekerjaan, InsentifProduk, JenisInsentif
 from ..models import JobBoard
 
 NAMA_MANUAL = 'Insentif manual'
@@ -33,11 +33,57 @@ def _pastikan_bisa_diubah(job):
         raise ValidationError({'error': PESAN_TERKUNCI})
 
 
+def _sumber_item(job):
+    """(product_id, qty, luas_m2_total) dari baris pesanan/kasir SPK ini."""
+    item = job.order_item if job.order_item_id else (job.pos_sale_item if job.pos_sale_item_id else None)
+    if item is None or not item.product_id:
+        return None, 0, 0
+    qty = float(item.qty or 0)
+    luas = float(item.panjang or 0) * float(item.lebar or 0) * qty
+    return item.product_id, qty, luas
+
+
+def nominal_aturan_produk(aturan, qty, luas):
+    if aturan.cara_hitung == InsentifProduk.CARA_FLAT:
+        return aturan.nominal
+    if aturan.cara_hitung == InsentifProduk.CARA_M2:
+        return int(round(aturan.nominal * luas))
+    return int(round(aturan.nominal * qty))
+
+
+def _label_cara(aturan, qty, luas):
+    if aturan.cara_hitung == InsentifProduk.CARA_FLAT:
+        return 'flat per SPK'
+    if aturan.cara_hitung == InsentifProduk.CARA_M2:
+        return f'Rp{aturan.nominal:,} x {luas:g} m2'.replace(',', '.')
+    return f'Rp{aturan.nominal:,} x {qty:g}'.replace(',', '.')
+
+
 @transaction.atomic
 def terapkan_otomatis(job):
-    """Tambahkan baris insentif dari master untuk divisi tahap SPK ini."""
+    """Tambahkan baris insentif otomatis untuk divisi tahap SPK ini.
+
+    Insentif per produk (2026-10-15) didahulukan: bila produk SPK punya aturan
+    aktif untuk divisi ini, Jenis Insentif umum divisi tidak dipakai."""
     divisi_id = job.tahap.divisi_id if job.tahap_id else None
     if divisi_id:
+        product_id, qty, luas = _sumber_item(job)
+        aturan = None
+        if product_id:
+            aturan = InsentifProduk.objects.select_related('product').filter(
+                product_id=product_id, divisi_id=divisi_id, aktif=True,
+            ).first()
+        if aturan is not None:
+            InsentifPekerjaan.objects.get_or_create(
+                job=job, aturan_produk=aturan,
+                defaults={
+                    'nama': f'Insentif {aturan.product.nama}'[:100],
+                    'nominal': nominal_aturan_produk(aturan, qty, luas),
+                    'catatan': _label_cara(aturan, qty, luas)[:255],
+                    'otomatis': True,
+                },
+            )
+            return sinkron_total(job)
         # Jenis ber-unit hanya untuk SPK di divisi unit yang sama (2026-10-11).
         unit_id = job.tahap.divisi.unit_bisnis_id
         jenis_qs = JenisInsentif.objects.filter(aktif=True, divisi__id=divisi_id)

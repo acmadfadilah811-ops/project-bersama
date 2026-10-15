@@ -11,10 +11,12 @@ from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ..insentif_models import InsentifPekerjaan, JenisInsentif
+from django.db.models import Q
+
+from ..insentif_models import InsentifPekerjaan, InsentifProduk, JenisInsentif
 from ..models import JobBoard
 from ..permissions import IsOwnerOrManager
-from ..serializers_insentif import JenisInsentifSerializer
+from ..serializers_insentif import InsentifProdukSerializer, JenisInsentifSerializer
 from ..services import insentif_pekerjaan as svc
 
 
@@ -22,6 +24,27 @@ class JenisInsentifViewSet(viewsets.ModelViewSet):
     queryset = JenisInsentif.objects.select_related('unit_bisnis').prefetch_related('divisi').all()
     serializer_class = JenisInsentifSerializer
     permission_classes = [IsOwnerOrManager]
+
+
+class InsentifProdukViewSet(viewsets.ModelViewSet):
+    """/api/insentif-produk/  ?divisi=&product=&unit_bisnis=&cari=  (Owner/Manager/Admin)"""
+    serializer_class = InsentifProdukSerializer
+    permission_classes = [IsOwnerOrManager]
+    pagination_class = None
+
+    def get_queryset(self):
+        qs = InsentifProduk.objects.select_related('product__unit_bisnis', 'divisi__unit_bisnis')
+        p = self.request.query_params
+        if p.get('divisi'):
+            qs = qs.filter(divisi_id=p['divisi'])
+        if p.get('product'):
+            qs = qs.filter(product_id=p['product'])
+        if str(p.get('unit_bisnis') or '').isdigit():
+            unit = int(p['unit_bisnis'])
+            qs = qs.filter(Q(product__unit_bisnis_id=unit) | Q(divisi__unit_bisnis_id=unit))
+        if p.get('cari'):
+            qs = qs.filter(product__nama__icontains=p['cari'])
+        return qs
 
 
 def _ringkas(job):

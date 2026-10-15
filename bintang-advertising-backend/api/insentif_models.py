@@ -36,9 +36,43 @@ class JenisInsentif(models.Model):
         return self.nama
 
 
+class InsentifProduk(models.Model):
+    """Insentif khusus per produk & divisi (2026-10-15), semua unit bisnis.
+
+    Bila SPK untuk produk ini terbit ke divisi ini, baris insentifnya dihitung
+    dari aturan ini dan MENGGANTIKAN Jenis Insentif umum divisi tersebut."""
+    CARA_FLAT = 'flat'
+    CARA_QTY = 'qty'
+    CARA_M2 = 'm2'
+    CARA_CHOICES = [
+        (CARA_FLAT, 'Flat per SPK'),
+        (CARA_QTY, 'Per qty'),
+        (CARA_M2, 'Per m\u00b2'),
+    ]
+    product = models.ForeignKey('Product', on_delete=models.CASCADE, related_name='insentif_produk')
+    divisi = models.ForeignKey('Divisi', on_delete=models.CASCADE, related_name='insentif_produk')
+    cara_hitung = models.CharField(max_length=10, choices=CARA_CHOICES, default=CARA_QTY)
+    nominal = models.PositiveIntegerField(default=0, help_text='Rp per SPK / per qty / per m2 sesuai cara hitung')
+    aktif = models.BooleanField(default=True)
+    keterangan = models.CharField(max_length=255, blank=True, default='')
+    dibuat_pada = models.DateTimeField(auto_now_add=True)
+    diubah_pada = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['product__nama', 'divisi__nama']
+        constraints = [
+            models.UniqueConstraint(fields=['product', 'divisi'], name='uniq_insentif_produk_divisi'),
+        ]
+
+    def __str__(self):
+        return f'{self.product} / {self.divisi}: Rp{self.nominal} {self.cara_hitung}'
+
+
 class InsentifPekerjaan(models.Model):
     job = models.ForeignKey('JobBoard', on_delete=models.CASCADE, related_name='rincian_insentif')
     jenis = models.ForeignKey(JenisInsentif, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    # Asal baris dari aturan insentif per produk (2026-10-15).
+    aturan_produk = models.ForeignKey(InsentifProduk, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     # Salinan nama jenis: tetap terbaca walau master diubah/dihapus.
     nama = models.CharField(max_length=100)
     nominal = models.PositiveIntegerField(default=0)
@@ -54,6 +88,10 @@ class InsentifPekerjaan(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=['job', 'jenis'], condition=models.Q(jenis__isnull=False), name='uniq_insentif_job_jenis',
+            ),
+            models.UniqueConstraint(
+                fields=['job', 'aturan_produk'], condition=models.Q(aturan_produk__isnull=False),
+                name='uniq_insentif_job_aturan_produk',
             ),
         ]
 

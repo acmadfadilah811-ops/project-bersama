@@ -60,6 +60,18 @@ function InfoSesi({ sesi }) {
         {sesi.nomor_kantong ? ` · Kantong ${sesi.nomor_kantong}` : ''}
         {sesi.background ? ` · BG ${sesi.background}` : ''}
       </p>
+      {/* Insentif SPK sesi (2026-10-15): total + rincian, termasuk uang transport dinas luar. */}
+      {sesi.insentif && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+          <p className="font-bold text-slate-700">Insentif {formatRupiah(sesi.insentif.total)}</p>
+          {sesi.insentif.rincian.map((r, i) => (
+            <p key={i} className="text-slate-500">
+              {r.nama}: {formatRupiah(r.nominal)}{r.catatan ? ` (${r.catatan})` : ''}
+            </p>
+          ))}
+          {!sesi.insentif.rincian.length && <p className="text-slate-400">Belum ada insentif untuk sesi ini.</p>}
+        </div>
+      )}
     </div>
   );
 }

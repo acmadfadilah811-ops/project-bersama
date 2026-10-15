@@ -1,7 +1,7 @@
 """Serializer master Jenis Insentif (2026-09-30)."""
 from rest_framework import serializers
 
-from .insentif_models import JenisInsentif
+from .insentif_models import InsentifProduk, JenisInsentif
 
 
 class JenisInsentifSerializer(serializers.ModelSerializer):
@@ -39,3 +39,44 @@ class JenisInsentifSerializer(serializers.ModelSerializer):
 
     def validate_nama(self, value):
         return value.strip()
+
+
+class InsentifProdukSerializer(serializers.ModelSerializer):
+    product_nama = serializers.ReadOnlyField(source='product.nama')
+    divisi_nama = serializers.ReadOnlyField(source='divisi.nama')
+    unit_bisnis = serializers.SerializerMethodField()
+    unit_bisnis_nama = serializers.SerializerMethodField()
+    cara_hitung_label = serializers.CharField(source='get_cara_hitung_display', read_only=True)
+
+    class Meta:
+        model = InsentifProduk
+        fields = [
+            'id', 'product', 'product_nama', 'divisi', 'divisi_nama', 'unit_bisnis', 'unit_bisnis_nama',
+            'cara_hitung', 'cara_hitung_label', 'nominal', 'aktif', 'keterangan', 'diubah_pada',
+        ]
+        read_only_fields = ['diubah_pada']
+        validators = []  # keunikan produk+divisi dicek di validate() dengan pesan yang jelas
+
+    def _unit(self, obj):
+        return obj.product.unit_bisnis or obj.divisi.unit_bisnis
+
+    def get_unit_bisnis(self, obj):
+        unit = self._unit(obj)
+        return unit.id if unit else None
+
+    def get_unit_bisnis_nama(self, obj):
+        unit = self._unit(obj)
+        return unit.nama if unit else ''
+
+    def validate(self, attrs):
+        product = attrs.get('product', getattr(self.instance, 'product', None))
+        divisi = attrs.get('divisi', getattr(self.instance, 'divisi', None))
+        if product and divisi and product.unit_bisnis_id and divisi.unit_bisnis_id \
+                and product.unit_bisnis_id != divisi.unit_bisnis_id:
+            raise serializers.ValidationError({'divisi': f'Divisi {divisi.nama} bukan milik unit produk {product.nama}.'})
+        bentrok = InsentifProduk.objects.filter(product=product, divisi=divisi)
+        if self.instance is not None:
+            bentrok = bentrok.exclude(pk=self.instance.pk)
+        if bentrok.exists():
+            raise serializers.ValidationError({'product': f'Insentif {product.nama} untuk divisi {divisi.nama} sudah ada.'})
+        return attrs

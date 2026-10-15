@@ -6,6 +6,7 @@ import { fetchAllPages } from '../../../utils/paginatedApi';
 import { uiConfirm } from '../../../utils/dialog';
 import { notifySuccess, notifyApiError } from '../../../utils/notify';
 import { useUnitBisnisOptions } from '../../inventory/pages/components/UnitBisnisField';
+import InsentifProdukPanel from './InsentifProdukPanel';
 
 const FORM_KOSONG = { id: null, nama: '', nominal_default: '', unit_bisnis: '', divisi: [], keterangan: '', aktif: true };
 const rupiah = (n) => `Rp ${Number(n || 0).toLocaleString('id-ID')}`;
@@ -26,6 +27,8 @@ export default function JenisInsentif() {
   // Unit bisnis (2026-10-11): kosong = berlaku semua unit.
   const unitOptions = useUnitBisnisOptions();
   const [filterUnit, setFilterUnit] = useState('semua');
+  // Tab: insentif umum per divisi | insentif khusus per produk (2026-10-15).
+  const [tab, setTab] = useState('umum');
 
   useEffect(() => { setSubtitle('Jenis Insentif'); }, [setSubtitle]);
 
@@ -107,6 +110,21 @@ export default function JenisInsentif() {
 
   return (
     <div className="max-w-4xl w-full mx-auto p-6">
+      <div className="mb-5 flex gap-1 rounded-lg bg-slate-100 p-1 w-fit">
+        {[['umum', 'Insentif Umum Divisi'], ['produk', 'Insentif per Produk']].map(([id, label]) => (
+          <button
+            key={id} type="button" onClick={() => setTab(id)}
+            className={`rounded-md px-3 py-1.5 text-xs font-bold ${tab === id ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'produk' ? (
+        <InsentifProdukPanel divisiList={divisiList} unitOptions={unitOptions} />
+      ) : (
+      <>
       <div className="flex items-start justify-between gap-4 mb-5">
         <div>
           <h1 className="text-lg font-bold text-slate-800">Jenis Insentif</h1>
@@ -201,6 +219,8 @@ export default function JenisInsentif() {
           </tbody>
         </table>
       </div>
+      </>
+      )}
 
       {form && (
         // z di atas tombol Bantuan (z-60); tinggi dibatasi layar, isi bisa digulir,

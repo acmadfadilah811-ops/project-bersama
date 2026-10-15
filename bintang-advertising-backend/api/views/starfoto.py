@@ -154,9 +154,12 @@ class SesiSayaView(APIView):
         data = SesiFotoSerializer(qs, many=True).data
         # Status dinas luar milik user per sesi outdoor (untuk tombol Mulai/Selesai Dinas).
         dinas = {d.sesi_id: d for d in DinasLuar.objects.filter(staff=request.user, sesi__in=[s.id for s in qs])}
+        per_id = {s.id: s for s in qs}
         for baris in data:
             d = dinas.get(baris['id'])
             baris['dinas_saya'] = {'id': d.id, 'status': d.status} if d else None
+            # Insentif SPK sesi milik user (2026-10-15).
+            baris['insentif'] = svc.insentif_sesi(per_id[baris['id']], user=request.user)
         return Response(data)
 
 
@@ -197,6 +200,7 @@ class AntreanSesiView(APIView):
         for sesi, peran in svc.antrean_sesi(request.user):
             baris = SesiFotoSerializer(sesi).data
             baris['peran'] = peran
+            baris['insentif'] = svc.insentif_sesi(sesi, peran=peran)
             data.append(baris)
         return Response(data)
 

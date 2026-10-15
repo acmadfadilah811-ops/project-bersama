@@ -45,6 +45,16 @@ export default function JobCard({ job, orderInfo, onOpenWorkspace, ambangAntrean
           </span>
         )}
       </div>
+      {/* Keterangan insentif tampil langsung (2026-10-15), bukan hanya tooltip. */}
+      {job?.insentif > 0 && (job.rincian_insentif || []).length > 0 && (
+        <div className="mt-1 space-y-0.5">
+          {job.rincian_insentif.map((r) => (
+            <p key={r.id} className="truncate text-[9px] text-slate-500" title={r.catatan || r.nama}>
+              {r.nama}: Rp {Number(r.nominal).toLocaleString('id-ID')}{r.catatan ? ` · ${r.catatan}` : ''}
+            </p>
+          ))}
+        </div>
+      )}
       {orderInfo?.desainSusulan && (
         <div className="mt-2 flex items-center gap-1.5 bg-cyan-50 border border-cyan-150 rounded px-1.5 py-0.5 w-fit">
           <span className="relative flex h-1.5 w-1.5">
