@@ -521,6 +521,9 @@ export default function PointOfSale() {
     setSavingSettings(true);
     try {
       await apiClient.patch('/business-settings/', {
+        // Alamat & telepon perusahaan: kunci yang sama dengan Pengaturan > Bisnis.
+        alamat: profilCetak.alamat,
+        no_telepon: profilCetak.telepon,
         pos_resi_judul: resiJudul,
         pos_resi_judul_email: resiJudulEmail,
         pos_resi_catatan: resiCatatan,
@@ -1312,7 +1315,7 @@ export default function PointOfSale() {
                             <p className="text-[11px] leading-relaxed font-semibold text-slate-600">
                               Hasil cetak Resi akan disesuaikan dengan pengaturan Jumlah Kolom pada Pengaturan Printer di aplikasi POS Anda.
                               Judul, catatan, dan penyembunyian nomor di bawah berlaku untuk resi cetak, resi WhatsApp/PDF, email, dan struk online.
-                              Nama, logo, alamat, telepon, rekening, serta syarat &amp; ketentuan diatur di Pengaturan &gt; Bisnis.
+                              Alamat dan telepon perusahaan bisa diisi di sini (sama dengan Pengaturan &gt; Bisnis). Nama, logo, rekening, serta syarat &amp; ketentuan diatur di Pengaturan &gt; Bisnis.
                             </p>
                           </div>
                           <button
@@ -1331,6 +1334,31 @@ export default function PointOfSale() {
                         </div>
                       ) : (
                         <div className="space-y-4">
+                          {/* Alamat & telepon perusahaan (tercetak di kepala resi/invoice) */}
+                          <div className="space-y-1">
+                            <label className="text-[11px] font-bold text-slate-500 uppercase">
+                              Alamat perusahaan
+                            </label>
+                            <textarea
+                              value={profilCetak.alamat}
+                              onChange={(e) => setProfilCetak((p) => ({ ...p, alamat: e.target.value }))}
+                              placeholder="Alamat lengkap yang tercetak di resi & invoice"
+                              rows={2}
+                              className={`${inputCls} resize-none`}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[11px] font-bold text-slate-500 uppercase">
+                              No. telepon perusahaan
+                            </label>
+                            <input
+                              value={profilCetak.telepon}
+                              onChange={(e) => setProfilCetak((p) => ({ ...p, telepon: e.target.value }))}
+                              placeholder="mis. 0281-123456"
+                              className={inputCls}
+                            />
+                          </div>
+
                           {/* Judul Resi */}
                           <div className="space-y-1">
                             <label className="text-[11px] font-bold text-slate-500 uppercase">

@@ -6,6 +6,7 @@ import {
 } from '../components/ExecutiveCharts';
 import ExecutiveNav from '../components/ExecutiveNav';
 import LaporanProduksiOwnerSection from '../components/LaporanProduksiOwnerSection';
+import LeaderboardStaff from '../components/LeaderboardStaff';
 import KepuasanPelangganSection from '../components/KepuasanPelangganSection';
 
 /**
@@ -312,6 +313,9 @@ export default function ExecutiveDashboard() {
           </ul>
         </section>
       </div>
+
+      {/* ===== Leaderboard karyawan: siapa paling banyak menyelesaikan SPK (2026-10-15) ===== */}
+      <LeaderboardStaff />
 
       {/* ===== Laporan Produksi (target & kendala operasional dari SPV) ===== */}
       <LaporanProduksiOwnerSection />
