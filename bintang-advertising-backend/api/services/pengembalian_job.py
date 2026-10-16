@@ -71,9 +71,10 @@ def boleh_mengajukan(user, job):
 def boleh_memutuskan(user, pengembalian):
     """Penerima utama: staff PIC job tahap tujuan. Cadangan: staff divisi
     tujuan bila job tujuan tanpa PIC; SPV/Kordiv yang divisi timnya mencakup
-    divisi tujuan; owner/manager/admin."""
+    divisi tujuan. Owner/manager/admin hanya melihat daftar, tidak menerima
+    atau menolak (2026-10-16)."""
     if user.role in ROLE_BEBAS:
-        return True
+        return False
     tujuan = pengembalian.job_tujuan
     if tujuan.pic_staff_id:
         if tujuan.pic_staff_id == user.id:

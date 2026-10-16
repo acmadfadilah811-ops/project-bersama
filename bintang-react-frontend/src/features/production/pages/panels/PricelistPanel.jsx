@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Search, RefreshCw } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
+import UnitBisnisFilter from '../../../../components/UnitBisnisFilter';
 
 // Daftar Harga Papan Kerja membaca katalog Produk (2026-09-28). Sebelumnya
 // membaca tabel pricelist lama (ProductPrice, sumber harga bot WA) yang tidak
@@ -35,6 +36,8 @@ export default function PricelistPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [muatUlang, setMuatUlang] = useState(0);
+  // Per unit bisnis (2026-10-16); tombol hanya tampil untuk owner/manager/admin.
+  const [unit, setUnit] = useState('');
 
   // Tunggu user berhenti mengetik sebelum mencari ke server.
   useEffect(() => {
@@ -48,6 +51,7 @@ export default function PricelistPanel() {
     setError('');
     const params = { page, page_size: UKURAN_HALAMAN };
     if (cari) params.search = cari;
+    if (unit) params.unit_bisnis = unit;
     apiClient.get('/products/', { params })
       .then((res) => {
         if (batal) return;
@@ -59,7 +63,7 @@ export default function PricelistPanel() {
       .catch(() => { if (!batal) setError('Gagal memuat daftar harga.'); })
       .finally(() => { if (!batal) setLoading(false); });
     return () => { batal = true; };
-  }, [cari, page, muatUlang]);
+  }, [cari, page, muatUlang, unit]);
 
   const jumlahHalaman = Math.max(1, Math.ceil(total / UKURAN_HALAMAN));
 
@@ -83,7 +87,8 @@ export default function PricelistPanel() {
       </div>
 
       {/* Filter */}
-      <div className="bg-white p-4 border border-slate-200 rounded-xl shadow-sm">
+      <div className="bg-white p-4 border border-slate-200 rounded-xl shadow-sm space-y-3">
+        <UnitBisnisFilter value={unit} onChange={(v) => { setUnit(v); setPage(1); }} labelTanpaUnit="Umum (semua unit)" />
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
           <input
@@ -103,6 +108,7 @@ export default function PricelistPanel() {
             <tr>
               <th className="px-6 py-3">Nama Produk</th>
               <th className="px-6 py-3">Kategori</th>
+              <th className="px-6 py-3">Unit</th>
               <th className="px-6 py-3">Satuan</th>
               <th className="px-6 py-3">Tipe Tarif</th>
               <th className="px-6 py-3 text-right">Harga Jual Toko</th>
@@ -110,12 +116,12 @@ export default function PricelistPanel() {
           </thead>
           <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
             {loading ? (
-              <tr><td colSpan={5} className="px-6 py-8 text-center text-slate-400">Memuat...</td></tr>
+              <tr><td colSpan={6} className="px-6 py-8 text-center text-slate-400">Memuat...</td></tr>
             ) : error ? (
-              <tr><td colSpan={5} className="px-6 py-8 text-center text-red-600">{error}</td></tr>
+              <tr><td colSpan={6} className="px-6 py-8 text-center text-red-600">{error}</td></tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-6 py-8 text-center text-slate-400 italic">
+                <td colSpan={6} className="px-6 py-8 text-center text-slate-400 italic">
                   Tidak ada produk ditemukan
                 </td>
               </tr>
@@ -138,6 +144,7 @@ export default function PricelistPanel() {
                       {p.kategori_nama || '-'}
                     </span>
                   </td>
+                  <td className="px-6 py-3.5 text-slate-500">{p.unit_bisnis_nama || 'Semua unit'}</td>
                   <td className="px-6 py-3.5 text-slate-500">{p.satuan || '-'}</td>
                   <td className="px-6 py-3.5 text-slate-500 font-semibold uppercase tracking-wider text-[10px]">
                     {TIPE_TARIF[p.price_type] || p.price_type || 'Flat'}

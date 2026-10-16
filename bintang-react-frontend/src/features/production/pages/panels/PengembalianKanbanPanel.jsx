@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Undo2, RefreshCw, Check, X } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
+import { useAuth } from '../../../../context/AuthContext';
+
+// Owner/manager/admin hanya memantau daftar pengembalian (2026-10-16).
+const ROLE_PANTAU = ['owner', 'manager', 'admin'];
 
 /**
  * Kanban khusus Pengembalian Pekerjaan (PRD-05 UAT, 2026-09-29).
@@ -132,7 +136,11 @@ function Kartu({ item, bisaMemutuskan, onSelesai }) {
 }
 
 export default function PengembalianKanbanPanel({ arahAwal = 'masuk' }) {
-  const [arah, setArah] = useState(arahAwal);
+  const { user } = useAuth();
+  const hanyaPantau = ROLE_PANTAU.includes(String(user?.role || '').toLowerCase());
+  const [arahPilih, setArah] = useState(arahAwal);
+  // Manajemen: daftar seluruh pengembalian (arah 'masuk' = semua untuk peran ini).
+  const arah = hanyaPantau ? 'masuk' : arahPilih;
   const [daftar, setDaftar] = useState([]);
   const [memuat, setMemuat] = useState(true);
   const [error, setError] = useState('');
@@ -156,7 +164,7 @@ export default function PengembalianKanbanPanel({ arahAwal = 'masuk' }) {
     return () => clearInterval(id);
   }, [muat]);
 
-  const bisaMemutuskan = arah === 'masuk';
+  const bisaMemutuskan = arah === 'masuk' && !hanyaPantau;
 
   return (
     <div className="h-full flex flex-col space-y-3 pb-4 max-w-[1400px] mx-auto min-h-0">
@@ -167,11 +175,14 @@ export default function PengembalianKanbanPanel({ arahAwal = 'masuk' }) {
             Pengembalian SPK
           </h1>
           <p className="text-[10px] text-slate-500 font-medium">
-            {bisaMemutuskan
-              ? 'SPK yang dikembalikan tahap berikutnya ke Anda. Terima untuk membuka ulang, atau tolak dengan catatan. Tidak perlu persetujuan Kordiv/SPV.'
-              : 'Pantau keputusan staff tujuan atas pengembalian yang Anda ajukan.'}
+            {hanyaPantau
+              ? 'Daftar seluruh pengembalian SPK. Keputusan terima/tolak dilakukan staff tujuan atau Kordiv/SPV divisinya.'
+              : bisaMemutuskan
+                ? 'SPK yang dikembalikan tahap berikutnya ke Anda. Terima untuk membuka ulang, atau tolak dengan catatan. Tidak perlu persetujuan Kordiv/SPV.'
+                : 'Pantau keputusan staff tujuan atas pengembalian yang Anda ajukan.'}
           </p>
         </div>
+        {!hanyaPantau && (
         <div className="ml-auto flex items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-[10.5px] font-extrabold">
           {[
             { id: 'masuk', label: 'Masuk ke saya' },
@@ -189,6 +200,7 @@ export default function PengembalianKanbanPanel({ arahAwal = 'masuk' }) {
             </button>
           ))}
         </div>
+        )}
         <button
           type="button"
           onClick={() => muat()}

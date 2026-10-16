@@ -3,10 +3,13 @@ import { Plus, Search, ChevronRight, GripVertical, Trash2, X, UploadCloud } from
 import apiClient from '../../../../api/apiClient';
 import { uiConfirm } from '../../../../utils/dialog';
 import UnitBisnisSelect, { namaUnitBisnis, useUnitBisnisOptions } from '../components/UnitBisnisField';
+import UnitBisnisFilter from '../../../../components/UnitBisnisFilter';
+import { cocokUnit, hitungPerUnit } from '../../../../utils/unitBisnis';
 
 export function CategoriesPage() {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [filterUnit, setFilterUnit] = useState('');
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
 
@@ -156,7 +159,9 @@ export function CategoriesPage() {
     }
   };
 
+  // Kelompok per unit bisnis (2026-10-16); kategori tanpa unit = umum (semua unit).
   const filteredCategories = categories.filter(cat =>
+    cocokUnit(cat.unit_bisnis, filterUnit) &&
     cat.nama.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -578,6 +583,13 @@ export function CategoriesPage() {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
+          <UnitBisnisFilter
+            value={filterUnit}
+            onChange={setFilterUnit}
+            jumlah={hitungPerUnit(categories, (c) => c.unit_bisnis ?? null)}
+            labelTanpaUnit="Umum (semua unit)"
+            className="mb-3"
+          />
           {error && <p style={{ color: '#dc2626', fontSize: 13, marginBottom: 8 }}>{error}</p>}
           
           <div style={{ marginTop: '12px' }}>

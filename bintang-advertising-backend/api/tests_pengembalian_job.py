@@ -142,14 +142,17 @@ class PengembalianJobTest(APITestCase):
     def test_kordiv_tujuan_dan_manajemen_hanya_cadangan(self):
         pid1 = self._ajukan().data['id']
         self.assertEqual(self._putuskan('terima', pid1, self.kordiv_editor).status_code, 200)
-        # Ajukan lagi -> manager juga bisa jadi cadangan.
+        # Ajukan lagi -> manager hanya melihat daftar, tidak memutuskan (2026-10-16).
         self.job_op.refresh_from_db()
         self.job_op.status_pekerjaan = 'dikerjakan'
         self.job_op.save()
         self.job_editor.status_pekerjaan = 'selesai'
         self.job_editor.save()
         pid2 = self._ajukan().data['id']
-        self.assertEqual(self._putuskan('terima', pid2, self.manager).status_code, 200)
+        self.assertEqual(self._putuskan('terima', pid2, self.manager).status_code, 403)
+        self.client.force_authenticate(self.manager)
+        daftar = self.client.get('/api/pengembalian-job/', {'arah': 'masuk', 'status': 'semua'}, secure=True).json()
+        self.assertIn(pid2, [d['id'] for d in daftar])
 
     def test_job_tujuan_tanpa_pic_bisa_diputuskan_staff_divisi_tujuan(self):
         self.job_editor.pic_staff = None

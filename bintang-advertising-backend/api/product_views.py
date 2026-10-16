@@ -18,7 +18,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.exceptions import ValidationError
-from api.permissions import IsOwnerManagerAdminSpvFinanceOrReadOnly, IsOwnerManagerAdminFinanceOrReadOnly, scoped_by_unit_bisnis
+from api.permissions import IsOwnerManagerAdminSpvFinanceOrReadOnly, IsOwnerManagerAdminFinanceOrReadOnly, filter_param_unit_bisnis, scoped_by_unit_bisnis
 from api.unit_bisnis_scope import UnitBisnisScopedMixin
 from rest_framework.response import Response
 
@@ -538,6 +538,8 @@ class ProductViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         queryset = scoped_by_unit_bisnis(queryset, self.request.user)
+        # ?unit_bisnis=<id|none> untuk Daftar Harga per unit (2026-10-16); tidak melebarkan akses.
+        queryset = filter_param_unit_bisnis(queryset, self.request)
         # is_active=true/false SEBELUMNYA dikirim Kasir (PosTerminal.jsx,
         # ProductListPage.jsx) tapi diam-diam diabaikan di sini — produk yang
         # sudah dinonaktifkan tetap muncul & bisa dijual di POS (dibuktikan
