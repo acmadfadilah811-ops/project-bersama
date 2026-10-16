@@ -396,6 +396,8 @@ class ExportStaffPerformanceView(APIView):
         jobs_qs = JobBoard.objects.select_related(
             'order_item', 'order_item__order', 'tahap', 'tahap__divisi', 'pic_staff'
         ).order_by('-waktu_selesai')
+        from api.permissions import filter_param_unit_bisnis
+        jobs_qs = filter_param_unit_bisnis(jobs_qs, request, 'tahap__divisi__unit_bisnis')
 
         if start and end:
             jobs_qs = jobs_qs.filter(waktu_selesai__gte=start, waktu_selesai__lte=end)

@@ -302,7 +302,13 @@ class StaffPerformanceReportView(APIView):
         start = None
         end = None
         
-        if time_range == 'bulan_ini':
+        if time_range == 'hari_ini':
+            start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+        elif time_range == 'tujuh_hari':
+            start = (now - timezone.timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0)
+            end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+        elif time_range == 'bulan_ini':
             start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
             _, last_day = calendar.monthrange(now.year, now.month)
             end = now.replace(day=last_day, hour=23, minute=59, second=59, microsecond=999999)
@@ -316,8 +322,13 @@ class StaffPerformanceReportView(APIView):
             _, last_day = calendar.monthrange(year, month)
             end = now.replace(year=year, month=month, day=last_day, hour=23, minute=59, second=59, microsecond=999999)
 
-        # Ambil semua user dengan role staff (dioptimasi dengan prefetch_related)
-        staff_members = CustomUser.objects.filter(role='staff').select_related('divisi').prefetch_related('my_tasks', 'absensi')
+        # Staff & kordiv aktif (kordiv ikut mengerjakan SPK), bisa disaring per unit bisnis
+        # (?unit_bisnis=<id|none>) -- 2026-10-17. Dulu hanya role 'staff', akun nonaktif ikut.
+        from ..permissions import filter_param_unit_bisnis
+        staff_members = CustomUser.objects.filter(role__in=['staff', 'kordiv'], is_active=True).select_related(
+            'divisi', 'unit_bisnis',
+        ).prefetch_related('my_tasks', 'absensi')
+        staff_members = filter_param_unit_bisnis(staff_members, request)
         
         from hr.models import DailyAttendanceSession
         if start and end:
@@ -384,6 +395,10 @@ class StaffPerformanceReportView(APIView):
                 'username': staff.username,
                 'nama_lengkap': staff.get_full_name() or staff.username,
                 'divisi': staff.divisi.nama if staff.divisi else '-',
+                'jabatan': staff.posisi or '',
+                'role': staff.role,
+                'unit_bisnis': staff.unit_bisnis_id,
+                'unit_bisnis_nama': staff.unit_bisnis.nama if staff.unit_bisnis_id else '',
                 'jobs_total': total_jobs,
                 'jobs_completed': len(completed_jobs),
                 'jobs_in_progress': len(active_jobs),
@@ -400,8 +415,9 @@ class StaffPerformanceReportView(APIView):
             
         # Detailed Jobs
         jobs_qs = JobBoard.objects.select_related(
-            'order_item', 'order_item__order', 'tahap', 'tahap__divisi', 'pic_staff'
+            'order_item', 'order_item__order', 'tahap', 'tahap__divisi', 'tahap__divisi__unit_bisnis', 'pic_staff'
         ).order_by('-waktu_selesai')
+        jobs_qs = filter_param_unit_bisnis(jobs_qs, request, 'tahap__divisi__unit_bisnis')
         
         if start and end:
             jobs_qs = jobs_qs.filter(waktu_selesai__gte=start, waktu_selesai__lte=end)
@@ -425,6 +441,10 @@ class StaffPerformanceReportView(APIView):
                 'qty': j.order_item.qty if j.order_item else 1,
                 'tahap': j.tahap.nama if j.tahap else '-',
                 'divisi': j.tahap.divisi.nama if j.tahap and j.tahap.divisi else '-',
+                'unit_bisnis': j.tahap.divisi.unit_bisnis_id if j.tahap and j.tahap.divisi else None,
+                'unit_bisnis_nama': (
+                    j.tahap.divisi.unit_bisnis.nama if j.tahap and j.tahap.divisi and j.tahap.divisi.unit_bisnis_id else ''
+                ),
                 'pic_username': j.pic_staff.username if j.pic_staff else 'Unassigned',
                 'pic_fullname': j.pic_staff.get_full_name() or j.pic_staff.username if j.pic_staff else 'Unassigned',
                 'status': j.status_pekerjaan,
