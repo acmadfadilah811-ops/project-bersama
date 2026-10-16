@@ -32,6 +32,13 @@ import {
 dayjs.extend(relativeTime);
 dayjs.locale('id');
 
+const LABEL_KONTRAK = {
+  tetap: 'Karyawan Tetap',
+  kontrak: 'Kontrak (PKWT)',
+  magang: 'Magang (Internship)',
+  freelance: 'Freelance / Harian',
+};
+
 const ROLE_LABEL = {
   owner: 'Owner',
   manager: 'Manager',
@@ -66,14 +73,10 @@ export default function Employees() {
   // State untuk Modal
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [pkwtFile, setPkwtFile] = useState(null);
   const [formData, setFormData] = useState({
     divisi: '',
     unit_bisnis: '',
     status_karyawan: 'aktif',
-    jenis_kontrak: 'tetap',
-    kontrak_mulai: '',
-    kontrak_selesai: '',
   });
 
   const fetchEmployees = async () => {
@@ -104,11 +107,7 @@ export default function Employees() {
       divisi: emp.divisi ?? '',
       unit_bisnis: emp.unit_bisnis ?? '',
       status_karyawan: emp.status_karyawan || 'aktif',
-      jenis_kontrak: emp.jenis_kontrak || 'tetap',
-      kontrak_mulai: emp.kontrak_mulai || '',
-      kontrak_selesai: emp.kontrak_selesai || '',
     });
-    setPkwtFile(null);
   };
 
   const aturArsip = async (emp, arsip) => {
@@ -152,12 +151,6 @@ export default function Employees() {
       data.append('divisi', formData.divisi);
       data.append('unit_bisnis', formData.unit_bisnis);
       data.append('status_karyawan', formData.status_karyawan);
-      data.append('jenis_kontrak', formData.jenis_kontrak);
-      data.append('kontrak_mulai', formData.kontrak_mulai);
-      data.append('kontrak_selesai', formData.kontrak_selesai);
-      if (pkwtFile) {
-        data.append('file_pkwt', pkwtFile);
-      }
 
       // Mengirim data update ke backend dengan FormData
       const res = await apiClient.patch(`/users/${selectedEmployee.id}/`, data, {
@@ -171,7 +164,7 @@ export default function Employees() {
       setEmployees(employees.map((e) => (e.id === selectedEmployee.id ? updatedEmp : e)));
       setSelectedEmployee(updatedEmp);
 
-      alert('Penempatan kerja, status, dan kontrak berhasil diperbarui!');
+      alert('Penempatan kerja dan status berhasil diperbarui!');
     } catch (err) {
       console.error('Gagal update data:', err);
       alert(getApiErrorMessage(err, 'Gagal menyimpan perubahan.'));
@@ -543,59 +536,24 @@ export default function Employees() {
                     </select>
                   </div>
 
-                  {/* Jenis Kontrak */}
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-slate-700">Jenis Kontrak</label>
-                    <div className="flex items-center gap-2">
-                      <FileText size={18} className="text-slate-400" />
-                      <select
-                        name="jenis_kontrak"
-                        value={formData.jenis_kontrak}
-                        onChange={handleInputChange}
-                        className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                      >
-                        <option value="tetap">Karyawan Tetap</option>
-                        <option value="kontrak">Kontrak (PKWT)</option>
-                        <option value="magang">Magang (Internship)</option>
-                        <option value="freelance">Freelance / Harian</option>
-                      </select>
+                  {/* Kontrak: hanya tampil. Data berasal dari HR; ubah kontrak di HR (2026-10-17). */}
+                  <div className="col-span-1 md:col-span-2 space-y-2 pt-4 border-t border-slate-100">
+                    <p className="text-sm font-semibold text-slate-700">Kontrak (dari HR)</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                      <div>
+                        <p className="text-xs text-slate-500 font-medium">Jenis Kontrak</p>
+                        <p className="font-semibold text-slate-800">{LABEL_KONTRAK[selectedEmployee.jenis_kontrak] || selectedEmployee.jenis_kontrak || '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500 font-medium">Mulai</p>
+                        <p className="font-semibold text-slate-800">{selectedEmployee.kontrak_mulai ? dayjs(selectedEmployee.kontrak_mulai).format('DD MMM YYYY') : '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500 font-medium">Selesai</p>
+                        <p className="font-semibold text-slate-800">{selectedEmployee.kontrak_selesai ? dayjs(selectedEmployee.kontrak_selesai).format('DD MMM YYYY') : '-'}</p>
+                      </div>
                     </div>
-                  </div>
-
-                  {/* Periode Kontrak */}
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-slate-700">Mulai Kontrak</label>
-                    <input
-                      type="date"
-                      name="kontrak_mulai"
-                      value={formData.kontrak_mulai}
-                      onChange={handleInputChange}
-                      className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-slate-700">Selesai Kontrak</label>
-                    <input
-                      type="date"
-                      name="kontrak_selesai"
-                      value={formData.kontrak_selesai}
-                      onChange={handleInputChange}
-                      className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                    />
-                  </div>
-
-                  {/* Unggah Berkas PKWT */}
-                  <div className="col-span-1 md:col-span-2 space-y-1.5 pt-4 border-t border-slate-100">
-                    <label className="text-sm font-semibold text-slate-700 block">
-                      Unggah File Kontrak PKWT (PDF / Gambar)
-                    </label>
-                    <input
-                      type="file"
-                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                      onChange={(e) => setPkwtFile(e.target.files[0])}
-                      className="w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer"
-                    />
+                    <p className="text-[11px] text-slate-400">Kontrak dan dokumen PKWT diubah lewat HR, bukan di ERP.</p>
                     {selectedEmployee.file_pkwt && (
                       <div className="flex items-center gap-2 p-2 bg-indigo-50/50 rounded-lg text-xs mt-2 border border-indigo-100/50">
                         <FileText size={14} className="text-indigo-500 shrink-0" />

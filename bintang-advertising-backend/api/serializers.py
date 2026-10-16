@@ -118,7 +118,8 @@ class CustomUserSerializer(serializers.ModelSerializer):
             'atasan', 'atasan_nama', 'is_active', 'diarsipkan',
         ]
         # Arsip hanya lewat aksi /users/{id}/arsip/ (wajib akun nonaktif).
-        read_only_fields = ['is_active', 'diarsipkan']
+        # Data kontrak dikelola di HR; ERP hanya menampilkan (2026-10-17).
+        read_only_fields = ['is_active', 'diarsipkan', 'jenis_kontrak', 'kontrak_mulai', 'kontrak_selesai', 'file_pkwt']
 
     def to_representation(self, instance):
         rep = super().to_representation(instance)

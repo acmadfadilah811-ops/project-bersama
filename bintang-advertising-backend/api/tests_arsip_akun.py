@@ -44,3 +44,21 @@ class AiAnalystTanpaManagerTests(TestCase):
         self.assertEqual(api.get('/api/ai-business-analyst/').status_code, 403)
         res = api.post('/api/ai-business-analyst/chat/', {'messages': [{'role': 'user', 'content': 'hai'}]}, format='json')
         self.assertEqual(res.status_code, 403)
+
+
+class KontrakHanyaDariHrTests(TestCase):
+    """Data kontrak tidak bisa diubah lewat ERP; hanya dari HR (2026-10-17)."""
+
+    def test_patch_kontrak_diabaikan(self):
+        owner = CustomUser.objects.create_user(username='own2', password='x', role='owner', email='o2@x.id')
+        staff = CustomUser.objects.create_user(username='stf2', password='x', role='staff', email='s2@x.id')
+        api = APIClient()
+        api.force_authenticate(owner)
+        res = api.patch(f'/api/users/{staff.id}/', {
+            'jenis_kontrak': 'freelance', 'kontrak_mulai': '2026-01-01', 'status_karyawan': 'cuti',
+        }, format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        staff.refresh_from_db()
+        self.assertEqual(staff.jenis_kontrak, 'tetap')
+        self.assertIsNone(staff.kontrak_mulai)
+        self.assertEqual(staff.status_karyawan, 'cuti')
