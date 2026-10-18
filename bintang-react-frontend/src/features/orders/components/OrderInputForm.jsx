@@ -36,6 +36,17 @@ export default function OrderInputForm({ isOpen, onClose, onSuccess }) {
     kartu_nama_aster_200: 'Kartu Nama Aster 200',
   };
 
+  // Karyawan yang melayani pelanggan (wajib; menentukan unit bisnis pesanan).
+  const [pelayanList, setPelayanList] = useState([]);
+  const fetchPelayan = async () => {
+    try {
+      const res = await apiClient.get('/pos/sales/staff-list/');
+      setPelayanList(Array.isArray(res.data) ? res.data : res.data?.results || []);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const fetchPrices = async () => {
     try {
       const res = await apiClient.get('/product-prices/');
@@ -48,10 +59,12 @@ export default function OrderInputForm({ isOpen, onClose, onSuccess }) {
   useEffect(() => {
     if (isOpen) {
       fetchPrices();
+      fetchPelayan();
       setFormData({
         waktu: toLocalDateTimeInput(), // Format YYYY-MM-DDTHH:MM
         nomor_wa: '',
         nama: '',
+        dilayani_oleh_id: '',
         catatan_pelanggan: '',
         metode_pembayaran: 'tunai',
         status_global: 'review',
@@ -125,6 +138,7 @@ export default function OrderInputForm({ isOpen, onClose, onSuccess }) {
     waktu: toLocalDateTimeInput(), // Format YYYY-MM-DDTHH:MM
     nomor_wa: '',
     nama: '',
+    dilayani_oleh_id: '',
     catatan_pelanggan: '',
     metode_pembayaran: 'tunai',
     status_global: 'review',
@@ -229,6 +243,7 @@ export default function OrderInputForm({ isOpen, onClose, onSuccess }) {
     if (isSubmitting) return; // Mencegah double submit jika user klik ganda tombol simpan
 
     if (!formData.nomor_wa || !formData.nama) return alert('Data pelanggan wajib diisi!');
+    if (!formData.dilayani_oleh_id) return alert('Pilih karyawan yang melayani (Dilayani Oleh).');
     if (formData.items.some((item) => !item.jenis_produk))
       return alert('Pastikan semua item memiliki jenis produk!');
 
@@ -247,6 +262,7 @@ export default function OrderInputForm({ isOpen, onClose, onSuccess }) {
       const orderRes = await apiClient.post('/orders/', {
         nomor_wa: formData.nomor_wa,
         nama: formData.nama,
+        dilayani_oleh_id: Number(formData.dilayani_oleh_id),
         waktu: parsedWaktu,
         catatan_pelanggan: formData.catatan_pelanggan,
         metode_pembayaran: formData.metode_pembayaran,
@@ -285,7 +301,10 @@ export default function OrderInputForm({ isOpen, onClose, onSuccess }) {
       onSuccess(); // Tutup & refresh
     } catch (err) {
       console.error('Gagal simpan order:', err);
-      alert('Gagal menyimpan pesanan. Periksa koneksi atau console log.');
+      const d = err.response?.data;
+      const pesanServer = (typeof d === 'string' ? '' : d?.error || d?.detail)
+        || (d && typeof d === 'object' ? Object.values(d).flat().filter((v) => typeof v === 'string')[0] : '');
+      alert(pesanServer || 'Gagal menyimpan pesanan. Periksa koneksi atau console log.');
     } finally {
       setIsSubmitting(false);
     }
@@ -352,6 +371,22 @@ export default function OrderInputForm({ isOpen, onClose, onSuccess }) {
                       onChange={(e) => setFormData({ ...formData, nama: e.target.value })}
                       className="w-full p-2 bg-slate-50 border border-slate-200 rounded-md text-[13px] outline-none focus:ring-1 focus:ring-slate-900"
                     />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1.5 uppercase">
+                      Dilayani Oleh <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      required
+                      value={formData.dilayani_oleh_id}
+                      onChange={(e) => setFormData({ ...formData, dilayani_oleh_id: e.target.value })}
+                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-md text-[13px] outline-none focus:ring-1 focus:ring-slate-900"
+                    >
+                      <option value="">Pilih karyawan…</option>
+                      {pelayanList.map((u) => (
+                        <option key={u.id} value={u.id}>{u.nama}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               </div>
