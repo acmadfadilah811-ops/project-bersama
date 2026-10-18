@@ -27,6 +27,28 @@ class IsOwnerOrManagerPerm(IsOwnerOrManager):
     pass
 
 
+# Mulai Kerja di ERP baru boleh setelah karyawan absen masuk di HR (2026-10-18).
+ROLE_MULAI_KERJA_BUTUH_HR = ('staff', 'kordiv', 'spv')
+# SPV/Kordiv tidak dikunci batas waktu absen; mereka wajib Mulai Kerja dulu (gerbang di layout),
+# jadi terlambat hanya ditandai 'terlambat', bukan ditolak.
+ROLE_BEBAS_BATAS_WAKTU = ('kordiv', 'spv')
+
+
+def status_absen_hr(user):
+    """Status absen masuk di HR hari ini: 'masuk' | 'belum' | 'pulang' | 'hr_tidak_tersedia'
+    | None (peran/akun tidak diwajibkan atau belum tertaut HR)."""
+    if user.role not in ROLE_MULAI_KERJA_BUTUH_HR or not getattr(user, 'hr_employee_id', None):
+        return None
+    from api.services.absensi_hr_gate import _status_hr
+
+    data = _status_hr(user.hr_employee_id, pakai_cache=False)
+    if data.get('hr_tidak_tersedia'):
+        return 'hr_tidak_tersedia'
+    if not data.get('applicable'):
+        return None
+    return data.get('status')
+
+
 def get_or_create_daily_session():
     from datetime import datetime, timedelta
     from api.models import SystemConfig
@@ -159,8 +181,19 @@ class ClockInView(APIView):
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
+        # 1c. Wajib absen masuk di HR lebih dulu (HR sumber absensi). Fail-open bila HR
+        #     tidak bisa dihubungi, supaya gangguan HR tidak menghentikan pekerjaan.
+        absen_hr = status_absen_hr(request.user)
+        if absen_hr in ('belum', 'pulang'):
+            return Response(
+                {"detail": "Absen masuk dulu di aplikasi HR (HP atau web), lalu tekan Mulai Kerja."
+                           if absen_hr == 'belum' else
+                           "Anda sudah absen pulang di HR hari ini. Mulai Kerja butuh absen masuk di HR."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         # 2. Cek batas maksimal dan persetujuan keterlambatan.
-        if now > session.batas_maksimal:
+        if now > session.batas_maksimal and request.user.role not in ROLE_BEBAS_BATAS_WAKTU:
             # Cek apakah punya UnlockRequest yang di-approve hari ini
             approved_request = UnlockRequest.objects.filter(
                 staff=request.user, sesi=session, status="approved"
@@ -704,6 +737,7 @@ class StaffDashboardView(APIView):
                     "unlock_request": unlock_request,
                     "workspace_unlocked": absensi_hari_ini.workspace_unlocked if absensi_hari_ini else False,
                 },
+                "status_absen_hr": status_absen_hr(user),
                 "absensi_hari_ini": absensi_data,
                 "timecard_bulan_ini": {
                     "bulan": now_month,

@@ -4,6 +4,7 @@ import Topbar from './Topbar';
 import { useAuth } from '../context/AuthContext';
 import { useEffect, useState } from 'react';
 import LockedScreen from './LockedScreen';
+import MulaiKerjaGate from './MulaiKerjaGate';
 import apiClient from '../api/apiClient';
 import { LayoutDashboard, CalendarClock, ShoppingCart, Kanban, User, Camera, Wand2, Users } from 'lucide-react';
 import { useMenuStarfoto } from '../features/starfoto/hooks/useMenuSesiFoto';
@@ -13,6 +14,8 @@ export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [statusTerkunci, setStatusTerkunci] = useState(null);
+  // SPV & Kordiv: menu terkunci sampai Mulai Kerja ditekan (2026-10-18).
+  const [gerbangMulai, setGerbangMulai] = useState({ perlu: false, statusHr: null });
   const [loading, setLoading] = useState(true);
   const [isMobileScreen, setIsMobileScreen] = useState(() => window.innerWidth < 768);
   const menuStarfoto = useMenuStarfoto();
@@ -27,13 +30,20 @@ export default function Layout() {
   }, []);
 
   const checkStatus = async () => {
-    if (!user || user.role?.toLowerCase() !== 'staff') {
+    const peran = user?.role?.toLowerCase();
+    if (!user || !['staff', 'spv', 'kordiv'].includes(peran)) {
       setLoading(false);
       return;
     }
     try {
       const response = await apiClient.get('/hr/dashboard/staff/');
       setStatusTerkunci(response.data.status_terkunci);
+      if (peran === 'spv' || peran === 'kordiv') {
+        setGerbangMulai({
+          perlu: !response.data.absensi_hari_ini?.jam_masuk,
+          statusHr: response.data.status_absen_hr || null,
+        });
+      }
     } catch (error) {
       console.error('Error checking lock status:', error);
     } finally {
@@ -45,16 +55,20 @@ export default function Layout() {
     checkStatus();
   }, [user]);
 
-  if (location.pathname.startsWith('/produksi')) {
-    return <Outlet />;
-  }
-
   if (loading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-slate-50">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
       </div>
     );
+  }
+
+  if (gerbangMulai.perlu) {
+    return <MulaiKerjaGate statusAbsenHr={gerbangMulai.statusHr} onSelesai={checkStatus} onMuatUlang={checkStatus} />;
+  }
+
+  if (location.pathname.startsWith('/produksi')) {
+    return <Outlet />;
   }
 
   if (statusTerkunci && statusTerkunci.is_locked) {

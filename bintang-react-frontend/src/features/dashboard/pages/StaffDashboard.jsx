@@ -230,6 +230,8 @@ export default function StaffDashboard() {
   // sehingga Clock Out gagal terus dengan pesan "Belum ada clock-in".
   const isClockedIn = Boolean(absensi_hari_ini?.jam_masuk);
   const isClockedOut = Boolean(absensi_hari_ini?.jam_keluar);
+  // Mulai Kerja di ERP baru bisa setelah absen masuk di HR (2026-10-18).
+  const belumAbsenHr = ['belum', 'pulang'].includes(dashboardData?.status_absen_hr);
 
   return (
     <div className="space-y-3 max-w-7xl mx-auto pb-4 animate-fade-in relative">
@@ -296,11 +298,12 @@ export default function StaffDashboard() {
           <div className="flex gap-2 mt-auto">
             <button
               onClick={handleClockIn}
-              disabled={isClockedIn || actionLoading}
+              disabled={isClockedIn || actionLoading || belumAbsenHr}
+              title={belumAbsenHr ? 'Absen masuk dulu di aplikasi HR' : undefined}
               className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5
-                ${isClockedIn ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-600 text-white'}`}
+                ${isClockedIn || belumAbsenHr ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-600 text-white'}`}
             >
-              {isClockedIn ? 'Sedang Bekerja' : 'Mulai Kerja'}
+              {isClockedIn ? 'Sedang Bekerja' : belumAbsenHr ? 'Absen di HR dulu' : 'Mulai Kerja'}
             </button>
             <button
               onClick={() => setShowClockOutModal(true)}
