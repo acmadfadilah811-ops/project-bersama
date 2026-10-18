@@ -17,7 +17,7 @@ export default function LaporanApp() {
           <Routes>
             <Route path="pencairan-dana" element={<PencairanDana />} />
             <Route path="laporan" element={<Laporan />} />
-            <Route path="*" element={<Navigate to="pencairan-dana" replace />} />
+            <Route path="*" element={<Navigate to="/laporan/pencairan-dana" replace />} />
           </Routes>
         </div>
       </div>

@@ -17,7 +17,7 @@ export default function MarketingApp() {
           <Routes>
             <Route path="voucher-diskon" element={<VoucherDiskon />} />
             <Route path="loyalty-point" element={<LoyaltyPoint />} />
-            <Route path="*" element={<Navigate to="voucher-diskon" replace />} />
+            <Route path="*" element={<Navigate to="/marketing/voucher-diskon" replace />} />
           </Routes>
         </div>
       </div>

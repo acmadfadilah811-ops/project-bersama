@@ -27,7 +27,7 @@ export default function SettingsApp() {
             <Route path="insentif" element={<JenisInsentif />} />
             <Route path="starfoto" element={<PengaturanStarfotoPage />} />
             <Route path="cetak" element={<PrinterSettings />} />
-            <Route path="*" element={<Navigate to="point-of-sale" replace />} />
+            <Route path="*" element={<Navigate to="/settings/point-of-sale" replace />} />
           </Routes>
         </div>
       </div>

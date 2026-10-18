@@ -19,7 +19,7 @@ export default function TransaksiApp() {
             <Route path="penjualan" element={<Penjualan />} />
             <Route path="pembelian" element={<Pembelian />} />
             <Route path="pendapatan-pengeluaran" element={<PendapatanPengeluaran />} />
-            <Route path="*" element={<Navigate to="penjualan" replace />} />
+            <Route path="*" element={<Navigate to="/transaksi/penjualan" replace />} />
           </Routes>
         </div>
       </div>

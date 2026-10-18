@@ -106,7 +106,7 @@ export default function KasirApp() {
               <Route path="ringkasan-shift-v2" element={<PosRekapHarian onToggleSidebar={handleToggleSidebar} />} />
               <Route path="pengaturan-cetak" element={<PrinterSettings />} />
               <Route path="pengaturan-wa" element={<Navigate to="/kasir/dashboard" replace />} />
-              <Route path="*" element={<Navigate to="dashboard" replace />} />
+              <Route path="*" element={<Navigate to="/kasir/dashboard" replace />} />
             </Routes>
           </main>
         </div>
