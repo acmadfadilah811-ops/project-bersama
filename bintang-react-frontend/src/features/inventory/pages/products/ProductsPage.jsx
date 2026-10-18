@@ -725,7 +725,13 @@ export default function ProductsPage() {
               <select
                 className="pi-store-select"
                 value={formUnitBisnis ? String(formUnitBisnis) : ''}
-                onChange={(e) => setFormUnitBisnis(e.target.value)}
+                onChange={(e) => {
+                  const unitBaru = e.target.value;
+                  setFormUnitBisnis(unitBaru);
+                  // Kategori yang tidak cocok dengan unit baru dilepas (kategori umum tetap boleh).
+                  const kat = categories.find((c) => String(c.id) === String(formKategori));
+                  if (kat && unitBaru && kat.unit_bisnis && String(kat.unit_bisnis) !== String(unitBaru)) setFormKategori('');
+                }}
                 title="Kosongkan supaya produk tetap tampil ke kedua unit -- staff/kasir cuma lihat unit sendiri kalau ditandai"
               >
                 <option value="">(Semua unit)</option>
@@ -803,9 +809,13 @@ export default function ProductsPage() {
             <div className="pi-row-input">
               <select value={formKategori} onChange={(e) => setFormKategori(e.target.value)}>
                 <option value="" disabled>Pilih salah satu</option>
-                {categories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>{cat.nama}</option>
-                ))}
+                {/* Kategori disaring menurut unit bisnis produk: kategori unit itu + kategori umum. */}
+                {categories
+                  .filter((cat) => !formUnitBisnis || !cat.unit_bisnis
+                    || String(cat.unit_bisnis) === String(formUnitBisnis) || String(cat.id) === String(formKategori))
+                  .map((cat) => (
+                    <option key={cat.id} value={cat.id}>{cat.nama}</option>
+                  ))}
               </select>
             </div>
           </div>

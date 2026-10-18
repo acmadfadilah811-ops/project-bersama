@@ -53,3 +53,42 @@ class MulaiKerjaHrTests(APITestCase):
         res = api.get('/api/hr/dashboard/staff/', secure=True)
         self.assertEqual(res.status_code, 200, res.content)
         self.assertEqual(res.json()['status_absen_hr'], 'belum')
+
+
+class ManagerAbsenTests(APITestCase):
+    """Manager wajib Mulai Kerja; hanya owner & admin yang tidak absen (2026-10-19)."""
+
+    def setUp(self):
+        self.manager = CustomUser.objects.create_user(
+            username='mgr.abs', password='x', role='manager', email='m@x.id', hr_employee_id=201,
+            first_name='Nasul', last_name='Fikar')
+        self.owner = CustomUser.objects.create_user(username='own.abs', password='x', role='owner', email='o@x.id')
+        self.admin = CustomUser.objects.create_user(username='adm.abs', password='x', role='admin', email='a@x.id')
+        self.spv = CustomUser.objects.create_user(username='spv.abs', password='x', role='spv', email='p@x.id')
+        DailyAttendanceSession.objects.update_or_create(
+            tanggal=timezone.localdate(),
+            defaults={'waktu_mulai': timezone.now() - timedelta(hours=5),
+                      'batas_maksimal': timezone.now() - timedelta(hours=4), 'is_active': True},
+        )
+
+    @patch('api.services.absensi_hr_gate._status_hr', return_value={'applicable': True, 'status': 'belum'})
+    def test_manager_butuh_absen_hr(self, _):
+        api = APIClient()
+        api.force_authenticate(self.manager)
+        self.assertEqual(api.post('/api/hr/absensi/clock-in/', {}, format='json', secure=True).status_code, 403)
+
+    @patch('api.services.absensi_hr_gate._status_hr', return_value={'applicable': True, 'status': 'masuk'})
+    def test_manager_lewat_batas_tetap_boleh(self, _):
+        api = APIClient()
+        api.force_authenticate(self.manager)
+        res = api.post('/api/hr/absensi/clock-in/', {}, format='json', secure=True)
+        self.assertEqual(res.status_code, 201, res.content)
+
+    def test_daftar_absensi_tanpa_owner_admin_dengan_nama_asli(self):
+        kemarin = timezone.localdate() - timedelta(days=1)
+        api = APIClient()
+        api.force_authenticate(self.admin)  # admin boleh melihat semua
+        res = api.get('/api/hr/absensi/', {'tanggal': kemarin.isoformat()}, secure=True)
+        self.assertEqual(res.status_code, 200, res.content)
+        nama = {r['staff_nama'] for r in res.json()}
+        self.assertEqual(nama, {'Nasul Fikar', 'spv.abs'})  # manager (nama asli) & spv; owner/admin tidak ada

@@ -14,7 +14,7 @@ export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [statusTerkunci, setStatusTerkunci] = useState(null);
-  // SPV & Kordiv: menu terkunci sampai Mulai Kerja ditekan (2026-10-18).
+  // SPV, Kordiv & Manager: menu terkunci sampai Mulai Kerja ditekan (2026-10-18/19).
   const [gerbangMulai, setGerbangMulai] = useState({ perlu: false, statusHr: null });
   const [loading, setLoading] = useState(true);
   const [isMobileScreen, setIsMobileScreen] = useState(() => window.innerWidth < 768);
@@ -31,14 +31,14 @@ export default function Layout() {
 
   const checkStatus = async () => {
     const peran = user?.role?.toLowerCase();
-    if (!user || !['staff', 'spv', 'kordiv'].includes(peran)) {
+    if (!user || !['staff', 'spv', 'kordiv', 'manager'].includes(peran)) {
       setLoading(false);
       return;
     }
     try {
       const response = await apiClient.get('/hr/dashboard/staff/');
       setStatusTerkunci(response.data.status_terkunci);
-      if (peran === 'spv' || peran === 'kordiv') {
+      if (peran === 'spv' || peran === 'kordiv' || peran === 'manager') {
         setGerbangMulai({
           perlu: !response.data.absensi_hari_ini?.jam_masuk,
           statusHr: response.data.status_absen_hr || null,

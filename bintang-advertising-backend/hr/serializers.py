@@ -5,7 +5,8 @@ from api.protected_media import protected_media_url
 
 
 class AbsensiSerializer(serializers.ModelSerializer):
-    staff_nama = serializers.CharField(source="staff.username", read_only=True)
+    # Nama asli (bukan username) supaya tabel Absensi terbaca; username bila nama belum diisi.
+    staff_nama = serializers.SerializerMethodField()
     divisi_nama = serializers.CharField(source="staff.divisi.nama", read_only=True, default=None)
     # Keterangan pegawai di data absensi (username akan diganti nama asli, jadi admin perlu
     # tahu jabatan & unit bisnisnya): jabatan dari HR, role akun, dan unit bisnis.
@@ -18,6 +19,9 @@ class AbsensiSerializer(serializers.ModelSerializer):
     diverifikasi_oleh_nama = serializers.CharField(
         source="diverifikasi_oleh.username", read_only=True, default=None
     )
+
+    def get_staff_nama(self, obj):
+        return obj.staff.get_full_name() or obj.staff.username
 
     class Meta:
         model = Absensi

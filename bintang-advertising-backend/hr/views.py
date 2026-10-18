@@ -28,10 +28,13 @@ class IsOwnerOrManagerPerm(IsOwnerOrManager):
 
 
 # Mulai Kerja di ERP baru boleh setelah karyawan absen masuk di HR (2026-10-18).
-ROLE_MULAI_KERJA_BUTUH_HR = ('staff', 'kordiv', 'spv')
-# SPV/Kordiv tidak dikunci batas waktu absen; mereka wajib Mulai Kerja dulu (gerbang di layout),
-# jadi terlambat hanya ditandai 'terlambat', bukan ditolak.
-ROLE_BEBAS_BATAS_WAKTU = ('kordiv', 'spv')
+ROLE_MULAI_KERJA_BUTUH_HR = ('staff', 'kordiv', 'spv', 'manager')
+# Peran yang wajib Mulai Kerja (dan muncul di data Absensi). Hanya owner & admin/superuser yang
+# tidak absen (2026-10-19).
+ROLE_ABSEN_ERP = ('staff', 'kordiv', 'spv', 'manager')
+# SPV/Kordiv/Manager tidak dikunci batas waktu absen; mereka wajib Mulai Kerja dulu (gerbang di
+# layout), jadi terlambat hanya ditandai 'terlambat', bukan ditolak.
+ROLE_BEBAS_BATAS_WAKTU = ('kordiv', 'spv', 'manager')
 
 
 def status_absen_hr(user):
@@ -109,7 +112,7 @@ def sync_attendance_for_range(start_date, end_date):
     if not target_dates:
         return
         
-    active_staff = list(CustomUser.objects.filter(is_active=True, role__in=["staff", "manager"]))
+    active_staff = list(CustomUser.objects.filter(is_active=True, is_superuser=False, role__in=ROLE_ABSEN_ERP))
     if not active_staff:
         return
 
@@ -330,8 +333,11 @@ class AbsensiListView(APIView):
 
             base_qs = Absensi.objects.filter(tanggal__month=b_int, tanggal__year=t_int)
 
-        if user.role in ("owner", "manager"):
-            qs = base_qs.select_related("staff", "staff__divisi", "staff__unit_bisnis")
+        if user.role in ("owner", "manager", "admin"):
+            # Owner & admin/superuser tidak absen: barisnya (data lama) tidak ditampilkan.
+            qs = base_qs.select_related("staff", "staff__divisi", "staff__unit_bisnis").filter(
+                staff__role__in=ROLE_ABSEN_ERP, staff__is_superuser=False,
+            )
             staff_id = request.query_params.get("staff_id")
             if staff_id:
                 qs = qs.filter(staff_id=staff_id)

@@ -33,7 +33,7 @@ from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
-ROLE_WAJIB_ABSEN = frozenset({'staff', 'kasir', 'spv', 'kordiv', 'admin_finance', 'spv_finance'})
+ROLE_WAJIB_ABSEN = frozenset({'staff', 'kasir', 'spv', 'kordiv', 'manager', 'admin_finance', 'spv_finance'})
 
 DEFAULT_HR_STATUS_ABSENSI_URL = "http://horilla-hr-web-1:8000/api/attendance/status-absensi/"
 DEFAULT_HR_HOST = "hr.starphotoadvertising.com"
