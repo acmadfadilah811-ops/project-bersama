@@ -51,6 +51,24 @@ class InsentifProdukTests(TestCase):
         job.refresh_from_db()
         self.assertEqual(job.insentif, 700)
 
+    def test_persen_dari_harga_jual(self):
+        InsentifProduk.objects.create(product=self.produk, divisi=self.divisi, cara_hitung='persen', persen='2.5')
+        item = OrderItem.objects.create(order=self.order, product=self.produk, jenis_produk='Cetak', qty=3, harga_jual=200000)
+        job = JobBoard.objects.create(order_item=item, tahap=self.tahap)
+        job.refresh_from_db()
+        self.assertEqual(job.insentif, 5000)  # 2,5% x 200.000
+
+    def test_api_persen_wajib_valid(self):
+        owner = CustomUser.objects.create_user(username='own3', password='x', role='owner', email='o3@x.id')
+        api = APIClient()
+        api.force_authenticate(owner)
+        base = {'product': self.produk.id, 'divisi': self.divisi.id, 'cara_hitung': 'persen'}
+        self.assertEqual(api.post('/api/insentif-produk/', {**base, 'persen': 0}, format='json').status_code, 400)
+        self.assertEqual(api.post('/api/insentif-produk/', {**base, 'persen': 120}, format='json').status_code, 400)
+        res = api.post('/api/insentif-produk/', {**base, 'persen': 5, 'nominal': 999}, format='json')
+        self.assertEqual(res.status_code, 201, res.content)
+        self.assertEqual((res.json()['nominal'], res.json()['persen']), (0, '5.00'))
+
     def test_baris_manual_tetap_bisa_ditambah(self):
         InsentifProduk.objects.create(product=self.produk, divisi=self.divisi, cara_hitung='qty', nominal=500)
         job = self._job(self.produk, qty=2)

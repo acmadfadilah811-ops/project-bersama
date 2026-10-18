@@ -34,16 +34,24 @@ def _pastikan_bisa_diubah(job):
 
 
 def _sumber_item(job):
-    """(product_id, qty, luas_m2_total) dari baris pesanan/kasir SPK ini."""
-    item = job.order_item if job.order_item_id else (job.pos_sale_item if job.pos_sale_item_id else None)
-    if item is None or not item.product_id:
-        return None, 0, 0
+    """(product_id, qty, luas_m2_total, nilai_jual) dari baris pesanan/kasir SPK ini.
+    nilai_jual = harga jual baris (OrderItem.harga_jual / POSSaleItem.subtotal), dasar insentif persen."""
+    if job.order_item_id:
+        item, nilai = job.order_item, job.order_item.harga_jual
+    elif job.pos_sale_item_id:
+        item, nilai = job.pos_sale_item, job.pos_sale_item.subtotal
+    else:
+        return None, 0, 0, 0
+    if not item.product_id:
+        return None, 0, 0, 0
     qty = float(item.qty or 0)
     luas = float(item.panjang or 0) * float(item.lebar or 0) * qty
-    return item.product_id, qty, luas
+    return item.product_id, qty, luas, float(nilai or 0)
 
 
-def nominal_aturan_produk(aturan, qty, luas):
+def nominal_aturan_produk(aturan, qty, luas, nilai_jual=0):
+    if aturan.cara_hitung == InsentifProduk.CARA_PERSEN:
+        return int(round(nilai_jual * float(aturan.persen) / 100))
     if aturan.cara_hitung == InsentifProduk.CARA_FLAT:
         return aturan.nominal
     if aturan.cara_hitung == InsentifProduk.CARA_M2:
@@ -59,7 +67,7 @@ def terapkan_otomatis(job):
     aktif untuk divisi ini, Jenis Insentif umum divisi tidak dipakai."""
     divisi_id = job.tahap.divisi_id if job.tahap_id else None
     if divisi_id:
-        product_id, qty, luas = _sumber_item(job)
+        product_id, qty, luas, nilai_jual = _sumber_item(job)
         aturan = None
         if product_id:
             aturan = InsentifProduk.objects.select_related('product').filter(
@@ -71,7 +79,7 @@ def terapkan_otomatis(job):
                 defaults={
                     'nama': f'Insentif {aturan.product.nama}'[:100],
                     # Hanya nominal; rumus hitungan tidak ditampilkan di SPK.
-                    'nominal': nominal_aturan_produk(aturan, qty, luas),
+                    'nominal': nominal_aturan_produk(aturan, qty, luas, nilai_jual),
                     'otomatis': True,
                 },
             )

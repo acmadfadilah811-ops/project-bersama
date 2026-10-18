@@ -44,15 +44,19 @@ class InsentifProduk(models.Model):
     CARA_FLAT = 'flat'
     CARA_QTY = 'qty'
     CARA_M2 = 'm2'
+    CARA_PERSEN = 'persen'
     CARA_CHOICES = [
         (CARA_FLAT, 'Flat per SPK'),
         (CARA_QTY, 'Per qty'),
         (CARA_M2, 'Per m\u00b2'),
+        (CARA_PERSEN, 'Persen dari harga jual'),
     ]
     product = models.ForeignKey('Product', on_delete=models.CASCADE, related_name='insentif_produk')
     divisi = models.ForeignKey('Divisi', on_delete=models.CASCADE, related_name='insentif_produk')
     cara_hitung = models.CharField(max_length=10, choices=CARA_CHOICES, default=CARA_QTY)
     nominal = models.PositiveIntegerField(default=0, help_text='Rp per SPK / per qty / per m2 sesuai cara hitung')
+    # Dipakai bila cara_hitung = persen: % dari harga jual baris pesanan/kasir (2026-10-19).
+    persen = models.DecimalField(max_digits=5, decimal_places=2, default=0, help_text='% dari harga jual item')
     aktif = models.BooleanField(default=True)
     keterangan = models.CharField(max_length=255, blank=True, default='')
     dibuat_pada = models.DateTimeField(auto_now_add=True)
@@ -65,7 +69,8 @@ class InsentifProduk(models.Model):
         ]
 
     def __str__(self):
-        return f'{self.product} / {self.divisi}: Rp{self.nominal} {self.cara_hitung}'
+        besar = f'{self.persen}%' if self.cara_hitung == self.CARA_PERSEN else f'Rp{self.nominal}'
+        return f'{self.product} / {self.divisi}: {besar} {self.cara_hitung}'
 
 
 class InsentifPekerjaan(models.Model):

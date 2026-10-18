@@ -8,8 +8,9 @@ const CARA = [
   ['qty', 'Per qty', 'Nominal × jumlah (mis. Rp500 per lembar)'],
   ['m2', 'Per m²', 'Nominal × luas cetak (panjang × lebar × qty)'],
   ['flat', 'Flat per SPK', 'Nominal tetap per SPK, berapa pun jumlahnya'],
+  ['persen', 'Persen (%)', 'Persen dari harga jual item (mis. 2,5%)'],
 ];
-const FORM_KOSONG = { id: null, product: null, product_nama: '', divisi: '', cara_hitung: 'qty', nominal: '', keterangan: '', aktif: true };
+const FORM_KOSONG = { id: null, product: null, product_nama: '', divisi: '', cara_hitung: 'qty', nominal: '', persen: '', keterangan: '', aktif: true };
 const rupiah = (n) => `Rp ${Number(n || 0).toLocaleString('id-ID')}`;
 const daftar = (data) => (Array.isArray(data) ? data : data?.results || []);
 
@@ -75,7 +76,8 @@ export default function InsentifProdukPanel({ divisiList, unitOptions }) {
       product: form.product,
       divisi: Number(form.divisi),
       cara_hitung: form.cara_hitung,
-      nominal: parseInt(form.nominal || 0, 10),
+      nominal: form.cara_hitung === 'persen' ? 0 : parseInt(form.nominal || 0, 10),
+      persen: form.cara_hitung === 'persen' ? String(form.persen || 0).replace(',', '.') : 0,
       keterangan: form.keterangan.trim(),
       aktif: form.aktif,
     };
@@ -113,6 +115,9 @@ export default function InsentifProdukPanel({ divisiList, unitOptions }) {
 
   const labelCara = (id) => (CARA.find((c) => c[0] === id) || [])[1] || id;
   const satuanNominal = (id) => (id === 'qty' ? ' / qty' : id === 'm2' ? ' / m²' : ' / SPK');
+  const tampilNilai = (a) => (a.cara_hitung === 'persen'
+    ? <>{Number(a.persen)}%<span className="text-[11px] text-slate-400"> dari harga jual</span></>
+    : <>{rupiah(a.nominal)}<span className="text-[11px] text-slate-400">{satuanNominal(a.cara_hitung)}</span></>);
 
   return (
     <div>
@@ -176,7 +181,7 @@ export default function InsentifProdukPanel({ divisiList, unitOptions }) {
                 </td>
                 <td className="px-4 py-3 text-xs text-slate-600">{a.divisi_nama}</td>
                 <td className="px-4 py-3 text-xs text-slate-600">{labelCara(a.cara_hitung)}</td>
-                <td className="px-4 py-3 text-right tabular-nums">{rupiah(a.nominal)}<span className="text-[11px] text-slate-400">{satuanNominal(a.cara_hitung)}</span></td>
+                <td className="px-4 py-3 text-right tabular-nums">{tampilNilai(a)}</td>
                 <td className="px-4 py-3 text-center">
                   <input type="checkbox" checked={a.aktif} onChange={() => ubahAktif(a)} aria-label={`Aktif ${a.product_nama}`} />
                 </td>
@@ -184,7 +189,7 @@ export default function InsentifProdukPanel({ divisiList, unitOptions }) {
                   <div className="flex justify-end gap-1">
                     <button
                       type="button"
-                      onClick={() => setForm({ ...a, divisi: String(a.divisi), nominal: String(a.nominal) })}
+                      onClick={() => setForm({ ...a, divisi: String(a.divisi), nominal: String(a.nominal), persen: Number(a.persen) ? String(Number(a.persen)) : '' })}
                       className="p-1.5 rounded hover:bg-slate-100 text-slate-500" aria-label={`Ubah ${a.product_nama}`}
                     >
                       <Pencil size={14} />
@@ -262,7 +267,7 @@ export default function InsentifProdukPanel({ divisiList, unitOptions }) {
 
               <fieldset className="space-y-1">
                 <legend className="text-[11px] font-semibold text-slate-500 uppercase">Cara hitung</legend>
-                <div className="grid gap-2 sm:grid-cols-3">
+                <div className="grid gap-2 sm:grid-cols-2">
                   {CARA.map(([id, label, ket]) => (
                     <button
                       key={id} type="button" onClick={() => setForm({ ...form, cara_hitung: id })}
@@ -276,14 +281,25 @@ export default function InsentifProdukPanel({ divisiList, unitOptions }) {
               </fieldset>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block space-y-1">
-                  <span className="text-[11px] font-semibold text-slate-500 uppercase">Nominal (Rp{satuanNominal(form.cara_hitung)})</span>
-                  <input
-                    required type="number" min="0" value={form.nominal}
-                    onChange={(e) => setForm({ ...form, nominal: e.target.value })}
-                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-slate-500"
-                  />
-                </label>
+                {form.cara_hitung === 'persen' ? (
+                  <label className="block space-y-1">
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase">Persen dari harga jual (%)</span>
+                    <input
+                      required type="number" min="0.01" max="100" step="0.01" value={form.persen}
+                      onChange={(e) => setForm({ ...form, persen: e.target.value })}
+                      className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-slate-500"
+                    />
+                  </label>
+                ) : (
+                  <label className="block space-y-1">
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase">Nominal (Rp{satuanNominal(form.cara_hitung)})</span>
+                    <input
+                      required type="number" min="0" value={form.nominal}
+                      onChange={(e) => setForm({ ...form, nominal: e.target.value })}
+                      className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-slate-500"
+                    />
+                  </label>
+                )}
                 <label className="block space-y-1">
                   <span className="text-[11px] font-semibold text-slate-500 uppercase">Keterangan (opsional)</span>
                   <input
