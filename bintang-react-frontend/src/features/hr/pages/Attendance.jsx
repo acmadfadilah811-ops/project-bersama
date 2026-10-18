@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, FileSpreadsheet, Info, AlertCircle, Save, X } from 'lucide-react';
+import { Search, FileSpreadsheet, Info, AlertCircle, X } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import UnitBisnisFilter from '../../../components/UnitBisnisFilter';
 import {
@@ -31,6 +31,9 @@ export default function Attendance() {
   // State untuk Keterangan/Catatan
   const [notes, setNotes] = useState({});
   const [savingNoteId, setSavingNoteId] = useState(null);
+  // Baris keterangan yang sedang diedit + isi sementaranya (tombol Edit / Simpan / Batal).
+  const [editingNoteId, setEditingNoteId] = useState(null);
+  const [noteDraft, setNoteDraft] = useState('');
   const [exporting, setExporting] = useState(false);
 
   const fetchData = async () => {
@@ -65,11 +68,22 @@ export default function Attendance() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate]); // Auto fetch setiap kali tanggal diubah
 
+  const mulaiEditNote = (id) => {
+    setEditingNoteId(id);
+    setNoteDraft(notes[id] || '');
+  };
+
+  const batalEditNote = () => {
+    setEditingNoteId(null);
+    setNoteDraft('');
+  };
+
   const handleSaveNote = async (id) => {
     setSavingNoteId(id);
     try {
-      await apiClient.patch(`/hr/absensi/${id}/`, { catatan: notes[id] });
-      // Flash color atau feedback sukses sederhana (opsional)
+      await apiClient.patch(`/hr/absensi/${id}/`, { catatan: noteDraft });
+      setNotes((prev) => ({ ...prev, [id]: noteDraft }));
+      batalEditNote();
     } catch (error) {
       console.error('Gagal menyimpan catatan:', error);
       alert('Gagal menyimpan keterangan. Coba lagi.');
@@ -149,7 +163,7 @@ export default function Attendance() {
       unit: namaUnitKaryawan(item.staff_role, item.unit_bisnis_nama),
       unitBelumDiatur: unitKaryawanBelumDiatur(item.staff_role, item.unit_bisnis_nama),
       divisi: item.divisi_nama || 'Belum Ditentukan',
-      status: item.status.toUpperCase(),
+      status: item.status === 'alpha' ? 'TIDAK KERJA' : item.status.toUpperCase(),
       masuk: formatTime(item.jam_masuk),
       pulang: formatTime(item.jam_keluar),
       warnaMasuk: item.jam_masuk
@@ -294,7 +308,7 @@ export default function Attendance() {
               </div>
             </div>
             <div className="p-1">
-              <p className="text-[10px] text-slate-500 font-bold leading-tight">Tidak Masuk</p>
+              <p className="text-[10px] text-slate-500 font-bold leading-tight">Tidak Kerja</p>
               <div className="flex items-center gap-1.5 text-base font-extrabold text-slate-800 mt-1">
                 <span className="w-2 h-2 bg-red-500 rounded-sm"></span> {summary.tidakMasuk}
               </div>
@@ -344,8 +358,8 @@ export default function Attendance() {
                   <th className="py-2 px-2 font-semibold">Unit Bisnis</th>
                   <th className="py-2 px-2 font-semibold">Divisi</th>
                   <th className="py-2 px-2 font-semibold">Status</th>
-                  <th className="py-2 px-2 font-semibold text-center">Jam Masuk</th>
-                  <th className="py-2 px-2 font-semibold text-center">Jam Pulang</th>
+                  <th className="py-2 px-2 font-semibold text-center">Mulai Kerja</th>
+                  <th className="py-2 px-2 font-semibold text-center">Selesai Kerja</th>
                   <th className="py-2 px-2 font-semibold text-left">Lembur</th>
                   <th className="py-2 px-2 font-semibold text-left">Total Jam Kerja</th>
                   <th className="py-2 px-2 font-semibold">Keterangan</th>
@@ -421,27 +435,51 @@ export default function Attendance() {
 
                       {/* Kolom Keterangan / Catatan */}
                       <td className="py-2 px-2">
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="text"
-                            placeholder="Tulis keterangan..."
-                            value={notes[row.id] || ''}
-                            onChange={(e) => setNotes({ ...notes, [row.id]: e.target.value })}
-                            className="w-32 px-2 py-1 text-[10px] border border-slate-300 rounded focus:outline-none focus:border-blue-500 bg-white"
-                          />
-                          <button
-                            onClick={() => handleSaveNote(row.id)}
-                            disabled={savingNoteId === row.id}
-                            title="Simpan Keterangan"
-                            className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded border border-blue-200 transition-colors disabled:opacity-50"
-                          >
-                            {savingNoteId === row.id ? (
-                              <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                            ) : (
-                              <Save size={12} />
-                            )}
-                          </button>
-                        </div>
+                        {editingNoteId === row.id ? (
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              autoFocus
+                              placeholder="Tulis keterangan"
+                              value={noteDraft}
+                              onChange={(e) => setNoteDraft(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSaveNote(row.id);
+                                if (e.key === 'Escape') batalEditNote();
+                              }}
+                              className="w-44 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-[11px] text-slate-800 outline-none focus:border-slate-500"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleSaveNote(row.id)}
+                              disabled={savingNoteId === row.id}
+                              className="rounded-md bg-slate-900 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-slate-700 disabled:opacity-50"
+                            >
+                              {savingNoteId === row.id ? 'Menyimpan…' : 'Simpan'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={batalEditNote}
+                              disabled={savingNoteId === row.id}
+                              className="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                            >
+                              Batal
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span className="max-w-[11rem] truncate text-slate-600" title={notes[row.id] || ''}>
+                              {notes[row.id] || <span className="text-slate-300">-</span>}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => mulaiEditNote(row.id)}
+                              className="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-bold text-slate-700 hover:bg-slate-50"
+                            >
+                              Edit
+                            </button>
+                          </div>
+                        )}
                       </td>
 
                       {/* Action Buttons */}
@@ -526,13 +564,13 @@ export default function Attendance() {
               <div className="my-2 border-t border-slate-100"></div>
 
               <div className="flex justify-between items-center">
-                <span className="text-slate-400 font-medium">Waktu Masuk:</span>
+                <span className="text-slate-400 font-medium">Mulai Kerja:</span>
                 <span className="font-mono font-bold bg-slate-100 px-2 py-0.5 rounded">
                   {detailData.masuk}
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-slate-400 font-medium">Waktu Pulang:</span>
+                <span className="text-slate-400 font-medium">Selesai Kerja:</span>
                 <span className="font-mono font-bold bg-slate-100 px-2 py-0.5 rounded">
                   {detailData.pulang}
                 </span>

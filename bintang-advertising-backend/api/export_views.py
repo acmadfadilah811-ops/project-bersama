@@ -322,7 +322,7 @@ class ExportAbsensiView(APIView):
             ws = wb.active
             ws.title = f"Absensi {tanggal}"
 
-            headers = ['Nama Staff', 'Jabatan', 'Unit Bisnis', 'Divisi', 'Status Kehadiran', 'Waktu Masuk', 'Waktu Keluar', 'Durasi Kerja (Jam)', 'Keterangan']
+            headers = ['Nama Staff', 'Jabatan', 'Unit Bisnis', 'Divisi', 'Status Kehadiran', 'Mulai Kerja', 'Selesai Kerja', 'Durasi Kerja (Jam)', 'Keterangan']
             ws.append(headers)
 
             absensi = Absensi.objects.filter(tanggal=tanggal).select_related(
@@ -339,7 +339,7 @@ class ExportAbsensiView(APIView):
                     a.staff.posisi or a.staff.role,
                     a.staff.unit_bisnis.nama if a.staff.unit_bisnis else 'Semua unit / belum diatur',
                     a.staff.divisi.nama if a.staff.divisi else 'Belum Ditentukan',
-                    a.get_status_display(),
+                    'Tidak Kerja' if a.status == 'alpha' else a.get_status_display(),
                     masuk,
                     keluar,
                     a.durasi_kerja_jam,
