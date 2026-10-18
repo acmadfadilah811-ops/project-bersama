@@ -96,6 +96,10 @@ class PesananFotoViewSet(viewsets.ReadOnlyModelViewSet):
         )
         if user.role not in svc.ROLE_KASIR:
             qs = qs.filter(Q(sesi__fotografer=user) | Q(sesi__asisten=user)).distinct()
+        elif user.role == 'kasir':
+            # Kasir hanya melihat pesanan foto unitnya; kasir unit lain (mis. Star Advertising)
+            # tidak melihat data StarFoto sama sekali (2026-10-18).
+            qs = qs.filter(order__unit_bisnis_id=user.unit_bisnis_id) if user.unit_bisnis_id else qs.none()
         order_param = self.request.query_params.get('order')
         if order_param:
             qs = qs.filter(order_id=order_param)
@@ -186,7 +190,11 @@ class JadwalSesiView(APIView):
         sampai = parse_date(request.query_params.get('sampai') or '') or dari + datetime.timedelta(days=6)
         if (sampai - dari).days > 62:
             return Response({'error': 'Rentang jadwal maksimal 62 hari.'}, status=status.HTTP_400_BAD_REQUEST)
-        return Response(SesiFotoSerializer(svc.jadwal(dari, sampai), many=True).data)
+        jadwal = svc.jadwal(dari, sampai)
+        if request.user.role == 'kasir':
+            jadwal = jadwal.filter(pesanan__order__unit_bisnis_id=request.user.unit_bisnis_id) \
+                if request.user.unit_bisnis_id else jadwal.none()
+        return Response(SesiFotoSerializer(jadwal, many=True).data)
 
 
 class AntreanSesiView(APIView):

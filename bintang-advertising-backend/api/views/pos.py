@@ -156,7 +156,7 @@ class SaldoKasHarianViewSet(viewsets.ModelViewSet):
 
 
 class RingkasanShiftViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = RingkasanShift.objects.all().order_by('-tanggal', '-mulai')
+    queryset = RingkasanShift.objects.select_related('kasir__unit_bisnis').order_by('-tanggal', '-mulai')
     serializer_class = RingkasanShiftSerializer
     # IsOwnerManagerAdminOrKasir (perilaku lama) DITAMBAH admin_finance/
     # spv_finance lewat CanAccessFinanceVerification -- class baru terpisah,
@@ -167,6 +167,9 @@ class RingkasanShiftViewSet(viewsets.ReadOnlyModelViewSet):
         queryset = super().get_queryset()
         if self.request.user.role == 'kasir':
             queryset = queryset.filter(kasir=self.request.user)
+        # ?unit_bisnis=<id|none>: unit bisnis kasir (2026-10-18).
+        from ..permissions import filter_param_unit_bisnis
+        queryset = filter_param_unit_bisnis(queryset, self.request, 'kasir__unit_bisnis')
 
         tanggal_mulai = self.request.query_params.get('tanggal_mulai')
         tanggal_akhir = self.request.query_params.get('tanggal_akhir')

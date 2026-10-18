@@ -29,6 +29,7 @@ import {
 import { useTransaksiCrumb } from '../../../transaksi/components/TransaksiContext';
 import { uiConfirm } from '../../../../utils/dialog';
 import { getLogoUrl } from '../../../../utils/logo';
+import UnitBisnisFilter from '../../../../components/UnitBisnisFilter';
 
 const POS_TABS = [
   { id: 'pengaturan', label: 'Pengaturan' },
@@ -370,6 +371,8 @@ export default function PointOfSale() {
 
   // Ringkasan Shift (V2) States
   const [shiftHarianData, setShiftHarianData] = useState([]);
+  // Kelompok per unit bisnis kasir (2026-10-18); kosong = semua unit.
+  const [filterShiftUnit, setFilterShiftUnit] = useState('');
   const [filterShiftHarianRows, setFilterShiftHarianRows] = useState(5);
   const [filterShiftHarianStartDate, setFilterShiftHarianStartDate] = useState(() => {
     const d = new Date();
@@ -515,7 +518,7 @@ export default function PointOfSale() {
     }, 20_000);
 
     return () => window.clearInterval(intervalId);
-  }, [activeTab, filterShiftHarianStartDate, filterShiftHarianEndDate]);
+  }, [activeTab, filterShiftHarianStartDate, filterShiftHarianEndDate, filterShiftUnit]);
 
   const handleSaveSettings = async () => {
     setSavingSettings(true);
@@ -858,6 +861,9 @@ export default function PointOfSale() {
       if (filterShiftHarianSearch) {
         params.query = filterShiftHarianSearch;
       }
+      if (filterShiftUnit) {
+        params.unit_bisnis = filterShiftUnit;
+      }
       const res = await apiClient.get('/ringkasan-shift/', { params });
       const data = res.data?.results || res.data || [];
       setShiftHarianData(Array.isArray(data) ? data : []);
@@ -874,10 +880,11 @@ export default function PointOfSale() {
       triggerToast('Tidak ada data untuk diekspor!');
       return;
     }
-    const headers = ['Tanggal', 'Kasir', 'Mulai', 'Berakhir', 'Expected', 'Aktual', 'Selisih', 'Rekap Metode Pembayaran'];
+    const headers = ['Tanggal', 'Kasir', 'Unit', 'Mulai', 'Berakhir', 'Expected', 'Aktual', 'Selisih', 'Rekap Metode Pembayaran'];
     const rows = shiftHarianData.map(item => [
       item.tanggal,
       item.kasir_nama,
+      item.unit_bisnis_nama || '-',
       item.mulai ? new Date(item.mulai).toLocaleString('id-ID') : '-',
       item.berakhir ? new Date(item.berakhir).toLocaleString('id-ID') : '-',
       item.expected,
@@ -3122,6 +3129,12 @@ export default function PointOfSale() {
                 </h3>
               </div>
 
+              <UnitBisnisFilter
+                value={filterShiftUnit}
+                onChange={(v) => { setFilterShiftUnit(v); setShiftHarianPage(1); }}
+                labelTanpaUnit="Tanpa unit"
+              />
+
               {/* Filters */}
               <div className="flex flex-col sm:flex-row items-center justify-end gap-4 py-1">
                 {/* Rows select */}
@@ -3209,6 +3222,9 @@ export default function PointOfSale() {
                           Kasir
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                          Unit
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
                           Mulai
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
@@ -3237,6 +3253,9 @@ export default function PointOfSale() {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-xs font-extrabold text-slate-800">
                             {item.kasir_nama || item.kasir || 'Sri Utami'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-500">
+                            {item.unit_bisnis_nama || '-'}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-500 font-mono">
                             {item.mulai}

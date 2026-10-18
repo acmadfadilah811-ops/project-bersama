@@ -48,7 +48,9 @@ export default function KasirSidebar({ isCollapsed, setIsCollapsed }) {
   const avatarUrl = getAvatarUrl(user?.foto_profil);
   const userRole = user?.role?.toLowerCase();
   const isOwnerOrAdmin = ['owner', 'admin', 'manager'].includes(userRole);
-  const isStarfoto = isOwnerOrAdmin || /starfoto/i.test(user?.unit_bisnis_nama || '') || daftarSesiFoto.length > 0;
+  // Menu Sesi Foto hanya untuk kasir unit StarFoto (dan owner/manager/admin) -- bukan karena
+  // ada data sesi (2026-10-18).
+  const isStarfoto = isOwnerOrAdmin || /starfoto/i.test(user?.unit_bisnis_nama || '');
   const tanpaWa = isKasirStarfoto(user);
 
   const navItems = [

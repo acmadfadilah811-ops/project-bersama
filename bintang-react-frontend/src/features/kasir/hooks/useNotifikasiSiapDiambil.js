@@ -3,6 +3,11 @@ import apiClient from '../../../api/apiClient';
 import { notify } from '../../../utils/notify';
 import { useAuth } from '../../../context/AuthContext';
 import { isKasirStarfoto, paramUnitKasirStarfoto } from '../../../utils/unitBisnis';
+
+// Data pesanan foto (sesi & approval) hanya dimuat untuk kasir StarFoto dan manajemen.
+const bolehDataStarfoto = (user) => (
+  isKasirStarfoto(user) || ['owner', 'manager', 'admin'].includes(String(user?.role || '').toLowerCase())
+);
 import {
   gabungPesananMasuk,
   gabungPesananSiap,
@@ -99,8 +104,12 @@ export function useNotifikasiSiapDiambil() {
         apiClient.get('/orders/', { params: { status_global: 'ready', ...(unitKasir ? { unit_bisnis: unitKasir } : {}) } }),
         apiClient.get('/pos/sales/produksi/', { params: { status_produksi: 'ready', ...(unitKasir ? { unit_bisnis: unitKasir } : {}) } }),
         apiClient.get('/orders/', { params: { status_global: 'review', sumber: sumberMasuk, ...(unitKasir ? { unit_bisnis: unitKasir } : {}) } }),
-        apiClient.get('/starfoto/pesanan/', { params: { status: 'menunggu_kasir' } }).catch(() => ({ data: [] })),
-        apiClient.get('/starfoto/approval-tertunda/').catch(() => ({ data: [] })),
+        bolehDataStarfoto(user)
+          ? apiClient.get('/starfoto/pesanan/', { params: { status: 'menunggu_kasir' } }).catch(() => ({ data: [] }))
+          : Promise.resolve({ data: [] }),
+        bolehDataStarfoto(user)
+          ? apiClient.get('/starfoto/approval-tertunda/').catch(() => ({ data: [] }))
+          : Promise.resolve({ data: [] }),
       ]);
 
       const daftarSesi = [

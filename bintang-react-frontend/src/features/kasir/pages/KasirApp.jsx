@@ -34,6 +34,8 @@ export default function KasirApp() {
   const { user } = useAuth();
   // Kasir StarFoto: tanpa fitur WA dulu (order WA lewat Terminal); antrean hanya order staff & CRM.
   const tanpaWa = isKasirStarfoto(user);
+  // Sesi Foto hanya untuk kasir StarFoto dan manajemen (2026-10-18).
+  const bolehSesiFoto = tanpaWa || ['owner', 'manager', 'admin'].includes(String(user?.role || '').toLowerCase());
 
   return (
     <KasirProvider>
@@ -94,7 +96,10 @@ export default function KasirApp() {
               <Route path="pelanggan-supplier" element={<KasirPelangganSupplier onToggleSidebar={handleToggleSidebar} />} />
               <Route path="riwayat" element={<PosHistory onToggleSidebar={handleToggleSidebar} />} />
               <Route path="riwayat-void" element={<RiwayatVoid onToggleSidebar={handleToggleSidebar} />} />
-              <Route path="sesi-foto" element={<KonfirmasiSesiPage onToggleSidebar={handleToggleSidebar} />} />
+              <Route
+                path="sesi-foto"
+                element={bolehSesiFoto ? <KonfirmasiSesiPage onToggleSidebar={handleToggleSidebar} /> : <Navigate to="/kasir/terminal" replace />}
+              />
               <Route path="nota-human-error" element={<KasirNotaHumanError onToggleSidebar={handleToggleSidebar} />} />
               <Route path="rekap-harian" element={<Navigate to="/kasir/shift" replace />} />
               <Route path="shift" element={<PosShift onToggleSidebar={handleToggleSidebar} />} />

@@ -89,7 +89,11 @@ class ApprovalTertundaView(APIView):
     permission_classes = [IsOwnerManagerAdminOrKasir]
 
     def get(self, request):
-        return Response([_detail(p, request) for p in svc.tertunda()])
+        tertunda = svc.tertunda()
+        if request.user.role == 'kasir':
+            tertunda = tertunda.filter(order__unit_bisnis_id=request.user.unit_bisnis_id) \
+                if request.user.unit_bisnis_id else tertunda.none()
+        return Response([_detail(p, request) for p in tertunda])
 
 
 class ApprovalPublikView(APIView):
