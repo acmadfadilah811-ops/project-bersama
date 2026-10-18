@@ -262,7 +262,7 @@ export default function OrderInputForm({ isOpen, onClose, onSuccess }) {
       const orderRes = await apiClient.post('/orders/', {
         nomor_wa: formData.nomor_wa,
         nama: formData.nama,
-        dilayani_oleh_id: Number(formData.dilayani_oleh_id),
+        dilayani_oleh: Number(formData.dilayani_oleh_id),
         waktu: parsedWaktu,
         catatan_pelanggan: formData.catatan_pelanggan,
         metode_pembayaran: formData.metode_pembayaran,
