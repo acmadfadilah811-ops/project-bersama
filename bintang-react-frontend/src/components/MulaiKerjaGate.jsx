@@ -3,6 +3,17 @@ import { Clock, Play, RefreshCw } from 'lucide-react';
 import apiClient from '../api/apiClient';
 import { useAuth } from '../context/AuthContext';
 
+// Suara sambutan ("selamat pagi") saat Mulai Kerja berhasil, sama seperti di dashboard karyawan.
+function putarSuaraMulai() {
+  try {
+    const baseUrl = import.meta.env.BASE_URL || '/';
+    const dasar = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+    new Audio(`${dasar}audio/checkin.mp3`).play().catch(() => {});
+  } catch {
+    // suara bersifat tambahan; abaikan bila gagal
+  }
+}
+
 // Gerbang Mulai Kerja untuk SPV & Kordiv (2026-10-18): menu lain terkunci sampai
 // tombol Mulai Kerja ditekan. Mulai Kerja butuh absen masuk di HR lebih dulu.
 export default function MulaiKerjaGate({ statusAbsenHr, onSelesai, onMuatUlang }) {
@@ -16,6 +27,7 @@ export default function MulaiKerjaGate({ statusAbsenHr, onSelesai, onMuatUlang }
     setGalat('');
     try {
       await apiClient.post('/hr/absensi/clock-in/', { catatan: '' });
+      putarSuaraMulai();
       onSelesai();
     } catch (err) {
       setGalat(err.response?.data?.detail || 'Gagal memulai kerja. Coba lagi.');
