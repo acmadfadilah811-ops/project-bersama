@@ -25,6 +25,7 @@ Pengecualian yang disengaja:
 
 import logging
 import os
+import sys
 from dataclasses import dataclass
 
 import requests
@@ -36,6 +37,7 @@ logger = logging.getLogger(__name__)
 ROLE_WAJIB_ABSEN = frozenset({'staff', 'kasir', 'spv', 'kordiv', 'manager', 'admin_finance', 'spv_finance'})
 
 DEFAULT_HR_STATUS_ABSENSI_URL = "http://horilla-hr-web-1:8000/api/attendance/status-absensi/"
+DEFAULT_HR_VALIDASI_URL = "http://horilla-hr-web-1:8000/api/attendance/validasi-mulai-kerja/"
 DEFAULT_HR_HOST = "hr.starphotoadvertising.com"
 TIMEOUT = 3
 CACHE_DETIK = 60
@@ -79,6 +81,32 @@ def _tanya_hr(hr_employee_id):
     except Exception:
         logger.exception("Gagal cek status absensi HR hr_employee_id=%s (fail-open).", hr_employee_id)
         return None
+
+
+def validasi_absensi_hr(hr_employee_id):
+    """Minta HR menandai absensi karyawan ini tervalidasi (dipanggil setelah Mulai Kerja
+    di ERP, 2026-10-19). Best-effort: gagal tidak mengganggu Mulai Kerja."""
+    if not hr_employee_id:
+        return False
+    # Jangan menyentuh HR sungguhan saat menjalankan tes (manage.py test).
+    if len(sys.argv) > 1 and sys.argv[1] == "test":
+        return False
+    api_key = os.getenv("INSIGHTS_BRIDGE_API_KEY")
+    if not api_key:
+        return False
+    url = os.getenv("HR_VALIDASI_ABSENSI_URL", DEFAULT_HR_VALIDASI_URL)
+    headers = {
+        "X-Api-Key": api_key,
+        "X-Forwarded-Proto": "https",
+        "Host": os.getenv("HR_INSIGHTS_HOST", DEFAULT_HR_HOST),
+    }
+    try:
+        res = requests.post(url, json={"hr_employee_id": hr_employee_id}, headers=headers, timeout=TIMEOUT)
+        res.raise_for_status()
+        return bool(res.json().get("validated"))
+    except Exception:
+        logger.exception("Gagal memvalidasi absensi HR hr_employee_id=%s.", hr_employee_id)
+        return False
 
 
 def _status_hr(hr_employee_id, pakai_cache=True):

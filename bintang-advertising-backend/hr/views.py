@@ -245,6 +245,10 @@ class ClockInView(APIView):
                 status=status_hadir,
                 catatan=request.data.get("catatan", ""),
             )
+        # Absensi HR otomatis tervalidasi begitu Mulai Kerja berhasil (2026-10-19).
+        if request.user.hr_employee_id:
+            from api.services.absensi_hr_gate import validasi_absensi_hr
+            validasi_absensi_hr(request.user.hr_employee_id)
         return Response(
             {
                 "detail": f"Mulai kerja berhasil pukul {now.strftime('%H:%M')}.",

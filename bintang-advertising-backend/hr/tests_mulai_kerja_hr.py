@@ -92,3 +92,34 @@ class ManagerAbsenTests(APITestCase):
         self.assertEqual(res.status_code, 200, res.content)
         nama = {r['staff_nama'] for r in res.json()}
         self.assertEqual(nama, {'Nasul Fikar', 'spv.abs'})  # manager (nama asli) & spv; owner/admin tidak ada
+
+
+class ValidasiOtomatisTests(APITestCase):
+    def setUp(self):
+        self.staff = CustomUser.objects.create_user(
+            username='stf.val', password='x', role='staff', email='sv@x.id', hr_employee_id=111)
+        self.kordiv = CustomUser.objects.create_user(
+            username='kdv.val', password='x', role='kordiv', email='kv@x.id', hr_employee_id=102)
+        DailyAttendanceSession.objects.update_or_create(
+            tanggal=timezone.localdate(),
+            defaults={'waktu_mulai': timezone.now() - timedelta(hours=5),
+                      'batas_maksimal': timezone.now() - timedelta(hours=4), 'is_active': True},
+        )
+
+    def _mulai(self, user):
+        api = APIClient()
+        api.force_authenticate(user)
+        return api.post('/api/hr/absensi/clock-in/', {}, format='json', secure=True)
+
+    @patch('api.services.absensi_hr_gate.validasi_absensi_hr', return_value=True)
+    @patch('api.services.absensi_hr_gate._status_hr', return_value={'applicable': True, 'status': 'masuk'})
+    def test_mulai_kerja_memicu_validasi_absensi_hr(self, _status, validasi):
+        res = self._mulai(self.kordiv)
+        self.assertEqual(res.status_code, 201, res.content)
+        validasi.assert_called_once_with(102)
+
+    @patch('api.services.absensi_hr_gate.validasi_absensi_hr', return_value=True)
+    @patch('api.services.absensi_hr_gate._status_hr', return_value={'applicable': True, 'status': 'belum'})
+    def test_ditolak_tidak_memicu_validasi(self, _status, validasi):
+        self.assertEqual(self._mulai(self.staff).status_code, 403)
+        validasi.assert_not_called()

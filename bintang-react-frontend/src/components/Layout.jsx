@@ -38,12 +38,12 @@ export default function Layout() {
     try {
       const response = await apiClient.get('/hr/dashboard/staff/');
       setStatusTerkunci(response.data.status_terkunci);
-      if (peran === 'spv' || peran === 'kordiv' || peran === 'manager') {
-        setGerbangMulai({
-          perlu: !response.data.absensi_hari_ini?.jam_masuk,
-          statusHr: response.data.status_absen_hr || null,
-        });
-      }
+      // Semua peran yang absen (staff, spv, kordiv, manager) wajib Mulai Kerja dulu.
+      setGerbangMulai({
+        // Papan kerja yang dibuka manual oleh manager ("Buka Papan") melewati gerbang.
+        perlu: !response.data.absensi_hari_ini?.jam_masuk && !response.data.status_terkunci?.workspace_unlocked,
+        statusHr: response.data.status_absen_hr || null,
+      });
     } catch (error) {
       console.error('Error checking lock status:', error);
     } finally {
@@ -63,16 +63,17 @@ export default function Layout() {
     );
   }
 
+  // Staff yang terkunci karena lewat batas waktu diarahkan ke layar Ajukan Izin lebih dulu.
+  if (statusTerkunci && statusTerkunci.is_locked) {
+    return <LockedScreen statusTerkunci={statusTerkunci} onRefresh={checkStatus} />;
+  }
+
   if (gerbangMulai.perlu) {
     return <MulaiKerjaGate statusAbsenHr={gerbangMulai.statusHr} onSelesai={checkStatus} onMuatUlang={checkStatus} />;
   }
 
   if (location.pathname.startsWith('/produksi')) {
     return <Outlet />;
-  }
-
-  if (statusTerkunci && statusTerkunci.is_locked) {
-    return <LockedScreen statusTerkunci={statusTerkunci} onRefresh={checkStatus} />;
   }
 
   const mobileMenuStaff = [
