@@ -30,6 +30,7 @@ import { useTransaksiCrumb } from '../../../transaksi/components/TransaksiContex
 import { uiConfirm } from '../../../../utils/dialog';
 import { getLogoUrl } from '../../../../utils/logo';
 import UnitBisnisFilter from '../../../../components/UnitBisnisFilter';
+import ShiftHrBacaSaja from './ShiftHrBacaSaja';
 
 const POS_TABS = [
   { id: 'pengaturan', label: 'Pengaturan' },
@@ -53,7 +54,7 @@ const POS_MENUS = [
   { id: 'ext-settings', label: 'POS Ext. Settings', icon: Sliders },
   { id: 'shift', label: 'Shift', icon: Clock },
   { id: 'cek-stok', label: 'Mode - cek stok', icon: Search },
-  { id: 'shift-timing', label: 'Shift Timing (POS V1)', icon: Timer },
+  { id: 'shift-timing', label: 'Shift Kerja (dari HR)', icon: Timer },
   { id: 'antrian', label: 'POS Antrian', icon: Users },
 ];
 
@@ -330,11 +331,6 @@ export default function PointOfSale() {
 
   // POS Shift Timing States
   const [shiftTimings, setShiftTimings] = useState([]);
-  const [isAddingShiftTiming, setIsAddingShiftTiming] = useState(false);
-  const [editingShiftTimingId, setEditingShiftTimingId] = useState(null);
-  const [newShiftTitle, setNewShiftTitle] = useState('');
-  const [newShiftStart, setNewShiftStart] = useState('08:00:00');
-  const [newShiftEnd, setNewShiftEnd] = useState('17:00:00');
 
   // POS Antrian States
   const [posAntrianAktif, setPosAntrianAktif] = useState(false);
@@ -482,10 +478,6 @@ export default function PointOfSale() {
         setShowAddDeviceModal(false);
         setEditingDevice(null);
       }
-    } else if (activeMenu === 'shift-timing') {
-      fetchShiftTimings();
-      setIsAddingShiftTiming(false);
-      setEditingShiftTimingId(null);
     } else if (activeMenu === 'pembayaran') {
       fetchPayments();
     }
@@ -629,59 +621,6 @@ export default function PointOfSale() {
     } finally {
       setSavingSettings(false);
     }
-  };
-
-  const handleSaveShiftTiming = async () => {
-    if (!newShiftTitle.trim()) {
-      triggerToast('Judul shift timing harus diisi!');
-      return;
-    }
-    setSavingSettings(true);
-    try {
-      const payload = {
-        judul: newShiftTitle,
-        jam_mulai: newShiftStart,
-        jam_berakhir: newShiftEnd
-      };
-
-      if (editingShiftTimingId) {
-        await apiClient.put(`/shift-timing/${editingShiftTimingId}/`, payload);
-        triggerToast('Shift Timing berhasil diperbarui!');
-      } else {
-        await apiClient.post('/shift-timing/', payload);
-        triggerToast('Shift Timing baru berhasil ditambahkan!');
-      }
-
-      setIsAddingShiftTiming(false);
-      setEditingShiftTimingId(null);
-      setNewShiftTitle('');
-      fetchShiftTimings();
-    } catch (err) {
-      console.error('Failed to save shift timing:', err);
-      triggerToast('Gagal menyimpan Shift Timing.');
-    } finally {
-      setSavingSettings(false);
-    }
-  };
-
-  const handleDeleteShiftTiming = async (id) => {
-    if (!(await uiConfirm('Apakah Anda yakin ingin menghapus shift timing ini?'))) return;
-    try {
-      await apiClient.delete(`/shift-timing/${id}/`);
-      triggerToast('Shift Timing berhasil dihapus!');
-      fetchShiftTimings();
-    } catch (err) {
-      console.error('Failed to delete shift timing:', err);
-      triggerToast('Gagal menghapus Shift Timing.');
-    }
-  };
-
-  const handleEditShiftTimingClick = (item) => {
-    setEditingShiftTimingId(item.id);
-    setNewShiftTitle(item.judul);
-    setNewShiftStart(item.jam_mulai);
-    setNewShiftEnd(item.jam_berakhir);
-    setIsAddingShiftTiming(true);
   };
 
   const handleToggleAntrian = async (newValue) => {
@@ -2427,227 +2366,7 @@ export default function PointOfSale() {
                   </div>
                 </div>
               ) : activeMenu === 'shift-timing' ? (
-                <div className="max-w-2xl w-full mx-auto space-y-6">
-                  {isAddingShiftTiming ? (
-                    /* TAMBAH/EDIT SHIFT TIMING FORM VIEW */
-                    <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
-                      {/* Form Header */}
-                      <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                        <h3 className="font-extrabold text-slate-800 text-sm">
-                          {editingShiftTimingId ? 'Ubah Shift Timing' : 'Tambah Shift Timing'}
-                        </h3>
-                        <div className="flex items-center gap-4">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setIsAddingShiftTiming(false);
-                              setEditingShiftTimingId(null);
-                              setNewShiftTitle('');
-                            }}
-                            className="text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors cursor-pointer"
-                          >
-                            Batal
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleSaveShiftTiming}
-                            disabled={savingSettings || !newShiftTitle.trim()}
-                            className="px-4 py-2 bg-blue-600 disabled:bg-slate-100 disabled:text-slate-400 text-white rounded-lg text-xs font-bold hover:bg-blue-700 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow cursor-pointer"
-                          >
-                            {savingSettings ? 'Menyimpan...' : 'Simpan'}
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Form Content */}
-                      <div className="space-y-6 py-2">
-                        {/* Judul Input */}
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6">
-                          <label className="sm:w-28 text-xs font-bold text-slate-700 flex items-center">
-                            <span className="text-red-500 mr-1">*</span> Judul
-                          </label>
-                          <div className="flex-1">
-                            <input
-                              type="text"
-                              value={newShiftTitle}
-                              onChange={(e) => setNewShiftTitle(e.target.value)}
-                              placeholder="Masukkan Judul"
-                              className="w-full max-w-lg px-3 py-2 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                            />
-                          </div>
-                        </div>
-
-                        {/* Jam Mulai Input */}
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6">
-                          <label className="sm:w-28 text-xs font-bold text-slate-700">
-                            Jam Mulai
-                          </label>
-                          <div className="relative w-full max-w-[200px]">
-                            <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
-                              <Clock size={14} />
-                            </span>
-                            <input
-                              type="time"
-                              step="1"
-                              value={newShiftStart}
-                              onChange={(e) => setNewShiftStart(e.target.value)}
-                              className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                            />
-                          </div>
-                        </div>
-
-                        {/* Jam Berakhir Input */}
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6">
-                          <label className="sm:w-28 text-xs font-bold text-slate-700">
-                            Jam Berakhir
-                          </label>
-                          <div className="relative w-full max-w-[200px]">
-                            <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
-                              <Clock size={14} />
-                            </span>
-                            <input
-                              type="time"
-                              step="1"
-                              value={newShiftEnd}
-                              onChange={(e) => setNewShiftEnd(e.target.value)}
-                              className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    /* SHIFT TIMINGS LIST VIEW */
-                    <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
-                      {/* Header */}
-                      <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                        <div>
-                          <h3 className="font-extrabold text-slate-800 text-sm">
-                            Shift Timing
-                          </h3>
-                          <p className="text-[11px] text-slate-400">
-                            Kelola jadwal operasional shift kerja Point Of Sale.
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => {
-                            setEditingShiftTimingId(null);
-                            setNewShiftTitle('');
-                            // Default to current time formatted as HH:MM:SS
-                            const now = new Date();
-                            const timeString = now.toTimeString().split(' ')[0]; // HH:MM:SS
-                            setNewShiftStart(timeString);
-                            setNewShiftEnd(timeString);
-                            setIsAddingShiftTiming(true);
-                          }}
-                          className="px-4 py-2 bg-[#75C043] hover:bg-[#66a83a] text-white rounded-lg text-xs font-bold hover:shadow transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <Plus size={14} />
-                          Tambah
-                        </button>
-                      </div>
-
-                      {loadingSettings ? (
-                        <div className="py-12 flex flex-col items-center justify-center gap-2 text-slate-400 text-xs font-bold">
-                          <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                          <span>Memuat daftar shift...</span>
-                        </div>
-                      ) : shiftTimings.length === 0 ? (
-                        /* GORGEOUS ILLUSTRATION EMPTY STATE - EXACTLY MATCHING DESIGN ELEMENTS */
-                        <div className="border border-slate-100 rounded-xl bg-slate-50/50 py-12 px-6 flex flex-col items-center justify-center text-center">
-                          {/* Polar Bear & Igloo CSS Art / SVG */}
-                          <div className="w-64 h-48 flex items-center justify-center relative mb-6">
-                            {/* Blue Igloo Background */}
-                            <svg className="w-56 h-40 drop-shadow-md" viewBox="0 0 200 150" fill="none">
-                              {/* Igloo Dome */}
-                              <path d="M20,130 C20,50 180,50 180,130 Z" fill="#EBF3FC" stroke="#B9D5F4" strokeWidth="3" />
-                              {/* Ice Blocks Grid Pattern */}
-                              <path d="M40,90 C70,75 130,75 160,90 M60,65 C90,55 110,55 140,65" stroke="#D1E4F9" strokeWidth="2" strokeDasharray="5,5" />
-                              <path d="M60,130 L60,90 M100,130 L100,80 M140,130 L140,90 M70,90 L70,65 M130,90 L130,65" stroke="#D1E4F9" strokeWidth="2" />
-                              {/* Igloo Doorway (Arch) */}
-                              <path d="M75,130 C75,95 125,95 125,130 Z" fill="#91C3F7" stroke="#6AA6E8" strokeWidth="3" />
-                              {/* Polar Bear face peeking out */}
-                              <g transform="translate(10, 10)">
-                                {/* Bear head */}
-                                <circle cx="90" cy="110" r="22" fill="#FFFFFF" stroke="#E2E8F0" strokeWidth="1" />
-                                {/* Bear Left Ear */}
-                                <circle cx="74" cy="94" r="6" fill="#FFFFFF" stroke="#E2E8F0" strokeWidth="1" />
-                                <circle cx="74" cy="94" r="3" fill="#FFEAEF" />
-                                {/* Bear Right Ear */}
-                                <circle cx="106" cy="94" r="6" fill="#FFFFFF" stroke="#E2E8F0" strokeWidth="1" />
-                                <circle cx="106" cy="94" r="3" fill="#FFEAEF" />
-                                {/* Bear Eyes */}
-                                <circle cx="83" cy="106" r="2.5" fill="#1A202C" />
-                                <circle cx="97" cy="106" r="2.5" fill="#1A202C" />
-                                {/* Bear Muzzle */}
-                                <ellipse cx="90" cy="115" rx="7" ry="5" fill="#FFFFFF" stroke="#E2E8F0" strokeWidth="1" />
-                                <polygon points="87,113 93,113 90,116" fill="#1A202C" />
-                              </g>
-                            </svg>
-                          </div>
-                          
-                          <h4 className="text-sm font-extrabold text-slate-700">
-                            Belum ada karyawan yang memiliki Pass Key
-                          </h4>
-                          <p className="text-[11px] text-slate-400 mt-1 max-w-sm leading-relaxed">
-                            Silakan tambahkan jadwal shift timing baru dengan menekan tombol "+ Tambah" di atas.
-                          </p>
-                        </div>
-                      ) : (
-                        /* SHIFT TIMINGS DATA LIST */
-                        <div className="overflow-hidden border border-slate-200 rounded-xl shadow-sm">
-                          <table className="min-w-full divide-y divide-slate-200">
-                            <thead className="bg-slate-50">
-                              <tr>
-                                <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                  Judul
-                                </th>
-                                <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                  Jam Mulai
-                                </th>
-                                <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                  Jam Berakhir
-                                </th>
-                                <th className="px-6 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                  Aksi
-                                </th>
-                              </tr>
-                            </thead>
-                            <tbody className="bg-white divide-y divide-slate-200">
-                              {shiftTimings.map((item) => (
-                                <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                                  <td className="px-6 py-4 whitespace-nowrap text-xs font-bold text-slate-800">
-                                    {item.judul}
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-600">
-                                    {item.jam_mulai}
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-600">
-                                    {item.jam_berakhir}
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-right text-xs font-medium space-x-3">
-                                    <button
-                                      onClick={() => handleEditShiftTimingClick(item)}
-                                      className="text-blue-600 hover:text-blue-800 font-bold transition-colors cursor-pointer"
-                                    >
-                                      Ubah
-                                    </button>
-                                    <button
-                                      onClick={() => handleDeleteShiftTiming(item.id)}
-                                      className="text-red-600 hover:text-red-800 font-bold transition-colors cursor-pointer"
-                                    >
-                                      Hapus
-                                    </button>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+                <ShiftHrBacaSaja />
               ) : activeMenu === 'antrian' ? (
                 <div className="max-w-4xl w-full mx-auto space-y-6">
                   {/* CARD 1: Toggle Aktifkan No. Antrian di POS */}

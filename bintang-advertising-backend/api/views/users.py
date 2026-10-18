@@ -277,10 +277,21 @@ class UnitBisnisViewSet(viewsets.ModelViewSet):
     permission_classes = [IsOwnerManagerAdminOrReadOnly]
 
 
-class ShiftTimingViewSet(viewsets.ModelViewSet):
+class ShiftTimingViewSet(viewsets.ReadOnlyModelViewSet):
+    """Shift kerja: dibaca dari HR (sumber tunggal), ERP hanya melihat (2026-10-19).
+    Bila HR tidak terjangkau dan belum ada salinan, dipakai data lokal lama sebagai cadangan."""
     queryset = ShiftTiming.objects.all()
     serializer_class = ShiftTimingSerializer
     permission_classes = [IsOwnerManagerAdminOrReadOnly]
+
+    def list(self, request, *args, **kwargs):
+        from ..services.hr_shift import ambil_shift_hr
+
+        data = ambil_shift_hr()
+        if data is not None:
+            return Response([{**s, 'sumber': 'hr'} for s in data])
+        lokal = ShiftTimingSerializer(self.get_queryset(), many=True).data
+        return Response([{**s, 'hari': [], 'sumber': 'lokal'} for s in lokal])
 
 
 class StaffPerformanceReportView(APIView):
