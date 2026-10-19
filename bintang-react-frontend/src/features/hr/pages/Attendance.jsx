@@ -9,6 +9,7 @@ import {
   unitKaryawanBelumDiatur,
 } from '../../../utils/unitBisnis';
 import { todayISO } from '../../../utils/date';
+import PermohonanAksesPanel from '../components/PermohonanAksesPanel';
 
 export default function Attendance() {
   const [absensiList, setAbsensiList] = useState([]);
@@ -232,6 +233,8 @@ export default function Attendance() {
       <div>
         <h1 className="text-sm font-bold text-slate-800">Data Absensi Harian</h1>
       </div>
+
+      <PermohonanAksesPanel onChanged={fetchData} />
 
       <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-3 space-y-4">
         {/* Baris Filter & Pencarian */}
