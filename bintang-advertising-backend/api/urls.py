@@ -35,7 +35,7 @@ from .report_views import ReportDataView, ReportExportView
 from .views.purchase_workflow import PurchaseWorkflowView
 from .views.material_requisition import MaterialRequisitionViewSet
 from .views.purchase_reports import PurchaseReportView
-from .views.laporan_produksi import LaporanTargetProduksiViewSet, RingkasanProduksiSpvView, ExportLaporanProduksiView
+from .views.laporan_produksi import LaporanTargetProduksiViewSet, RingkasanProduksiSpvView, RingkasanPimpinanView, ExportLaporanProduksiView
 from .views.laporan_keuangan import LaporanTargetKeuanganViewSet, RingkasanKeuanganFinanceView, ExportLaporanKeuanganView
 from .views.qz import QZCertificateView, QZSignView
 from .views.tanggungan_reorder import (
@@ -198,6 +198,7 @@ urlpatterns = [
     # Reports Endpoints
     path('reports/staff-performance/', StaffPerformanceReportView.as_view(), name='staff-performance-report'),
     path('laporan-produksi/ringkasan/', RingkasanProduksiSpvView.as_view(), name='laporan-produksi-ringkasan'),
+    path('laporan-produksi/ringkasan-pimpinan/', RingkasanPimpinanView.as_view(), name='laporan-produksi-ringkasan-pimpinan'),
     path('laporan-keuangan/ringkasan/', RingkasanKeuanganFinanceView.as_view(), name='laporan-keuangan-ringkasan'),
     path('reports/purchases/<str:report_id>/', PurchaseReportView.as_view(), name='purchase-report-data'),
     # Laporan generik — HARUS setelah route reports/ yang spesifik di atas,

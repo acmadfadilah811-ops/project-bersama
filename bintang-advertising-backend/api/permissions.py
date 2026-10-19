@@ -348,6 +348,21 @@ class IsSpvOrOwnerManager(BasePermission):
         )
 
 
+class IsSpvOrOwnerManagerAdminRead(BasePermission):
+    """Laporan Produksi di menu HR & Kepegawaian > Laporan Kerja (2026-10-19):
+    sama seperti IsSpvOrOwnerManager, ditambah Admin yang HANYA boleh membaca
+    (GET/HEAD/OPTIONS) -- Admin tidak pernah membuat/mengubah/menghapus
+    laporan SPV/Kordiv."""
+    def has_permission(self, request, view):
+        user = request.user
+        if not (user and user.is_authenticated):
+            return False
+        role = getattr(user, 'role', '')
+        if role in ('owner', 'manager', 'spv', 'kordiv'):
+            return True
+        return role == 'admin' and request.method in SAFE_METHODS
+
+
 class IsOwnerManagerAdminOrReadOnly(BasePermission):
     """
     Owner, Manager, Admin memiliki akses penuh (write/read).

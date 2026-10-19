@@ -6,6 +6,7 @@ from .models import JobBoard
 
 class LaporanTargetProduksiSerializer(serializers.ModelSerializer):
     dibuat_oleh_nama = serializers.SerializerMethodField()
+    dibuat_oleh_role = serializers.CharField(source='dibuat_oleh.role', read_only=True, default=None)
     divisi_nama = serializers.SerializerMethodField()
     jumlah_selesai_aktual = serializers.SerializerMethodField()
     capaian_persen = serializers.SerializerMethodField()
@@ -13,7 +14,7 @@ class LaporanTargetProduksiSerializer(serializers.ModelSerializer):
     class Meta:
         model = LaporanTargetProduksi
         fields = [
-            'id', 'dibuat_oleh', 'dibuat_oleh_nama', 'divisi', 'divisi_nama',
+            'id', 'dibuat_oleh', 'dibuat_oleh_nama', 'dibuat_oleh_role', 'divisi', 'divisi_nama',
             'periode_tipe', 'tanggal_mulai', 'tanggal_selesai', 'target_selesai',
             'kendala_operasional', 'catatan', 'dibuat_pada', 'diperbarui_pada',
             'jumlah_selesai_aktual', 'capaian_persen',

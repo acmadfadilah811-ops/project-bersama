@@ -3,6 +3,7 @@ import { Download, Search, ClipboardCheck, Hourglass, AlertTriangle, Coins, Chev
 import apiClient from '../../../api/apiClient';
 import UnitBisnisFilter from '../../../components/UnitBisnisFilter';
 import { UNIT_SEMUA } from '../../../utils/unitBisnis';
+import LaporanPimpinanTab from '../components/LaporanPimpinanTab';
 
 // Laporan Kerja (2026-10-17): ringkasan SPK selesai per periode, dikelompokkan per
 // unit bisnis. Tiga tampilan: Per Divisi, Per Karyawan, Daftar SPK. Absensi dikelola
@@ -75,7 +76,7 @@ function Kosong({ teks }) {
   return <p className="px-4 py-12 text-center text-sm text-slate-400">{teks}</p>;
 }
 
-export default function Reports() {
+function KinerjaSpk() {
   const [range, setRange] = useState('bulan_ini');
   const [unit, setUnit] = useState(UNIT_SEMUA);
   const [tab, setTab] = useState('divisi');
@@ -388,6 +389,31 @@ export default function Reports() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// Kategori laporan (2026-10-19): kinerja SPK per karyawan/divisi, atau ringkasan
+// divisi dari Supervisor & Kordiv (sama dengan Laporan Produksi di dashboard mereka).
+const BAGIAN = [
+  ['kinerja', 'Kinerja SPK'],
+  ['pimpinan', 'SPV & Kordiv'],
+];
+
+export default function Reports() {
+  const [bagian, setBagian] = useState('kinerja');
+  return (
+    <div className="mx-auto w-full max-w-6xl space-y-5">
+      <Segmen pilihan={BAGIAN} nilai={bagian} onUbah={setBagian} />
+      {bagian === 'kinerja' ? <KinerjaSpk /> : (
+        <div className="space-y-5 pb-10">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Laporan Kerja SPV &amp; Kordiv</h1>
+            <p className="mt-0.5 text-sm text-slate-500">Laporan divisi dari akun Supervisor dan Kordiv, per kategori.</p>
+          </div>
+          <LaporanPimpinanTab />
+        </div>
+      )}
     </div>
   );
 }

@@ -19,8 +19,13 @@ from rest_framework.views import APIView
 
 from ..laporan_produksi_models import LaporanTargetProduksi
 from ..laporan_produksi_serializers import LaporanTargetProduksiSerializer
-from ..models import JobBoard
-from ..permissions import IsSpvOrOwnerManager, get_subordinate_divisi_ids, get_subordinate_user_ids
+from ..models import CustomUser, JobBoard
+from ..permissions import (
+    IsOwnerOrManager, IsSpvOrOwnerManager, IsSpvOrOwnerManagerAdminRead,
+    get_subordinate_divisi_ids, get_subordinate_user_ids,
+)
+
+KATEGORI_PIMPINAN = {'spv': ('spv',), 'kordiv': ('kordiv',), 'semua': ('spv', 'kordiv')}
 
 
 def _scoped_laporan_qs(user, params):
@@ -31,6 +36,10 @@ def _scoped_laporan_qs(user, params):
     if user.role in ('spv', 'kordiv'):
         divisi_ids = get_subordinate_divisi_ids(user)
         qs = qs.filter(Q(dibuat_oleh=user) | Q(divisi_id__in=divisi_ids))
+
+    # Kategori pembuat laporan (menu Laporan Kerja): spv / kordiv; nilai lain = semua.
+    if params.get('kategori') in ('spv', 'kordiv'):
+        qs = qs.filter(dibuat_oleh__role=params['kategori'])
 
     divisi_param = params.get('divisi')
     if divisi_param:
@@ -55,7 +64,7 @@ class LaporanTargetProduksiViewSet(viewsets.ModelViewSet):
     DELETE /api/laporan-produksi/target/{id}/        — pembuat laporan atau owner/manager
     """
     serializer_class = LaporanTargetProduksiSerializer
-    permission_classes = [IsAuthenticated, IsSpvOrOwnerManager]
+    permission_classes = [IsAuthenticated, IsSpvOrOwnerManagerAdminRead]
 
     def get_queryset(self):
         return _scoped_laporan_qs(self.request.user, self.request.query_params)
@@ -149,6 +158,75 @@ class RingkasanProduksiSpvView(APIView):
         })
 
 
+class RingkasanPimpinanView(APIView):
+    """GET /api/laporan-produksi/ringkasan-pimpinan/?kategori=semua|spv|kordiv&tanggal_dari=&tanggal_sampai=
+    Menu HR & Kepegawaian > Laporan Kerja (Owner/Manager/Admin, read-only):
+    satu baris per SPV/Kordiv aktif berisi ringkasan divisi timnya -- angka
+    dan definisi "selesai" IDENTIK dengan RingkasanProduksiSpvView yang
+    tampil di dashboard SPV/Kordiv itu sendiri (cakupan = get_subordinate_
+    user_ids). Cakupan SPV mencakup tim Kordiv di bawahnya, jadi angka
+    antar baris boleh tumpang tindih -- jangan dijumlahkan lintas baris.
+    """
+    permission_classes = [IsAuthenticated, IsOwnerOrManager]
+
+    def get(self, request):
+        kategori = request.query_params.get('kategori') or 'semua'
+        if kategori not in KATEGORI_PIMPINAN:
+            raise ValidationError({'error': 'kategori harus semua, spv, atau kordiv.'})
+        tanggal_dari = parse_date(request.query_params.get('tanggal_dari') or '')
+        tanggal_sampai = parse_date(request.query_params.get('tanggal_sampai') or '')
+        if not tanggal_dari or not tanggal_sampai:
+            tanggal_dari = tanggal_sampai = timezone.localdate()
+        if tanggal_dari > tanggal_sampai:
+            raise ValidationError({'error': 'tanggal_dari tidak boleh setelah tanggal_sampai.'})
+
+        pimpinan = (
+            CustomUser.objects.filter(is_active=True, role__in=KATEGORI_PIMPINAN[kategori])
+            .select_related('divisi').order_by('role', 'first_name', 'username')
+        )
+        hasil = []
+        for orang in pimpinan:
+            scope_ids = get_subordinate_user_ids(orang)
+            selesai_qs = JobBoard.objects.filter(
+                pic_staff_id__in=scope_ids, status_pekerjaan='selesai',
+                waktu_selesai__date__gte=tanggal_dari, waktu_selesai__date__lte=tanggal_sampai,
+            )
+            per_divisi = list(
+                selesai_qs.values('tahap__divisi_id', 'tahap__divisi__nama')
+                .annotate(jumlah_selesai=Count('id')).order_by('-jumlah_selesai')
+            )
+            hasil.append({
+                'user_id': orang.id,
+                'nama': orang.get_full_name() or orang.username,
+                'role': orang.role,
+                'divisi_nama': orang.divisi.nama if orang.divisi else None,
+                'jumlah_anggota_tim': len(scope_ids) - 1,
+                'jumlah_selesai': selesai_qs.count(),
+                'jumlah_gagal_batal': JobBoard.objects.filter(
+                    pic_staff_id__in=scope_ids, status_pekerjaan__in=('gagal', 'batal'),
+                    waktu_selesai__date__gte=tanggal_dari, waktu_selesai__date__lte=tanggal_sampai,
+                ).count(),
+                'jumlah_kendala_aktif': JobBoard.objects.filter(
+                    pic_staff_id__in=scope_ids, status_pekerjaan='kendala',
+                ).count(),
+                'jumlah_laporan_tertulis': LaporanTargetProduksi.objects.filter(
+                    dibuat_oleh=orang, tanggal_selesai__gte=tanggal_dari, tanggal_mulai__lte=tanggal_sampai,
+                ).count(),
+                'per_divisi': [
+                    {
+                        'divisi_id': row['tahap__divisi_id'],
+                        'divisi_nama': row['tahap__divisi__nama'] or 'Tanpa Divisi',
+                        'jumlah_selesai': row['jumlah_selesai'],
+                    }
+                    for row in per_divisi
+                ],
+            })
+        return Response({
+            'tanggal_dari': tanggal_dari, 'tanggal_sampai': tanggal_sampai,
+            'kategori': kategori, 'pimpinan': hasil,
+        })
+
+
 class ExportLaporanProduksiView(APIView):
     """GET /api/export/laporan-produksi/?tanggal_dari=&tanggal_sampai=&divisi=&periode_tipe=
     Export laporan target & kendala operasional ke Excel -- baris & scoping
@@ -156,7 +234,7 @@ class ExportLaporanProduksiView(APIView):
     kolom aktual/capaian dihitung ulang server-side (bukan disalin dari
     field tersimpan), sama seperti tampilan di UI.
     """
-    permission_classes = [IsAuthenticated, IsSpvOrOwnerManager]
+    permission_classes = [IsAuthenticated, IsSpvOrOwnerManagerAdminRead]
 
     def get(self, request):
         import openpyxl

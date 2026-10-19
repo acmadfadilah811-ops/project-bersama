@@ -61,6 +61,23 @@ const PENGATURAN_GROUP = {
   ],
 };
 
+// Dipakai menu owner/manager dan admin; submenu disaring per role lewat hasMenuAccess
+// (admin hanya mendapat Laporan Kerja -- lihat DEFAULT_PERMISSIONS di utils/permissions.js).
+const HR_KEPEGAWAIAN_GROUP = {
+  id: 'hr_kepegawaian',
+  label: 'HR & Kepegawaian',
+  icon: Users,
+  isGroup: true,
+  submenus: [
+    { path: '/attendance', label: 'Absensi', icon: CalendarClock },
+    { path: '/dinas-luar', label: 'Dinas Luar', icon: Navigation },
+    { path: '/employees', label: 'Karyawan', icon: Briefcase },
+    { path: '/divisi', label: 'Divisi & Tahap', icon: Layers },
+    { path: '/announcements', label: 'Pengumuman', icon: Bell },
+    { path: '/reports', label: 'Laporan Kerja', icon: BarChart3 },
+  ],
+};
+
 const groupedMenuOwnerManager = [
   // Dulu 2 entri terpisah (operasional + eksekutif) -- sekarang satu
   // halaman dengan tab (Ringkasan/Operasional/AI Business Analyst), lihat
@@ -124,20 +141,7 @@ const groupedMenuOwnerManager = [
       { path: '/komplain', label: 'Komplain & Garansi', icon: AlertTriangle },
     ],
   },
-  {
-    id: 'hr_kepegawaian',
-    label: 'HR & Kepegawaian',
-    icon: Users,
-    isGroup: true,
-    submenus: [
-      { path: '/attendance', label: 'Absensi', icon: CalendarClock },
-      { path: '/dinas-luar', label: 'Dinas Luar', icon: Navigation },
-      { path: '/employees', label: 'Karyawan', icon: Briefcase },
-      { path: '/divisi', label: 'Divisi & Tahap', icon: Layers },
-      { path: '/announcements', label: 'Pengumuman', icon: Bell },
-      { path: '/reports', label: 'Laporan Kerja', icon: BarChart3 },
-    ],
-  },
+  HR_KEPEGAWAIAN_GROUP,
   { path: '/pengaturan-wa-bot', label: 'Pengaturan WA Bot', icon: Bot, isGroup: false },
   { path: '/nota-human-error', label: 'Nota Human Error', icon: FileWarning, isGroup: false },
   { path: '/profile', label: 'Profil', icon: User, isGroup: false },
@@ -295,6 +299,7 @@ const menuAdmin = [
   { path: '/produksi', label: 'Papan Kerja (SPK)', icon: Kanban, isGroup: false },
   { path: '/permintaan-bahan', label: 'Permintaan Bahan', icon: ClipboardList, isGroup: false },
   { path: '/accounting-internal', label: 'Akuntansi Internal', icon: BookOpen, isGroup: false },
+  HR_KEPEGAWAIAN_GROUP,
   { path: '/nota-human-error', label: 'Nota Human Error', icon: FileWarning, isGroup: false },
   { path: '/profile', label: 'Profil', icon: User, isGroup: false },
   PENGATURAN_GROUP,

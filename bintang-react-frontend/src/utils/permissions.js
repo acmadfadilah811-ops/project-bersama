@@ -72,6 +72,7 @@ export const DEFAULT_PERMISSIONS = {
   ],
   admin: [
     'dashboard',
+    'reports',
     'kasir-pos',
     'orders',
     'jobs',
