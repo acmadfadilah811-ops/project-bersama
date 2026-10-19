@@ -593,7 +593,9 @@ class BaseWhatsAppWebhookView(APIView):
             today = timezone.localdate()
             sesi = DailyAttendanceSession.objects.filter(tanggal=today).first()
             if sesi:
-                unlock_req = UnlockRequest.objects.filter(staff=staff_user, sesi=sesi).order_by('-waktu_request').first()
+                unlock_req = UnlockRequest.objects.filter(
+                    staff=staff_user, sesi=sesi, jenis=UnlockRequest.JENIS_TERLAMBAT,
+                ).order_by('-waktu_request').first()
                 if unlock_req:
                     unlock_req.alasan = message_text
                     unlock_req.save()

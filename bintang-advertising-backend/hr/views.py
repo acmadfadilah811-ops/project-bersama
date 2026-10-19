@@ -186,7 +186,12 @@ class ClockInView(APIView):
 
         # 1c. Wajib absen masuk di HR lebih dulu (HR sumber absensi). Fail-open bila HR
         #     tidak bisa dihubungi, supaya gangguan HR tidak menghentikan pekerjaan.
-        absen_hr = status_absen_hr(request.user)
+        #     Pengecualian: izin "tanpa absen HR" yang disetujui manager/owner hari ini
+        #     (mis. HP tertinggal) -- dicatat di keterangan absensi.
+        izin_tanpa_hr = UnlockRequest.objects.filter(
+            staff=request.user, sesi=session, jenis=UnlockRequest.JENIS_TANPA_ABSEN_HR, status="approved",
+        ).select_related("direspon_oleh").order_by("-waktu_respon").first()
+        absen_hr = None if izin_tanpa_hr else status_absen_hr(request.user)
         if absen_hr in ('belum', 'pulang'):
             return Response(
                 {"detail": "Absen masuk dulu di aplikasi HR (HP atau web), lalu tekan Mulai Kerja."
@@ -199,7 +204,7 @@ class ClockInView(APIView):
         if now > session.batas_maksimal and request.user.role not in ROLE_BEBAS_BATAS_WAKTU:
             # Cek apakah punya UnlockRequest yang di-approve hari ini
             approved_request = UnlockRequest.objects.filter(
-                staff=request.user, sesi=session, status="approved"
+                staff=request.user, sesi=session, status="approved", jenis=UnlockRequest.JENIS_TERLAMBAT,
             ).exists()
             
             if not approved_request:
@@ -245,8 +250,15 @@ class ClockInView(APIView):
                 status=status_hadir,
                 catatan=request.data.get("catatan", ""),
             )
+        if izin_tanpa_hr:
+            penyetuju = (izin_tanpa_hr.direspon_oleh.get_full_name() or izin_tanpa_hr.direspon_oleh.username
+                         if izin_tanpa_hr.direspon_oleh else "-")
+            catatan_izin = f"Mulai Kerja tanpa absen HR (disetujui {penyetuju}). Alasan: {izin_tanpa_hr.alasan}"
+            if catatan_izin not in (absensi.catatan or ""):
+                absensi.catatan = ((absensi.catatan or "") + " | " + catatan_izin).strip(" |")
+                absensi.save(update_fields=["catatan"])
         # Absensi HR otomatis tervalidasi begitu Mulai Kerja berhasil (2026-10-19).
-        if request.user.hr_employee_id:
+        if request.user.hr_employee_id and not izin_tanpa_hr:
             from api.services.absensi_hr_gate import validasi_absensi_hr
             validasi_absensi_hr(request.user.hr_employee_id)
         return Response(
@@ -715,16 +727,28 @@ class StaffDashboardView(APIView):
                 # Terkunci jika sudah lewat batas maksimal, belum absen (atau status alpha), dan tidak punya izin approved
                 has_checked_in = absensi_hari_ini is not None and absensi_hari_ini.status != "alpha"
                 if now > sesi_hari_ini.batas_maksimal and not has_checked_in:
-                    approved_req = UnlockRequest.objects.filter(staff=user, sesi=sesi_hari_ini, status="approved").exists()
+                    approved_req = UnlockRequest.objects.filter(
+                        staff=user, sesi=sesi_hari_ini, status="approved", jenis=UnlockRequest.JENIS_TERLAMBAT,
+                    ).exists()
                     if not approved_req:
                         is_locked = True
-                        req = UnlockRequest.objects.filter(staff=user, sesi=sesi_hari_ini).order_by('-waktu_request').first()
+                        req = UnlockRequest.objects.filter(
+                            staff=user, sesi=sesi_hari_ini, jenis=UnlockRequest.JENIS_TERLAMBAT,
+                        ).order_by('-waktu_request').first()
                         if req:
                             unlock_request = {
                                 "id": req.id,
                                 "status": req.status,
                                 "alasan": req.alasan
                             }
+
+        permintaan_akses_hr = None
+        if sesi_hari_ini is not None:
+            req_akses = UnlockRequest.objects.filter(
+                staff=user, sesi=sesi_hari_ini, jenis=UnlockRequest.JENIS_TANPA_ABSEN_HR,
+            ).order_by('-waktu_request').first()
+            if req_akses:
+                permintaan_akses_hr = {"id": req_akses.id, "status": req_akses.status, "alasan": req_akses.alasan}
 
         return Response(
             {
@@ -748,6 +772,7 @@ class StaffDashboardView(APIView):
                     "workspace_unlocked": absensi_hari_ini.workspace_unlocked if absensi_hari_ini else False,
                 },
                 "status_absen_hr": status_absen_hr(user),
+                "permintaan_akses_hr": permintaan_akses_hr,
                 "absensi_hari_ini": absensi_data,
                 "timecard_bulan_ini": {
                     "bulan": now_month,
@@ -900,6 +925,7 @@ class NotifyLateStaffView(APIView):
                 req, created = UnlockRequest.objects.get_or_create(
                     staff=staff,
                     sesi=session,
+                    jenis=UnlockRequest.JENIS_TERLAMBAT,
                     defaults={
                         'alasan': 'Belum memberikan alasan (Menunggu balasan WhatsApp)'
                     }
@@ -941,17 +967,29 @@ class UnlockRequestStaffView(APIView):
         if not sesi or not sesi.is_active:
             return Response({"detail": "Sesi absensi belum dimulai."}, status=400)
             
-        alasan = request.data.get("alasan")
+        alasan = (request.data.get("alasan") or "").strip()
         if not alasan:
             return Response({"detail": "Alasan wajib diisi."}, status=400)
-            
+
+        jenis = request.data.get("jenis") or UnlockRequest.JENIS_TERLAMBAT
+        if jenis not in (UnlockRequest.JENIS_TERLAMBAT, UnlockRequest.JENIS_TANPA_ABSEN_HR):
+            return Response({"detail": "Jenis permintaan tidak valid."}, status=400)
+        if jenis == UnlockRequest.JENIS_TANPA_ABSEN_HR:
+            if request.user.role not in ROLE_MULAI_KERJA_BUTUH_HR:
+                return Response({"detail": "Peran Anda tidak memerlukan izin ini."}, status=400)
+            if UnlockRequest.objects.filter(
+                staff=request.user, sesi=sesi, jenis=jenis, status__in=("pending", "approved"),
+            ).exists():
+                return Response({"detail": "Permintaan akses hari ini sudah ada (menunggu atau sudah disetujui)."}, status=400)
+
         req = UnlockRequest.objects.create(
             staff=request.user,
             sesi=sesi,
-            alasan=alasan
+            alasan=alasan,
+            jenis=jenis,
         )
-        
-        return Response({"detail": "Permintaan berhasil dikirim. Menunggu persetujuan Manager.", "id": req.id}, status=201)
+
+        return Response({"detail": "Permintaan berhasil dikirim. Menunggu persetujuan Manager/Owner.", "id": req.id}, status=201)
 
 
 class UnlockRequestManagerView(APIView):
@@ -973,7 +1011,9 @@ class UnlockRequestManagerView(APIView):
                 "staff_no_wa": r.staff.no_hp,
                 "alasan": r.alasan,
                 "waktu_request": r.waktu_request,
-                "status": r.status
+                "status": r.status,
+                "jenis": r.jenis,
+                "jenis_label": r.get_jenis_display(),
             }
             for r in reqs
         ]
@@ -992,6 +1032,9 @@ class UnlockRequestActionView(APIView):
                 
             if req.status != "pending":
                 return Response({"detail": f"Permintaan sudah diproses sebelumnya (Status saat ini: {req.status})."}, status=400)
+
+            if req.staff_id == request.user.id:
+                return Response({"detail": "Tidak boleh menyetujui permintaan sendiri."}, status=403)
                 
             if action == "approve":
                 req.status = "approved"
@@ -1004,7 +1047,7 @@ class UnlockRequestActionView(APIView):
             req.waktu_respon = timezone.now()
             req.save()
 
-            if action == "approve":
+            if action == "approve" and req.jenis == UnlockRequest.JENIS_TERLAMBAT:
                 # Approval keterlambatan adalah keputusan akses, bukan
                 # clock-in palsu.
                 # Pastikan setiap staff mempunyai rekam absensi untuk tanggal

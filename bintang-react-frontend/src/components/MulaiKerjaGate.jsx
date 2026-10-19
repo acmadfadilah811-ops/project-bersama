@@ -16,11 +16,35 @@ function putarSuaraMulai() {
 
 // Gerbang Mulai Kerja untuk SPV & Kordiv (2026-10-18): menu lain terkunci sampai
 // tombol Mulai Kerja ditekan. Mulai Kerja butuh absen masuk di HR lebih dulu.
-export default function MulaiKerjaGate({ statusAbsenHr, onSelesai, onMuatUlang }) {
+export default function MulaiKerjaGate({ statusAbsenHr, permintaanAkses, onSelesai, onMuatUlang }) {
   const { user, logout } = useAuth();
   const [proses, setProses] = useState(false);
   const [galat, setGalat] = useState('');
-  const belumAbsenHr = statusAbsenHr === 'belum' || statusAbsenHr === 'pulang';
+  const [formAkses, setFormAkses] = useState(false);
+  const [alasan, setAlasan] = useState('');
+  const disetujui = permintaanAkses?.status === 'approved';
+  const menunggu = permintaanAkses?.status === 'pending';
+  // Izin akses yang disetujui membebaskan syarat absen masuk di HR hari ini.
+  const belumAbsenHr = (statusAbsenHr === 'belum' || statusAbsenHr === 'pulang') && !disetujui;
+
+  const kirimAkses = async () => {
+    if (!alasan.trim()) {
+      setGalat('Alasan wajib diisi.');
+      return;
+    }
+    setProses(true);
+    setGalat('');
+    try {
+      await apiClient.post('/hr/unlock-request/', { alasan: alasan.trim(), jenis: 'tanpa_absen_hr' });
+      setFormAkses(false);
+      setAlasan('');
+      onMuatUlang();
+    } catch (err) {
+      setGalat(err.response?.data?.detail || 'Gagal mengirim permintaan. Coba lagi.');
+    } finally {
+      setProses(false);
+    }
+  };
 
   const mulai = async () => {
     setProses(true);
@@ -54,6 +78,22 @@ export default function MulaiKerjaGate({ statusAbsenHr, onSelesai, onMuatUlang }
               : 'Absen masuk dulu di aplikasi HR (HP atau web HR), lalu muat ulang status.'}
           </p>
         )}
+        {disetujui && (
+          <p className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+            Permintaan akses disetujui. Anda boleh Mulai Kerja tanpa absen di HR hari ini.
+          </p>
+        )}
+        {menunggu && (
+          <p className="mt-4 rounded-lg bg-slate-100 px-3 py-2 text-left text-sm text-slate-700">
+            Permintaan akses menunggu persetujuan Manager/Owner.
+            <span className="mt-1 block text-xs italic text-slate-500">&ldquo;{permintaanAkses.alasan}&rdquo;</span>
+          </p>
+        )}
+        {permintaanAkses?.status === 'rejected' && (
+          <p className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            Permintaan akses ditolak. Absen di HR dulu, atau hubungi Manager/Owner.
+          </p>
+        )}
         {galat && <p className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{galat}</p>}
 
         <button
@@ -64,6 +104,44 @@ export default function MulaiKerjaGate({ statusAbsenHr, onSelesai, onMuatUlang }
         >
           <Play size={16} /> {proses ? 'Memproses…' : 'Mulai Kerja'}
         </button>
+        {belumAbsenHr && !menunggu && (
+          formAkses ? (
+            <div className="mt-3 space-y-2 text-left">
+              <textarea
+                value={alasan}
+                onChange={(e) => setAlasan(e.target.value)}
+                rows={3}
+                placeholder="Alasan, mis. HP tertinggal di rumah"
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-slate-400"
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={kirimAkses}
+                  disabled={proses}
+                  className="flex-1 rounded-xl bg-slate-900 py-2.5 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-40"
+                >
+                  Kirim Permintaan
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setFormAkses(false); setGalat(''); }}
+                  className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Batal
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setFormAkses(true)}
+              className="mt-3 w-full rounded-xl border border-slate-300 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Tidak bisa absen di HP? Minta akses
+            </button>
+          )
+        )}
         <button
           type="button"
           onClick={onMuatUlang}

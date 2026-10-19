@@ -246,6 +246,9 @@ export default function AttendanceSessionManager() {
                           {req.status}
                         </span>
                       </div>
+                      {req.jenis === 'tanpa_absen_hr' && (
+                        <p className="text-[9px] font-bold text-slate-500 mb-0.5">{req.jenis_label}</p>
+                      )}
                       <p className="text-[10px] text-slate-600 italic leading-tight">
                         "{req.alasan}"
                       </p>

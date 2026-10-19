@@ -1280,6 +1280,9 @@ export default function Dashboard() {
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
                               <p className="text-[10px] font-bold text-slate-800 truncate">{req.staff_nama || 'Staff'}</p>
+                              {req.jenis === 'tanpa_absen_hr' && (
+                                <p className="text-[9px] font-semibold text-slate-500 truncate">{req.jenis_label}</p>
+                              )}
                               <p className="text-[9px] text-slate-550 italic truncate">"{req.alasan}"</p>
                             </div>
                             <span className="text-[8px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded font-black uppercase shrink-0">{req.status}</span>

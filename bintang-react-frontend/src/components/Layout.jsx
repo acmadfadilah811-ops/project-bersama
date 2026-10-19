@@ -43,6 +43,7 @@ export default function Layout() {
         // Papan kerja yang dibuka manual oleh manager ("Buka Papan") melewati gerbang.
         perlu: !response.data.absensi_hari_ini?.jam_masuk && !response.data.status_terkunci?.workspace_unlocked,
         statusHr: response.data.status_absen_hr || null,
+        permintaanAkses: response.data.permintaan_akses_hr || null,
       });
     } catch (error) {
       console.error('Error checking lock status:', error);
@@ -69,7 +70,7 @@ export default function Layout() {
   }
 
   if (gerbangMulai.perlu) {
-    return <MulaiKerjaGate statusAbsenHr={gerbangMulai.statusHr} onSelesai={checkStatus} onMuatUlang={checkStatus} />;
+    return <MulaiKerjaGate statusAbsenHr={gerbangMulai.statusHr} permintaanAkses={gerbangMulai.permintaanAkses} onSelesai={checkStatus} onMuatUlang={checkStatus} />;
   }
 
   if (location.pathname.startsWith('/produksi')) {

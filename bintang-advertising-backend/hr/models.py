@@ -114,7 +114,17 @@ class UnlockRequest(models.Model):
         on_delete=models.CASCADE,
         related_name="unlock_requests",
     )
+    JENIS_TERLAMBAT = "terlambat"
+    JENIS_TANPA_ABSEN_HR = "tanpa_absen_hr"
+    JENIS_CHOICES = [
+        (JENIS_TERLAMBAT, "Izin terlambat"),
+        (JENIS_TANPA_ABSEN_HR, "Mulai Kerja tanpa absen HR"),
+    ]
+
     alasan = models.TextField(help_text="Alasan terlambat atau tidak absen.")
+    # tanpa_absen_hr: karyawan tidak bisa absen di HR (HP tertinggal/rusak) dan minta izin
+    # Mulai Kerja di ERP tanpa absen masuk HR hari itu (2026-10-19).
+    jenis = models.CharField(max_length=20, choices=JENIS_CHOICES, default=JENIS_TERLAMBAT)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
     waktu_request = models.DateTimeField(auto_now_add=True)
     direspon_oleh = models.ForeignKey(
