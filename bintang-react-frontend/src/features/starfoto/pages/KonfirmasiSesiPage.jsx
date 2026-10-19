@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Check, MessageCircle, Plus, RefreshCw, Send, ThumbsUp, Trash2, X } from 'lucide-react';
 import PosHeaderBar from '../../kasir/components/PosHeaderBar';
 import apiClient from '../../../api/apiClient';
+import SesiTerlewatPanel from '../components/SesiTerlewatPanel';
 import { useAuth } from '../../../context/AuthContext';
 import { notifyApiError, notifySuccess } from '../../../utils/notify';
 import { uiConfirm } from '../../../utils/dialog';
@@ -289,6 +290,7 @@ export default function KonfirmasiSesiPage({ onToggleSidebar }) {
       </div>
 
       <div className="flex-1 space-y-4 overflow-y-auto p-6">
+        <SesiTerlewatPanel onChanged={muat} />
         <div className="flex flex-wrap gap-1.5">
           {tombolTab('menunggu', 'Menunggu Konfirmasi', menunggu.length)}
           {tombolTab('berjalan', 'Sedang Sesi', berjalan.length)}

@@ -14,6 +14,7 @@ import datetime
 from decimal import ROUND_UP, Decimal, InvalidOperation
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -201,7 +202,7 @@ def _petugas(user_id, label, tahap):
     return petugas
 
 
-def _cek_bentrok(mulai, durasi, lokasi, kecuali_pesanan=None):
+def _cek_bentrok(mulai, durasi, lokasi, kecuali_pesanan=None, kecuali_sesi=None):
     if lokasi != 'studio':
         return
     selesai = mulai + datetime.timedelta(minutes=durasi)
@@ -210,6 +211,8 @@ def _cek_bentrok(mulai, durasi, lokasi, kecuali_pesanan=None):
     ).exclude(status='batal').exclude(pesanan__status='batal')
     if kecuali_pesanan is not None:
         calon = calon.exclude(pesanan=kecuali_pesanan)
+    if kecuali_sesi is not None:
+        calon = calon.exclude(pk=kecuali_sesi)
     bentrok = [s for s in calon if s.mulai + datetime.timedelta(minutes=s.durasi_menit) > mulai]
     if len(bentrok) >= max(1, pengaturan()['jumlah_studio']):
         jam = ', '.join(timezone.localtime(s.mulai).strftime('%H:%M') for s in bentrok)
@@ -359,6 +362,70 @@ def mulai_sesi(sesi_id, user):
     OrderActivityLog.objects.create(
         order=sesi.pesanan.order, user=user, tindakan='MULAI_SESI_FOTO',
         keterangan=f"Sesi foto {sesi.urutan} dimulai oleh {user.username}.",
+    )
+    return sesi
+
+
+def sesi_terlewat(user):
+    """Sesi yang masih 'terjadwal' padahal waktu selesainya (mulai + durasi) sudah lewat
+    (2026-10-19). Fotografer/asisten melihat sesinya sendiri; kasir & pengelola melihat semua
+    (kasir hanya unit bisnisnya)."""
+    sekarang = timezone.now()
+    qs = (
+        SesiFoto.objects.select_related('pesanan__order', 'pesanan__paket_item', 'fotografer', 'asisten')
+        .filter(status='terjadwal', pesanan__status='sesi', mulai__lt=sekarang)
+        .exclude(pesanan__order__status_global='batal')
+        .order_by('mulai')
+    )
+    if user.role in ROLE_KASIR:
+        if user.role == 'kasir':
+            qs = qs.filter(pesanan__order__unit_bisnis_id=user.unit_bisnis_id) if user.unit_bisnis_id else qs.none()
+    else:
+        qs = qs.filter(Q(fotografer=user) | Q(asisten=user))
+    return [s for s in qs if s.mulai + datetime.timedelta(minutes=s.durasi_menit) < sekarang]
+
+
+@transaction.atomic
+def ubah_jadwal_sesi(sesi_id, user, data):
+    """Jadwal ulang sesi yang belum dimulai. Boleh oleh fotografer/asisten sesi itu, atau
+    kasir/pengelola. Deadline SPK Sesi Foto ikut digeser ke sesi terdekat berikutnya."""
+    sesi = SesiFoto.objects.select_for_update(of=('self',)).select_related('pesanan__order').get(pk=sesi_id)
+    if user.role not in ROLE_KASIR and user.pk not in (sesi.fotografer_id, sesi.asisten_id):
+        raise PermissionDenied('Hanya fotografer/asisten sesi ini atau kasir yang dapat mengubah jadwal.')
+    if sesi.status != 'terjadwal' or sesi.pesanan.status != 'sesi' or sesi.pesanan.order.status_global == 'batal':
+        raise ValidationError({'error': 'Jadwal hanya bisa diubah untuk sesi yang belum dimulai.'})
+
+    mulai = parse_datetime(str(data.get('mulai') or ''))
+    if mulai is None:
+        raise ValidationError({'error': 'Jadwal baru wajib diisi.'})
+    if timezone.is_naive(mulai):
+        mulai = timezone.make_aware(mulai)
+    if mulai < timezone.now() - datetime.timedelta(minutes=5):
+        raise ValidationError({'error': 'Jadwal baru harus di waktu yang belum lewat. Untuk menjalankan sekarang, tekan Jalankan Sekarang.'})
+    durasi = _int(data.get('durasi_menit') or sesi.durasi_menit, 'Durasi sesi', 1)
+    lokasi = data.get('lokasi') if data.get('lokasi') in ('studio', 'outdoor') else sesi.lokasi
+    alamat = str(data.get('alamat') if data.get('alamat') is not None else sesi.alamat).strip()[:255]
+    if lokasi == 'outdoor' and not alamat:
+        raise ValidationError({'error': 'Sesi outdoor: alamat/tempat lokasi wajib diisi.'})
+    if not data.get('abaikan_bentrok'):
+        _cek_bentrok(mulai, durasi, lokasi, kecuali_sesi=sesi.pk)
+
+    lama = timezone.localtime(sesi.mulai).strftime('%d/%m %H:%M')
+    sesi.mulai, sesi.durasi_menit, sesi.lokasi, sesi.alamat = mulai, durasi, lokasi, alamat
+    sesi.save(update_fields=['mulai', 'durasi_menit', 'lokasi', 'alamat'])
+
+    pertama = sesi.pesanan.sesi.exclude(status__in=['selesai', 'batal']).order_by('mulai').first()
+    if pertama:
+        jam = timezone.localtime(pertama.mulai)
+        _jobs_sesi(sesi.pesanan).exclude(status_pekerjaan='selesai').update(
+            deadline=jam.date(), deadline_jam=jam.time().replace(second=0, microsecond=0),
+        )
+    OrderActivityLog.objects.create(
+        order=sesi.pesanan.order, user=user, tindakan='UBAH_JADWAL_SESI_FOTO',
+        keterangan=(
+            f"Jadwal sesi foto {sesi.urutan} diubah oleh {user.username}: {lama} -> "
+            f"{timezone.localtime(mulai).strftime('%d/%m %H:%M')}."
+        ),
     )
     return sesi
 

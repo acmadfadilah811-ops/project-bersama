@@ -7,8 +7,8 @@ from .views.hr_sandi_bridge import HRBridgeSandiView
 from .views.hr_foto_bridge import HRBridgeFotoView
 from .views.resi_digital import AspekSurveiViewSet, ResiPublikView, ResiSurveiView, SurveiKepuasanView
 from .views.starfoto import (
-    AntreanSesiView, JadwalSesiView, PaketFotoViewSet, PengaturanStarfotoView, PesananFotoViewSet, SesiAksiView, SesiSayaView,
-    UsulanTambahanDetailView,
+    AntreanSesiView, JadwalSesiView, PaketFotoViewSet, PengaturanStarfotoView, PesananFotoViewSet, SesiAksiView,
+    SesiJadwalView, SesiSayaView, SesiTerlewatView, UsulanTambahanDetailView,
 )
 from .views.dinas_luar import DinasLuarAktifView, DinasLuarListView, DinasLuarMulaiView, DinasLuarSelesaiView
 from .views.starfoto_approval import (
@@ -242,6 +242,8 @@ urlpatterns = [
     path('starfoto/pengaturan/', PengaturanStarfotoView.as_view(), name='starfoto-pengaturan'),
     path('starfoto/usulan/<int:pk>/', UsulanTambahanDetailView.as_view(), name='starfoto-usulan'),
     path('starfoto/sesi-saya/', SesiSayaView.as_view(), name='starfoto-sesi-saya'),
+    path('starfoto/sesi-terlewat/', SesiTerlewatView.as_view(), name='starfoto-sesi-terlewat'),
+    path('starfoto/sesi/<int:pk>/jadwal/', SesiJadwalView.as_view(), name='starfoto-sesi-jadwal'),
     path('starfoto/sesi/<int:pk>/<str:aksi>/', SesiAksiView.as_view(), name='starfoto-sesi-aksi'),
     path('starfoto/jadwal/', JadwalSesiView.as_view(), name='starfoto-jadwal'),
     # Dinas luar staff (2026-10-11).

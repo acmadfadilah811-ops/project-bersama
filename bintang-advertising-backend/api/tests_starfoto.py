@@ -347,3 +347,69 @@ class StatusPesananFotoUntukPelangganTests(_Dasar):
         from .starfoto_models import PesananFoto
         PesananFoto.objects.filter(pk=order.pesanan_foto.pk).update(status='dikonfirmasi')
         self.assertEqual(_status_pesanan(order), 'Dalam Proses Produksi')
+
+
+class SesiTerlewatTests(_Dasar):
+    """Sesi terjadwal yang lewat waktunya: notifikasi, dijalankan, atau dijadwal ulang (2026-10-19)."""
+
+    def _sesi_terlewat(self):
+        res = self._checkout()
+        self.assertEqual(res.status_code, 201, res.content)
+        sesi = PesananFoto.objects.get(order_id=res.json()['id']).sesi.get()
+        lewat = timezone.now() - datetime.timedelta(days=1)
+        SesiFoto.objects.filter(pk=sesi.pk).update(mulai=lewat)
+        sesi.refresh_from_db()
+        return sesi
+
+    def _daftar(self, user):
+        self.client.force_authenticate(user)
+        res = self.client.get('/api/starfoto/sesi-terlewat/')
+        self.assertEqual(res.status_code, 200, res.content)
+        return res.json()
+
+    def test_notifikasi_untuk_petugas_dan_kasir_bukan_orang_lain(self):
+        sesi = self._sesi_terlewat()
+        self.assertEqual([s['id'] for s in self._daftar(self.foto)], [sesi.id])
+        self.assertGreaterEqual(self._daftar(self.foto)[0]['terlewat_menit'], 60)
+        self.assertEqual([s['id'] for s in self._daftar(self.kasir)], [sesi.id])
+        self.assertEqual(self._daftar(self.lain), [])
+
+    def test_sesi_di_masa_depan_tidak_dianggap_terlewat(self):
+        self.assertEqual(self._checkout().status_code, 201)
+        self.assertEqual(self._daftar(self.foto), [])
+
+    def test_sesi_terlewat_tampil_di_sesi_saya_dan_bisa_dijalankan(self):
+        sesi = self._sesi_terlewat()
+        self.client.force_authenticate(self.foto)
+        ids = [s['id'] for s in self.client.get('/api/starfoto/sesi-saya/?mendatang=1').json()]
+        self.assertIn(sesi.id, ids)
+        self.assertEqual(self.client.post(f'/api/starfoto/sesi/{sesi.id}/mulai/').status_code, 200)
+        self.assertEqual(self._daftar(self.foto), [])
+
+    def test_ubah_jadwal_menggeser_deadline_spk(self):
+        sesi = self._sesi_terlewat()
+        baru = (timezone.now() + datetime.timedelta(days=2)).replace(microsecond=0)
+        self.client.force_authenticate(self.foto)
+        res = self.client.post(f'/api/starfoto/sesi/{sesi.id}/jadwal/', {'mulai': baru.isoformat()}, format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        sesi.refresh_from_db()
+        self.assertEqual(sesi.mulai, baru)
+        job = JobBoard.objects.get(order_item=sesi.pesanan.paket_item, tahap=self.t_sesi)
+        self.assertEqual(job.deadline, timezone.localtime(baru).date())
+        self.assertEqual(self._daftar(self.foto), [])
+
+    def test_ubah_jadwal_ke_waktu_lampau_ditolak(self):
+        sesi = self._sesi_terlewat()
+        self.client.force_authenticate(self.kasir)
+        lampau = (timezone.now() - datetime.timedelta(hours=3)).isoformat()
+        res = self.client.post(f'/api/starfoto/sesi/{sesi.id}/jadwal/', {'mulai': lampau}, format='json')
+        self.assertEqual(res.status_code, 400)
+
+    def test_ubah_jadwal_hanya_petugas_atau_kasir_dan_sesi_belum_mulai(self):
+        sesi = self._sesi_terlewat()
+        baru = (timezone.now() + datetime.timedelta(days=1)).isoformat()
+        self.client.force_authenticate(self.lain)
+        self.assertEqual(self.client.post(f'/api/starfoto/sesi/{sesi.id}/jadwal/', {'mulai': baru}, format='json').status_code, 403)
+        self.client.force_authenticate(self.foto)
+        self.client.post(f'/api/starfoto/sesi/{sesi.id}/mulai/')
+        self.assertEqual(self.client.post(f'/api/starfoto/sesi/{sesi.id}/jadwal/', {'mulai': baru}, format='json').status_code, 400)

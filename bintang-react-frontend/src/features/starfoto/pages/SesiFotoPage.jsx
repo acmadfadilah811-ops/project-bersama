@@ -6,6 +6,7 @@ import { notifyApiError, notifySuccess } from '../../../utils/notify';
 import { uiConfirm } from '../../../utils/dialog';
 import UsulanTambahanModal from '../components/UsulanTambahanModal';
 import DinasLuarModal from '../components/DinasLuarModal';
+import SesiTerlewatPanel from '../components/SesiTerlewatPanel';
 import KartuDinas, { jamMenit } from '../components/KartuDinas';
 import { formatJadwal, formatRupiah, usePengaturanStarfoto } from '../hooks/useStarfoto';
 
@@ -170,6 +171,8 @@ export default function SesiFotoPage() {
         {tombolTab('dinas', atasan ? 'Dinas Tim' : 'Dinas')}
       </div>
 
+      <SesiTerlewatPanel onChanged={muat} />
+
       {dinasAktif && (
         <div className="flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm">
           <div>
@@ -246,7 +249,7 @@ export default function SesiFotoPage() {
             const saya = sesi.fotografer === user?.id ? 'Fotografer' : 'Asisten';
             const hari = hariDari(sesi.mulai);
             // Sesi hari lain hanya ditampilkan sebagai jadwal; Mulai & usulan pada hari sesi.
-            const hariH = hari === hariIni() || sesi.status === 'berlangsung';
+            const hariH = hari === hariIni() || sesi.status === 'berlangsung' || new Date(sesi.mulai) < new Date();
             const bisaUsul = hariH && detail && ['sesi', 'menunggu_kasir'].includes(detail.status);
             const judulHari = modeSaya === 'mendatang' && (i === 0 || hariDari(sesiSaya[i - 1].mulai) !== hari);
             return (

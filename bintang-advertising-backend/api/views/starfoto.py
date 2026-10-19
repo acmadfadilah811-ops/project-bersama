@@ -18,7 +18,7 @@ import datetime
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from django.utils.dateparse import parse_date
+from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import SAFE_METHODS, BasePermission, IsAuthenticated
@@ -146,7 +146,7 @@ class SesiSayaView(APIView):
             rentang = (Q(mulai__date=hari_ini) | Q(
                 mulai__date__gt=hari_ini, mulai__date__lte=hari_ini + datetime.timedelta(days=30),
                 status__in=['terjadwal', 'berlangsung'],
-            ))
+            ) | Q(mulai__date__lt=hari_ini, status='terjadwal'))  # sesi terlewat yang belum dijalankan
         else:
             tanggal = parse_date(request.query_params.get('tanggal') or '') or hari_ini
             rentang = Q(mulai__date=tanggal)
@@ -178,6 +178,30 @@ class SesiAksiView(APIView):
             sesi = svc.selesai_sesi(pk, request.user)
         else:
             return Response({'error': 'Aksi tidak dikenal.'}, status=status.HTTP_404_NOT_FOUND)
+        sesi.refresh_from_db()
+        return Response(SesiFotoSerializer(sesi).data)
+
+
+class SesiTerlewatView(APIView):
+    """GET /api/starfoto/sesi-terlewat/  sesi terjadwal yang sudah lewat waktunya (notifikasi)."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        sekarang = timezone.now()
+        data = SesiFotoSerializer(svc.sesi_terlewat(request.user), many=True).data
+        for baris in data:
+            selesai = parse_datetime(baris['mulai']) + datetime.timedelta(minutes=baris['durasi_menit'])
+            baris['terlewat_menit'] = max(0, int((sekarang - selesai).total_seconds() // 60))
+        return Response(data)
+
+
+class SesiJadwalView(APIView):
+    """POST /api/starfoto/sesi/{id}/jadwal/  {mulai, durasi_menit?, lokasi?, alamat?}"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        get_object_or_404(SesiFoto, pk=pk)
+        sesi = svc.ubah_jadwal_sesi(pk, request.user, request.data)
         sesi.refresh_from_db()
         return Response(SesiFotoSerializer(sesi).data)
 
