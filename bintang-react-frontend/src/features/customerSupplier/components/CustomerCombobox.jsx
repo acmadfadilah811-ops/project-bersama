@@ -1,18 +1,44 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, X } from 'lucide-react';
+import apiClient from '../../../api/apiClient';
 
-/** Input "Nama Pelanggan" yang bisa diketik untuk mencari, bukan sekadar dropdown pilih. */
-export default function CustomerCombobox({ value, onChange, customers = [], placeholder = 'Cari pelanggan...' }) {
+/** Input "Nama Pelanggan" yang bisa diketik untuk mencari. Pencarian langsung ke server
+ *  (2026-10-19) karena data pelanggan terlalu banyak untuk dimuat semua ke browser.
+ *  onChange(id, pelanggan) -- pelanggan berisi nama dsb., null bila dikosongkan. */
+export default function CustomerCombobox({ value, onChange, placeholder = 'Cari pelanggan...' }) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
+  const [hasil, setHasil] = useState([]);
+  const [selected, setSelected] = useState(null);
   const wrapperRef = useRef(null);
 
-  const selected = customers.find((c) => String(c.id) === String(value));
-
+  // Nama pelanggan terpilih (mis. saat mengubah catatan lama).
   useEffect(() => {
-    setQuery(selected ? selected.nama : '');
+    if (!value) {
+      setSelected(null);
+      setQuery('');
+      return;
+    }
+    if (selected && String(selected.id) === String(value)) return;
+    apiClient.get(`/customers/${value}/`)
+      .then((res) => { setSelected(res.data); setQuery(res.data?.nama || ''); })
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const t = setTimeout(async () => {
+      try {
+        const cari = query.trim() && query !== selected?.nama ? query.trim() : '';
+        const res = await apiClient.get('/customers/', { params: { page: 1, page_size: 20, search: cari } });
+        setHasil(Array.isArray(res.data) ? res.data : res.data?.results || []);
+      } catch {
+        setHasil([]);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query, open, selected]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -23,15 +49,11 @@ export default function CustomerCombobox({ value, onChange, customers = [], plac
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
 
-  const filtered = query.trim()
-    ? customers.filter((c) => c.nama.toLowerCase().includes(query.trim().toLowerCase()))
-    : customers;
-
   const pick = (customer) => {
-    onChange(customer ? String(customer.id) : '');
+    setSelected(customer);
+    onChange(customer ? String(customer.id) : '', customer);
     setQuery(customer ? customer.nama : '');
     setOpen(false);
   };
@@ -62,10 +84,10 @@ export default function CustomerCombobox({ value, onChange, customers = [], plac
 
       {open && (
         <div style={{ position: 'absolute', zIndex: 20, top: 'calc(100% + 4px)', left: 0, right: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)', maxHeight: '220px', overflowY: 'auto' }}>
-          {filtered.length === 0 ? (
+          {hasil.length === 0 ? (
             <div style={{ padding: '10px 12px', fontSize: '12px', color: '#94a3b8' }}>Tidak ditemukan.</div>
           ) : (
-            filtered.map((c) => (
+            hasil.map((c) => (
               <div
                 key={c.id}
                 onMouseDown={(e) => { e.preventDefault(); pick(c); }}
@@ -74,6 +96,7 @@ export default function CustomerCombobox({ value, onChange, customers = [], plac
                 onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
               >
                 {c.nama}
+                {c.handphone ? <span style={{ color: '#94a3b8', marginLeft: '6px', fontSize: '12px' }}>{c.handphone}</span> : null}
               </div>
             ))
           )}

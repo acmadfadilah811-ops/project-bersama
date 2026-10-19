@@ -13,7 +13,7 @@ export default function SimpananPelanggan() {
     const loadDeposits = async () => {
       setLoading(true);
       try {
-        const customers = await fetchAllPages('/customers/');
+        const customers = await fetchAllPages('/customers/', { params: { deposit_tidak_nol: 1 } });
         const rows = customers
           .filter((c) => Number(c.deposit || 0) !== 0)
           .map((c) => ({

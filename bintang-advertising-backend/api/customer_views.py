@@ -150,16 +150,55 @@ class CustomerViewSet(ToggleStatusMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        search = self.request.query_params.get('search')
+        p = self.request.query_params
+        search = (p.get('search') or '').strip()
         if search:
-            from django.db.models import Q
-            qs = qs.filter(
-                Q(nama__icontains=search) |
-                Q(email__icontains=search) |
-                Q(handphone__icontains=search) |
-                Q(kode_pelanggan__icontains=search)
-            )
+            filt = (Q(nama__icontains=search) | Q(email__icontains=search) | Q(handphone__icontains=search)
+                    | Q(kode_pelanggan__icontains=search))
+            for n in varian_nomor(search) if re.fullmatch(r'[\d\s\-+()]+', search) else []:
+                filt |= Q(handphone__icontains=n)
+            qs = qs.filter(filt)
+        # Filter daftar Pelanggan dijalankan di server (2026-10-19): data 28 ribu baris
+        # tidak bisa lagi dimuat sekaligus ke browser.
+        grup = p.get('grup')
+        if grup == 'tanpa':
+            qs = qs.filter(customer_group__isnull=True)
+        elif grup:
+            qs = qs.filter(customer_group_id=grup)
+        if p.get('grup_nama'):
+            qs = qs.filter(customer_group__nama=p['grup_nama'])
+        status_filter = p.get('status')
+        if status_filter == 'aktif':
+            qs = qs.filter(bekukan=False)
+        elif status_filter == 'dibekukan':
+            qs = qs.filter(bekukan=True)
+        rentang = (
+            ('lahir_dari', 'tanggal_lahir__gte'), ('lahir_sampai', 'tanggal_lahir__lte'),
+            ('berakhir_dari', 'tanggal_berakhir__gte'), ('berakhir_sampai', 'tanggal_berakhir__lte'),
+            ('deposit_min', 'deposit__gte'), ('deposit_max', 'deposit__lte'),
+            ('loyalty_min', 'loyalty_points__gte'), ('loyalty_max', 'loyalty_points__lte'),
+        )
+        for param, lookup in rentang:
+            if p.get(param) not in (None, ''):
+                qs = qs.filter(**{lookup: p[param]})
+        if p.get('deposit_tidak_nol'):
+            qs = qs.exclude(deposit=0)
         return qs
+
+    @action(detail=False, methods=['get'], url_path='ringkasan-grup')
+    def ringkasan_grup(self, request):
+        """Jumlah pelanggan per tipe untuk kartu Tipe Pelanggan."""
+        from django.db.models import Count
+
+        per_grup = {
+            str(r['customer_group']): r['n']
+            for r in Customer.objects.values('customer_group').order_by().annotate(n=Count('id'))
+        }
+        return Response({
+            'per_grup': {k: v for k, v in per_grup.items() if k != 'None'},
+            'tanpa_grup': per_grup.get('None', 0),
+            'total': sum(per_grup.values()),
+        })
 
 
     def perform_create(self, serializer):

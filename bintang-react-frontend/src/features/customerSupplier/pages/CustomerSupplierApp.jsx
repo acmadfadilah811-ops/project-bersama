@@ -18,6 +18,7 @@ import apiClient from '../../../api/apiClient';
 // isi tab Tipe Pelanggan.
 const TIPE_TANPA_GRUP = '__tanpa_tipe__';
 import CustomerFilterDrawer, { defaultCustomerFilters } from '../components/CustomerFilterDrawer';
+import CustomerCombobox from '../components/CustomerCombobox';
 import CustomerImportModal from '../components/CustomerImportModal';
 import AddCustomerModal from '../components/AddCustomerModal';
 import CustomerDetailPage from '../components/CustomerDetailPage';
@@ -141,15 +142,45 @@ function CustomerSupplierInner() {
   const [loadingGroups, setLoadingGroups] = useState(true);
   const [error, setError] = useState(null);
 
+  const [customerTotal, setCustomerTotal] = useState(0);
+  const [jumlahPerGrup, setJumlahPerGrup] = useState({ per_grup: {}, tanpa_grup: 0 });
+
+  // Daftar dimuat per halaman dengan filter di server (2026-10-19): data pelanggan
+  // 28 ribu baris tidak bisa lagi dimuat sekaligus.
   const fetchCustomers = async () => {
     setLoadingCustomers(true);
     try {
-      const res = await apiClient.get('/customers/');
+      const f = appliedFilters;
+      const params = {
+        page: customerCurrentPage,
+        page_size: customerPageSize,
+        search: customerQuery.trim() || undefined,
+        grup: selectedGroupFilter === TIPE_TANPA_GRUP ? 'tanpa' : (f.customerGroup || undefined),
+        grup_nama: selectedGroupFilter !== 'Semua Tipe' && selectedGroupFilter !== TIPE_TANPA_GRUP ? selectedGroupFilter : undefined,
+        status: f.status !== 'semua' ? f.status : undefined,
+        lahir_dari: f.dobStart || undefined,
+        lahir_sampai: f.dobEnd || undefined,
+        berakhir_dari: f.expiryStart || undefined,
+        berakhir_sampai: f.expiryEnd || undefined,
+        deposit_min: f.depositMin !== '' ? f.depositMin : undefined,
+        deposit_max: f.depositMax !== '' ? f.depositMax : undefined,
+        loyalty_min: f.loyaltyMin !== '' ? f.loyaltyMin : undefined,
+        loyalty_max: f.loyaltyMax !== '' ? f.loyaltyMax : undefined,
+      };
+      const res = await apiClient.get('/customers/', { params });
       const daftar = Array.isArray(res.data) ? res.data : res.data?.results || [];
       setCustomers(daftar);
+      setCustomerTotal(Array.isArray(res.data) ? daftar.length : res.data?.count || 0);
+      apiClient.get('/customers/ringkasan-grup/').then((r) => setJumlahPerGrup(r.data)).catch(() => {});
       // Rincian memegang salinan pelanggannya. Tanpa disegarkan di sini, layar
       // rincian tetap menampilkan data lama setelah Ubah disimpan.
-      setActiveCustomer((prev) => (prev ? daftar.find((c) => c.id === prev.id) || null : null));
+      setActiveCustomer((prev) => {
+        if (!prev) return null;
+        const segar = daftar.find((c) => c.id === prev.id);
+        if (segar) return segar;
+        apiClient.get(`/customers/${prev.id}/`).then((r) => setActiveCustomer(r.data)).catch(() => setActiveCustomer(null));
+        return prev;
+      });
     } catch (err) {
       console.error('[CustomerSupplierApp] fetch customers error:', err);
       setError('Gagal memuat daftar pelanggan.');
@@ -171,7 +202,6 @@ function CustomerSupplierInner() {
   };
 
   useEffect(() => {
-    fetchCustomers();
     fetchGroups();
   }, []);
 
@@ -238,41 +268,9 @@ function CustomerSupplierInner() {
     }
   };
 
-  const filteredCustomers = useMemo(() => {
-    const inRange = (value, min, max) => {
-      const num = Number(value) || 0;
-      if (min !== '' && num < Number(min)) return false;
-      if (max !== '' && num > Number(max)) return false;
-      return true;
-    };
-    const inDateRange = (value, start, end) => {
-      if (!start && !end) return true;
-      if (!value) return false;
-      if (start && value < start) return false;
-      if (end && value > end) return false;
-      return true;
-    };
-
-    return customers.filter(c => {
-      const matchQuery = `${c.nama} ${c.handphone} ${c.email}`.toLowerCase().includes(customerQuery.toLowerCase());
-      // "Guest" bukan tipe di database — itu pelanggan yang customer_group-nya
-      // kosong, jadi disaring lewat sentinel, bukan dicocokkan namanya.
-      const matchGroup =
-        selectedGroupFilter === 'Semua Tipe' ||
-        (selectedGroupFilter === TIPE_TANPA_GRUP
-          ? !c.customer_group_nama
-          : c.customer_group_nama === selectedGroupFilter);
-      const matchFilterGroup = !appliedFilters.customerGroup || String(c.customer_group) === String(appliedFilters.customerGroup);
-      const matchStatus =
-        appliedFilters.status === 'semua' ||
-        (appliedFilters.status === 'dibekukan' ? !!c.bekukan : !c.bekukan);
-      const matchDob = inDateRange(c.tanggal_lahir, appliedFilters.dobStart, appliedFilters.dobEnd);
-      const matchExpiry = inDateRange(c.tanggal_berakhir, appliedFilters.expiryStart, appliedFilters.expiryEnd);
-      const matchDeposit = inRange(c.deposit, appliedFilters.depositMin, appliedFilters.depositMax);
-      const matchLoyalty = inRange(c.loyalty_points, appliedFilters.loyaltyMin, appliedFilters.loyaltyMax);
-      return matchQuery && matchGroup && matchFilterGroup && matchStatus && matchDob && matchExpiry && matchDeposit && matchLoyalty;
-    });
-  }, [customers, customerQuery, selectedGroupFilter, appliedFilters]);
+  // Pencarian & filter sudah dijalankan server (lihat fetchCustomers); "Guest" = pelanggan
+  // tanpa tipe, dikirim sebagai grup=tanpa.
+  const filteredCustomers = customers;
 
   // Paginasi daftar Pelanggan — pola sama dengan tab Supplier (rows-dropdown +
   // prev/next + go-to-page), sebelumnya tab ini render SEMUA hasil filter
@@ -284,12 +282,15 @@ function CustomerSupplierInner() {
     setCustomerCurrentPage(1);
   }, [customerQuery, selectedGroupFilter, appliedFilters, customerPageSize]);
 
-  const paginatedCustomers = useMemo(() => {
-    const start = (customerCurrentPage - 1) * customerPageSize;
-    return filteredCustomers.slice(start, start + customerPageSize);
-  }, [filteredCustomers, customerCurrentPage, customerPageSize]);
+  useEffect(() => {
+    const t = setTimeout(() => fetchCustomers(), 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerQuery, selectedGroupFilter, appliedFilters, customerPageSize, customerCurrentPage]);
 
-  const totalCustomerPages = Math.ceil(filteredCustomers.length / customerPageSize) || 1;
+  const paginatedCustomers = customers;
+
+  const totalCustomerPages = Math.ceil(customerTotal / customerPageSize) || 1;
 
   // ── Catatan Pelanggan ────────────────────────────────────────────
   const [notes, setNotes] = useState([]);
@@ -523,7 +524,7 @@ function CustomerSupplierInner() {
     if (!reviewForm.comment.trim()) return;
     setSavingReview(true);
     setError(null);
-    const selectedCustomer = customers.find(c => String(c.id) === String(reviewForm.customer));
+    const selectedCustomer = reviewForm.customer ? { nama: reviewForm.customer_nama } : null;
     try {
       await apiClient.post('/customer-reviews/', {
         customer: reviewForm.customer || null,
@@ -921,7 +922,7 @@ function CustomerSupplierInner() {
                     />
                     <span>dari {totalCustomerPages}</span>
                   </div>
-                  <span style={{ color: '#94a3b8' }}>{filteredCustomers.length} pelanggan</span>
+                  <span style={{ color: '#94a3b8' }}>{customerTotal.toLocaleString('id-ID')} pelanggan</span>
                 </div>
                 </>
               )}
@@ -948,10 +949,9 @@ function CustomerSupplierInner() {
           {activeTab === 'notes' && (
             <>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center', background: '#ffffff', border: '1px solid #e2e8f0', padding: '12px', borderRadius: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
-                <select value={noteCustomerFilter} onChange={e => { setNoteCustomerFilter(e.target.value); setNotePage(1); }} style={{ ...inputSm, width: '150px', background: '#fff' }}>
-                  <option value="">Pembeli</option>
-                  {customers.map(c => <option key={c.id} value={c.id}>{c.nama}</option>)}
-                </select>
+                <div style={{ width: '180px' }}>
+                  <CustomerCombobox value={noteCustomerFilter} onChange={(id) => { setNoteCustomerFilter(id); setNotePage(1); }} placeholder="Pembeli" />
+                </div>
                 <select value={noteTagFilter} onChange={e => { setNoteTagFilter(e.target.value); setNotePage(1); }} style={{ ...inputSm, width: '130px', background: '#fff' }}>
                   <option value="">Tag</option>
                   {noteTags.map(t => <option key={t.id} value={t.nama}>{t.nama}</option>)}
@@ -1233,7 +1233,7 @@ function CustomerSupplierInner() {
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '16px', marginTop: '4px' }}>
                   {filteredGroups.map(grp => {
-                    const count = customers.filter(c => c.customer_group === grp.id || c.customer_group_nama === grp.nama).length;
+                    const count = jumlahPerGrup.per_grup?.[String(grp.id)] || 0;
                     return (
                       <div
                         key={grp.id}
@@ -1370,7 +1370,7 @@ function CustomerSupplierInner() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748b', fontSize: '13px' }}>
                           <User size={15} style={{ color: '#94a3b8' }} />
                           <span style={{ fontWeight: '500' }}>
-                            {customers.filter(c => !c.customer_group && !c.customer_group_nama).length}
+                            {(jumlahPerGrup.tanpa_grup || 0).toLocaleString('id-ID')}
                           </span>
                         </div>
 
@@ -1537,10 +1537,11 @@ function CustomerSupplierInner() {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   <label style={labelSm}>Nama Pelanggan</label>
-                  <select value={reviewForm.customer} onChange={e => setReviewForm(p => ({ ...p, customer: e.target.value }))} style={{ ...inputSm, background: '#fff' }}>
-                    <option value="">-- Pilih Pelanggan (Opsional) --</option>
-                    {customers.map(c => <option key={c.id} value={c.id}>{c.nama}</option>)}
-                  </select>
+                  <CustomerCombobox
+                    value={reviewForm.customer}
+                    onChange={(id, c) => setReviewForm(p => ({ ...p, customer: id, customer_nama: c?.nama || '' }))}
+                    placeholder="Cari pelanggan (opsional)"
+                  />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   <label style={labelSm}>Rating</label>

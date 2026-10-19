@@ -24,11 +24,18 @@ export default function KasirPelangganSupplier({ onToggleSidebar }) {
   const [loadingCustomers, setLoadingCustomers] = useState(true);
   const [showAddCustomer, setShowAddCustomer] = useState(false);
 
+  const [totalCustomers, setTotalCustomers] = useState(0);
+
+  // Per halaman + pencarian di server (2026-10-19): data pelanggan terlalu banyak untuk dimuat semua.
   const fetchCustomers = async () => {
     setLoadingCustomers(true);
     try {
-      const res = await apiClient.get('/customers/');
-      setCustomers(Array.isArray(res.data) ? res.data : res.data?.results || []);
+      const res = await apiClient.get('/customers/', {
+        params: { page, page_size: pageSize, search: query.trim() || undefined },
+      });
+      const daftar = Array.isArray(res.data) ? res.data : res.data?.results || [];
+      setCustomers(daftar);
+      setTotalCustomers(Array.isArray(res.data) ? daftar.length : res.data?.count || 0);
     } catch (err) {
       console.error('Error fetching customers:', err);
     } finally {
@@ -46,15 +53,10 @@ export default function KasirPelangganSupplier({ onToggleSidebar }) {
   };
 
   useEffect(() => {
-    fetchCustomers();
     fetchGroups();
   }, []);
 
-  const filteredCustomers = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return customers;
-    return customers.filter((c) => `${c.nama} ${c.handphone} ${c.email}`.toLowerCase().includes(q));
-  }, [customers, query]);
+  const filteredCustomers = customers;
 
   // Paginasi -- sebelumnya render SEMUA hasil pencarian tanpa halaman sama
   // sekali, pola sama dengan halaman Produk (temuan user 2026-09-06).
@@ -65,11 +67,14 @@ export default function KasirPelangganSupplier({ onToggleSidebar }) {
     setPage(1);
   }, [query, pageSize]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredCustomers.length / pageSize));
-  const pagedCustomers = useMemo(
-    () => filteredCustomers.slice((page - 1) * pageSize, page * pageSize),
-    [filteredCustomers, page, pageSize]
-  );
+  useEffect(() => {
+    const t = setTimeout(() => fetchCustomers(), 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, page, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(totalCustomers / pageSize));
+  const pagedCustomers = customers;
 
   const handleCustomerSaved = () => {
     setShowAddCustomer(false);
@@ -147,7 +152,7 @@ export default function KasirPelangganSupplier({ onToggleSidebar }) {
             {!loadingCustomers && filteredCustomers.length > 0 && (
               <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-t border-slate-100 text-[11px] font-bold text-slate-500">
                 <div className="flex items-center gap-2">
-                  <span>{filteredCustomers.length} pelanggan</span>
+                  <span>{totalCustomers.toLocaleString('id-ID')} pelanggan</span>
                   <select
                     value={pageSize}
                     onChange={(e) => setPageSize(Number(e.target.value))}
