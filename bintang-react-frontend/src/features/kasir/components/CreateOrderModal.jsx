@@ -8,6 +8,8 @@ import ProductMasterPicker from '../../orders/components/ProductMasterPicker';
 import SpkPublishModal from './SpkPublishModal';
 import NumericInput from '../../../components/NumericInput';
 import { useKasir } from '../context/KasirContext';
+import RiwayatPelanggan from '../../../components/RiwayatPelanggan';
+import { cariPelanggan, pakaiPelanggan } from '../../../utils/pelanggan';
 
 const emptyItem = () => ({
   id: `new-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -143,8 +145,8 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
 
   const searchCustomers = async (query) => {
     try {
-      const res = await apiClient.get('/contacts/', { params: { search: query } });
-      setCustomerSuggestions(res.data?.results || res.data || []);
+      // Database Pelanggan + kontak WA (2026-10-19), bukan kontak WA saja.
+      setCustomerSuggestions(await cariPelanggan(query));
     } catch (err) {
       console.error('Error searching customers:', err);
     }
@@ -797,15 +799,19 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
                           <button
                             key={c.id || c.nomor_wa}
                             type="button"
-                            onClick={() => {
-                              setNama(c.nama);
-                              setNomorWa(c.nomor_wa);
+                            onClick={async () => {
                               setShowCustomerDropdown(false);
+                              const dipakai = await pakaiPelanggan(c);
+                              setNama(dipakai.nama);
+                              setNomorWa(dipakai.nomor_wa);
                             }}
                             className="w-full px-3 py-2 hover:bg-indigo-50 text-left text-xs font-semibold text-slate-700 flex justify-between cursor-pointer border-b border-slate-100"
                           >
-                            <span className="font-bold text-slate-800">{c.nama}</span>
-                            <span className="text-slate-400">{c.nomor_wa}</span>
+                            <span className="font-bold text-slate-800">
+                              {c.nama}
+                              {c.nama_perusahaan ? <span className="font-normal text-slate-400"> · {c.nama_perusahaan}</span> : null}
+                            </span>
+                            <span className="text-slate-400">{c.nomor_wa || 'tanpa nomor'}</span>
                           </button>
                         ))}
                       </div>
@@ -824,6 +830,10 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
                       className={inputCls}
                     />
                   </div>
+                </div>
+
+                <div className="mt-3">
+                  <RiwayatPelanggan nomorWa={nomorWa} ringkas />
                 </div>
 
                 {/* Dilayani oleh (service order) — karyawan yang melayani, bukan pemroses SPK.

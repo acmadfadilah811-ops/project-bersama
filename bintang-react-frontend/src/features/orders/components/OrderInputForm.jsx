@@ -13,6 +13,8 @@ import {
 import apiClient from '../../../api/apiClient';
 import ProductMasterPicker from './ProductMasterPicker';
 import { toLocalDateTimeInput } from '../../../utils/date';
+import RiwayatPelanggan from '../../../components/RiwayatPelanggan';
+import { cariPelanggan, pakaiPelanggan } from '../../../utils/pelanggan';
 
 export default function OrderInputForm({ isOpen, onClose, onSuccess }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -134,6 +136,7 @@ export default function OrderInputForm({ isOpen, onClose, onSuccess }) {
   };
 
   // Struktur state baru sesuai rencana
+  const [saranPelanggan, setSaranPelanggan] = useState([]);
   const [formData, setFormData] = useState({
     waktu: toLocalDateTimeInput(), // Format YYYY-MM-DDTHH:MM
     nomor_wa: '',
@@ -363,14 +366,44 @@ export default function OrderInputForm({ isOpen, onClose, onSuccess }) {
                     <label className="block text-[11px] font-bold text-slate-700 mb-1.5 uppercase">
                       Customer Name
                     </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Nama Pelanggan / PT"
-                      value={formData.nama}
-                      onChange={(e) => setFormData({ ...formData, nama: e.target.value })}
-                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-md text-[13px] outline-none focus:ring-1 focus:ring-slate-900"
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ketik nama / nomor untuk mencari pelanggan"
+                        value={formData.nama}
+                        onChange={async (e) => {
+                          const nilai = e.target.value;
+                          setFormData({ ...formData, nama: nilai });
+                          setSaranPelanggan(nilai.trim().length >= 2 ? await cariPelanggan(nilai) : []);
+                        }}
+                        onBlur={() => setTimeout(() => setSaranPelanggan([]), 200)}
+                        className="w-full p-2 bg-slate-50 border border-slate-200 rounded-md text-[13px] outline-none focus:ring-1 focus:ring-slate-900"
+                      />
+                      {saranPelanggan.length > 0 && (
+                        <div className="absolute inset-x-0 top-full z-30 mt-1 max-h-48 overflow-y-auto rounded-md border border-slate-200 bg-white shadow-lg">
+                          {saranPelanggan.map((c) => (
+                            <button
+                              key={c.id}
+                              type="button"
+                              onMouseDown={async (e) => {
+                                e.preventDefault();
+                                setSaranPelanggan([]);
+                                const dipakai = await pakaiPelanggan(c);
+                                setFormData((f) => ({ ...f, nama: dipakai.nama, nomor_wa: dipakai.nomor_wa || f.nomor_wa }));
+                              }}
+                              className="flex w-full justify-between gap-2 border-b border-slate-100 px-3 py-2 text-left text-[12px] hover:bg-slate-50"
+                            >
+                              <span className="font-semibold text-slate-800">{c.nama}</span>
+                              <span className="text-slate-400">{c.nomor_wa || 'tanpa nomor'}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="col-span-2">
+                    <RiwayatPelanggan nomorWa={formData.nomor_wa} ringkas />
                   </div>
                   <div className="col-span-2">
                     <label className="block text-[11px] font-bold text-slate-700 mb-1.5 uppercase">

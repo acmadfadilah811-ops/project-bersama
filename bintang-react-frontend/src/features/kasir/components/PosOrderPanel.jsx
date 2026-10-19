@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { User, Plus, Printer, Percent, MessageSquare, Star, X, Send } from 'lucide-react';
+import RiwayatPelanggan from '../../../components/RiwayatPelanggan';
 
 export default function PosOrderPanel({
   cart = [],
@@ -87,6 +88,11 @@ export default function PosOrderPanel({
           <Plus size={18} />
         </button>
       </div>
+      {selectedCustomer?.nomor_wa && (
+        <div className="shrink-0 border-b border-slate-100 px-3 py-2">
+          <RiwayatPelanggan nomorWa={selectedCustomer.nomor_wa} ringkas />
+        </div>
+      )}
 
       {/* Item Table SS 1 & SS 4 */}
       <div className="flex-1 flex flex-col min-h-0 bg-white">

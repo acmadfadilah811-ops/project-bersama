@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { User, X } from 'lucide-react';
+import RiwayatPelanggan from '../../../components/RiwayatPelanggan';
 
 export default function CustomerProfileModal({ isOpen, contact, onClose }) {
   const [activeTab, setActiveTab] = useState('profil');
@@ -134,8 +135,12 @@ export default function CustomerProfileModal({ isOpen, contact, onClose }) {
             </div>
           </div>
         ) : (
-          <div className="p-8 text-center text-slate-400 text-xs font-semibold">
-            Belum ada riwayat pesanan untuk pelanggan ini.
+          <div className="p-4 max-h-[80vh] overflow-y-auto bg-white">
+            {data.nomor_wa ? (
+              <RiwayatPelanggan nomorWa={data.nomor_wa} />
+            ) : (
+              <p className="p-4 text-center text-slate-400 text-xs font-semibold">Pelanggan ini belum punya nomor WA.</p>
+            )}
           </div>
         )}
       </div>

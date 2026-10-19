@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Calendar, User } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import CustomerSelector from './CustomerSelector';
+import RiwayatPelanggan from '../../../components/RiwayatPelanggan';
+import { cariPelanggan, pakaiPelanggan } from '../../../utils/pelanggan';
 
 const inputClass =
   'w-full text-sm border border-slate-200 rounded-lg px-3 py-2 text-slate-700 bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300';
@@ -53,17 +55,17 @@ export default function CreateOrderForm({ onCancel, onSave }) {
       return;
     }
     try {
-      const res = await apiClient.get(`/contacts/?search=${encodeURIComponent(val)}`).catch(() => apiClient.get(`/customers/?search=${encodeURIComponent(val)}`));
-      setCustomers(res.data?.results || res.data || []);
+      setCustomers(await cariPelanggan(val));
       setShowDropdown(true);
     } catch (err) {
       console.error(err);
     }
   };
 
-  const handleSelectCustomer = (c) => {
+  const handleSelectCustomer = async (row) => {
+    const c = await pakaiPelanggan(row);
     setSelectedCustomer(c);
-    setCustomerSearch(`${c.nama} (${c.handphone || c.no_hp || c.email || '-'})`);
+    setCustomerSearch(`${c.nama} (${c.nomor_wa || c.handphone || c.no_hp || c.email || '-'})`);
   };
 
   const handleAddCustomer = async () => {
@@ -107,7 +109,7 @@ export default function CreateOrderForm({ onCancel, onSave }) {
     // tetap dibuat dengan nomor palsu "081234567890" tanpa peringatan --
     // order jadi tidak bisa dilacak ke WA pelanggan yang benar (bug ditemukan
     // audit 2026-09-08). Sekarang wajib nomor asli pelanggan.
-    const rawWa = (selectedCustomer.handphone || selectedCustomer.no_hp || selectedCustomer.telepon || '').replace(/[^0-9]/g, '');
+    const rawWa = (selectedCustomer.nomor_wa || selectedCustomer.handphone || selectedCustomer.no_hp || selectedCustomer.telepon || '').replace(/[^0-9]/g, '');
     if (rawWa.length < 8) {
       return alert('Pelanggan ini belum punya No. HP/WA yang valid di data master. Lengkapi dulu no. HP pelanggan sebelum membuat pesanan.');
     }
@@ -175,6 +177,9 @@ export default function CreateOrderForm({ onCancel, onSave }) {
             setNewCustomer={setNewCustomer}
             onAddCustomer={handleAddCustomer}
           />
+          {selectedCustomer && (
+            <RiwayatPelanggan nomorWa={selectedCustomer.nomor_wa || selectedCustomer.handphone || selectedCustomer.no_hp} />
+          )}
 
           {/* Section 2: Detail Penjualan */}
           <div className="space-y-4 pt-4 border-t border-slate-100">

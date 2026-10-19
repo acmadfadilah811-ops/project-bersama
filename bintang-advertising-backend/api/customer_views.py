@@ -35,6 +35,91 @@ def _parsed_date(value):
     return parse_date(value) if value else None
 
 
+def varian_nomor(nomor):
+    """Nomor HP/WA dalam bentuk 08.. dan 628.. supaya data lama dengan format berbeda tetap cocok."""
+    angka = re.sub(r'\D', '', nomor or '')
+    if not angka:
+        return []
+    hasil = {angka}
+    if angka.startswith('0'):
+        hasil.add('62' + angka[1:])
+    elif angka.startswith('62'):
+        hasil.add('0' + angka[2:])
+    return sorted(hasil)
+
+
+def rekap_transaksi(nomor_list, cust=None):
+    """Ringkasan + rincian transaksi POS & Order untuk daftar nomor WA (Contact)."""
+    from .models import Order
+    from .pos_models import POSSale
+
+    def _f(v):
+        return float(v or 0)
+
+    pesanan, pengembalian, items = [], [], []
+    nominal = lunas = hutang = 0.0
+    total_transaksi = 0
+
+    pos = (POSSale.objects.filter(pelanggan__in=nomor_list)
+           .prefetch_related('items').order_by('-created_at')) if nomor_list else []
+    for s in pos:
+        tgl = s.created_at.date().isoformat() if s.created_at else ''
+        tot, bayar = _f(s.total), _f(s.dibayar)
+        if s.status == 'void':
+            pengembalian.append({'no_pesanan': s.nomor, 'tanggal': tgl, 'sumber': 'POS',
+                                 'total': tot, 'status': 'Dibatalkan (Void)'})
+            continue
+        total_transaksi += 1
+        sisa = max(tot - bayar, 0.0)
+        nominal += tot
+        lunas += min(bayar, tot)
+        hutang += sisa
+        pesanan.append({'no_pesanan': s.nomor, 'tanggal': tgl, 'sumber': 'POS',
+                        'total': tot, 'dibayar': bayar, 'sisa': sisa, 'status': s.status})
+        for it in s.items.all():
+            items.append({'no_pesanan': s.nomor, 'tanggal': tgl, 'nama': it.nama_snapshot,
+                          'qty': _f(it.qty), 'harga': _f(it.harga_snapshot), 'total': _f(it.subtotal)})
+
+    orders = (Order.objects.filter(nomor_wa__in=nomor_list)
+              .prefetch_related('items__product').order_by('-waktu')) if nomor_list else []
+    for o in orders:
+        tgl = o.waktu.date().isoformat() if o.waktu else ''
+        tot, sisa = _f(o.total_harga), _f(o.sisa_tagihan)
+        if o.status_global == 'batal':
+            pengembalian.append({'no_pesanan': str(o.id), 'tanggal': tgl, 'sumber': 'Order',
+                                 'total': tot, 'status': 'Dibatalkan'})
+            continue
+        total_transaksi += 1
+        nominal += tot
+        lunas += max(tot - sisa, 0.0)
+        hutang += sisa
+        pesanan.append({'no_pesanan': str(o.id), 'tanggal': tgl, 'sumber': 'Order',
+                        'total': tot, 'dibayar': tot - sisa, 'sisa': sisa, 'status': o.status_global})
+        for it in o.items.all():
+            q = _f(it.qty)
+            items.append({'no_pesanan': str(o.id), 'tanggal': tgl,
+                          'nama': (it.product.nama if it.product_id else (it.jenis_produk or '')),
+                          'qty': q, 'harga': (_f(it.harga_jual) / q if q else _f(it.harga_jual)),
+                          'total': _f(it.harga_jual)})
+
+    pesanan.sort(key=lambda r: r['tanggal'], reverse=True)
+    pengembalian.sort(key=lambda r: r['tanggal'], reverse=True)
+    items.sort(key=lambda r: r['tanggal'], reverse=True)
+    return {
+        'ringkasan': {
+            'total_transaksi': total_transaksi,
+            'nominal_transaksi': nominal,
+            'lunas': lunas,
+            'hutang': hutang,
+            'loyalty_points': (cust.loyalty_points or 0) if cust else 0,
+            'saldo': _f(cust.deposit) if cust else 0.0,
+        },
+        'pesanan': pesanan,
+        'pengembalian': pengembalian,
+        'item': items,
+    }
+
+
 class ToggleStatusMixin:
     @action(detail=True, methods=['post'], url_path='toggle-status')
     def toggle_status(self, request, pk=None):
@@ -142,81 +227,78 @@ class CustomerViewSet(ToggleStatusMixin, viewsets.ModelViewSet):
         supaya data lama tanpa tautan tetap ikut terhitung.
         """
         from django.db.models import Q
-        from .models import Contact, Order
-        from .pos_models import POSSale
+        from .models import Contact
 
         cust = self.get_object()
         contact_q = Q(customer=cust)
         if cust.handphone:
-            contact_q |= Q(nomor_wa=cust.handphone)
+            contact_q |= Q(nomor_wa__in=varian_nomor(cust.handphone))
         contacts = list(Contact.objects.filter(contact_q).values_list('nomor_wa', flat=True))
+        return Response(rekap_transaksi(contacts, cust))
 
-        def _f(v):
-            return float(v or 0)
+    @action(detail=False, methods=['get'], url_path='cari')
+    def cari(self, request):
+        """Pencarian pelanggan untuk form transaksi (2026-10-19): database Pelanggan
+        + kontak WA yang belum tertaut, dalam satu daftar. Pelanggan dibekukan tidak tampil."""
+        from .models import Contact
 
-        pesanan, pengembalian, items = [], [], []
-        nominal = lunas = hutang = 0.0
-        total_transaksi = 0
+        q = (request.query_params.get('search') or '').strip()
+        cust_qs = Customer.objects.filter(is_active=True, bekukan=False).select_related('customer_group')
+        kontak_qs = Contact.objects.filter(customer__isnull=True)
+        if q:
+            nomor = varian_nomor(q) if re.sub(r'\D', '', q) == re.sub(r'[\s\-+()]', '', q) else []
+            filt = (Q(nama__icontains=q) | Q(handphone__icontains=q) | Q(kode_pelanggan__icontains=q)
+                    | Q(nama_perusahaan__icontains=q))
+            for n in nomor:
+                filt |= Q(handphone__icontains=n)
+            cust_qs = cust_qs.filter(filt)
+            kfilt = Q(nama__icontains=q) | Q(nomor_wa__icontains=q)
+            for n in nomor:
+                kfilt |= Q(nomor_wa__icontains=n)
+            kontak_qs = kontak_qs.filter(kfilt)
+        hasil = []
+        for c in cust_qs.order_by('nama')[:20]:
+            nomor_wa = re.sub(r'[\s\-()]+', '', c.handphone or '')
+            hasil.append({
+                'id': f'c-{c.id}', 'sumber': 'customer', 'customer_id': c.id, 'nama': c.nama,
+                'nomor_wa': nomor_wa, 'handphone': nomor_wa, 'email': c.email,
+                'nama_perusahaan': c.nama_perusahaan,
+                'customer_group_nama': c.customer_group.nama if c.customer_group_id else '',
+            })
+        for k in kontak_qs.order_by('nama')[:10]:
+            hasil.append({
+                'id': f'k-{k.nomor_wa}', 'sumber': 'contact', 'customer_id': None, 'nama': k.nama or k.nomor_wa,
+                'nomor_wa': k.nomor_wa, 'handphone': k.nomor_wa, 'email': '', 'nama_perusahaan': '',
+                'customer_group_nama': '',
+            })
+        return Response(hasil)
 
-        pos = (POSSale.objects.filter(pelanggan__in=contacts)
-               .prefetch_related('items').order_by('-created_at')) if contacts else []
-        for s in pos:
-            tgl = s.created_at.date().isoformat() if s.created_at else ''
-            tot, bayar = _f(s.total), _f(s.dibayar)
-            if s.status == 'void':
-                pengembalian.append({'no_pesanan': s.nomor, 'tanggal': tgl, 'sumber': 'POS',
-                                     'total': tot, 'status': 'Dibatalkan (Void)'})
-                continue
-            total_transaksi += 1
-            sisa = max(tot - bayar, 0.0)
-            nominal += tot
-            lunas += min(bayar, tot)
-            hutang += sisa
-            pesanan.append({'no_pesanan': s.nomor, 'tanggal': tgl, 'sumber': 'POS',
-                            'total': tot, 'dibayar': bayar, 'sisa': sisa, 'status': s.status})
-            for it in s.items.all():
-                items.append({'no_pesanan': s.nomor, 'tanggal': tgl, 'nama': it.nama_snapshot,
-                              'qty': _f(it.qty), 'harga': _f(it.harga_snapshot), 'total': _f(it.subtotal)})
+    @action(detail=False, methods=['get'], url_path='riwayat')
+    def riwayat(self, request):
+        """Riwayat pembelian ringkas per nomor WA untuk form transaksi (2026-10-19)."""
+        from .models import Contact
 
-        orders = (Order.objects.filter(nomor_wa__in=contacts)
-                  .prefetch_related('items').order_by('-waktu')) if contacts else []
-        for o in orders:
-            tgl = o.waktu.date().isoformat() if o.waktu else ''
-            tot, sisa = _f(o.total_harga), _f(o.sisa_tagihan)
-            if o.status_global == 'batal':
-                pengembalian.append({'no_pesanan': str(o.id), 'tanggal': tgl, 'sumber': 'Order',
-                                     'total': tot, 'status': 'Dibatalkan'})
-                continue
-            total_transaksi += 1
-            nominal += tot
-            lunas += max(tot - sisa, 0.0)
-            hutang += sisa
-            pesanan.append({'no_pesanan': str(o.id), 'tanggal': tgl, 'sumber': 'Order',
-                            'total': tot, 'dibayar': tot - sisa, 'sisa': sisa, 'status': o.status_global})
-            for it in o.items.all():
-                q = _f(it.qty)
-                items.append({'no_pesanan': str(o.id), 'tanggal': tgl,
-                              'nama': (it.product.nama if it.product_id else (it.jenis_produk or '')),
-                              'qty': q, 'harga': (_f(it.harga_jual) / q if q else _f(it.harga_jual)),
-                              'total': _f(it.harga_jual)})
-
-        pesanan.sort(key=lambda r: r['tanggal'], reverse=True)
-        pengembalian.sort(key=lambda r: r['tanggal'], reverse=True)
-        items.sort(key=lambda r: r['tanggal'], reverse=True)
-
-        return Response({
-            'ringkasan': {
-                'total_transaksi': total_transaksi,
-                'nominal_transaksi': nominal,
-                'lunas': lunas,
-                'hutang': hutang,
-                'loyalty_points': cust.loyalty_points or 0,
-                'saldo': _f(cust.deposit),
-            },
-            'pesanan': pesanan,
-            'pengembalian': pengembalian,
-            'item': items,
-        })
+        nomor = varian_nomor(request.query_params.get('nomor_wa'))
+        if not nomor:
+            return Response({'error': 'nomor_wa wajib diisi.'}, status=400)
+        kontak = list(Contact.objects.filter(nomor_wa__in=nomor).select_related('customer'))
+        cust = next((k.customer for k in kontak if k.customer_id), None)
+        if cust is None:
+            cust = Customer.objects.filter(handphone__in=nomor).first()
+        semua = set(nomor) | {k.nomor_wa for k in kontak}
+        if cust is not None:
+            semua |= set(Contact.objects.filter(customer=cust).values_list('nomor_wa', flat=True))
+        data = rekap_transaksi(sorted(semua), cust)
+        data['pesanan'] = data['pesanan'][:10]
+        data['item'] = data['item'][:15]
+        data['pelanggan'] = {
+            'nama': cust.nama if cust else (kontak[0].nama if kontak else ''),
+            'customer_id': cust.id if cust else None,
+            'customer_group_nama': cust.customer_group.nama if cust and cust.customer_group_id else '',
+            'catatan': cust.catatan if cust else '',
+            'terdaftar': cust is not None,
+        }
+        return Response(data)
 
     @action(detail=False, methods=['post'], url_path='import-csv', parser_classes=[MultiPartParser])
     def import_csv(self, request):
