@@ -802,6 +802,7 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
                             onClick={async () => {
                               setShowCustomerDropdown(false);
                               const dipakai = await pakaiPelanggan(c);
+                              if (!dipakai) return;
                               setNama(dipakai.nama);
                               setNomorWa(dipakai.nomor_wa);
                             }}

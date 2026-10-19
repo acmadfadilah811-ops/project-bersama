@@ -390,6 +390,7 @@ export default function OrderInputForm({ isOpen, onClose, onSuccess }) {
                                 e.preventDefault();
                                 setSaranPelanggan([]);
                                 const dipakai = await pakaiPelanggan(c);
+                                if (!dipakai) return;
                                 setFormData((f) => ({ ...f, nama: dipakai.nama, nomor_wa: dipakai.nomor_wa || f.nomor_wa }));
                               }}
                               className="flex w-full justify-between gap-2 border-b border-slate-100 px-3 py-2 text-left text-[12px] hover:bg-slate-50"

@@ -64,6 +64,7 @@ export default function CreateOrderForm({ onCancel, onSave }) {
 
   const handleSelectCustomer = async (row) => {
     const c = await pakaiPelanggan(row);
+    if (!c) return;
     setSelectedCustomer(c);
     setCustomerSearch(`${c.nama} (${c.nomor_wa || c.handphone || c.no_hp || c.email || '-'})`);
   };
