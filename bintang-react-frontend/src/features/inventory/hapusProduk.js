@@ -12,9 +12,9 @@ export async function hapusProduk(id) {
         await apiClient.delete(`/products/${id}/`);
         return;
       } catch (err2) {
-        throw new Error(err2.response?.data?.error || 'Gagal menghapus produk.');
+        throw new Error(err2.response?.data?.error || 'Gagal menghapus produk.', { cause: err2 });
       }
     }
-    throw new Error(err.response?.data?.error || err.response?.data?.detail || 'Gagal menghapus produk.');
+    throw new Error(err.response?.data?.error || err.response?.data?.detail || 'Gagal menghapus produk.', { cause: err });
   }
 }
