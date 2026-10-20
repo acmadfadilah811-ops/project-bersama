@@ -5,6 +5,7 @@ import DataTable from '../components/DataTable';
 import { Button, PageHeader, Select, StatusBadge, Toolbar } from '../components/PageShell';
 import { formatCurrency } from '../productInventoryData';
 import { useAuth } from '../../../../context/AuthContext';
+import { hapusProduk } from '../../hapusProduk';
 import apiClient from '../../../../api/apiClient';
 import VariantModal, { PriceInput } from './VariantModal';
 import ImportProductModal from './ImportProductModal';
@@ -162,11 +163,11 @@ export default function ProductsPage() {
     setRowMenu(null);
     if (!(await uiConfirm(`Hapus produk "${product.nama}"?`))) return;
     try {
-      await apiClient.delete(`/products/${product.id}/`);
+      await hapusProduk(product.id);
       await fetchProducts();
     } catch (err) {
       console.error('[ProductsPage] delete product error:', err);
-      setError('Gagal menghapus produk.');
+      setError(err.message || 'Gagal menghapus produk.');
     }
   };
 
@@ -548,13 +549,20 @@ export default function ProductsPage() {
 
   const handleDeleteSelected = async () => {
     if (selectedIds.length === 0) return;
-    try {
-      await Promise.all(selectedIds.map((id) => apiClient.delete(`/products/${id}/`)));
-      setSelectedIds([]);
-      await fetchProducts();
-    } catch (err) {
-      console.error('[ProductsPage] delete products error:', err);
-      setError('Gagal menghapus produk terpilih.');
+    if (!(await uiConfirm(`Hapus ${selectedIds.length} produk terpilih?`))) return;
+    // Satu per satu supaya produk yang ditolak tidak menggagalkan yang lain.
+    const gagal = [];
+    for (const id of selectedIds) {
+      try {
+        await hapusProduk(id);
+      } catch (err) {
+        gagal.push(err.message);
+      }
+    }
+    setSelectedIds([]);
+    await fetchProducts();
+    if (gagal.length) {
+      setError(`${selectedIds.length - gagal.length} produk dihapus, ${gagal.length} ditolak. ${gagal[0]}`);
     }
   };
 

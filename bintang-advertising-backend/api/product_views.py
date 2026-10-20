@@ -18,7 +18,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.exceptions import ValidationError
-from api.permissions import IsOwnerManagerAdminSpvFinanceOrReadOnly, IsOwnerManagerAdminFinanceOrReadOnly, filter_param_unit_bisnis, scoped_by_unit_bisnis
+from api.permissions import IsOwnerOrManager, IsOwnerManagerAdminSpvFinanceOrReadOnly, IsOwnerManagerAdminFinanceOrReadOnly, filter_param_unit_bisnis, scoped_by_unit_bisnis
 from api.unit_bisnis_scope import UnitBisnisScopedMixin
 from rest_framework.response import Response
 
@@ -598,6 +598,16 @@ class ProductViewSet(viewsets.ModelViewSet):
         if alasan:
             return Response({'error': alasan}, status=status.HTTP_400_BAD_REQUEST)
         return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=['post'], url_path='hapus-bersih', permission_classes=[IsOwnerOrManager])
+    def hapus_bersih_action(self, request, pk=None):
+        """POST /api/products/{id}/hapus-bersih/ -- Owner/Manager/Admin (2026-10-20).
+        Seperti hapus biasa, tetapi produk yang riwayatnya cuma saldo awal (mis. hasil
+        impor, belum pernah dijual) juga bisa dihapus: jurnal saldo awalnya dibalik."""
+        from .services.hapus_produk import hapus_bersih
+
+        hasil = hapus_bersih(self.get_object(), actor=request.user)
+        return Response({'detail': f"Produk '{hasil['nama']}' dihapus.", **hasil})
 
     @action(detail=True, methods=['get'], url_path='hitung-harga')
     def hitung_harga_action(self, request, pk=None):
