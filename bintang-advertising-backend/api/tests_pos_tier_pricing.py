@@ -106,18 +106,32 @@ class PosTierPricingGuestTests(APITestCase):
     # (2026-09-24) -- /pos/sales/ sekarang MEWAJIBKAN pelanggan. Skenario
     # "Guest bukan default otomatis" tetap terwakili oleh test di bawah
     # (pelanggan tertaut tapi tanpa customer_group).
-    def test_checkout_pelanggan_tanpa_customer_group_tidak_otomatis_pakai_tier_guest(self):
-        # Pelanggan tertaut tapi belum dikategorikan (customer_group kosong)
-        # juga tetap tier Umum, bukan otomatis Guest.
+    def test_checkout_pelanggan_tanpa_customer_group_pakai_tier_guest(self):
+        # Sejak 2026-10-19 (impor data pelanggan Olsera) pelanggan tanpa Tipe
+        # Pelanggan = Guest, jadi tier "Guest" berlaku untuk mereka.
         kontak = Contact.objects.create(nomor_wa='628333333333', nama='Tanpa Member')
+        res = self.client.post('/api/pos/sales/', {
+            'items': [{'product_id': self.product.id, 'qty': 1}],
+            'pelanggan': kontak.nomor_wa,
+            'status': 'paid', 'dibayar': 12000, 'metode_bayar': 'tunai',
+        }, format='json')
+        self.assertEqual(res.status_code, 201, res.content)
+        item = POSSaleItem.objects.get(sale_id=res.data['id'])
+        self.assertEqual(item.harga_snapshot, 12000)
+
+    def test_tier_semua_tipe_berlaku_bila_tidak_ada_tier_guest(self):
+        # Tier tanpa tipe = "Semua Tipe Pelanggan": dipakai bila tipe pelanggan
+        # tidak punya tier khusus.
+        self.product.tiers = [{'min_qty': 1, 'price': 10000}, {'min_qty': 1, 'price': 9000, 'tipe_pelanggan': 'MOU'}]
+        self.product.save(update_fields=['tiers'])
+        kontak = Contact.objects.create(nomor_wa='628333333334', nama='Tanpa Member 2')
         res = self.client.post('/api/pos/sales/', {
             'items': [{'product_id': self.product.id, 'qty': 1}],
             'pelanggan': kontak.nomor_wa,
             'status': 'paid', 'dibayar': 10000, 'metode_bayar': 'tunai',
         }, format='json')
         self.assertEqual(res.status_code, 201, res.content)
-        item = POSSaleItem.objects.get(sale_id=res.data['id'])
-        self.assertEqual(item.harga_snapshot, 10000)
+        self.assertEqual(POSSaleItem.objects.get(sale_id=res.data['id']).harga_snapshot, 10000)
 
     def test_checkout_pelanggan_ditautkan_eksplisit_ke_guest_pakai_tier_guest(self):
         grup_guest = CustomerGroup.objects.get(nama='Guest')
@@ -132,7 +146,8 @@ class PosTierPricingGuestTests(APITestCase):
         item = POSSaleItem.objects.get(sale_id=res.data['id'])
         self.assertEqual(item.harga_snapshot, 12000)
 
-    def test_preview_tanpa_pelanggan_id_tidak_otomatis_pakai_tier_guest(self):
+    def test_preview_tanpa_pelanggan_id_pakai_tier_guest(self):
+        # Tanpa pelanggan = pelanggan umum = Guest (2026-10-19), sama dengan harga saat checkout.
         res = self.client.get(f'/api/products/{self.product.id}/hitung-harga/', {'qty': 1})
         self.assertEqual(res.status_code, 200, res.content)
-        self.assertEqual(res.data['harga_satuan'], 10000.0)
+        self.assertEqual(res.data['harga_satuan'], 12000.0)

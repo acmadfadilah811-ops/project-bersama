@@ -47,6 +47,11 @@ def _pilih_tier_qty(kandidat, qty):
     return terpilih
 
 
+# Pelanggan tanpa Tipe Pelanggan = "Guest" (keputusan user 2026-10-19 saat impor data
+# Olsera: tipe Guest disimpan tanpa grup). Tier bertipe "Guest" berlaku untuk mereka.
+TIPE_GUEST = 'Guest'
+
+
 def _harga_tier(product, qty, customer_group_nama=None):
     tiers = product.tiers or []
     if not isinstance(tiers, list) or not tiers:
@@ -58,6 +63,7 @@ def _harga_tier(product, qty, customer_group_nama=None):
     # yang qty-nya memenuhi, itu didahulukan dari tier umum — supaya harga
     # per tipe pelanggan benar-benar beda, bukan cuma metadata kosmetik
     # (bug ditemukan & diperbaiki 2026-08-13, lihat tests_product_pricing.py).
+    customer_group_nama = customer_group_nama or TIPE_GUEST
     if customer_group_nama:
         khusus = [
             t for t in tiers

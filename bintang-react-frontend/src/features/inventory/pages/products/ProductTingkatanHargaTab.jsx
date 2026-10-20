@@ -31,6 +31,11 @@ export default function ProductTingkatanHargaTab({ product, onUpdated, storeName
       .catch(err => console.error('[TingkatanHargaTab] Error fetching customer groups:', err));
   }, []);
 
+  // Pilihan khusus (2026-10-20): "Semua Tipe Pelanggan" disimpan sebagai tipe kosong
+  // (tier umum, berlaku untuk semua), "Guest" = pelanggan tanpa Tipe Pelanggan.
+  const SEMUA_TIPE = '__semua__';
+  const labelTipe = (tipe) => (tipe ? (tipe === 'Guest' ? 'Guest (tanpa tipe)' : tipe) : 'Semua Tipe Pelanggan');
+
   // Form states for ADD / EDIT
   const [formTipePelanggan, setFormTipePelanggan] = useState('');
   const [formVariant, setFormVariant] = useState('All');
@@ -67,7 +72,7 @@ export default function ProductTingkatanHargaTab({ product, onUpdated, storeName
 
   const handleOpenEdit = (tier) => {
     setEditingTierId(tier.id);
-    setFormTipePelanggan(tier.tipe_pelanggan || '');
+    setFormTipePelanggan(tier.tipe_pelanggan || SEMUA_TIPE);
     setFormVariant(tier.variant || 'All');
     setFormQtyMulai((tier.min_qty || 1).toString());
 
@@ -111,7 +116,7 @@ export default function ProductTingkatanHargaTab({ product, onUpdated, storeName
         if (t.id === editingTierId) {
           return {
             ...t,
-            tipe_pelanggan: formTipePelanggan.trim(),
+            tipe_pelanggan: formTipePelanggan === SEMUA_TIPE ? '' : formTipePelanggan.trim(),
             variant: formVariant,
             min_qty: qty,
             price: price
@@ -123,7 +128,7 @@ export default function ProductTingkatanHargaTab({ product, onUpdated, storeName
       // Add new
       const newTier = {
         id: 'tier-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
-        tipe_pelanggan: formTipePelanggan.trim(),
+        tipe_pelanggan: formTipePelanggan === SEMUA_TIPE ? '' : formTipePelanggan.trim(),
         variant: formVariant,
         min_qty: qty,
         price: price
@@ -264,7 +269,7 @@ export default function ProductTingkatanHargaTab({ product, onUpdated, storeName
                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                   >
                     <td style={{ padding: '12px 18px', fontWeight: 500 }}>
-                      {tier.tipe_pelanggan}
+                      {labelTipe(tier.tipe_pelanggan)}
                     </td>
                     <td style={{ padding: '12px 18px', color: '#64748b' }}>
                       {tier.variant === 'All' ? 'Semua Varian' : tier.variant}
@@ -465,7 +470,9 @@ export default function ProductTingkatanHargaTab({ product, onUpdated, storeName
                   }}
                 >
                   <option value="">Pilih Tipe Pelanggan</option>
-                  {customerGroups.map(g => (
+                  <option value={SEMUA_TIPE}>Semua Tipe Pelanggan</option>
+                  <option value="Guest">Guest (tanpa tipe)</option>
+                  {customerGroups.filter(g => g.nama.toLowerCase() !== 'guest').map(g => (
                     <option key={g.id} value={g.nama}>{g.nama}</option>
                   ))}
                 </select>
