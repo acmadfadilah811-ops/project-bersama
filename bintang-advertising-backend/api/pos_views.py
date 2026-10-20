@@ -119,11 +119,14 @@ class POSSaleViewSet(viewsets.ModelViewSet):
         padahal di Bintang semua karyawan bisa melayani pelanggan.
         """
         from django.contrib.auth import get_user_model
-        users = get_user_model().objects.filter(is_active=True).order_by('first_name', 'username')
+        users = get_user_model().objects.filter(is_active=True).select_related('unit_bisnis').order_by('first_name', 'username')
         data = [{
             'id': u.id,
             'nama': (f"{u.first_name} {u.last_name}".strip() or u.username),
             'role': getattr(u, 'role', ''),
+            # Unit karyawan = unit bisnis pesanan yang ia layani (form Buat Pesanan).
+            'unit_bisnis': u.unit_bisnis_id,
+            'unit_bisnis_nama': u.unit_bisnis.nama if u.unit_bisnis_id else '',
         } for u in users]
         return Response(data)
 

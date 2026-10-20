@@ -731,6 +731,7 @@ export default function Orders() {
             <thead className="bg-white text-slate-500 border-b border-slate-200 font-bold">
               <tr>
                 <th className="px-3 py-2">Job #</th>
+                {kelompokUnit && <th className="px-3 py-2">Unit Bisnis</th>}
                 <th className="px-3 py-2">Customer</th>
                 <th className="px-3 py-2 w-48">Description</th>
                 <th className="px-3 py-2">Team</th>
@@ -745,7 +746,7 @@ export default function Orders() {
               ) : filteredOrders.length === 0 ? (
                 <tr>
                   <td
-                    colSpan="7"
+                    colSpan={kelompokUnit ? 8 : 7}
                     className="px-3 py-6 text-center text-slate-400 text-[10px] italic"
                   >
                     No jobs found matching your criteria.
@@ -765,14 +766,14 @@ export default function Orders() {
                         className={`px-3 py-2 font-bold ${isCancelled ? 'line-through text-slate-500' : 'text-slate-900'}`}
                       >
                         {order.id}
-                        {kelompokUnit && (
-                          <div>
-                            <span className="inline-block text-[9px] font-semibold text-slate-400">
-                              {order.unit_bisnis_nama || 'Belum ditandai'}
-                            </span>
-                          </div>
-                        )}
                       </td>
+                      {kelompokUnit && (
+                        <td className="px-3 py-2">
+                          <span className={`inline-block rounded px-1.5 py-0.5 text-[9px] font-semibold ${order.unit_bisnis_nama ? 'bg-slate-100 text-slate-700' : 'text-slate-400'}`}>
+                            {order.unit_bisnis_nama || 'Belum ditandai'}
+                          </span>
+                        </td>
+                      )}
                       <td className="px-3 py-2">
                         <p
                           className={`font-bold ${isCancelled ? 'text-slate-600' : 'text-slate-900'}`}

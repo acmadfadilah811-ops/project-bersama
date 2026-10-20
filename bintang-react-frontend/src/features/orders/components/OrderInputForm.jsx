@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import {
   X,
   Save,
@@ -15,28 +15,14 @@ import ProductMasterPicker from './ProductMasterPicker';
 import { toLocalDateTimeInput } from '../../../utils/date';
 import RiwayatPelanggan from '../../../components/RiwayatPelanggan';
 import { cariPelanggan, pakaiPelanggan } from '../../../utils/pelanggan';
+import { useDaftarUnitBisnis } from '../../../utils/unitBisnis';
+import DaftarHargaModal from './DaftarHargaModal';
 
 export default function OrderInputForm({ isOpen, onClose, onSuccess }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // ── State Asisten Daftar Harga ──
-  const [dbPrices, setDbPrices] = useState([]);
   const [pricelistActiveIndex, setPricelistActiveIndex] = useState(null);
-  const [priceSearch, setPriceSearch] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
-
-  const priceCategories = {
-    print_outdoor_per_m2: 'Print Outdoor / m²',
-    stand_banner: 'Stand Banner',
-    print_a3_plus: 'Print A3+',
-    sticker_a3_plus: 'Sticker A3+',
-    laminasi_a3_plus: 'Laminasi A3+',
-    paket_cetak_brosur: 'Paket Cetak Brosur',
-    merchandise_dan_seminar_kit: 'Merchandise & Seminar Kit',
-    buku_yasin_dan_finishing: 'Buku Yasin & Finishing',
-    kartu_nama_ivory_260: 'Kartu Nama Ivory 260',
-    kartu_nama_aster_200: 'Kartu Nama Aster 200',
-  };
 
   // Karyawan yang melayani pelanggan (wajib; menentukan unit bisnis pesanan).
   const [pelayanList, setPelayanList] = useState([]);
@@ -49,19 +35,10 @@ export default function OrderInputForm({ isOpen, onClose, onSuccess }) {
     }
   };
 
-  const fetchPrices = async () => {
-    try {
-      const res = await apiClient.get('/product-prices/');
-      setDbPrices(res.data);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
   useEffect(() => {
     if (isOpen) {
-      fetchPrices();
       fetchPelayan();
+      setUnitManual('');
       setFormData({
         waktu: toLocalDateTimeInput(), // Format YYYY-MM-DDTHH:MM
         nomor_wa: '',
@@ -90,50 +67,30 @@ export default function OrderInputForm({ isOpen, onClose, onSuccess }) {
     }
   }, [isOpen]);
 
-  const filteredProducts = useMemo(() => {
-    return dbPrices.filter((prod) => {
-      const matchesCategory = selectedCategory === 'all' || prod.kategori === selectedCategory;
-      const searchData = `${(prod.nama_produk || '').toLowerCase()} ${(prod.material || '').toLowerCase()}`;
-      const matchesSearch = searchData.includes(priceSearch.toLowerCase());
-      return matchesCategory && matchesSearch;
-    });
-  }, [dbPrices, selectedCategory, priceSearch]);
-
-  const handleSelectProduct = (product, selectedPrice) => {
+  // Pilih produk master dari Daftar Harga (2026-10-20).
+  const handleSelectProduct = (product, selectedPrice, varian) => {
     if (pricelistActiveIndex === null) return;
-
-    const catMap = {
-      print_outdoor_per_m2: 'Cetak Outdoor',
-      stand_banner: 'Stand Banner',
-      print_a3_plus: 'Print A3+',
-      sticker_a3_plus: 'Sticker A3+',
-      laminasi_a3_plus: 'Laminasi A3+',
-      paket_cetak_brosur: 'Paket Brosur',
-      merchandise_dan_seminar_kit: 'Merchandise',
-      buku_yasin_dan_finishing: 'Yasin & Finishing',
-      kartu_nama_ivory_260: 'Kartu Nama',
-      kartu_nama_aster_200: 'Kartu Nama',
-    };
-
-    const jenisProduk = catMap[product.kategori] || product.kategori;
-    const isMeteran = product.kategori === 'print_outdoor_per_m2';
-
+    const isMeteran = product.price_type === 'per_m2';
     const newItems = [...formData.items];
-    newItems[pricelistActiveIndex].is_meteran = isMeteran;
-    newItems[pricelistActiveIndex].jenis_produk = jenisProduk;
-    newItems[pricelistActiveIndex].bahan =
-      product.nama_produk + (product.material ? ` (${product.material})` : '');
-    newItems[pricelistActiveIndex].harga_per_m2 = selectedPrice;
-    newItems[pricelistActiveIndex].panjang = isMeteran ? 1 : 0;
-    newItems[pricelistActiveIndex].lebar = isMeteran ? 1 : 0;
-
+    newItems[pricelistActiveIndex] = {
+      ...newItems[pricelistActiveIndex],
+      is_meteran: isMeteran,
+      jenis_produk: product.kategori_nama || product.nama,
+      bahan: product.nama + (varian ? ` (${varian.nama_varian})` : ''),
+      harga_per_m2: selectedPrice,
+      panjang: isMeteran ? 1 : 0,
+      lebar: isMeteran ? 1 : 0,
+      product: product.id,
+      product_nama: product.nama,
+    };
     setFormData({ ...formData, items: newItems });
-
-    // Close modal
     setPricelistActiveIndex(null);
-    setPriceSearch('');
-    setSelectedCategory('all');
   };
+
+  // Unit bisnis pesanan: ikut unit karyawan yang melayani; dipilih manual bila
+  // karyawan itu belum punya unit (mis. owner).
+  const daftarUnit = useDaftarUnitBisnis();
+  const [unitManual, setUnitManual] = useState('');
 
   // Struktur state baru sesuai rencana
   const [saranPelanggan, setSaranPelanggan] = useState([]);
@@ -241,6 +198,10 @@ export default function OrderInputForm({ isOpen, onClose, onSuccess }) {
       minimumFractionDigits: 0,
     }).format(angka || 0);
 
+  const unitPelayan = pelayanList.find((u) => String(u.id) === String(formData.dilayani_oleh_id))?.unit_bisnis || null;
+  const unitPesanan = unitPelayan || unitManual || null;
+  const namaUnit = (id) => daftarUnit.find((u) => String(u.id) === String(id))?.nama || '';
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (isSubmitting) return; // Mencegah double submit jika user klik ganda tombol simpan
@@ -272,6 +233,9 @@ export default function OrderInputForm({ isOpen, onClose, onSuccess }) {
         status_global: formData.status_global || 'review',
         dp_dibayar: parseInt(formData.dp_dibayar) || 0,
         diskon_persen: parseFloat(formData.diskon_persen) || 0,
+        // Unit dipilih manual hanya bila karyawan pelayan belum punya unit; selain itu
+        // server mengisinya dari unit karyawan.
+        ...(unitPesanan && !unitPelayan ? { unit_bisnis: Number(unitPesanan) } : {}),
       });
       const orderId = orderRes.data.id;
 
@@ -421,6 +385,23 @@ export default function OrderInputForm({ isOpen, onClose, onSuccess }) {
                         <option key={u.id} value={u.id}>{u.nama}</option>
                       ))}
                     </select>
+                    <p className="mt-1.5 text-[11px] text-slate-500">
+                      Unit bisnis:{' '}
+                      {unitPelayan ? (
+                        <span className="font-semibold text-slate-700">{namaUnit(unitPelayan)} (ikut karyawan)</span>
+                      ) : (
+                        <select
+                          value={unitManual}
+                          onChange={(e) => setUnitManual(e.target.value)}
+                          className="ml-1 p-1 bg-white border border-slate-200 rounded text-[11px]"
+                        >
+                          <option value="">Belum ditandai</option>
+                          {daftarUnit.map((u) => (
+                            <option key={u.id} value={u.id}>{u.nama}</option>
+                          ))}
+                        </select>
+                      )}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -499,8 +480,6 @@ export default function OrderInputForm({ isOpen, onClose, onSuccess }) {
                             type="button"
                             onClick={() => {
                               setPricelistActiveIndex(idx);
-                              setPriceSearch('');
-                              setSelectedCategory('all');
                             }}
                             className="mt-1 w-full px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded text-[9px] font-black uppercase tracking-wider cursor-pointer shadow-sm transition-colors text-center"
                           >
@@ -774,185 +753,15 @@ export default function OrderInputForm({ isOpen, onClose, onSuccess }) {
         </form>
       </div>
 
-      {/* MODAL DAFTAR HARGA */}
+      {/* MODAL DAFTAR HARGA (produk master) */}
       {pricelistActiveIndex !== null && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden border border-slate-200">
-            {/* Header */}
-            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 bg-indigo-600 text-white rounded">
-                  <Calculator size={16} />
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-800 text-sm">Asisten Daftar Harga</h3>
-                  <p className="text-[10px] text-slate-500 font-medium">
-                    Pilih produk untuk mengisi data item #{pricelistActiveIndex + 1}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPricelistActiveIndex(null)}
-                className="text-slate-400 hover:text-slate-600 hover:bg-slate-200 p-1.5 rounded transition-colors"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            {/* Pencarian */}
-            <div className="p-4 border-b border-slate-100 flex gap-3 bg-white">
-              <input
-                type="text"
-                value={priceSearch}
-                onChange={(e) => setPriceSearch(e.target.value)}
-                placeholder="Cari nama bahan, produk, banner, sticker..."
-                className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-xs outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-              />
-            </div>
-
-            {/* Main Area */}
-            <div className="flex-1 flex overflow-hidden min-h-[400px]">
-              {/* Sidebar Kategori */}
-              <div className="w-56 bg-slate-50 border-r border-slate-100 p-2 overflow-y-auto space-y-0.5">
-                <button
-                  type="button"
-                  onClick={() => setSelectedCategory('all')}
-                  className={`w-full text-left px-3 py-2 rounded-md text-[11px] font-bold transition-colors ${selectedCategory === 'all' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-200/60'}`}
-                >
-                  Semua Kategori
-                </button>
-                {Object.entries(priceCategories).map(([key, label]) => (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setSelectedCategory(key)}
-                    className={`w-full text-left px-3 py-2 rounded-md text-[11px] font-bold transition-colors ${selectedCategory === key ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-200/60'}`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Daftar Produk */}
-              <div className="flex-1 p-4 overflow-y-auto bg-slate-50/30">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {filteredProducts.length > 0 ? (
-                    filteredProducts.map((prod, idx) => {
-                      const currentQty =
-                        parseInt(formData.items[pricelistActiveIndex]?.qty || '1') || 1;
-
-                      return (
-                        <div
-                          key={idx}
-                          className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-sm flex flex-col justify-between hover:border-indigo-300 transition-all"
-                        >
-                          <div>
-                            <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                              {priceCategories[prod.kategori] || prod.kategori}
-                            </span>
-                            <h4 className="font-bold text-slate-800 text-xs mt-2 capitalize">
-                              {prod.nama_produk}
-                              {prod.material ? ` (${prod.material})` : ''}
-                            </h4>
-                          </div>
-
-                          <div className="mt-4 border-t border-slate-100 pt-3">
-                            {prod.price_type === 'flat' ? (
-                              <div className="flex justify-between items-center">
-                                <span className="text-[13px] font-black text-slate-900">
-                                  {formatRupiah(prod.harga)}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleSelectProduct(prod, prod.harga)}
-                                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold rounded-lg transition-colors shadow-sm"
-                                >
-                                  Pilih Item
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="space-y-2">
-                                <p className="text-[10px] text-slate-400 font-bold mb-1 uppercase">
-                                  Harga Bertingkat (Qty saat ini: {currentQty}):
-                                </p>
-                                <div className="space-y-1.5">
-                                  {Object.entries(prod.tiers || {}).map(([tierKey, tierVal]) => {
-                                    const tierPrice = parseInt(tierVal) || 0;
-
-                                    // Pengecekan apakah tier ini cocok dengan qty saat ini
-                                    let isMatched;
-                                    const cleanKey = tierKey.toLowerCase();
-                                    if (cleanKey.includes('-')) {
-                                      const parts = cleanKey.split('-');
-                                      const min = parseInt(parts[0]) || 0;
-                                      const max = parseInt(parts[1]) || 999999;
-                                      isMatched = currentQty >= min && currentQty <= max;
-                                    } else if (cleanKey.includes('>')) {
-                                      const min = parseInt(cleanKey.replace(/[^\d]/g, '')) || 0;
-                                      isMatched = currentQty > min;
-                                    } else if (cleanKey.includes('<')) {
-                                      const max =
-                                        parseInt(cleanKey.replace(/[^\d]/g, '')) || 999999;
-                                      isMatched = currentQty < max;
-                                    } else {
-                                      const val = parseInt(cleanKey.replace(/[^\d]/g, '')) || 1;
-                                      isMatched = currentQty === val;
-                                    }
-
-                                    return (
-                                      <div
-                                        key={tierKey}
-                                        className={`flex justify-between items-center p-1.5 rounded-lg border text-[10px] ${isMatched ? 'bg-emerald-50 border-emerald-300' : 'bg-slate-50 border-slate-100'}`}
-                                      >
-                                        <span
-                                          className={`font-semibold ${isMatched ? 'text-emerald-800' : 'text-slate-600'}`}
-                                        >
-                                          {tierKey}
-                                        </span>
-                                        <div className="flex items-center gap-2">
-                                          <span className="font-bold text-slate-800">
-                                            {formatRupiah(tierPrice)}
-                                          </span>
-                                          <button
-                                            type="button"
-                                            onClick={() => handleSelectProduct(prod, tierPrice)}
-                                            className={`px-2 py-1 rounded text-[9px] font-bold ${isMatched ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200'}`}
-                                          >
-                                            Pilih
-                                          </button>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="col-span-2 py-8 text-center text-slate-400 text-xs">
-                      Tidak ada produk yang cocok dengan pencarian Anda.
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="px-6 py-3 border-t border-slate-100 bg-slate-50 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setPricelistActiveIndex(null)}
-                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-lg transition-colors"
-              >
-                Batal
-              </button>
-            </div>
-          </div>
-        </div>
+        <DaftarHargaModal
+          unitBisnis={unitPesanan}
+          qty={parseInt(formData.items[pricelistActiveIndex]?.qty || '1', 10) || 1}
+          nomorItem={pricelistActiveIndex + 1}
+          onPilih={handleSelectProduct}
+          onClose={() => setPricelistActiveIndex(null)}
+        />
       )}
     </div>
   );
