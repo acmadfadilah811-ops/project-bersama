@@ -309,11 +309,30 @@ def terbitkan_dari_checkout(order, data, user, jumlah_bayar):
                               tutup_job_hantu=False)
     if paket.jumlah_sesi > 1:
         _kalikan_insentif_sesi(paket_item, paket.jumlah_sesi)
+    _beri_tahu_sesi_baru(pesanan, fotografer, tahap_sesi, asisten, tahap_asisten)
     OrderActivityLog.objects.create(
         order=order, user=user, tindakan='PESANAN_FOTO',
         keterangan=f'Pesanan foto {paket.product.nama} ({jumlah_orang} orang, {len(jadwal)} jadwal sesi).',
     )
     return jobs, fotografer, tahap_sesi
+
+
+def _beri_tahu_sesi_baru(pesanan, fotografer, tahap_sesi, asisten, tahap_asisten):
+    """Web Push (2026-10-21): petugas yang dipilih kasir diberi tahu langsung; bila belum
+    dipilih, semua staff divisi tahap itu (antrean global) diberi tahu."""
+    from .web_push import kirim_ke_user
+
+    pertama = pesanan.sesi.order_by('urutan').first()
+    jam = timezone.localtime(pertama.mulai).strftime('%d/%m %H:%M') if pertama else ''
+    isi = f"{pesanan.order.nama or 'Pelanggan'} · {pesanan.paket_item.jenis_produk or 'Paket foto'} · {jam}"
+    for petugas, tahap in ((fotografer, tahap_sesi), (asisten, tahap_asisten)):
+        if tahap is None:
+            continue
+        if petugas is not None:
+            kirim_ke_user([petugas], 'Sesi foto baru untuk Anda', isi, '/sesi-foto', f'sesi-{pesanan.pk}')
+        else:
+            penerima = CustomUser.objects.filter(is_active=True, role='staff', divisi_id=tahap.divisi_id)
+            kirim_ke_user(penerima, 'Ada order sesi foto baru', f'{isi} — ambil di Antrean', '/sesi-foto', f'sesi-{pesanan.pk}')
 
 
 def _kalikan_insentif_sesi(paket_item, jumlah_sesi):

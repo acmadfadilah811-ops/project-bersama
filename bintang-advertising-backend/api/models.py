@@ -1524,3 +1524,5 @@ from .starfoto_models import *  # noqa: F401,F403
 from .dinas_models import *  # noqa: F401,F403
 # Order kasir dikirim ke CRM (2026-10-12).
 from .crm_push_models import *  # noqa: F401,F403
+# Langganan notifikasi Web Push per perangkat (2026-10-21).
+from .webpush_models import *  # noqa: F401,F403

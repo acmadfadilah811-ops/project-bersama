@@ -10,6 +10,7 @@ from .views.starfoto import (
     AntreanSesiView, JadwalSesiView, PaketFotoViewSet, PengaturanStarfotoView, PesananFotoViewSet, SesiAksiView,
     SesiJadwalView, SesiSayaView, SesiTerlewatView, UsulanTambahanDetailView,
 )
+from .views.web_push import KunciPublikPushView, LanggananPushView
 from .views.dinas_luar import DinasLuarAktifView, DinasLuarListView, DinasLuarMulaiView, DinasLuarSelesaiView
 from .views.starfoto_approval import (
     ApprovalFotoBerkasView, ApprovalPublikView, ApprovalStaffView, ApprovalTertundaView, EditFotoAntreanView,
@@ -243,6 +244,9 @@ urlpatterns = [
     path('starfoto/usulan/<int:pk>/', UsulanTambahanDetailView.as_view(), name='starfoto-usulan'),
     path('starfoto/sesi-saya/', SesiSayaView.as_view(), name='starfoto-sesi-saya'),
     path('starfoto/sesi-terlewat/', SesiTerlewatView.as_view(), name='starfoto-sesi-terlewat'),
+    # Notifikasi Web Push per perangkat (2026-10-21).
+    path('push/kunci-publik/', KunciPublikPushView.as_view(), name='push-kunci-publik'),
+    path('push/langganan/', LanggananPushView.as_view(), name='push-langganan'),
     path('starfoto/sesi/<int:pk>/jadwal/', SesiJadwalView.as_view(), name='starfoto-sesi-jadwal'),
     path('starfoto/sesi/<int:pk>/<str:aksi>/', SesiAksiView.as_view(), name='starfoto-sesi-aksi'),
     path('starfoto/jadwal/', JadwalSesiView.as_view(), name='starfoto-jadwal'),
