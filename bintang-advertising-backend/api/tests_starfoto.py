@@ -413,3 +413,29 @@ class SesiTerlewatTests(_Dasar):
         self.client.force_authenticate(self.foto)
         self.client.post(f'/api/starfoto/sesi/{sesi.id}/mulai/')
         self.assertEqual(self.client.post(f'/api/starfoto/sesi/{sesi.id}/jadwal/', {'mulai': baru}, format='json').status_code, 400)
+
+
+class UnitPesananKasirTests(_Dasar):
+    """Pesanan kasir milik unit kasir walau pelayannya staff unit lain (2026-10-21)."""
+
+    def test_pelayan_unit_lain_tidak_memindahkan_pesanan_dari_kasir(self):
+        adv, _ = UnitBisnis.objects.get_or_create(nama='Star Advertising Uji')
+        pelayan = get_user_model().objects.create_user(username='editor.adv', password='x', role='staff', unit_bisnis=adv)
+        res = self._checkout()
+        self.assertEqual(res.status_code, 201, res.content)
+        Order.objects.filter(pk=res.json()['id']).update(unit_bisnis=None)  # pastikan diuji dari awal
+        mulai = (timezone.now() + datetime.timedelta(hours=5)).replace(microsecond=0)
+        item = {'product_id': self.produk.id, 'qty': 1, 'harga_satuan': 1, 'addons': [{'id': self.tambah_orang.id, 'qty': 1}]}
+        res = self.client.post('/api/orders/checkout-pos/', {
+            'idempotency_key': str(uuid.uuid4()), 'nama': 'Rani', 'nomor_wa': '081200000001',
+            'items': [item], 'jumlah_bayar': 150000, 'metode_pembayaran': 'tunai',
+            'dilayani_oleh_id': pelayan.id, 'jatuh_tempo': str(timezone.localdate()),
+            'starfoto': {'jenis': 'booking_wa', 'jumlah_orang': 7, 'fotografer_id': self.foto.id,
+                         'sesi': [{'mulai': mulai.isoformat(), 'lokasi': 'studio'}]},
+        }, format='json')
+        self.assertEqual(res.status_code, 201, res.content)
+        order = Order.objects.get(pk=res.json()['id'])
+        self.assertEqual(order.unit_bisnis_id, self.unit.id)
+        data = self.client.get('/api/starfoto/pesanan/').json()
+        ids = [p['order'] for p in (data['results'] if isinstance(data, dict) else data)]
+        self.assertIn(order.id, ids)

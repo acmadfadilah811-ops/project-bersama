@@ -137,10 +137,22 @@ function FormKonfirmasi({ pesanan, onSelesai }) {
         />
       </div>
 
-      <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-        <input type="checkbox" checked={tanpaEdit} onChange={(e) => setTanpaEdit(e.target.checked)} />
-        Langsung cetak (tanpa edit &amp; approval pelanggan)
-      </label>
+      {/* Tujuan SPK berikutnya (2026-10-21): Editor (edit + approval pelanggan) atau
+          langsung ke Operator Cetak. */}
+      <div>
+        <p className="mb-2 text-xs font-bold uppercase text-slate-400">Kirim ke</p>
+        <div className="grid grid-cols-2 gap-2">
+          {[[false, 'Editor', 'Edit foto lalu approval pelanggan'], [true, 'Operator Cetak', 'Langsung cetak, tanpa edit']].map(([nilai, label, ket]) => (
+            <button
+              key={label} type="button" aria-pressed={tanpaEdit === nilai} onClick={() => setTanpaEdit(nilai)}
+              className={`cursor-pointer rounded-lg border p-3 text-left ${tanpaEdit === nilai ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}
+            >
+              <span className="block text-sm font-bold">{label}</span>
+              <span className={`block text-xs ${tanpaEdit === nilai ? 'text-slate-200' : 'text-slate-500'}`}>{ket}</span>
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="grid grid-cols-2 gap-3">
         <label className="space-y-1"><span className="text-xs font-bold uppercase text-slate-400">Deadline SPK {tanpaEdit ? 'Cetak' : 'Edit'}</span>
           <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} className="w-full rounded-lg border border-slate-300 p-2" />

@@ -264,6 +264,11 @@ def terbitkan_dari_checkout(order, data, user, jumlah_bayar):
     if not isinstance(daftar_sesi, list) or not 1 <= len(daftar_sesi) <= paket.jumlah_sesi:
         raise ValidationError({'error': f'Jumlah jadwal sesi harus 1 sampai {paket.jumlah_sesi}.'})
 
+    # Pesanan paket foto selalu milik unit paketnya (StarFoto), apa pun unit pelayannya.
+    if paket.product.unit_bisnis_id and order.unit_bisnis_id != paket.product.unit_bisnis_id:
+        order.unit_bisnis_id = paket.product.unit_bisnis_id
+        type(order).objects.filter(pk=order.pk).update(unit_bisnis_id=order.unit_bisnis_id)
+
     nomor_kantong = str(data.get('nomor_kantong') or '').strip()[:30]
     if nomor_kantong:
         _cek_kantong(nomor_kantong)

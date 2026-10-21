@@ -427,6 +427,10 @@ class OrderViewSet(viewsets.ModelViewSet):
             dilayani_oleh=dilayani_oleh,
             dp_dibayar=0,
             reorder_dari=reorder_dari,
+            # Pesanan kasir milik unit kasir (2026-10-21): sebelumnya ikut unit karyawan
+            # "Dilayani oleh", jadi pesanan StarFoto yang dilayani staff Advertising hilang
+            # dari layar kasir StarFoto. Kasir tanpa unit (owner/admin) tetap ikut pelayan.
+            unit_bisnis_id=getattr(request.user, 'unit_bisnis_id', None) or None,
         )
         order._current_user = request.user
 
