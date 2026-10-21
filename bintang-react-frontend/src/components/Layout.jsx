@@ -8,6 +8,7 @@ import MulaiKerjaGate from './MulaiKerjaGate';
 import apiClient from '../api/apiClient';
 import { LayoutDashboard, CalendarClock, ShoppingCart, Kanban, User, Camera, Wand2, Users } from 'lucide-react';
 import { useMenuStarfoto } from '../features/starfoto/hooks/useMenuSesiFoto';
+import NotifAntreanSesi from '../features/starfoto/components/NotifAntreanSesi';
 
 export default function Layout() {
   const { user } = useAuth();
@@ -132,6 +133,7 @@ export default function Layout() {
 
         {/* Konten Utama Layar HP */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 pb-20 scroll-smooth bg-[#F4F7FE]">
+          {tampilSesiFoto && <NotifAntreanSesi />}
           <Outlet />
         </div>
 
@@ -178,7 +180,8 @@ export default function Layout() {
         {!fullScreenFeature && <Topbar />}
         <main className={`flex-1 scroll-smooth transition-all duration-300 ${fullScreenFeature ? 'p-0' : 'p-6 md:p-8'} ${isKasir ? 'overflow-hidden' : 'overflow-y-auto'}`}>
           <div className={fullScreenFeature ? (isKasir ? 'w-full h-full' : 'w-full') : 'max-w-[1600px] mx-auto'}>
-            <Outlet />
+          {tampilSesiFoto && <NotifAntreanSesi />}
+          <Outlet />
           </div>
         </main>
       </div>

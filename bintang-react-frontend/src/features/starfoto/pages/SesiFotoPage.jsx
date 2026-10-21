@@ -122,6 +122,11 @@ export default function SesiFotoPage() {
   }, [tanggal, modeSaya]);
 
   useEffect(() => { muat(); }, [muat]);
+  // Muat ulang saat NotifAntreanSesi (di Layout) mendeteksi sesi baru di antrean.
+  useEffect(() => {
+    window.addEventListener('antrean-sesi-baru', muat);
+    return () => window.removeEventListener('antrean-sesi-baru', muat);
+  }, [muat]);
 
   const aksi = async (kunci, fn, sukses) => {
     setProses(kunci);
