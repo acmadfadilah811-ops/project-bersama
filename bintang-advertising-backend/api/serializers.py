@@ -107,6 +107,11 @@ class CustomUserSerializer(serializers.ModelSerializer):
     divisi_nama = serializers.ReadOnlyField(source='divisi.nama')
     unit_bisnis_nama = serializers.ReadOnlyField(source='unit_bisnis.nama')
     atasan_nama = serializers.ReadOnlyField(source='atasan.username')
+    # Nama lengkap untuk daftar & pengurutan karyawan (2026-10-22).
+    nama_lengkap = serializers.SerializerMethodField()
+
+    def get_nama_lengkap(self, obj):
+        return obj.get_full_name() or obj.username
 
     class Meta:
         model = CustomUser
@@ -115,7 +120,7 @@ class CustomUserSerializer(serializers.ModelSerializer):
             'negara', 'alamat', 'bio', 'foto_profil', 'last_login', 'date_joined',
             'status_karyawan', 'jenis_kontrak', 'kontrak_mulai', 'kontrak_selesai',
             'no_kpj', 'bpjs_kes', 'file_pkwt', 'nip', 'unit_bisnis', 'unit_bisnis_nama', 'posisi',
-            'atasan', 'atasan_nama', 'is_active', 'diarsipkan',
+            'atasan', 'atasan_nama', 'is_active', 'diarsipkan', 'nama_lengkap',
         ]
         # Arsip hanya lewat aksi /users/{id}/arsip/ (wajib akun nonaktif).
         # Data kontrak dikelola di HR; ERP hanya menampilkan (2026-10-17).
