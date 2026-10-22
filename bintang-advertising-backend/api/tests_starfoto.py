@@ -439,3 +439,17 @@ class UnitPesananKasirTests(_Dasar):
         data = self.client.get('/api/starfoto/pesanan/').json()
         ids = [p['order'] for p in (data['results'] if isinstance(data, dict) else data)]
         self.assertIn(order.id, ids)
+
+
+class UnitPesananKasirOrderTests(_Dasar):
+    """POST /api/orders/ oleh kasir: unit pesanan = unit kasir (2026-10-22)."""
+
+    def test_order_kasir_dengan_pelayan_unit_lain(self):
+        adv, _ = UnitBisnis.objects.get_or_create(nama='Star Advertising Uji 2')
+        pelayan = get_user_model().objects.create_user(username='cs.adv2', password='x', role='staff', unit_bisnis=adv)
+        res = self.client.post('/api/orders/', {
+            'nomor_wa': '081277778888', 'nama': 'Uji Unit', 'dilayani_oleh': pelayan.id,
+            'metode_pembayaran': 'tunai', 'status_global': 'review',
+        }, format='json')
+        self.assertEqual(res.status_code, 201, res.content)
+        self.assertEqual(Order.objects.get(pk=res.json()['id']).unit_bisnis_id, self.unit.id)

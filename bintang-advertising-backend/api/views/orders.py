@@ -228,6 +228,11 @@ class OrderViewSet(viewsets.ModelViewSet):
         if not dilayani_oleh_obj.is_active:
             raise ValidationError({'error': 'Karyawan yang melayani tidak aktif.'})
 
+        # Pesanan yang dibuat kasir milik unit kasir (2026-10-22), sama dengan checkout POS:
+        # pelayan dari unit lain tidak memindahkan pesanan dari layar kasir unit ini.
+        if self.request.user.role == 'kasir' and self.request.user.unit_bisnis_id and not serializer.validated_data.get('unit_bisnis'):
+            serializer.validated_data['unit_bisnis'] = self.request.user.unit_bisnis
+
         # Auto-generate ID: ORD-20260517-A3F2
         today = timezone.now().strftime('%Y%m%d')
         short_id = uuid.uuid4().hex[:4].upper()

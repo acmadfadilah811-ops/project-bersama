@@ -17,6 +17,7 @@ import RiwayatPelanggan from '../../../components/RiwayatPelanggan';
 import { cariPelanggan, pakaiPelanggan } from '../../../utils/pelanggan';
 import { useDaftarUnitBisnis } from '../../../utils/unitBisnis';
 import DaftarHargaModal from './DaftarHargaModal';
+import CariProdukInline from './CariProdukInline';
 
 export default function OrderInputForm({ isOpen, onClose, onSuccess }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -68,12 +69,12 @@ export default function OrderInputForm({ isOpen, onClose, onSuccess }) {
   }, [isOpen]);
 
   // Pilih produk master dari Daftar Harga (2026-10-20).
-  const handleSelectProduct = (product, selectedPrice, varian) => {
-    if (pricelistActiveIndex === null) return;
+  const handleSelectProduct = (product, selectedPrice, varian, index = pricelistActiveIndex) => {
+    if (index === null || index === undefined) return;
     const isMeteran = product.price_type === 'per_m2';
     const newItems = [...formData.items];
-    newItems[pricelistActiveIndex] = {
-      ...newItems[pricelistActiveIndex],
+    newItems[index] = {
+      ...newItems[index],
       is_meteran: isMeteran,
       jenis_produk: product.kategori_nama || product.nama,
       bahan: product.nama + (varian ? ` (${varian.nama_varian})` : ''),
@@ -468,13 +469,13 @@ export default function OrderInputForm({ isOpen, onClose, onSuccess }) {
                           <label className="block text-[10px] font-bold text-slate-500 uppercase">
                             Product Type *
                           </label>
-                          <input
-                            type="text"
-                            required
-                            placeholder="Banner / Yasin..."
+                          <CariProdukInline
                             value={item.jenis_produk}
-                            onChange={(e) => handleItemChange(idx, 'jenis_produk', e.target.value)}
-                            className="w-full p-2 bg-white border border-slate-200 rounded text-[12px] outline-none mt-1 focus:ring-1 focus:ring-slate-900"
+                            onChange={(nilai) => handleItemChange(idx, 'jenis_produk', nilai)}
+                            onPilih={(p, harga, varian) => handleSelectProduct(p, harga, varian, idx)}
+                            unitBisnis={unitPesanan}
+                            qty={parseInt(item.qty || '1', 10) || 1}
+                            placeholder="Ketik nama produk untuk mencari…"
                           />
                           <button
                             type="button"
