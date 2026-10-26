@@ -36,6 +36,7 @@ import VoidOrderOtpModal from '../../kasir/components/VoidOrderOtpModal';
 import { uiConfirm } from '../../../utils/dialog';
 import UnitBisnisFilter from '../../../components/UnitBisnisFilter';
 import { bolehKelompokUnit } from '../../../utils/unitBisnis';
+import { formatLuas, hitungHargaMeteran, hitungLuas } from '../../../utils/meteran';
 
 export default function Orders() {
   const { user, businessSettings } = useAuth();
@@ -223,7 +224,7 @@ export default function Orders() {
       if (isMeteran) {
         const p = parseFloat(item.panjang) || 0;
         const l = parseFloat(item.lebar) || 0;
-        item.harga_jual = Math.round(p * l * hargaUnit * qty);
+        item.harga_jual = hitungHargaMeteran(p, l, hargaUnit, qty).subtotal;
       } else {
         item.harga_jual = Math.round(hargaUnit * qty);
       }
@@ -1293,7 +1294,7 @@ export default function Orders() {
                           <div className="text-[9px] font-bold text-slate-400 uppercase mb-1.5">Hasil Kalkulasi Otomatis</div>
                           <div className="text-[9.5px] text-slate-300 mb-2">
                             {item.is_meteran !== false
-                              ? <><Ruler size={12} className="inline mr-1 align-middle" />{item.panjang || 0}m × {item.lebar || 0}m = <span className="text-white font-bold">{((parseFloat(item.panjang) || 0) * (parseFloat(item.lebar) || 0)).toFixed(2)} m²</span> &nbsp;×&nbsp; {formatRupiah(item.harga_per_m2 || 0)}/m² &nbsp;×&nbsp; {item.qty || 1} pcs</>
+                              ? <><Ruler size={12} className="inline mr-1 align-middle" />{item.panjang || 0}m × {item.lebar || 0}m = <span className="text-white font-bold">{formatLuas(hitungLuas(item.panjang, item.lebar))} m²</span> &nbsp;×&nbsp; {formatRupiah(item.harga_per_m2 || 0)}/m² &nbsp;×&nbsp; {item.qty || 1} pcs</>
                               : <>{formatRupiah(item.harga_per_m2 || 0)}/pcs &nbsp;×&nbsp; {item.qty || 1} pcs</>
                             }
                           </div>

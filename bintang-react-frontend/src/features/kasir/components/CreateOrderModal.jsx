@@ -10,6 +10,7 @@ import NumericInput from '../../../components/NumericInput';
 import { useKasir } from '../context/KasirContext';
 import RiwayatPelanggan from '../../../components/RiwayatPelanggan';
 import { cariPelanggan, pakaiPelanggan } from '../../../utils/pelanggan';
+import { hitungHargaMeteran } from '../../../utils/meteran';
 
 const emptyItem = () => ({
   id: `new-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -320,7 +321,7 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
       const l = lRaw > 0 ? lRaw : 1;
       const qty = parseInt(it.qty) || 1;
       const harga = parseFloat(it.harga_jual) || 0;
-      return (isMeteran ? p * l * harga * qty : harga * qty) + getAddonsTotal(it);
+      return (isMeteran ? hitungHargaMeteran(p, l, harga, qty).subtotal : harga * qty) + getAddonsTotal(it);
     };
     const subtotal = validItems.reduce((sum, it) => sum + hitungSubtotalItem(it), 0);
     let cancelled = false;
@@ -362,7 +363,7 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
     const l = l_raw > 0 ? l_raw : 1;
     const qty = parseInt(it.qty) || 1;
     const harga = parseFloat(it.harga_jual) || 0;
-    return isMeteran ? p * l * harga * qty : harga * qty;
+    return isMeteran ? hitungHargaMeteran(p, l, harga, qty).subtotal : harga * qty;
   };
 
   // Subtotal item TERMASUK addon — dipakai untuk tampilan (kolom Subtotal,

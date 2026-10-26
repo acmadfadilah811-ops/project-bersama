@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, BadgePercent, Image, Calculator, Plus, PackagePlus, Trash2, PlusCircle } from 'lucide-react';
 import DeleteConfirmModal from './DeleteConfirmModal';
 import NumericInput from '../../../components/NumericInput';
+import { formatLuas, hargaSatuanMeteran, hitungLuas } from '../../../utils/meteran';
 
 // Satu produk (meteran ATAU unit biasa) bisa dibeli beberapa kali dalam satu
 // transaksi dengan detail berbeda-beda per unit — meteran butuh ukuran (P x
@@ -21,8 +22,6 @@ const barisAwal = (it) => {
     serialNumbers: it?.serialNumbers || [],
   }];
 };
-
-const formatLuas = (luas) => (Number(luas) || 0).toLocaleString('id-ID', { maximumFractionDigits: 4 });
 
 export default function PosItemDetailPanel({ item, addons = [], onSave, onAddMoreToOrder, onDelete, onSplitBill, onDiscountClick, onClose }) {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -133,12 +132,10 @@ export default function PosItemDetailPanel({ item, addons = [], onSave, onAddMor
   const rowsComputed = rows.map((row) => {
     const p = tipeHitung === 'meteran' ? (parseFloat(row.panjang) || 0) : 0;
     const l = tipeHitung === 'meteran' ? (parseFloat(row.lebar) || 0) : 0;
-    // Luas TIDAK dibulatkan ke 2 desimal: server menghitung P x L persis (product_pricing.hitung_harga),
-    // jadi 0,6 x 0,42 = 0,252 harus tetap 0,252 (dulu jadi 0,25 -> harga di layar kurang dari yang ditagih).
-    // Pembulatan 6 desimal hanya membuang noise floating point.
-    const luas = tipeHitung === 'meteran' ? Math.round(p * l * 1e6) / 1e6 : 0;
+    // Luas TIDAK dibulatkan ke 2 desimal: server menghitung P x L persis (lihat utils/meteran.js).
+    const luas = tipeHitung === 'meteran' ? hitungLuas(p, l) : 0;
     const hargaSatuan = tipeHitung === 'meteran'
-      ? Math.round(luas * (parseFloat(hargaPerM2) || 0))
+      ? hargaSatuanMeteran(luas, hargaPerM2)
       : (parseFloat(harga) || 0);
     const rowFinishing = parseFloat(row.finishingBiaya) || 0;
     const rowQty = Math.max(1, parseInt(row.qty || 1));

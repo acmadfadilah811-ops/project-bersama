@@ -18,6 +18,7 @@ import { cariPelanggan, pakaiPelanggan } from '../../../utils/pelanggan';
 import { useDaftarUnitBisnis } from '../../../utils/unitBisnis';
 import DaftarHargaModal from './DaftarHargaModal';
 import CariProdukInline from './CariProdukInline';
+import { hitungHargaMeteran } from '../../../utils/meteran';
 
 export default function OrderInputForm({ isOpen, onClose, onSuccess }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -180,7 +181,7 @@ export default function OrderInputForm({ isOpen, onClose, onSuccess }) {
       if (isMeteran) {
         const p = p_raw > 0 ? p_raw : 1;
         const l = l_raw > 0 ? l_raw : 1;
-        return total + p * l * harga * qty;
+        return total + hitungHargaMeteran(p, l, harga, qty).subtotal;
       } else {
         return total + harga * qty;
       }
@@ -246,7 +247,7 @@ export default function OrderInputForm({ isOpen, onClose, onSuccess }) {
         const p = isMeteran ? parseFloat(item.panjang) || 0 : 0;
         const l = isMeteran ? parseFloat(item.lebar) || 0 : 0;
         const harga_jual = isMeteran
-          ? p * l * (parseFloat(item.harga_per_m2) || 0) * (parseInt(item.qty) || 1)
+          ? hitungHargaMeteran(p, l, item.harga_per_m2, item.qty).subtotal
           : (parseFloat(item.harga_per_m2) || 0) * (parseInt(item.qty) || 1);
 
         return apiClient.post('/order-items/', {
@@ -444,10 +445,7 @@ export default function OrderInputForm({ isOpen, onClose, onSuccess }) {
                 {formData.items.map((item, idx) => {
                   const isMeteran = item.is_meteran !== false;
                   const sub = isMeteran
-                    ? (parseFloat(item.panjang) || 0) *
-                      (parseFloat(item.lebar) || 0) *
-                      (parseFloat(item.harga_per_m2) || 0) *
-                      (item.qty || 1)
+                    ? hitungHargaMeteran(item.panjang, item.lebar, item.harga_per_m2, item.qty).subtotal
                     : (parseFloat(item.harga_per_m2) || 0) * (item.qty || 1);
                   return (
                     <div
