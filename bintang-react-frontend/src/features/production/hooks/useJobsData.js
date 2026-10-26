@@ -8,7 +8,8 @@ import { fetchAllPages } from '../../../utils/paginatedApi';
  * useJobsData — Custom hook untuk semua state & handler di halaman Jobs.
  * Memisahkan logika dari tampilan agar Jobs.jsx tetap bersih.
  */
-export function useJobsData() {
+export function useJobsData({ hpp = false } = {}) {
+  // hpp: minta GET /jobs/?hpp=1 (HPP produk + bahan per SPK; hanya dilayani untuk owner/manager/admin).
   const [jobs, setJobs] = useState([]);
   const [orderMap, setOrderMap] = useState({});
   const [loading, setLoading] = useState(true);
@@ -29,7 +30,7 @@ export function useJobsData() {
     if (!silent) setLoading(true);
     try {
       const [jobsRes, ordersRes] = await Promise.allSettled([
-        fetchAllPages('/jobs/'),
+        fetchAllPages('/jobs/', hpp ? { params: { hpp: 1 } } : undefined),
         fetchAllPages('/orders/'),
       ]);
 

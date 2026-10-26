@@ -264,10 +264,21 @@ class JobBoardSerializer(serializers.ModelSerializer):
     # Rincian insentif per SPK (master Jenis Insentif, 2026-09-30): dibaca
     # staff di papan kerjanya, hanya Manager yang mengubah (endpoint terpisah).
     rincian_insentif = serializers.SerializerMethodField()
+    # HPP SPK (produk terjual + bahan terpakai) -- hanya terisi bila viewset menaruh `hpp_map`
+    # di context (GET /jobs/?hpp=1 oleh owner/manager/admin, lihat services/hpp_job.py).
+    hpp = serializers.SerializerMethodField()
 
     class Meta:
         model = JobBoard
         fields = '__all__'
+
+    def get_hpp(self, obj):
+        peta = self.context.get('hpp_map')
+        if not peta or obj.id not in peta:
+            return None
+        nilai = peta[obj.id]
+        produk, bahan = int(round(nilai['produk'])), int(round(nilai['bahan']))
+        return {'produk': produk, 'bahan': bahan, 'total': produk + bahan}
 
     def get_rincian_insentif(self, obj):
         return [

@@ -353,6 +353,26 @@ class JobBoardViewSet(viewsets.ModelViewSet):
     serializer_class = JobBoardSerializer
     permission_classes = [IsAuthenticated, IsClockedIn]
 
+    def _minta_hpp(self):
+        return (
+            self.request.query_params.get('hpp') in ('1', 'true')
+            and getattr(self.request.user, 'role', None) in ('owner', 'manager', 'admin')
+        )
+
+    def paginate_queryset(self, queryset):
+        halaman = super().paginate_queryset(queryset)
+        # HPP per SPK (Papan Kerja SPK): dihitung sekali per halaman, bukan per baris (N+1).
+        if self.action == 'list' and self._minta_hpp():
+            from ..services.hpp_job import hitung_hpp_jobs
+            self._hpp_map = hitung_hpp_jobs(halaman if halaman is not None else list(queryset))
+        return halaman
+
+    def get_serializer_context(self):
+        konteks = super().get_serializer_context()
+        if getattr(self, '_hpp_map', None) is not None:
+            konteks['hpp_map'] = self._hpp_map
+        return konteks
+
     def get_permissions(self):
         # SPV/Kordiv TIDAK PERNAH jadi pic_staff (lihat get_queryset() di
         # bawah) -- mereka cuma mengawasi/assign, tidak pernah "mengerjakan"
