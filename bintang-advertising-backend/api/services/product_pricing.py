@@ -9,7 +9,7 @@ per_m2, tiers untuk tier) tidak tersedia, melempar HargaProdukError — bukan
 mengembalikan harga tebakan.
 """
 
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 
 class HargaProdukError(Exception):
@@ -114,7 +114,8 @@ def hitung_harga(product, *, qty=1, panjang=None, lebar=None, variant=None, kana
             raise HargaProdukError("Panjang dan lebar harus lebih dari nol.")
         harga_per_m2 = _base_harga(product, variant, kanal)
         luas = panjang_d * lebar_d
-        harga_satuan = (luas * harga_per_m2).quantize(Decimal('1'))
+        # Half-up (bukan half-even bawaan quantize) supaya sama dengan Math.round di kalkulator kasir.
+        harga_satuan = (luas * harga_per_m2).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
         total = harga_satuan * qty
         return {
             'price_type': 'per_m2' if price_type == 'per_m2' else 'per_m2_manual',

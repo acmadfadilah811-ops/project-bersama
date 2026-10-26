@@ -22,6 +22,8 @@ const barisAwal = (it) => {
   }];
 };
 
+const formatLuas = (luas) => (Number(luas) || 0).toLocaleString('id-ID', { maximumFractionDigits: 4 });
+
 export default function PosItemDetailPanel({ item, addons = [], onSave, onAddMoreToOrder, onDelete, onSplitBill, onDiscountClick, onClose }) {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [tipeHitung, setTipeHitung] = useState(item?.panjang > 0 || item?.lebar > 0 ? 'meteran' : 'pcs');
@@ -131,7 +133,10 @@ export default function PosItemDetailPanel({ item, addons = [], onSave, onAddMor
   const rowsComputed = rows.map((row) => {
     const p = tipeHitung === 'meteran' ? (parseFloat(row.panjang) || 0) : 0;
     const l = tipeHitung === 'meteran' ? (parseFloat(row.lebar) || 0) : 0;
-    const luas = tipeHitung === 'meteran' ? Math.round(p * l * 100) / 100 : 0;
+    // Luas TIDAK dibulatkan ke 2 desimal: server menghitung P x L persis (product_pricing.hitung_harga),
+    // jadi 0,6 x 0,42 = 0,252 harus tetap 0,252 (dulu jadi 0,25 -> harga di layar kurang dari yang ditagih).
+    // Pembulatan 6 desimal hanya membuang noise floating point.
+    const luas = tipeHitung === 'meteran' ? Math.round(p * l * 1e6) / 1e6 : 0;
     const hargaSatuan = tipeHitung === 'meteran'
       ? Math.round(luas * (parseFloat(hargaPerM2) || 0))
       : (parseFloat(harga) || 0);
@@ -454,7 +459,7 @@ export default function PosItemDetailPanel({ item, addons = [], onSave, onAddMor
                 })()}
 
                 <div className="flex justify-between items-center text-[10px] text-slate-500 font-semibold pt-1 border-t border-blue-100">
-                  {tipeHitung === 'meteran' && <span>{rowsComputed[idx]?.luas || 0} m² / lembar</span>}
+                  {tipeHitung === 'meteran' && <span>{formatLuas(rowsComputed[idx]?.luas)} m² / lembar</span>}
                   <span className="font-black text-blue-700 ml-auto">
                     Rp {(rowsComputed[idx]?.subtotal || 0).toLocaleString('id-ID')}
                   </span>
@@ -474,7 +479,7 @@ export default function PosItemDetailPanel({ item, addons = [], onSave, onAddMor
           {tipeHitung === 'meteran' && (
             <div className="flex justify-between items-center bg-blue-50 p-2 rounded-lg border border-blue-200 text-xs">
               <span className="font-semibold text-slate-600">Total Luas Semua Baris:</span>
-              <span className="font-black text-blue-700">{Math.round(totalLuasSemuaBaris * 100) / 100} m²</span>
+              <span className="font-black text-blue-700">{formatLuas(totalLuasSemuaBaris)} m²</span>
             </div>
           )}
 

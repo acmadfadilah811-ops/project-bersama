@@ -32,6 +32,17 @@ class HitungHargaProdukTest(TestCase):
         self.assertEqual(hasil['harga_satuan'], 150000.0)  # 6 m2 x 25000
         self.assertEqual(hasil['total'], 300000.0)  # x qty 2
 
+    def test_per_m2_luas_tidak_dibulatkan_dan_pembulatan_rupiah_half_up(self):
+        # Transaksi Faisal RSPC 2026-10-26: 0,6 x 0,42 = 0,252 m2 x 75.000 = 18.900 (kalkulator
+        # kasir dulu membulatkan luas ke 0,25 -> 18.750, tidak sama dengan yang ditagih server).
+        p = Product.objects.create(nama='Cetak Albatros', price_type='per_m2', harga_jual_toko=75000)
+        hasil = hitung_harga(p, qty=2, panjang='0.6', lebar='0.42')
+        self.assertEqual(hasil['harga_satuan'], 18900.0)
+        self.assertEqual(hasil['total'], 37800.0)
+        # Tepat .5 rupiah dibulatkan ke atas (sama dengan Math.round di kasir), bukan ke genap.
+        p2 = Product.objects.create(nama='Stiker Mini', price_type='per_m2', harga_jual_toko=25)
+        self.assertEqual(hitung_harga(p2, panjang='0.5', lebar='0.2')['harga_satuan'], 3.0)  # 0,1 m2 x 25 = 2,5 -> 3
+
     def test_per_m2_tanpa_panjang_lebar_ditolak(self):
         p = Product.objects.create(nama='Banner Flexi', price_type='per_m2', harga_jual_toko=25000)
         with self.assertRaises(HargaProdukError):
