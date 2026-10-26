@@ -20,9 +20,77 @@ from ..permissions import IsOwnerManagerAdminSpvFinanceOrReadOnly, IsOwnerManage
 logger = logging.getLogger(__name__)
 
 
+def _baris_hpp_bahan(inventory_item, qty, ref_no, keterangan_konteks, nilai=None):
+    """Satu pasang baris jurnal HPP bahan (Dr 51000 / Kr 11400); None bila nilainya 0."""
+    from decimal import Decimal, ROUND_HALF_UP
+
+    # Nilai HPP: `nilai` eksplisit (biaya FIFO produk sumber, lihat
+    # catat_pemakaian_bahan) menang; kalau tidak ada, kuantitas * cost_per_unit.
+    cost = nilai if nilai is not None else qty * (inventory_item.cost_per_unit or 0.0)
+    if cost <= 0:
+        return None
+    amt = Decimal(str(cost)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    if amt <= 0:
+        return None
+    # Batas kolom jurnal: deskripsi 255, nomor dokumen 50 (PostgreSQL menolak
+    # lebih panjang -- penanda POS "POS <nomor> - Produk #<id>/<varian>" bisa
+    # melewati 50 untuk id produk 5 digit atau produk bervarian).
+    return {
+        "amt": amt,
+        "ket": f"HPP Otomatis: {inventory_item.nama} ({qty} {inventory_item.satuan}) - {keterangan_konteks}"[:255],
+        "ref_no": str(ref_no)[:50],
+    }
+
+
+def jurnalkan_hpp_bahan(baris, *, source_id, keterangan_konteks):
+    """Satu jurnal HPP untuk SEMUA bahan satu transaksi (penjualan POS / job produksi).
+
+    Dulu tiap bahan resep membuat jurnalnya sendiri dengan (source_type, source_id,
+    tanggal) yang sama, sehingga bahan kedua melanggar `uniq_je_source_date` dan
+    seluruh penjualan gagal 500 untuk resep berbahan >1 (2026-10-26). Kini semua
+    bahan satu transaksi digabung: satu jurnal, tiap bahan satu pasang baris
+    (Dr HPP 51000 / Kr Persediaan 11400). Jurnal pembalik void POS mengenali baris
+    dari nomor dokumennya, jadi tidak terpengaruh.
+
+    Idempoten (M4): bila kunci (production, source_id, hari ini) sudah dipakai
+    jurnal lain (mis. pemakaian bahan kedua pada job yang sama di hari yang sama),
+    jurnal baru dibuat tanpa source_id supaya tidak melanggar batasan unik.
+    Wajib dipanggil di dalam transaction.atomic (M5)."""
+    baris = [b for b in baris if b]
+    if not baris:
+        return None
+    from accounting.models import Account, JournalEntry
+    from accounting.services.journal import create_journal_entry
+
+    acc_hpp = Account.objects.filter(code="51000").first()
+    acc_persediaan = Account.objects.filter(code="11400").first()
+    if not acc_hpp or not acc_persediaan:
+        raise RuntimeError("COA HPP 51000 dan Persediaan 11400 wajib tersedia.")
+
+    hari_ini = timezone.localdate()
+    if source_id is not None and JournalEntry.objects.filter(
+        source_type=JournalEntry.SourceType.PRODUCTION, source_id=source_id, date=hari_ini,
+    ).exists():
+        source_id = None
+
+    lines = []
+    for b in baris:
+        lines.append({"account": acc_hpp, "debit": b["amt"], "kredit": 0, "description": b["ket"], "external_document_no": b["ref_no"]})
+        lines.append({"account": acc_persediaan, "debit": 0, "kredit": b["amt"], "description": b["ket"], "external_document_no": b["ref_no"]})
+    deskripsi = baris[0]["ket"] if len(baris) == 1 else f"HPP Otomatis: {len(baris)} bahan - {keterangan_konteks}"[:255]
+    try:
+        return create_journal_entry(
+            date=hari_ini, lines=lines, description=deskripsi,
+            source_type=JournalEntry.SourceType.PRODUCTION, source_id=source_id,
+        )
+    except Exception as err:
+        logger.error(f"Gagal mencatat JournalEntry HPP: {err}", exc_info=True)
+        raise
+
+
 def record_material_consumption_to_general_ledger(inventory_item, qty, ref_no, keterangan_konteks, source_id=None, nilai=None):
     """
-    Mencatat konsumsi bahan baku ke Buku Besar (Double-Entry Bookkeeping) sebagai Beban HPP.
+    Mencatat konsumsi SATU bahan baku ke Buku Besar (Double-Entry Bookkeeping) sebagai Beban HPP.
 
     Referensi generik (ref_no/keterangan_konteks/source_id), BUKAN objek `job`
     spesifik lagi — dulu fungsi ini langsung akses `job.order_item.order.id`,
@@ -30,45 +98,14 @@ def record_material_consumption_to_general_ledger(inventory_item, qty, ref_no, k
     JobMaterialDeductView) & tidak bisa dipakai sama sekali dari
     pos_services.create_sale untuk pemotongan BoM otomatis lewat kasir
     (instruksi & bug ditemukan user 2026-08-15).
+
+    Untuk transaksi dengan beberapa bahan, kumpulkan lewat `catat_pemakaian_bahan(...,
+    kumpulan=[])` lalu panggil `jurnalkan_hpp_bahan` sekali.
     """
     try:
-        # Nilai HPP: `nilai` eksplisit (biaya FIFO produk sumber, lihat
-        # catat_pemakaian_bahan) menang; kalau tidak ada, kuantitas * cost_per_unit.
-        cost = nilai if nilai is not None else qty * (inventory_item.cost_per_unit or 0.0)
-        if cost <= 0:
-            return
-
-        # Batas kolom jurnal: deskripsi 255, nomor dokumen 50 (PostgreSQL menolak
-        # lebih panjang -- penanda POS "POS <nomor> - Produk #<id>/<varian>" bisa
-        # melewati 50 untuk id produk 5 digit atau produk bervarian).
-        ket_tx = f"HPP Otomatis: {inventory_item.nama} ({qty} {inventory_item.satuan}) - {keterangan_konteks}"[:255]
-        ref_no = str(ref_no)[:50]
-
-        # Forward to Official Double-Entry Ledger (accounting.JournalEntry)
-        try:
-            from accounting.models import Account, JournalEntry
-            from accounting.services.journal import create_journal_entry
-            from decimal import Decimal, ROUND_HALF_UP
-
-            acc_hpp = Account.objects.filter(code="51000").first()
-            acc_persediaan = Account.objects.filter(code="11400").first()
-            if not acc_hpp or not acc_persediaan:
-                raise RuntimeError("COA HPP 51000 dan Persediaan 11400 wajib tersedia.")
-            amt = Decimal(str(cost)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-            if amt > 0:
-                create_journal_entry(
-                    date=timezone.localdate(),
-                    lines=[
-                        {"account": acc_hpp, "debit": amt, "kredit": 0, "description": ket_tx, "external_document_no": ref_no},
-                        {"account": acc_persediaan, "debit": 0, "kredit": amt, "description": ket_tx, "external_document_no": ref_no},
-                    ],
-                    description=ket_tx,
-                    source_type=JournalEntry.SourceType.PRODUCTION,
-                    source_id=source_id,
-                )
-        except Exception as err:
-            logger.error(f"Gagal mencatat JournalEntry HPP: {err}")
-            raise
+        baris = _baris_hpp_bahan(inventory_item, qty, ref_no, keterangan_konteks, nilai)
+        if baris:
+            jurnalkan_hpp_bahan([baris], source_id=source_id, keterangan_konteks=keterangan_konteks)
     except Exception as e:
         logger.error(f"Gagal mencatat jurnal HPP otomatis ({ref_no}): {e}", exc_info=True)
         raise
@@ -137,7 +174,7 @@ def kurangi_stok_produk_sumber(inventory_item, qty, *, user, catatan):
     return movement
 
 
-def catat_pemakaian_bahan(inventory_item, qty, *, user, ref_no, keterangan_konteks, source_id, catatan_stok):
+def catat_pemakaian_bahan(inventory_item, qty, *, user, ref_no, keterangan_konteks, source_id, catatan_stok, kumpulan=None):
     """Satu pintu pencatatan pemakaian bahan resep (POS & produksi): potong stok
     Product sumber (FIFO), lalu jurnal HPP bahan (Dr HPP 51000 / Kr Persediaan
     11400) senilai biaya FIFO yang baru dikonsumsi itu.
@@ -149,6 +186,10 @@ def catat_pemakaian_bahan(inventory_item, qty, *, user, ref_no, keterangan_konte
     Wajib dipanggil di dalam transaction.atomic (M5)."""
     movement = kurangi_stok_produk_sumber(inventory_item, qty, user=user, catatan=catatan_stok)
     nilai = movement.hpp_total if movement is not None and movement.hpp_total else None
+    if kumpulan is not None:
+        # Mode gabungan: pemanggil menjurnalkan semua bahan sekaligus lewat jurnalkan_hpp_bahan.
+        kumpulan.append(_baris_hpp_bahan(inventory_item, qty, ref_no, keterangan_konteks, nilai))
+        return
     record_material_consumption_to_general_ledger(
         inventory_item, qty, ref_no=ref_no, keterangan_konteks=keterangan_konteks,
         source_id=source_id, nilai=nilai,

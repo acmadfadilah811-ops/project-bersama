@@ -83,6 +83,38 @@ class PosBomDeductionTest(APITestCase):
         self.bahan.refresh_from_db()
         self.assertEqual(self.bahan.stok, 100.0)
 
+    def test_resep_banyak_bahan_satu_jurnal_hpp(self):
+        """Resep >1 bahan dulu gagal 500 (uniq_je_source_date): kini satu jurnal berisi semua bahan."""
+        from accounting.models import JournalEntry
+
+        bahan2 = _buat_inventory_item(nama='Lem Banner', stok=100.0, cost=2000.0)
+        BoMItem.objects.create(bom=self.bom, inventory_item=bahan2, qty_required_per_unit=1.0)
+
+        response = self._jual(3)
+        self.assertEqual(response.status_code, 201, response.content)
+
+        sale = POSSale.objects.get(pk=response.data['id'])
+        hpp = JournalEntry.objects.filter(source_type=JournalEntry.SourceType.PRODUCTION)
+        self.assertEqual(hpp.count(), 1)
+        entry = hpp.get()
+        self.assertEqual(entry.source_id, sale.id)
+        self.assertEqual(entry.lines.count(), 4)  # 2 bahan x (Dr HPP + Kr Persediaan)
+        # 3 pcs: bahan1 2x3=6 ml @5000 + bahan2 1x3=3 @2000
+        self.assertEqual(sum(l.debit for l in entry.lines.all()), Decimal('36000'))
+        self.assertTrue(all(l.external_document_no.startswith(f'POS {sale.nomor}') for l in entry.lines.all()))
+
+    def test_jurnalkan_hpp_bahan_kunci_terpakai_tidak_gagal(self):
+        """Pemakaian kedua pada sumber yang sama di hari yang sama tetap terjurnal (tanpa source_id)."""
+        from accounting.models import JournalEntry
+        from api.views.inventory import _baris_hpp_bahan, jurnalkan_hpp_bahan
+
+        baris = [_baris_hpp_bahan(self.bahan, 2.0, 'Job #9', 'Order 1 - Job #9')]
+        pertama = jurnalkan_hpp_bahan(baris, source_id=9, keterangan_konteks='Job #9')
+        kedua = jurnalkan_hpp_bahan(baris, source_id=9, keterangan_konteks='Job #9')
+        self.assertEqual(pertama.source_id, 9)
+        self.assertIsNone(kedua.source_id)
+        self.assertEqual(JournalEntry.objects.filter(source_type=JournalEntry.SourceType.PRODUCTION).count(), 2)
+
     def test_bom_varian_dipakai_saat_produk_terjual_bervarian(self):
         produk_varian = Product.objects.create(
             nama='Kaos Combed', harga_beli=30000, harga_jual_toko=90000,

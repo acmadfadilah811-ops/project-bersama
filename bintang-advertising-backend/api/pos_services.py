@@ -28,7 +28,7 @@ def _potong_bahan_baku_bom(product, variant, qty_base, sale, user):
     dari `product.lacak_inventori` (jasa yang finished-good-nya tidak
     dihitung stok tetap boleh konsumsi bahan baku per transaksi)."""
     from .models import BillOfMaterials, RestockHistory, InventoryItem
-    from .views.inventory import catat_pemakaian_bahan
+    from .views.inventory import catat_pemakaian_bahan, jurnalkan_hpp_bahan
 
     bom = BillOfMaterials.objects.filter(product_id=product.id, variant_id=variant.id if variant else None).first()
     if not bom and variant:
@@ -40,6 +40,7 @@ def _potong_bahan_baku_bom(product, variant, qty_base, sale, user):
     if RestockHistory.objects.filter(keterangan__icontains=marker).exists():
         return
 
+    kumpulan = []  # satu jurnal HPP untuk semua bahan resep (lihat jurnalkan_hpp_bahan)
     for bom_item in bom.items.select_related('inventory_item'):
         item = InventoryItem.objects.select_for_update().get(pk=bom_item.inventory_item_id)
         qty_needed = round(float(qty_base) * bom_item.qty_required_per_unit, 4)
@@ -61,9 +62,12 @@ def _potong_bahan_baku_bom(product, variant, qty_base, sale, user):
         catat_pemakaian_bahan(
             item, qty_needed, user=user, ref_no=marker,
             keterangan_konteks=f"Penjualan POS {sale.nomor} - {product.nama}",
-            source_id=sale.id,
+            source_id=sale.id, kumpulan=kumpulan,
             catatan_stok=f"Pemakaian bahan resep | {marker} | {bom.nama}",
         )
+    jurnalkan_hpp_bahan(
+        kumpulan, source_id=sale.id, keterangan_konteks=f"Penjualan POS {sale.nomor} - {product.nama}",
+    )
 
 def _catat_bahan_tidak_dikembalikan(sale, user):
     """Void POS dengan produk yang sudah dicetak/dibuat: bahan resep TIDAK
