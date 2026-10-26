@@ -6,6 +6,7 @@ import apiClient from '../../../api/apiClient';
 import { useAuth } from '../../../context/AuthContext';
 import { useKasir } from '../context/KasirContext';
 import { notifyApiError, notifySuccess } from '../../../utils/notify';
+import LaporanShiftRinci, { formatRupiahTitik } from '../components/LaporanShiftRinci';
 
 // Nama tunai dicocokkan sama seperti server (SaldoKasHarianViewSet.close()):
 // tipe pembayaran POSPaymentMethod='Tunai' + nama bawaan 'cash'/'tunai'. Di
@@ -40,6 +41,13 @@ export default function PosShift({ onToggleSidebar }) {
   const [pengembalianTunai] = useState(0);
   const [pembatalanTunai] = useState(0);
 
+  // Rincian shift berjalan dari server (GET /saldo-kas-harian/{id}/ringkasan/): kas awal, semua
+  // metode bayar (POS + DP/pelunasan Order), kas masuk/keluar, expected. Angka yang sama dengan
+  // snapshot saat shift ditutup, jadi Kas Diharapkan di layar = hitungan server.
+  const [ringkasanLive, setRingkasanLive] = useState(null);
+  // Laporan yang tampil setelah Akhiri Shift (viewMode 'laporanShift').
+  const [laporanSelesai, setLaporanSelesai] = useState(null);
+
   // List of Cash Movements (SS 1 Right Panel) — dari rekap_harian.pendapatan_lain
   // + .pengeluaran (CashTransaction arah='pendapatan'/'pengeluaran' hari ini).
   const [cashMovements, setCashMovements] = useState([]);
@@ -70,14 +78,24 @@ export default function PosShift({ onToggleSidebar }) {
   // Ikuti status shift NYATA dari KasirContext (bukan asumsi 'startShift' selalu).
   useEffect(() => {
     if (loadingShift) return;
-    setViewMode(shiftAktif ? 'activeShift' : 'startShift');
+    // Setelah Akhiri Shift, laporan tetap tampil sampai kasir menekan Selesai.
+    setViewMode((sekarang) => (sekarang === 'laporanShift' && !shiftAktif ? 'laporanShift' : (shiftAktif ? 'activeShift' : 'startShift')));
   }, [shiftAktif, loadingShift]);
 
   const fetchRekapHarian = async () => {
+    let expectedServer = null;
     if (!shiftAktif?.id) {
       setPenjualanTunai(0);
       setCashMovements([]);
+      setRingkasanLive(null);
       return;
+    }
+    try {
+      const ringkasan = await apiClient.get(`/saldo-kas-harian/${shiftAktif.id}/ringkasan/`);
+      setRingkasanLive(ringkasan.data || null);
+      expectedServer = Number(ringkasan.data?.expected);
+    } catch {
+      setRingkasanLive(null);
     }
     try {
       const res = await apiClient.get('/pos/sales/rekap-harian/', {
@@ -100,6 +118,7 @@ export default function PosShift({ onToggleSidebar }) {
     } catch {
       setCashMovements([]);
     }
+    return Number.isFinite(expectedServer) ? expectedServer : null;
   };
 
   useEffect(() => {
@@ -133,7 +152,9 @@ export default function PosShift({ onToggleSidebar }) {
     0
   );
   const totalTunai = awalDiLaci + penjualanTunai - pengembalianTunai - pembatalanTunai + totalKasMasukOutNet;
-  const totalDiharapkan = totalTunai;
+  // Kas Diharapkan di laci: hitungan server bila tersedia (sudah memuat DP/pelunasan Order tunai),
+  // kalau gagal dimuat pakai perkiraan lokal di atas.
+  const totalDiharapkan = ringkasanLive ? Number(ringkasanLive.expected) || 0 : totalTunai;
 
   // Format currency with dot separator e.g. 11.000
   const formatNumberDot = (num) => {
@@ -260,9 +281,24 @@ export default function PosShift({ onToggleSidebar }) {
     setClosingShift(true);
     const kasAkhir = parseFloat(typedCloseCashStr.replace(/\./g, '')) || 0;
     try {
-      await apiClient.post(`/saldo-kas-harian/${shiftAktif.id}/close/`, {
+      const resClose = await apiClient.post(`/saldo-kas-harian/${shiftAktif.id}/close/`, {
         kas_akhir: kasAkhir,
         catatan: closeKeterangan.trim(),
+      });
+      const rg = resClose.data?.rincian || {};
+      const rs = resClose.data?.ringkasan || {};
+      setLaporanSelesai({
+        kasir: kasirName,
+        mulai: rs.mulai ? new Date(rs.mulai).toLocaleString('id-ID', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : shiftStartTime,
+        berakhir: rs.berakhir ? new Date(rs.berakhir).toLocaleString('id-ID', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
+        kasAwal: rg.kas_awal,
+        metode: rg.rincian_metode || [],
+        kasMasuk: rg.kas_masuk,
+        kasKeluar: rg.kas_keluar,
+        aktual: rg.aktual ?? kasAkhir,
+        selisih: rg.selisih,
+        keterangan: closeKeterangan.trim(),
+        kasMovements: cashMovements,
       });
       setShowConfirmCloseModal(false);
       await checkActiveShift();
@@ -271,7 +307,8 @@ export default function PosShift({ onToggleSidebar }) {
       setCloseKeterangan('');
       setPenjualanTunai(0);
       setCashMovements([]);
-      setViewMode('startShift');
+      setRingkasanLive(null);
+      setViewMode('laporanShift');
       notifySuccess(
         'Shift berhasil ditutup',
         'Ringkasan Shift V2 telah tersimpan dan dapat dilihat di Point of Sale.',
@@ -299,6 +336,8 @@ export default function PosShift({ onToggleSidebar }) {
             <Flag size={16} />
             <span>Akhiri Shift</span>
           </div>
+        ) : viewMode === 'laporanShift' ? (
+          <span>Laporan Shift</span>
         ) : (
           <span>Shift Saat Ini</span>
         )}
@@ -391,6 +430,17 @@ export default function PosShift({ onToggleSidebar }) {
             {/* LEFT COLUMN: Rekapan Shift Saat Ini SS 1 */}
             <div className="flex-1 p-6 space-y-4 border-r border-slate-200 overflow-y-auto text-xs font-semibold text-slate-800">
               
+              {ringkasanLive ? (
+                <LaporanShiftRinci
+                  kasir={kasirName}
+                  mulai={shiftStartTime}
+                  kasAwal={ringkasanLive.kas_awal}
+                  metode={ringkasanLive.rincian_metode}
+                  kasMasuk={ringkasanLive.kas_masuk}
+                  kasKeluar={ringkasanLive.kas_keluar}
+                />
+              ) : (
+                <>
               {/* Kasir Row */}
               <div className="flex justify-between items-center pb-2 border-b border-blue-400">
                 <span className="text-slate-500">Kasir</span>
@@ -444,6 +494,8 @@ export default function PosShift({ onToggleSidebar }) {
                 <span className="text-sm font-black">{formatNumberDot(totalDiharapkan)}</span>
               </div>
 
+                </>
+              )}
             </div>
 
             {/* RIGHT COLUMN: Kas Masuk-Keluar SS 1 */}
@@ -550,8 +602,9 @@ export default function PosShift({ onToggleSidebar }) {
           {/* Bottom Green Full-Width Button 🏁 Akhiri Shift SS 1 */}
           <button
             type="button"
-            onClick={() => {
-              setTypedCloseCashStr(formatNumberDot(totalDiharapkan));
+            onClick={async () => {
+              const expectedBaru = await fetchRekapHarian();
+              setTypedCloseCashStr(formatNumberDot(expectedBaru ?? totalDiharapkan));
               setViewMode('closeShiftNumpad');
             }}
             className="w-full bg-[#4CAF50] hover:bg-emerald-600 text-white py-3.5 px-4 font-black text-base flex items-center justify-center gap-2 shadow-lg cursor-pointer transition-all shrink-0"
@@ -560,6 +613,58 @@ export default function PosShift({ onToggleSidebar }) {
             <span>Akhiri Shift</span>
           </button>
 
+        </div>
+      ) : viewMode === 'laporanShift' && laporanSelesai ? (
+        /* ==================== VIEW 3: LAPORAN SETELAH AKHIRI SHIFT ==================== */
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <div className="flex-1 flex min-h-0 overflow-hidden bg-white">
+            <div className="flex-1 p-6 border-r border-slate-200 overflow-y-auto text-xs font-semibold text-slate-800">
+              <LaporanShiftRinci
+                kasir={laporanSelesai.kasir}
+                mulai={laporanSelesai.mulai}
+                berakhir={laporanSelesai.berakhir}
+                kasAwal={laporanSelesai.kasAwal}
+                metode={laporanSelesai.metode}
+                kasMasuk={laporanSelesai.kasMasuk}
+                kasKeluar={laporanSelesai.kasKeluar}
+                aktual={laporanSelesai.aktual}
+                selisih={laporanSelesai.selisih}
+                keterangan={laporanSelesai.keterangan}
+              />
+            </div>
+            <div className="flex-1 bg-[#EAEAEA] p-4 flex flex-col min-h-0">
+              <div className="flex justify-between items-center pb-3 font-extrabold text-xs text-slate-900 shrink-0">
+                <span>Kas Masuk-Keluar</span>
+                <span>{formatRupiahTitik((laporanSelesai.kasMovements || []).reduce((acc, m) => acc + (m.type === 'in' ? m.amount : -m.amount), 0))}</span>
+              </div>
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                {(laporanSelesai.kasMovements || []).length === 0 ? (
+                  <p className="text-[11px] text-slate-500 font-semibold">Tidak ada kas masuk/keluar pada shift ini.</p>
+                ) : (laporanSelesai.kasMovements || []).map((entry) => (
+                  <div key={entry.id} className="p-3 bg-white rounded-lg border border-slate-200 shadow-sm flex items-center justify-between text-xs">
+                    <div className="flex items-start gap-3 min-w-0 flex-1">
+                      <div className={`w-9 h-9 rounded-md flex items-center justify-center text-white shrink-0 font-bold ${entry.type === 'in' ? 'bg-[#4CAF50]' : 'bg-[#EF5350]'}`}>
+                        {entry.type === 'in' ? <Plus size={18} /> : <Minus size={18} />}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-extrabold text-slate-900 text-[11px]">{entry.timeStr}</div>
+                        <div className="text-[11px] text-slate-600 font-semibold truncate mt-0.5">{entry.catatan}</div>
+                      </div>
+                    </div>
+                    <span className={`font-black text-xs shrink-0 ${entry.type === 'in' ? 'text-slate-900' : 'text-[#EF5350]'}`}>{formatNumberDot(entry.amount)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => { setLaporanSelesai(null); setViewMode('startShift'); }}
+            className="w-full bg-[#4CAF50] hover:bg-emerald-600 text-white py-3.5 px-4 font-black text-base flex items-center justify-center gap-2 shadow-lg cursor-pointer transition-all shrink-0"
+          >
+            <Check size={18} strokeWidth={3} />
+            <span>Selesai</span>
+          </button>
         </div>
       ) : (
         /* ==================== VIEW 2: AKHIRI SHIFT NUMPAD (SS 3) ==================== */

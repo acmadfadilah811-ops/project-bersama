@@ -95,6 +95,16 @@ class SaldoKasHarianViewSet(viewsets.ModelViewSet):
             )
         return queryset
 
+    @action(detail=True, methods=['get'], url_path='ringkasan')
+    def ringkasan(self, request, pk=None):
+        """Rincian kas & semua metode bayar shift ini (angka yang sama dengan snapshot saat
+        shift ditutup, lihat close()). Dipakai layar Shift Saat Ini supaya Kas Diharapkan di layar
+        sama dengan hitungan server."""
+        shift = self.get_object()
+        if request.user.role == 'kasir' and shift.kasir_id != request.user.id:
+            return Response({'error': 'Anda hanya dapat melihat shift sendiri.'}, status=403)
+        return Response(calculate_shift_cash_summary(shift))
+
     @action(detail=True, methods=['post'], url_path='close')
     @transaction.atomic
     def close(self, request, pk=None):

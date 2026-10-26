@@ -37,8 +37,14 @@ def calculate_shift_cash_summary(shift):
             'total': Decimal('0'),
             'pos': Decimal('0'),
             'order': Decimal('0'),
+            'pembatalan': Decimal('0'),
         })
         amount = Decimal(str(amount or 0))
+        if source == 'pembatalan':
+            # Void POS pada shift ini: hanya informasi (tidak masuk total/expected, karena
+            # penjualan void memang tidak dihitung sebagai penjualan 'paid').
+            row['pembatalan'] += amount
+            return
         row['total'] += amount
         row[source] += amount
 
@@ -48,6 +54,9 @@ def calculate_shift_cash_summary(shift):
         _, tipe = resolve_method(sale.metode_bayar)
         if tipe.casefold() == 'tunai':
             penjualan_tunai += Decimal(str(sale.total or 0))
+
+    for sale in POSSale.objects.filter(shift=shift, status='void'):
+        add_payment(sale.metode_bayar, sale.total, 'pembatalan')
 
     # DP dan pelunasan Order yang dicatat oleh kasir pada shift aktif juga
     # merupakan uang fisik di laci bila metodenya tunai.
@@ -63,6 +72,7 @@ def calculate_shift_cash_summary(shift):
             'total': format(row['total'], '.2f'),
             'pos': format(row['pos'], '.2f'),
             'order': format(row['order'], '.2f'),
+            'pembatalan': format(row['pembatalan'], '.2f'),
         }
         for row in sorted(rekap.values(), key=lambda row: (row['tipe'], row['metode']))
     ]

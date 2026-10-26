@@ -31,6 +31,7 @@ import { uiConfirm } from '../../../../utils/dialog';
 import { getLogoUrl } from '../../../../utils/logo';
 import UnitBisnisFilter from '../../../../components/UnitBisnisFilter';
 import ShiftHrBacaSaja from './ShiftHrBacaSaja';
+import LaporanShiftRinci from '../../../kasir/components/LaporanShiftRinci';
 
 const POS_TABS = [
   { id: 'pengaturan', label: 'Pengaturan' },
@@ -3162,138 +3163,21 @@ export default function PointOfSale() {
 
             {/* Content Body Drawer SS 2 */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs font-semibold text-slate-700">
-              <div className="bg-[#F8FAFC] p-4 rounded-lg space-y-3 border border-slate-100">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <span className="text-[10px] text-slate-400 font-bold block">Kasir</span>
-                    <span className="font-extrabold text-slate-800 text-xs">{selectedShiftDetail.kasir_nama || selectedShiftDetail.kasir || '-'}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 font-bold block">Tanggal</span>
-                    <span className="font-extrabold text-slate-800 text-xs">{selectedShiftDetail.tanggal}</span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <span className="text-[10px] text-slate-400 font-bold block">Shift Mulai</span>
-                    <span className="font-semibold text-slate-600 text-[11px]">{selectedShiftDetail.mulai_fmt || selectedShiftDetail.mulai}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 font-bold block">Shift Berakhir</span>
-                    <span className="font-semibold text-slate-600 text-[11px]">{selectedShiftDetail.berakhir_fmt || selectedShiftDetail.berakhir}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Rekap pembayaran non-kas tetap terlihat, tetapi tidak ikut
-                  mengubah Kas Diharapkan di laci. */}
-              <div className="space-y-2 bg-white p-4 rounded-lg border border-slate-200">
-                <div className="flex justify-between items-center font-extrabold text-slate-900 text-xs pb-2 border-b border-slate-100">
-                  <span>Rekap Semua Metode Pembayaran</span>
-                  <span>{(selectedShiftDetail.rincian_metode || []).length} Metode</span>
-                </div>
-                {(selectedShiftDetail.rincian_metode || []).length === 0 ? (
-                  <p className="text-[11px] text-slate-400">Belum ada snapshot metode pembayaran untuk shift ini.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {(selectedShiftDetail.rincian_metode || []).map((row) => (
-                      <div key={`${row.metode}-${row.tipe}`} className="rounded-md bg-slate-50 px-3 py-2">
-                        <div className="flex justify-between gap-3 text-slate-800">
-                          <span className="font-bold">{row.metode}</span>
-                          <span className="font-extrabold">IDR {Number(row.total || 0).toLocaleString('de-DE')}</span>
-                        </div>
-                        <div className="mt-1 flex justify-between text-[10px] text-slate-500">
-                          <span>POS: IDR {Number(row.pos || 0).toLocaleString('de-DE')}</span>
-                          <span>DP/Pelunasan: IDR {Number(row.order || 0).toLocaleString('de-DE')}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Section 1: Kas Diharapkan & Breakdown SS 2 */}
-              <div className="space-y-2 bg-gradient-to-r from-indigo-50/50 to-[#F8FAFC] p-4 rounded-lg border border-slate-100 border-l-4 border-l-indigo-300">
-                <div className="flex justify-between items-center font-extrabold text-slate-900 text-xs pb-1">
-                  <span>Kas Diharapkan</span>
-                  <span>IDR {Number(selectedShiftDetail.expected || 0).toLocaleString('de-DE')}</span>
-                </div>
-
-                <div className="pt-2 pl-2 text-slate-600 divide-y divide-slate-200">
-                  <div className="flex justify-between items-center py-2 first:pt-0">
-                    <span>Awal di Laci</span>
-                    <span className="font-bold text-slate-800">IDR {Number(selectedShiftDetail.kas_awal || 0).toLocaleString('de-DE')}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2">
-                    <span className="text-emerald-700">+ Penjualan Tunai</span>
-                    <span className="font-bold text-emerald-700">IDR {Number(selectedShiftDetail.penjualan_tunai || 0).toLocaleString('de-DE')}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2">
-                    <span>Pembayaran Kredit</span>
-                    <span className="font-bold text-slate-800">IDR {Number(selectedShiftDetail.pembayaran_kredit || 0).toLocaleString('de-DE')}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2">
-                    <span className="text-rose-700">− Pengembalian Tunai</span>
-                    <span className="font-bold text-rose-700">IDR {Number(selectedShiftDetail.pengembalian_tunai || 0).toLocaleString('de-DE')}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2">
-                    <span className="text-rose-700">− Void Tunai</span>
-                    <span className="font-bold text-rose-700">IDR {Number(selectedShiftDetail.void_tunai || 0).toLocaleString('de-DE')}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2">
-                    <span>Kas Masuk</span>
-                    <span className="font-bold text-slate-800">IDR {Number(selectedShiftDetail.kas_masuk || 0).toLocaleString('de-DE')}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2 last:pb-0">
-                    <span>Kas Keluar</span>
-                    <span className="font-bold text-slate-800">{Number(selectedShiftDetail.kas_keluar || 0) > 0 ? `IDR -${Number(selectedShiftDetail.kas_keluar).toLocaleString('de-DE')}` : 'IDR 0'}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 2: Kas Aktual SS 2 */}
-              <div className="flex justify-between items-center font-extrabold text-slate-900 bg-gradient-to-r from-blue-50/50 to-[#F8FAFC] p-4 rounded-lg border border-slate-100 border-l-4 border-l-blue-300">
-                <span>Kas Aktual</span>
-                <span>IDR {Number(selectedShiftDetail.aktual || 0).toLocaleString('de-DE')}</span>
-              </div>
-
-              {/* Section 3: Kas Selisih SS 2 -- aksen warna ikut nilai selisih
-                  (0 = cocok/hijau, selain itu perlu perhatian/amber) supaya
-                  kasir/owner langsung lihat status tanpa baca angka dulu. */}
-              <div className={`flex justify-between items-center font-extrabold text-slate-900 p-4 rounded-lg border border-slate-100 border-l-4 ${
-                Number(selectedShiftDetail.selisih || 0) === 0
-                  ? 'bg-gradient-to-r from-emerald-50/50 to-[#F8FAFC] border-l-emerald-300'
-                  : 'bg-gradient-to-r from-amber-50/50 to-[#F8FAFC] border-l-amber-300'
-              }`}>
-                <span>Kas Selisih</span>
-                <span>IDR {Number(selectedShiftDetail.selisih || 0).toLocaleString('de-DE')}</span>
-              </div>
-
-              {/* Keterangan penutupan shift (opsional, diisi kasir saat
-                  konfirmasi Akhiri Shift) */}
-              {selectedShiftDetail.keterangan && (
-                <div className="space-y-1 bg-[#F8FAFC] p-4 rounded-lg border border-slate-100">
-                  <span className="text-[10px] text-slate-400 font-bold block">Keterangan</span>
-                  <p className="text-slate-700 font-semibold text-xs whitespace-pre-wrap">{selectedShiftDetail.keterangan}</p>
-                </div>
-              )}
-
-              {/* Section 4: Summary Totals at Bottom SS 2 */}
-              <div className="pt-4 space-y-3 border-t border-slate-200 text-xs font-semibold text-slate-600">
-                <div className="flex justify-between items-center">
-                  <span>Total Diharapkan</span>
-                  <span className="font-extrabold text-slate-900">IDR {Number(selectedShiftDetail.expected || 0).toLocaleString('de-DE')}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span>Total Aktual</span>
-                  <span className="font-extrabold text-slate-900">IDR {Number(selectedShiftDetail.aktual || 0).toLocaleString('de-DE')}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span>Total Selisih</span>
-                  <span className="font-extrabold text-slate-900">IDR {Number(selectedShiftDetail.selisih || 0).toLocaleString('de-DE')}</span>
-                </div>
-              </div>
+              {/* Laporan rincian bergaya Olsera: Tunai, tiap metode non-tunai, Total Diharapkan,
+                  lalu Kas Aktual & Selisih (satu komponen dengan layar kasir). */}
+              <LaporanShiftRinci
+                kasir={selectedShiftDetail.kasir_nama || selectedShiftDetail.kasir || '-'}
+                mulai={selectedShiftDetail.mulai ? new Date(selectedShiftDetail.mulai).toLocaleString('id-ID', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
+                berakhir={selectedShiftDetail.berakhir ? new Date(selectedShiftDetail.berakhir).toLocaleString('id-ID', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
+                kasAwal={selectedShiftDetail.kas_awal}
+                penjualanTunaiSnapshot={selectedShiftDetail.penjualan_tunai}
+                metode={selectedShiftDetail.rincian_metode}
+                kasMasuk={selectedShiftDetail.kas_masuk}
+                kasKeluar={selectedShiftDetail.kas_keluar}
+                aktual={selectedShiftDetail.aktual}
+                selisih={selectedShiftDetail.selisih}
+                keterangan={selectedShiftDetail.keterangan}
+              />
             </div>
           </div>
         </div>

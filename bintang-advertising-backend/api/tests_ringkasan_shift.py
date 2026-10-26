@@ -220,3 +220,39 @@ class RingkasanShiftMultiKasirTests(APITestCase):
         metode = {m['metode']: m['jumlah'] for m in rekap.data['penjualan_per_metode']}
         self.assertEqual(Decimal(str(metode['Tunai'])), Decimal('20000'))
         self.assertEqual(Decimal(str(metode['Cash'])), Decimal('10000'))
+
+
+class RingkasanShiftLiveTests(APITestCase):
+    """GET /saldo-kas-harian/{id}/ringkasan/ -- rincian shift berjalan untuk layar Shift Saat Ini (2026-10-26)."""
+
+    def setUp(self):
+        self.kasir = User.objects.create_user(username='kasir_live', password='secret', role='kasir')
+        self.lain = User.objects.create_user(username='kasir_live_lain', password='secret', role='kasir')
+        self.client.force_authenticate(self.kasir)
+        res = self.client.post('/api/saldo-kas-harian/', {'shift': 'Shift Test', 'kas_awal': 10000}, format='json')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED, res.data)
+        self.shift_id = res.data['id']
+
+    def test_ringkasan_live_sama_dengan_snapshot_saat_tutup_dan_memuat_pembatalan(self):
+        POSSale.objects.create(
+            nomor='POS-LIVE-1', kasir=self.kasir, shift_id=self.shift_id,
+            total=25000, dibayar=25000, metode_bayar='Cash', status='paid',
+        )
+        POSSale.objects.create(
+            nomor='POS-LIVE-2', kasir=self.kasir, shift_id=self.shift_id,
+            total=7000, dibayar=7000, metode_bayar='Cash', status='void',
+        )
+        live = self.client.get(f'/api/saldo-kas-harian/{self.shift_id}/ringkasan/')
+        self.assertEqual(live.status_code, status.HTTP_200_OK, live.data)
+        self.assertEqual(Decimal(str(live.data['expected'])), Decimal('35000'))  # 10.000 + 25.000, void tidak dihitung
+        tunai = [r for r in live.data['rincian_metode'] if r['tipe'] == 'Tunai'][0]
+        self.assertEqual((Decimal(tunai['pos']), Decimal(tunai['pembatalan'])), (Decimal('25000'), Decimal('7000')))
+
+        tutup = self.client.post(f'/api/saldo-kas-harian/{self.shift_id}/close/', {'kas_akhir': 35000}, format='json')
+        self.assertEqual(tutup.status_code, status.HTTP_201_CREATED, tutup.data)
+        self.assertEqual(tutup.data['ringkasan']['rincian_metode'], live.data['rincian_metode'])
+
+    def test_kasir_lain_tidak_boleh_melihat_ringkasan_shift_orang(self):
+        self.client.force_authenticate(self.lain)
+        res = self.client.get(f'/api/saldo-kas-harian/{self.shift_id}/ringkasan/')
+        self.assertIn(res.status_code, (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND))
