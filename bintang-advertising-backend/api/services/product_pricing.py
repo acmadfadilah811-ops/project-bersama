@@ -34,13 +34,25 @@ def _base_harga(product, variant=None, kanal='toko'):
     return Decimal(str(product.harga_jual_toko or 0))
 
 
-def _pilih_tier_qty(kandidat, qty):
+def _nilai_tier(tier, base):
+    """Harga satuan dari satu tier. `tipe_nilai`: 'harga' (default, Rp tetap di `price`) atau
+    'persen' (potongan % dari harga normal `base`, di `persen`). Tier lama tanpa `tipe_nilai`
+    tetap harga Rp."""
+    if str(tier.get('tipe_nilai') or 'harga').strip().lower() == 'persen':
+        persen = Decimal(str(tier.get('persen', 0) or 0))
+        if persen < 0 or persen > 100:
+            raise InvalidOperation('persen di luar 0-100')
+        return (base * (Decimal('100') - persen) / Decimal('100')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+    return Decimal(str(tier.get('price', 0)))
+
+
+def _pilih_tier_qty(kandidat, qty, base=Decimal('0')):
     terpilih = None
     for t in kandidat:
         try:
             min_qty = Decimal(str(t.get('min_qty', 0)))
-            harga = Decimal(str(t.get('price', 0)))
-        except (TypeError, ValueError, AttributeError):
+            harga = _nilai_tier(t, base)
+        except (TypeError, ValueError, AttributeError, InvalidOperation):
             continue
         if qty >= min_qty and (terpilih is None or min_qty > terpilih[0]):
             terpilih = (min_qty, harga)
@@ -53,6 +65,7 @@ TIPE_GUEST = 'Guest'
 
 
 def _harga_tier(product, qty, customer_group_nama=None):
+    base = _base_harga(product)
     tiers = product.tiers or []
     if not isinstance(tiers, list) or not tiers:
         raise HargaProdukError(f"Produk '{product.nama}' bertipe tier tapi belum ada data tiers.")
@@ -69,15 +82,41 @@ def _harga_tier(product, qty, customer_group_nama=None):
             t for t in tiers
             if isinstance(t, dict) and str(t.get('tipe_pelanggan') or '').strip().lower() == customer_group_nama.strip().lower()
         ]
-        terpilih = _pilih_tier_qty(khusus, qty)
+        terpilih = _pilih_tier_qty(khusus, qty, base)
         if terpilih is not None:
             return terpilih[1]
 
     umum = [t for t in tiers if isinstance(t, dict) and not str(t.get('tipe_pelanggan') or '').strip()]
-    terpilih = _pilih_tier_qty(umum, qty)
+    terpilih = _pilih_tier_qty(umum, qty, base)
     if terpilih is None:
         raise HargaProdukError(f"Qty {qty} tidak memenuhi tier harga produk '{product.nama}'.")
     return terpilih[1]
+
+
+def harga_tier_atau_dasar(product, base, qty, customer_group_nama=None):
+    """Harga satuan produk 'flat'/'per_m2' menurut Tingkatan Harga (Detail Produk) untuk Tipe
+    Pelanggan ini: tier bertipe sama didahulukan (pelanggan tanpa tipe = 'Guest'), lalu tier umum;
+    tanpa tier yang cocok (tipe lain / qty belum mencapai min_qty) = harga dasar `base`.
+    Tier bisa berupa Rp tetap atau potongan % dari `base` (lihat _nilai_tier)."""
+    tiers = product.tiers or []
+    if not isinstance(tiers, list) or not tiers:
+        return base
+    nama = (customer_group_nama or TIPE_GUEST).strip().lower()
+    khusus = [t for t in tiers if isinstance(t, dict) and str(t.get('tipe_pelanggan') or '').strip().lower() == nama]
+    terpilih = _pilih_tier_qty(khusus, qty, base)
+    if terpilih is None:
+        umum = [t for t in tiers if isinstance(t, dict) and not str(t.get('tipe_pelanggan') or '').strip()]
+        terpilih = _pilih_tier_qty(umum, qty, base)
+    return terpilih[1] if terpilih is not None else base
+
+
+def nama_grup_pelanggan(nomor_wa):
+    """Nama Tipe Pelanggan dari nomor WA kontak (None = Guest / tidak dikenal)."""
+    from ..models import Contact
+    kontak = Contact.objects.filter(nomor_wa=nomor_wa).select_related('customer__customer_group').first() if nomor_wa else None
+    if kontak and kontak.customer_id and kontak.customer.customer_group_id:
+        return kontak.customer.customer_group.nama
+    return None
 
 
 def hitung_harga(product, *, qty=1, panjang=None, lebar=None, variant=None, kanal='toko', paksa_per_m2=False, customer_group_nama=None):
@@ -112,7 +151,7 @@ def hitung_harga(product, *, qty=1, panjang=None, lebar=None, variant=None, kana
         lebar_d = _to_decimal(lebar, 'Lebar')
         if panjang_d <= 0 or lebar_d <= 0:
             raise HargaProdukError("Panjang dan lebar harus lebih dari nol.")
-        harga_per_m2 = _base_harga(product, variant, kanal)
+        harga_per_m2 = harga_tier_atau_dasar(product, _base_harga(product, variant, kanal), qty, customer_group_nama)
         luas = panjang_d * lebar_d
         # Half-up (bukan half-even bawaan quantize) supaya sama dengan Math.round di kalkulator kasir.
         harga_satuan = (luas * harga_per_m2).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
@@ -132,8 +171,8 @@ def hitung_harga(product, *, qty=1, panjang=None, lebar=None, variant=None, kana
             'harga_satuan': float(harga_satuan), 'qty': float(qty), 'total': float(total),
         }
 
-    # flat
-    harga_satuan = _base_harga(product, variant, kanal)
+    # flat -- Tingkatan Harga per Tipe Pelanggan ikut dipakai (kasir memakai tier, 2026-10-27)
+    harga_satuan = harga_tier_atau_dasar(product, _base_harga(product, variant, kanal), qty, customer_group_nama)
     total = harga_satuan * qty
     return {
         'price_type': 'flat',

@@ -447,6 +447,8 @@ class OrderViewSet(viewsets.ModelViewSet):
         stock_owners = {}
         stock_lines = []
 
+        from ..services.product_pricing import HargaProdukError, hitung_harga as hitung_harga_produk, nama_grup_pelanggan
+        grup_pelanggan = nama_grup_pelanggan(nomor_wa)
         for raw_item in items_data:
             try:
                 qty = int(raw_item.get('qty') or 0)
@@ -496,6 +498,13 @@ class OrderViewSet(viewsets.ModelViewSet):
                 # item yang memang membawa spesifikasi kalkulator cetak.
                 if not raw_item.get('is_custom_priced'):
                     harga_satuan = int(variant.harga_jual_toko if variant and variant.harga_jual_toko is not None else product.harga_jual_toko or 0)
+                    # Tingkatan Harga per Tipe Pelanggan (Rp / %) -- sama dengan kasir lunas.
+                    try:
+                        harga_satuan = int(hitung_harga_produk(
+                            product, qty=qty, variant=variant, customer_group_nama=grup_pelanggan,
+                        )['harga_satuan'])
+                    except HargaProdukError:
+                        pass  # produk per_m2 tanpa ukuran dsb: tetap harga dasar seperti sebelumnya
                 qty_decimal = Decimal(str(qty))
                 key = (product.id, variant.id if variant else None)
                 stock_requested[key] = stock_requested.get(key, Decimal('0')) + qty_decimal

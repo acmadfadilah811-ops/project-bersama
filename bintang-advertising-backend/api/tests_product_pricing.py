@@ -43,6 +43,37 @@ class HitungHargaProdukTest(TestCase):
         p2 = Product.objects.create(nama='Stiker Mini', price_type='per_m2', harga_jual_toko=25)
         self.assertEqual(hitung_harga(p2, panjang='0.5', lebar='0.2')['harga_satuan'], 3.0)  # 0,1 m2 x 25 = 2,5 -> 3
 
+    def test_flat_memakai_tingkatan_harga_per_tipe_pelanggan_rp_dan_persen(self):
+        """Kasir memakai Tingkatan Harga (2026-10-27): tier bisa Rp tetap atau potongan % dari harga normal."""
+        p = Product.objects.create(nama='Kartu Nama', price_type='flat', harga_jual_toko=60000, tiers=[
+            {'price': 50000, 'min_qty': 1, 'tipe_pelanggan': 'Agen'},                       # Rp tetap
+            {'tipe_nilai': 'persen', 'persen': 10, 'price': 0, 'min_qty': 1, 'tipe_pelanggan': 'MOU'},  # -10%
+            {'price': 58000, 'min_qty': 5, 'tipe_pelanggan': 'Guest'},                      # qty break Guest
+            {'price': 59000, 'min_qty': 10, 'tipe_pelanggan': ''},                          # tier umum
+        ])
+        self.assertEqual(hitung_harga(p, qty=1, customer_group_nama='agen')['harga_satuan'], 50000.0)  # tak peka huruf besar
+        self.assertEqual(hitung_harga(p, qty=2, customer_group_nama='MOU')['harga_satuan'], 54000.0)
+        self.assertEqual(hitung_harga(p, qty=1)['harga_satuan'], 60000.0)                    # Guest, qty belum cukup -> dasar
+        self.assertEqual(hitung_harga(p, qty=5)['harga_satuan'], 58000.0)                    # Guest, qty break
+        self.assertEqual(hitung_harga(p, qty=12, customer_group_nama='Member')['harga_satuan'], 59000.0)  # tipe lain -> tier umum
+        self.assertEqual(hitung_harga(p, qty=3, customer_group_nama='Member')['harga_satuan'], 60000.0)   # tak ada yang cocok
+
+    def test_per_m2_tarif_ikut_tingkatan_harga_tipe_pelanggan(self):
+        p = Product.objects.create(nama='Banner', price_type='flat', harga_jual_toko=25000, tiers=[
+            {'tipe_nilai': 'persen', 'persen': 32, 'price': 0, 'min_qty': 1, 'tipe_pelanggan': 'Agen'},
+        ])
+        hasil = hitung_harga(p, qty=1, panjang='1.6', lebar='0.6', paksa_per_m2=True, customer_group_nama='Agen')
+        self.assertEqual(hasil['harga_per_m2'], 17000.0)      # 25.000 - 32%
+        self.assertEqual(hasil['harga_satuan'], 16320.0)      # 0,96 m2 x 17.000
+
+    def test_price_type_tier_mendukung_persen(self):
+        p = Product.objects.create(nama='Stiker', price_type='tier', harga_jual_toko=10000, tiers=[
+            {'tipe_nilai': 'persen', 'persen': 20, 'price': 0, 'min_qty': 1, 'tipe_pelanggan': 'Agen'},
+            {'price': 9000, 'min_qty': 1, 'tipe_pelanggan': ''},
+        ])
+        self.assertEqual(hitung_harga(p, qty=1, customer_group_nama='Agen')['harga_satuan'], 8000.0)
+        self.assertEqual(hitung_harga(p, qty=1, customer_group_nama='Corporate')['harga_satuan'], 9000.0)
+
     def test_per_m2_tanpa_panjang_lebar_ditolak(self):
         p = Product.objects.create(nama='Banner Flexi', price_type='per_m2', harga_jual_toko=25000)
         with self.assertRaises(HargaProdukError):
@@ -206,3 +237,37 @@ class HitungHargaEndpointTest(APITestCase):
         res = self.client.get(f'/api/products/{p.id}/hitung-harga/', {'qty': 20})
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertEqual(res.data['harga_satuan'], 6000.0)
+
+
+class PosTierTipePelangganTest(APITestCase):
+    """Kasir (POS lunas) memakai Tingkatan Harga sesuai Tipe Pelanggan pembeli (2026-10-27)."""
+
+    def setUp(self):
+        from .customer_models import Customer, CustomerGroup
+        from .models import Contact
+
+        self.owner = User.objects.create_user(username='owner_tier_pos', password='rahasia123', role='owner')
+        self.client.force_authenticate(self.owner)
+        agen = CustomerGroup.objects.create(nama='Agen')
+        self.produk = Product.objects.create(
+            nama='Kartu Nama Tier', price_type='flat', harga_jual_toko=60000, harga_beli=30000, qty_stok=50, lacak_inventori=True,
+            tiers=[{'tipe_nilai': 'persen', 'persen': 10, 'price': 0, 'min_qty': 1, 'tipe_pelanggan': 'Agen'}],
+        )
+        cust = Customer.objects.create(nama='Toko Agen', customer_group=agen)
+        self.agen = Contact.objects.create(nomor_wa='081200000111', nama='Toko Agen', customer=cust)
+        self.guest = Contact.objects.create(nomor_wa='081200000112', nama='Pembeli Biasa')
+
+    def _jual(self, kontak, harga_klien):
+        return self.client.post('/api/pos/sales/', {
+            'pelanggan': kontak.nomor_wa,
+            'items': [{'product_id': self.produk.id, 'qty': 2, 'harga': harga_klien}],
+            'status': 'paid', 'dibayar': 500000, 'metode_bayar': 'tunai',
+        }, format='json')
+
+    def test_pelanggan_agen_dapat_harga_tier_persen_dan_guest_harga_dasar(self):
+        res = self._jual(self.agen, 60000)
+        self.assertEqual(res.status_code, 201, res.content)
+        self.assertEqual(Decimal(str(res.data['total'])), Decimal('108000'))   # 2 x (60.000 - 10%)
+        res = self._jual(self.guest, 54000)  # harga kiriman klien tidak dipercaya (M6)
+        self.assertEqual(res.status_code, 201, res.content)
+        self.assertEqual(Decimal(str(res.data['total'])), Decimal('120000'))   # 2 x 60.000

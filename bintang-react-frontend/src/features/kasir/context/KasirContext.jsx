@@ -2,6 +2,8 @@ import { createContext, useContext, useState, useEffect } from 'react';
 import apiClient from '../../../api/apiClient';
 import { useAuth } from '../../../context/AuthContext';
 import { useNotifikasiSiapDiambil } from '../hooks/useNotifikasiSiapDiambil';
+import { hargaTierAtauDasar } from '../../../utils/hargaTier';
+import { hargaSatuanMeteran, hitungLuas } from '../../../utils/meteran';
 
 const KasirContext = createContext(null);
 
@@ -258,6 +260,32 @@ export function KasirProvider({ children }) {
         .filter(Boolean);
     });
   };
+
+  // Harga baris keranjang mengikuti Tingkatan Harga (Detail Produk) menurut Tipe Pelanggan pembeli
+  // dan qty -- sama dengan hitungan server (utils/hargaTier.js = product_pricing.harga_tier_atau_dasar),
+  // jadi total di layar = yang ditagih. Dijalankan tiap keranjang/pelanggan berubah; tidak ada
+  // perubahan = tidak ada render ulang.
+  useEffect(() => {
+    const tipe = selectedContact?.customer_group_nama || null;
+    setCart((prev) => {
+      let berubah = false;
+      const next = prev.map((item) => {
+        if (item.paket || !item.product || item.uomKode) return item;
+        const base = Number(item.variant ? (item.variant.harga ?? 0) : (item.product.harga_jual_toko || 0));
+        const efektif = hargaTierAtauDasar(item.product, base, item.qty, tipe);
+        const meteran = Number(item.panjang) > 0 && Number(item.lebar) > 0;
+        const satuanLama = Number(item.harga) || 0;
+        const satuanBaru = meteran ? hargaSatuanMeteran(hitungLuas(item.panjang, item.lebar), efektif) : efektif;
+        if (satuanBaru === satuanLama && (!meteran || Number(item.hargaPerM2) === efektif)) return item;
+        berubah = true;
+        const patch = { harga: satuanBaru };
+        if (meteran) patch.hargaPerM2 = efektif;
+        if (item.hargaTotal != null) patch.hargaTotal = Number(item.hargaTotal) + (satuanBaru - satuanLama) * (Number(item.qty) || 1);
+        return { ...item, ...patch };
+      });
+      return berubah ? next : prev;
+    });
+  }, [cart, selectedContact?.customer_group_nama]);
 
   // Baris yang sudah dihitung PosItemDetailPanel (meteran/finishing/diskon
   // per-item) punya `hargaTotal` final — dipakai kalau ada, supaya subtotal
