@@ -622,8 +622,8 @@ class OrderViewSet(viewsets.ModelViewSet):
             jumlah_bayar = int(order.sisa_tagihan if rencana_reorder else (request.data.get('jumlah_bayar') or 0))
         except (TypeError, ValueError):
             raise ValidationError({'error': 'Nominal pembayaran tidak valid.'})
-        if jumlah_bayar <= 0 or jumlah_bayar > order.sisa_tagihan:
-            raise ValidationError({'error': 'Nominal DP harus lebih dari nol dan tidak melebihi total tagihan.'})
+        if jumlah_bayar < 0 or jumlah_bayar > order.sisa_tagihan:
+            raise ValidationError({'error': 'Nominal DP tidak boleh negatif dan tidak melebihi total tagihan.'})
 
         order.dp_dibayar = jumlah_bayar
         order._current_user = request.user
@@ -633,36 +633,39 @@ class OrderViewSet(viewsets.ModelViewSet):
             # Potong gaji bukan setoran bank -- tidak ikut antrean settlement.
             order.settlement_status = 'not_applicable'
         order.save(update_fields=['accounting_payment_method', 'settlement_status'])
-        payment_log = OrderActivityLog.objects.create(
-            order=order,
-            user=request.user,
-            tindakan='PAYMENT',
-            keterangan=f'Pembayaran POS {jumlah_bayar} [{checkout_key}]',
-        )
-        _record_order_payment(
-            order=order, activity_log=payment_log, actor=request.user,
-            jumlah=jumlah_bayar, metode=order.metode_pembayaran,
-            referensi=order.referensi_pembayaran, idempotency_key=str(checkout_key),
-            is_dp=jumlah_bayar < order.total_harga,
-        )
-        try:
-            post_order_payment_journal(
+        # DP boleh Rp 0 (pesanan dibuat dulu, dibayar belakangan -- 2026-10-27): tanpa catatan
+        # pembayaran & jurnal DP; jurnal baru terbentuk saat pembayaran pertama dicatat.
+        if jumlah_bayar > 0:
+            payment_log = OrderActivityLog.objects.create(
                 order=order,
-                activity_log=payment_log,
-                actor=request.user,
-                jumlah_bayar=Decimal(str(jumlah_bayar)),
+                user=request.user,
+                tindakan='PAYMENT',
+                keterangan=f'Pembayaran POS {jumlah_bayar} [{checkout_key}]',
+            )
+            _record_order_payment(
+                order=order, activity_log=payment_log, actor=request.user,
+                jumlah=jumlah_bayar, metode=order.metode_pembayaran,
+                referensi=order.referensi_pembayaran, idempotency_key=str(checkout_key),
                 is_dp=jumlah_bayar < order.total_harga,
             )
-        except DjangoValidationError as exc:
-            # Mis. periode akuntansi sudah ditutup: sebelumnya 500 polos.
-            # Seluruh checkout dibatalkan (atomic), tidak ada order setengah jadi.
-            pesan = '; '.join(exc.messages)
-            if 'Tutup Buku' in pesan:
-                pesan = (
-                    'Transaksi belum bisa disimpan karena periode pembukuan untuk tanggal ini '
-                    'sudah ditutup. Hubungi Owner atau Finance untuk membukanya.'
+            try:
+                post_order_payment_journal(
+                    order=order,
+                    activity_log=payment_log,
+                    actor=request.user,
+                    jumlah_bayar=Decimal(str(jumlah_bayar)),
+                    is_dp=jumlah_bayar < order.total_harga,
                 )
-            raise ValidationError({'error': pesan or 'Pembayaran ditolak.'})
+            except DjangoValidationError as exc:
+                # Mis. periode akuntansi sudah ditutup: sebelumnya 500 polos.
+                # Seluruh checkout dibatalkan (atomic), tidak ada order setengah jadi.
+                pesan = '; '.join(exc.messages)
+                if 'Tutup Buku' in pesan:
+                    pesan = (
+                        'Transaksi belum bisa disimpan karena periode pembukuan untuk tanggal ini '
+                        'sudah ditutup. Hubungi Owner atau Finance untuk membukanya.'
+                    )
+                raise ValidationError({'error': pesan or 'Pembayaran ditolak.'})
 
         spk_payload = request.data.get('spk')
         if request.data.get('starfoto'):

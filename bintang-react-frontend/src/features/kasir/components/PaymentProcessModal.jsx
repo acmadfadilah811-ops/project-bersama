@@ -57,8 +57,9 @@ export default function PaymentProcessModal({
       alert(`Nominal pembayaran (Rp ${currentPayAmount.toLocaleString('id-ID')}) kurang dari total tagihan (Rp ${totalAmount.toLocaleString('id-ID')}).`);
       return;
     }
-    if (paymentType === 'dp' && (currentPayAmount <= 0 || currentPayAmount >= totalAmount)) {
-      alert('Nominal DP harus lebih dari Rp0 dan lebih kecil dari total tagihan. Untuk pembayaran penuh, pilih Lunas.');
+    // DP boleh Rp 0 (pesanan dibuat dulu, dibayar belakangan) -- minimal DP mengikuti pengaturan paket/StarFoto.
+    if (paymentType === 'dp' && (currentPayAmount < 0 || currentPayAmount >= totalAmount)) {
+      alert('Nominal DP harus lebih kecil dari total tagihan. Untuk pembayaran penuh, pilih Lunas.');
       return;
     }
     if (paymentType === 'dp' && minDp > 0 && currentPayAmount < minDp) {

@@ -61,6 +61,26 @@ class CheckoutPosStockTest(APITestCase):
         self.assertEqual(movement.stok_awal, Decimal('10'))
         self.assertEqual(movement.stok_akhir, Decimal('7'))
 
+    def test_dp_boleh_rp_nol_tanpa_catatan_pembayaran_dan_negatif_ditolak(self):
+        """DP Rp 0 (2026-10-27): pesanan tetap dibuat + stok terpotong, tanpa OrderPayment/jurnal DP."""
+        from accounting.models import JournalEntry
+        from .models import OrderPayment
+
+        res = self._checkout(qty=2, jumlah_bayar=0)
+        self.assertEqual(res.status_code, 201, res.content)
+        order = Order.objects.get(pk=res.json()['id'])
+        self.assertEqual(order.dp_dibayar, 0)
+        self.assertEqual(order.sisa_tagihan, order.total_harga)
+        self.assertFalse(OrderPayment.objects.filter(order=order).exists())
+        self.assertFalse(JournalEntry.objects.filter(source_type='order_payment').exists())
+        self.produk.refresh_from_db()
+        self.assertEqual(self.produk.qty_stok, Decimal('8'))
+
+        sebelum = Order.objects.count()
+        res = self._checkout(qty=1, jumlah_bayar=-1)
+        self.assertEqual(res.status_code, 400, res.content)
+        self.assertEqual(Order.objects.count(), sebelum)
+
     def test_stok_tidak_cukup_ditolak_dan_tidak_menyimpan_apa_pun(self):
         order_count_before = Order.objects.count()
         res = self._checkout(qty=999)
