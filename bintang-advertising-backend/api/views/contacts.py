@@ -1,4 +1,4 @@
-from rest_framework import viewsets
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -97,6 +97,14 @@ class ContactViewSet(viewsets.ModelViewSet):
     # maupun menulis. Staff TIDAK bisa GET seluruh database pelanggan (nama,
     # no. WA, piutang) — kebutuhan papan produksi dilayani ProductionCustomerLiteView.
     permission_classes = [IsOwnerManagerAdminOrKasir]
+
+    def destroy(self, request, *args, **kwargs):
+        """Hapus kontak pelanggan (kasir boleh, 2026-10-27); yang sudah punya transaksi ditolak."""
+        from ..customer_views import PESAN_PUNYA_TRANSAKSI, punya_transaksi
+        kontak = self.get_object()
+        if punya_transaksi([kontak.nomor_wa]):
+            return Response({'error': PESAN_PUNYA_TRANSAKSI}, status=status.HTTP_400_BAD_REQUEST)
+        return super().destroy(request, *args, **kwargs)
 
     def get_queryset(self):
         # Query efisien — gunakan Subquery untuk dianotasikan ke queryset kontak

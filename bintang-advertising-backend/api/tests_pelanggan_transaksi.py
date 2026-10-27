@@ -83,3 +83,40 @@ class DaftarPelangganServerTests(APITestCase):
         self.assertEqual(data['per_grup'][str(self.agen.id)], 1)
         self.assertEqual(data['tanpa_grup'], 2)
         self.assertEqual(data['total'], 3)
+
+
+class KasirKelolaPelangganTests(APITestCase):
+    """Kasir boleh tambah/ubah/hapus pelanggan (2026-10-27); yang sudah bertransaksi tidak bisa dihapus."""
+
+    def setUp(self):
+        self.kasir = get_user_model().objects.create_user(username='kasir_kelola_pel', password='x', role='kasir')
+        self.client.force_authenticate(self.kasir)
+
+    def test_tambah_ubah_hapus_pelanggan_oleh_kasir(self):
+        res = self.client.post('/api/customers/', {'nama': 'Pelanggan Uji', 'handphone': '081211110001'}, format='json')
+        self.assertEqual(res.status_code, 201, res.content)
+        pk = res.json()['id']
+        res = self.client.patch(f'/api/customers/{pk}/', {'nama': 'Pelanggan Uji Ubah'}, format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        res = self.client.delete(f'/api/customers/{pk}/')
+        self.assertEqual(res.status_code, 204, getattr(res, 'content', b''))
+        self.assertFalse(Customer.objects.filter(pk=pk).exists())
+
+    def test_hapus_pelanggan_ikut_hapus_kontak_tertaut_tanpa_transaksi(self):
+        cust = Customer.objects.create(nama='Dengan Kontak', handphone='081211110002')
+        Contact.objects.create(nomor_wa='081211110002', nama='Dengan Kontak', customer=cust)
+        self.assertEqual(self.client.delete(f'/api/customers/{cust.pk}/').status_code, 204)
+        self.assertFalse(Contact.objects.filter(nomor_wa='081211110002').exists())
+
+    def test_pelanggan_dan_kontak_yang_sudah_bertransaksi_ditolak(self):
+        from api.pos_models import POSSale
+        cust = Customer.objects.create(nama='Sudah Beli', handphone='081211110003')
+        kontak = Contact.objects.create(nomor_wa='081211110003', nama='Sudah Beli', customer=cust)
+        POSSale.objects.create(nomor='POS-KELOLA-1', kasir=self.kasir, pelanggan=kontak, total=1000, dibayar=1000, status='paid')
+        res = self.client.delete(f'/api/customers/{cust.pk}/')
+        self.assertEqual(res.status_code, 400, res.content)
+        self.assertIn('sudah punya transaksi', res.json()['error'])
+        self.assertTrue(Customer.objects.filter(pk=cust.pk).exists())
+        res = self.client.delete('/api/contacts/081211110003/')
+        self.assertEqual(res.status_code, 400, res.content)
+        self.assertTrue(Contact.objects.filter(nomor_wa='081211110003').exists())

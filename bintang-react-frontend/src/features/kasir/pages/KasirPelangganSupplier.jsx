@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Search, Users } from 'lucide-react';
+import { Pencil, Plus, Search, Trash2, Users } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import PosHeaderBar from '../components/PosHeaderBar';
 import AddCustomerModal from '../../customerSupplier/components/AddCustomerModal';
+import { uiConfirm } from '../../../utils/dialog';
+import { notifyApiError, notifySuccess } from '../../../utils/notify';
 
 /**
  * Kasir sebelumnya tidak bisa membuat akun member (Pelanggan + loyalty)
@@ -23,6 +25,8 @@ export default function KasirPelangganSupplier({ onToggleSidebar }) {
   const [groups, setGroups] = useState([]);
   const [loadingCustomers, setLoadingCustomers] = useState(true);
   const [showAddCustomer, setShowAddCustomer] = useState(false);
+  // Pelanggan yang sedang diubah (modal yang sama dengan Tambah, terisi data lama).
+  const [editingCustomer, setEditingCustomer] = useState(null);
 
   const [totalCustomers, setTotalCustomers] = useState(0);
 
@@ -78,7 +82,21 @@ export default function KasirPelangganSupplier({ onToggleSidebar }) {
 
   const handleCustomerSaved = () => {
     setShowAddCustomer(false);
+    setEditingCustomer(null);
     fetchCustomers();
+  };
+
+  // Hapus pelanggan (kasir boleh, 2026-10-27). Pelanggan yang sudah punya transaksi ditolak server
+  // dengan pesan jelas -- riwayat penjualan tidak boleh yatim.
+  const handleDeleteCustomer = async (cust) => {
+    if (!(await uiConfirm(`Hapus pelanggan "${cust.nama}"?`))) return;
+    try {
+      await apiClient.delete(`/customers/${cust.id}/`);
+      notifySuccess('Pelanggan dihapus', cust.nama);
+      fetchCustomers();
+    } catch (err) {
+      notifyApiError(err, 'Gagal menghapus pelanggan.');
+    }
   };
 
   return (
@@ -122,13 +140,14 @@ export default function KasirPelangganSupplier({ onToggleSidebar }) {
                     <th className="px-4 py-2">Telepon</th>
                     <th className="px-4 py-2">Tipe / Member</th>
                     <th className="px-4 py-2 text-right">Loyalty Poin</th>
+                    <th className="px-4 py-2 text-right">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loadingCustomers ? (
-                    <tr><td colSpan={4} className="px-4 py-6 text-center text-xs text-slate-400 font-semibold">Memuat...</td></tr>
+                    <tr><td colSpan={5} className="px-4 py-6 text-center text-xs text-slate-400 font-semibold">Memuat...</td></tr>
                   ) : filteredCustomers.length === 0 ? (
-                    <tr><td colSpan={4} className="px-4 py-6 text-center text-xs text-slate-400 font-semibold">Belum ada pelanggan.</td></tr>
+                    <tr><td colSpan={5} className="px-4 py-6 text-center text-xs text-slate-400 font-semibold">Belum ada pelanggan.</td></tr>
                   ) : (
                     pagedCustomers.map((c) => (
                       <tr key={c.id} className="border-b border-slate-100 text-xs font-semibold text-slate-700">
@@ -142,6 +161,24 @@ export default function KasirPelangganSupplier({ onToggleSidebar }) {
                           )}
                         </td>
                         <td className="px-4 py-2 text-right font-black text-slate-800">{c.loyalty_points ?? 0}</td>
+                        <td className="px-4 py-2 text-right whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => setEditingCustomer(c)}
+                            className="p-1.5 text-slate-400 hover:text-indigo-600 cursor-pointer"
+                            title="Ubah pelanggan"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCustomer(c)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 cursor-pointer"
+                            title="Hapus pelanggan"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -188,10 +225,11 @@ export default function KasirPelangganSupplier({ onToggleSidebar }) {
         </div>
       </div>
 
-      {showAddCustomer && (
+      {(showAddCustomer || editingCustomer) && (
         <AddCustomerModal
           groups={groups}
-          onClose={() => setShowAddCustomer(false)}
+          customer={editingCustomer}
+          onClose={() => { setShowAddCustomer(false); setEditingCustomer(null); }}
           onSaved={handleCustomerSaved}
         />
       )}

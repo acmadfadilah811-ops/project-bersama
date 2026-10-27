@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Banknote, QrCode, CreditCard, Wallet, X, CheckCircle2 } from 'lucide-react';
 import { todayISO } from '../../../utils/date';
+import useMetodePembayaran from '../hooks/useMetodePembayaran';
 
 export default function PaymentProcessModal({
   isOpen,
@@ -15,6 +16,11 @@ export default function PaymentProcessModal({
   minDpPersen = null,
 }) {
   const [selectedMethod, setSelectedMethod] = useState('CASH');
+  const metodeMaster = useMetodePembayaran(isOpen);
+  // Metode awal = metode bertipe Tunai pertama dari master Finance (cadangan: 'CASH').
+  const namaDefault = metodeMaster && metodeMaster.length > 0
+    ? (metodeMaster.find((m) => m.tipe === 'Tunai') || metodeMaster[0]).nama
+    : 'CASH';
   const [paymentType, setPaymentType] = useState('lunas');
   const [payAmountStr, setPayAmountStr] = useState('');
   const [dueDate, setDueDate] = useState('');
@@ -22,11 +28,11 @@ export default function PaymentProcessModal({
   useEffect(() => {
     if (isOpen) {
       setPayAmountStr(String(Math.round(totalAmount)));
-      setSelectedMethod('CASH');
+      setSelectedMethod(namaDefault);
       setPaymentType('lunas');
       setDueDate(defaultDueDate || '');
     }
-  }, [isOpen, totalAmount, defaultDueDate]);
+  }, [isOpen, totalAmount, defaultDueDate, namaDefault]);
 
   const currentPayAmount = parseFloat(payAmountStr) || 0;
   const changeAmount = Math.max(0, currentPayAmount - totalAmount);
@@ -143,7 +149,8 @@ export default function PaymentProcessModal({
 
   const quickChips = generateQuickChips();
 
-  const paymentMethods = [
+  // Daftar cadangan hanya dipakai bila master metode gagal dimuat.
+  const metodeCadangan = [
     { id: 'CASH', label: 'CASH', icon: <Banknote size={20} />, active: true },
     { id: 'QRIS_NETZME', label: 'QRIS Tap by Netzme', icon: <QrCode size={20} />, active: true },
     { id: 'QRIS_BCA', label: 'QRIS by BCA', icon: <QrCode size={20} />, active: true },
@@ -152,6 +159,15 @@ export default function PaymentProcessModal({
     { id: 'OVO_WAITING', label: 'OVO (Belum Aktif)', icon: <Wallet size={20} />, active: false },
     { id: 'TRANSFER_BANK', label: 'Transfer Bank / EDC', icon: <CreditCard size={20} />, active: true },
   ];
+  const ikonTipe = (tipe) => {
+    if (tipe === 'Tunai') return <Banknote size={20} />;
+    if (tipe === 'QRIS') return <QrCode size={20} />;
+    if (tipe === 'E-Wallet') return <Wallet size={20} />;
+    return <CreditCard size={20} />;
+  };
+  const paymentMethods = metodeMaster && metodeMaster.length > 0
+    ? metodeMaster.map((m) => ({ id: m.nama, label: m.nama, icon: ikonTipe(m.tipe), active: true }))
+    : metodeCadangan;
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">

@@ -5,6 +5,7 @@ import { fetchAllPages } from '../../../utils/paginatedApi';
 import { notifyApiError, notifyError, notifySuccess } from '../../../utils/notify';
 import { useAuth } from '../../../context/AuthContext';
 import PosHeaderBar from '../components/PosHeaderBar';
+import useMetodePembayaran from '../hooks/useMetodePembayaran';
 import SpkPublishModal from '../components/SpkPublishModal';
 import ReceiptPrint from '../components/ReceiptPrint';
 import VoidOrderModal from '../components/VoidOrderModal';
@@ -86,6 +87,7 @@ export default function PosHistory({ onToggleSidebar }) {
   const [unitFilter, setUnitFilter] = useState('');
   const kelompokUnit = bolehKelompokUnit(user?.role);
   const [paymentFilter, setPaymentFilter] = useState('ALL');
+  const metodeMaster = useMetodePembayaran(true);
   const [showPaymentFilterModal, setShowPaymentFilterModal] = useState(false);
   const [selectedSale, setSelectedSale] = useState(null);
   const [showActionDropdown, setShowActionDropdown] = useState(false);
@@ -492,14 +494,12 @@ export default function PosHistory({ onToggleSidebar }) {
   const totalPages = Math.max(1, Math.ceil(filteredSales.length / pageSize));
   const pagedSales = filteredSales.slice((page - 1) * pageSize, page * pageSize);
 
+  // Opsi filter = metode pembayaran master Finance (cadangan: CASH bila gagal dimuat).
   const paymentOptions = [
     { id: 'ALL', label: 'Semua Tipe Pembayaran' },
-    { id: 'CASH', label: 'CASH' },
-    { id: 'Online ShopeePay', label: 'Online ShopeePay' },
-    { id: 'Online Dana', label: 'Online Dana' },
-    { id: 'Online OVO', label: 'Online OVO' },
-    { id: 'Online Virtual Bank', label: 'Online Virtual Bank' },
-    { id: 'Online Credit Card', label: 'Online Credit Card' },
+    ...(metodeMaster && metodeMaster.length > 0
+      ? metodeMaster.map((m) => ({ id: m.nama, label: m.nama }))
+      : [{ id: 'CASH', label: 'CASH' }]),
   ];
 
   return (

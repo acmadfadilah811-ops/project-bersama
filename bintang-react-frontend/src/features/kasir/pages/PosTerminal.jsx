@@ -570,11 +570,26 @@ export default function PosTerminal({ onToggleSidebar }) {
     setShowEditModal(true);
   };
 
-  const handleDeleteCustomerProfile = async (customer) => {
-    if ((await uiConfirm(`Hapus/lepas pelanggan ${customer?.nama || ''}?`))) {
-      if (selectedContact?.nomor_wa && selectedContact.nomor_wa === customer?.nomor_wa) {
+  // Hapus pelanggan sungguhan (2026-10-27): dulu hanya melepas pilihan di layar. Server menolak bila
+  // pelanggan sudah punya transaksi (riwayat penjualan tidak boleh yatim) dan pesannya ditampilkan.
+  const handleDeleteCustomerProfile = async (customer, kind) => {
+    if (!customer) return;
+    const nama = customer.nama || customer.nomor_wa || 'pelanggan ini';
+    if (!(await uiConfirm(`Hapus pelanggan ${nama}?`))) return;
+    try {
+      if (kind === 'contact') {
+        await apiClient.delete(`/contacts/${encodeURIComponent(customer.nomor_wa)}/`);
+      } else {
+        await apiClient.delete(`/customers/${customer.id}/`);
+      }
+      if (selectedContact?.nomor_wa && selectedContact.nomor_wa === customer.nomor_wa) {
         setSelectedContact(null);
       }
+      notifySuccess('Pelanggan dihapus', nama);
+      fetchContacts();
+      fetchCustomerPage(customerPage, customerSearch.trim());
+    } catch (err) {
+      notifyApiError(err, 'Gagal menghapus pelanggan.');
     }
   };
 

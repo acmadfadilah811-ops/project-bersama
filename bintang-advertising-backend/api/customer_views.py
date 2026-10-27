@@ -35,6 +35,23 @@ def _parsed_date(value):
     return parse_date(value) if value else None
 
 
+PESAN_PUNYA_TRANSAKSI = (
+    'Pelanggan ini sudah punya transaksi, jadi tidak bisa dihapus supaya riwayat penjualan tetap utuh. '
+    'Minta Owner/Manager menonaktifkannya bila tidak dipakai lagi.'
+)
+
+
+def punya_transaksi(nomor_list):
+    """True bila ada nota POS atau order atas nomor WA/HP ini (riwayat yang tidak boleh yatim)."""
+    from .models import Order
+    from .pos_models import POSSale
+    nomor_list = [n for n in nomor_list if n]
+    if not nomor_list:
+        return False
+    return (POSSale.objects.filter(pelanggan__nomor_wa__in=nomor_list).exists()
+            or Order.objects.filter(nomor_wa__in=nomor_list).exists())
+
+
 def varian_nomor(nomor):
     """Nomor HP/WA dalam bentuk 08.. dan 628.. supaya data lama dengan format berbeda tetap cocok."""
     angka = re.sub(r'\D', '', nomor or '')
@@ -147,6 +164,26 @@ class CustomerViewSet(ToggleStatusMixin, viewsets.ModelViewSet):
     # BE-24: staff diblokir penuh (baca & tulis) dari database pelanggan.
     # Admin/SPV Finance ditambahkan 2026-09-24 (lihat docstring permission).
     permission_classes = [IsOwnerManagerAdminKasirOrFinanceRole]
+
+    def destroy(self, request, *args, **kwargs):
+        """Hapus pelanggan (kasir boleh, 2026-10-27). Pelanggan yang sudah punya transaksi ditolak
+        (nonaktifkan saja); kontak WA tertaut tanpa transaksi ikut dihapus supaya tidak muncul lagi
+        sebagai kontak lepas di pencarian kasir."""
+        from django.db import transaction
+        from django.db.models import ProtectedError
+        pelanggan = self.get_object()
+        kontak = list(pelanggan.contacts.all())
+        nomor = [k.nomor_wa for k in kontak] + varian_nomor(pelanggan.handphone)
+        if punya_transaksi(nomor):
+            return Response({'error': PESAN_PUNYA_TRANSAKSI}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            with transaction.atomic():
+                for k in kontak:
+                    k.delete()
+                pelanggan.delete()
+        except ProtectedError:
+            return Response({'error': PESAN_PUNYA_TRANSAKSI}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     def get_queryset(self):
         qs = super().get_queryset()
