@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import NumericInput from '../../../components/NumericInput';
+import { PROVINSI, cocokKota, kecamatanDiKota, kotaDiProvinsi, muatKecamatan, provinsiDariKota, ubahKota, ubahProvinsi } from '../../../utils/wilayah';
 
 const emptyForm = {
   nama: '',
@@ -90,8 +91,9 @@ const toFormState = (c) => (c ? {
   catatan: c.catatan || '',
   alamat: c.alamat || '',
   negara: c.negara || 'Indonesia',
-  provinsi: c.provinsi || '',
-  kota: c.kota || '',
+  // Data impor lama memakai "Cilacap - Kabupaten"; ditampilkan sesuai daftar resmi ("Kabupaten Cilacap").
+  provinsi: c.provinsi || provinsiDariKota(c.kota) || '',
+  kota: cocokKota(c.kota) || c.kota || '',
   kecamatan: c.kecamatan || '',
   kode_pos: c.kode_pos || '',
 } : emptyForm);
@@ -103,6 +105,11 @@ export default function AddCustomerModal({ onClose, onSaved, groups = [], custom
   const [error, setError] = useState(null);
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+  // Provinsi -> Kota -> Kecamatan saling menyaring (2026-10-27).
+  const [petaKecamatan, setPetaKecamatan] = useState({});
+  useEffect(() => { muatKecamatan().then(setPetaKecamatan); }, []);
+  const daftarKota = kotaDiProvinsi(form.provinsi);
+  const daftarKecamatan = kecamatanDiKota(petaKecamatan, form.kota);
   const toggleSection = (key) => setOpenSections((s) => ({ ...s, [key]: !s[key] }));
 
   const handleSave = async () => {
@@ -291,13 +298,16 @@ export default function AddCustomerModal({ onClose, onSaved, groups = [], custom
                 <input value={form.negara} onChange={set('negara')} className={inputCls} />
               </Field>
               <Field label="Propinsi">
-                <input value={form.provinsi} onChange={set('provinsi')} className={inputCls} />
+                <input list="pel-provinsi-list" value={form.provinsi} onChange={(e) => setForm((f) => ubahProvinsi(f, e.target.value))} className={inputCls} />
+                <datalist id="pel-provinsi-list">{PROVINSI.map((p) => <option key={p} value={p} />)}</datalist>
               </Field>
               <Field label="Kota">
-                <input value={form.kota} onChange={set('kota')} className={inputCls} />
+                <input list="pel-kota-list" value={form.kota} onChange={(e) => setForm((f) => ubahKota(f, e.target.value, petaKecamatan))} className={inputCls} />
+                <datalist id="pel-kota-list">{daftarKota.map((k) => <option key={k} value={k} />)}</datalist>
               </Field>
               <Field label="Kecamatan">
-                <input value={form.kecamatan} onChange={set('kecamatan')} className={inputCls} />
+                <input list="pel-kecamatan-list" value={form.kecamatan} onChange={set('kecamatan')} className={inputCls} />
+                <datalist id="pel-kecamatan-list">{daftarKecamatan.map((k) => <option key={k} value={k} />)}</datalist>
               </Field>
             </div>
             <Field label="Kode Pos">
