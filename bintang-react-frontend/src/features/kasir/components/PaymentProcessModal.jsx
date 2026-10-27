@@ -7,6 +7,8 @@ export default function PaymentProcessModal({
   isOpen,
   onClose,
   totalAmount = 0,
+  // Selisih pembulatan untuk pembayaran Lunas (0 bila mati / pesanan DP-foto).
+  pembulatan = 0,
   subtotalAmount = 0,
   discountAmount = 0,
   onConfirmPayment,
@@ -27,15 +29,18 @@ export default function PaymentProcessModal({
 
   useEffect(() => {
     if (isOpen) {
-      setPayAmountStr(String(Math.round(totalAmount)));
+      setPayAmountStr(String(Math.round(totalAmount + pembulatan)));
       setSelectedMethod(namaDefault);
       setPaymentType('lunas');
       setDueDate(defaultDueDate || '');
     }
-  }, [isOpen, totalAmount, defaultDueDate, namaDefault]);
+  }, [isOpen, totalAmount, pembulatan, defaultDueDate, namaDefault]);
+
+  // Total yang ditagih: Lunas memakai total + pembulatan, DP memakai total apa adanya.
+  const totalTagihan = paymentType === 'lunas' ? totalAmount + pembulatan : totalAmount;
 
   const currentPayAmount = parseFloat(payAmountStr) || 0;
-  const changeAmount = Math.max(0, currentPayAmount - totalAmount);
+  const changeAmount = Math.max(0, currentPayAmount - totalTagihan);
 
   // Numpad key handlers
   const handleNumpadClick = (val) => {
@@ -59,8 +64,8 @@ export default function PaymentProcessModal({
   };
 
   const handlePaySubmit = () => {
-    if (paymentType === 'lunas' && currentPayAmount < totalAmount) {
-      alert(`Nominal pembayaran (Rp ${currentPayAmount.toLocaleString('id-ID')}) kurang dari total tagihan (Rp ${totalAmount.toLocaleString('id-ID')}).`);
+    if (paymentType === 'lunas' && currentPayAmount < totalTagihan) {
+      alert(`Nominal pembayaran (Rp ${currentPayAmount.toLocaleString('id-ID')}) kurang dari total tagihan (Rp ${totalTagihan.toLocaleString('id-ID')}).`);
       return;
     }
     // DP boleh Rp 0 (pesanan dibuat dulu, dibayar belakangan) -- minimal DP mengikuti pengaturan paket/StarFoto.
@@ -131,7 +136,7 @@ export default function PaymentProcessModal({
 
   // Quick amount chips calculation based on totalAmount
   const generateQuickChips = () => {
-    const total = Math.round(totalAmount);
+    const total = Math.round(totalTagihan);
     const chips = [total];
 
     // Nearest roundups
@@ -188,7 +193,7 @@ export default function PaymentProcessModal({
               <div className="grid grid-cols-2 gap-2 pb-1">
                 <button
                   type="button"
-                  onClick={() => { setPaymentType('lunas'); setPayAmountStr(String(Math.round(totalAmount))); }}
+                  onClick={() => { setPaymentType('lunas'); setPayAmountStr(String(Math.round(totalAmount + pembulatan))); }}
                   className={`rounded-lg px-2.5 py-2 text-xs font-extrabold border transition-all ${paymentType === 'lunas' ? 'bg-emerald-500 text-white border-emerald-300' : 'bg-white/10 text-white border-white/30 hover:bg-white/20'}`}
                 >
                   Bayar Lunas
@@ -207,7 +212,10 @@ export default function PaymentProcessModal({
                   <div className="space-y-1 border-y border-amber-200 py-2 text-[11px]">
                     <div className="flex justify-between"><span>Subtotal Item</span><span>Rp {Math.round(subtotalAmount).toLocaleString('id-ID')}</span></div>
                     <div className="flex justify-between"><span>Diskon</span><span>-Rp {Math.round(discountAmount).toLocaleString('id-ID')}</span></div>
-                    <div className="flex justify-between font-extrabold"><span>Total Harga</span><span>Rp {Math.round(totalAmount).toLocaleString('id-ID')}</span></div>
+                    {paymentType === 'lunas' && pembulatan !== 0 && (
+                      <div className="flex justify-between"><span>Pembulatan</span><span>{pembulatan > 0 ? '+' : '-'}Rp {Math.abs(Math.round(pembulatan)).toLocaleString('id-ID')}</span></div>
+                    )}
+                    <div className="flex justify-between font-extrabold"><span>Total Harga</span><span>Rp {Math.round(totalTagihan).toLocaleString('id-ID')}</span></div>
                     {minDp > 0 && (
                       <div className="flex justify-between font-extrabold text-amber-800">
                         <span>DP Minimal{minDpPersen ? ` (${minDpPersen}%)` : ''}</span>
@@ -264,7 +272,7 @@ export default function PaymentProcessModal({
             <div className="bg-[#0088FF] px-6 py-3 text-white flex items-center justify-between shadow-sm shrink-0">
               {/* Left Total Bill Amount */}
               <div className="font-extrabold text-lg tracking-tight">
-                {Math.round(totalAmount).toLocaleString('id-ID')}
+                {Math.round(totalTagihan).toLocaleString('id-ID')}
               </div>
 
               {/* Right Quick Money Chips & Close Button */}
@@ -296,7 +304,7 @@ export default function PaymentProcessModal({
               </div>
               <div className="flex items-center justify-between w-full mt-2">
                 <span className="text-xs font-bold text-slate-500">
-                  Tagihan: Rp {Math.round(totalAmount).toLocaleString('id-ID')}
+                  Tagihan: Rp {Math.round(totalTagihan).toLocaleString('id-ID')}
                 </span>
                 <span className={`text-xs font-extrabold ${changeAmount > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
                   Kembalian: Rp {changeAmount.toLocaleString('id-ID')}

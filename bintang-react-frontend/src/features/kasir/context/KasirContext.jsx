@@ -4,11 +4,12 @@ import { useAuth } from '../../../context/AuthContext';
 import { useNotifikasiSiapDiambil } from '../hooks/useNotifikasiSiapDiambil';
 import { hargaTierAtauDasar } from '../../../utils/hargaTier';
 import { hargaSatuanMeteran, hitungLuas } from '../../../utils/meteran';
+import { selisihPembulatan } from '../../../utils/pembulatan';
 
 const KasirContext = createContext(null);
 
 export function KasirProvider({ children }) {
-  const { user } = useAuth();
+  const { user, businessSettings } = useAuth();
   // Notifikasi "Proses selesai -> Kasir": badge menu Pesanan + toast saat ada
   // pesanan baru siap diambil, aktif di semua halaman kasir.
   const {
@@ -437,6 +438,14 @@ export function KasirProvider({ children }) {
     );
   };
 
+  // Pembulatan total (Pengaturan POS > Pembulatan), sama dengan server (api/services/pembulatan.py).
+  // Hanya berlaku untuk penjualan lunas langsung; pesanan DP/Order dan paket foto memakai total apa adanya.
+  const getPembulatan = () => selisihPembulatan(
+    getTotal(),
+    Number(businessSettings?.pos_pembulatan_kelipatan || 0),
+    businessSettings?.pos_pembulatan_arah || 'terdekat',
+  );
+
   return (
     <KasirContext.Provider
       value={{
@@ -482,6 +491,7 @@ export function KasirProvider({ children }) {
         getLoyaltyDiscountAmount,
         getTaxAmount,
         getTotal,
+        getPembulatan,
         cartNotes,
         setCartNotes,
         siapDiambilCount: jumlahSiap,

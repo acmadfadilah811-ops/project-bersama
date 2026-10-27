@@ -1196,7 +1196,7 @@ def rpt_rincian_penjualan(params):
     pengunjung) sengaja diisi 0 — bukan dikarang.
     """
     rows = []
-    t_total = t_modal = t_diskon = t_pajak = 0.0
+    t_total = t_modal = t_diskon = t_pajak = t_pembulatan = 0.0
     for o in _orders_in_range(params):
         modal = sum(_num(i.biaya_bahan) for i in o.items.all())
         total = _num(o.total_harga)
@@ -1235,7 +1235,7 @@ def rpt_rincian_penjualan(params):
             'dilayani_oleh': _nama_user(s.dilayani_oleh) or (s.kasir.username if s.kasir else ''),
             'pelanggan': s.pelanggan.nama if s.pelanggan else '',
             'id_pelanggan': s.pelanggan.nomor_wa if s.pelanggan else '',
-            'pembulatan': 0, 'total_penjualan': total, 'jumlah_ditebus': _num(s.dibayar),
+            'pembulatan': _num(s.pembulatan), 'total_penjualan': total, 'jumlah_ditebus': _num(s.dibayar),
             'pengiriman_pajak': _num(s.pajak), 'modal_produk': modal, 'laba': total - modal,
             'biaya_layanan': 0, 'tambahan_pembayaran': 0,
             'diskon': _num(s.diskon) + _num(s.diskon_kupon) + _num(s.diskon_penjualan) + _num(s.diskon_loyalti),
@@ -1251,11 +1251,12 @@ def rpt_rincian_penjualan(params):
         t_modal += modal
         t_diskon += _num(s.diskon) + _num(s.diskon_kupon) + _num(s.diskon_penjualan) + _num(s.diskon_loyalti)
         t_pajak += _num(s.pajak)
+        t_pembulatan += _num(s.pembulatan)
     rows.sort(key=lambda r: r['tanggal'], reverse=True)
     return {
         'rows': rows,
         'summary': {'rows': [{
-            'mata_uang': 'IDR', 'total_pembulatan': 0, 'total_penjualan': t_total,
+            'mata_uang': 'IDR', 'total_pembulatan': t_pembulatan, 'total_penjualan': t_total,
             'pengiriman': 0, 'pajak': t_pajak, 'modal_produk': t_modal,
             'laba': t_total - t_modal, 'biaya_layanan': 0, 'tambahan_pembayaran': 0,
             'diskon': t_diskon, 'total_tebus_deposit': 0, 'total_pengunjung': 0,

@@ -171,6 +171,12 @@ export default function ReceiptPrint({ receipt, settings }) {
                 <span className="font-bold text-slate-800">{formatCurrency(receipt.pajak)}</span>
               </div>
             )}
+            {parseFloat(receipt.pembulatan) !== 0 && !Number.isNaN(parseFloat(receipt.pembulatan)) && (
+              <div className="flex justify-between">
+                <span>Pembulatan:</span>
+                <span className="font-bold text-slate-800">{parseFloat(receipt.pembulatan) < 0 ? '-' : ''}{formatCurrency(Math.abs(parseFloat(receipt.pembulatan)))}</span>
+              </div>
+            )}
             <div className="h-px bg-slate-200 my-1" />
             <div className="flex justify-between text-sm font-black text-slate-900">
               <span>Total:</span>
@@ -319,6 +325,12 @@ export default function ReceiptPrint({ receipt, settings }) {
           <div className="flex justify-between">
             <span>Pajak</span>
             <span>{formatCurrency(receipt.pajak)}</span>
+          </div>
+        )}
+        {parseFloat(receipt.pembulatan) !== 0 && !Number.isNaN(parseFloat(receipt.pembulatan)) && (
+          <div className="flex justify-between">
+            <span>Pembulatan</span>
+            <span>{parseFloat(receipt.pembulatan) < 0 ? '-' : ''}{formatCurrency(Math.abs(parseFloat(receipt.pembulatan)))}</span>
           </div>
         )}
         <div className="flex justify-between font-black text-xs pt-1 border-t border-dotted border-black">

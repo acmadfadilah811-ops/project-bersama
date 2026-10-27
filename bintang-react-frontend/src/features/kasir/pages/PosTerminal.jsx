@@ -110,6 +110,7 @@ export default function PosTerminal({ onToggleSidebar }) {
     taxPercent,
     cartNotes,
     getTotal,
+    getPembulatan,
     getSubtotal,
     getTaxAmount,
     setCartNotes,
@@ -1462,6 +1463,7 @@ export default function PosTerminal({ onToggleSidebar }) {
         isOpen={showPaymentModal}
         onClose={() => setShowPaymentModal(false)}
         totalAmount={getTotal()}
+        pembulatan={starfoto.item ? 0 : getPembulatan()}
         subtotalAmount={Number(getSubtotal()) + cart.reduce((sum, item) => sum + itemDiscountTotal(item), 0)}
         discountAmount={cart.reduce((sum, item) => sum + itemDiscountTotal(item), 0) + Math.max(0, Number(getSubtotal()) + Number(getTaxAmount()) - Number(getTotal()))}
         onConfirmPayment={handleConfirmPayment}

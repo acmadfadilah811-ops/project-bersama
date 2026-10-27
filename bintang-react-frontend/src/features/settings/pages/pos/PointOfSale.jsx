@@ -32,6 +32,7 @@ import { getLogoUrl } from '../../../../utils/logo';
 import UnitBisnisFilter from '../../../../components/UnitBisnisFilter';
 import ShiftHrBacaSaja from './ShiftHrBacaSaja';
 import LaporanShiftRinci from '../../../kasir/components/LaporanShiftRinci';
+import { bulatkanContoh } from '../../../../utils/pembulatan';
 
 const POS_TABS = [
   { id: 'pengaturan', label: 'Pengaturan' },
@@ -55,6 +56,7 @@ const POS_MENUS = [
   { id: 'ext-settings', label: 'POS Ext. Settings', icon: Sliders },
   { id: 'shift', label: 'Shift', icon: Clock },
   { id: 'cek-stok', label: 'Mode - cek stok', icon: Search },
+  { id: 'pembulatan', label: 'Pembulatan', icon: Percent },
   { id: 'shift-timing', label: 'Shift Kerja (dari HR)', icon: Timer },
   { id: 'antrian', label: 'POS Antrian', icon: Users },
 ];
@@ -319,6 +321,9 @@ export default function PointOfSale() {
 
   // POS Shift States
   const [shiftAktif, setShiftAktif] = useState(false);
+  // Pembulatan total penjualan kasir: kelipatan Rp (0 = mati) & arah.
+  const [pembulatanKelipatan, setPembulatanKelipatan] = useState('0');
+  const [pembulatanArah, setPembulatanArah] = useState('terdekat');
   const [shiftKasAwal, setShiftKasAwal] = useState(0);
   const [shiftSembunyikanSetor, setShiftSembunyikanSetor] = useState(false);
   const [shiftCekPesananTertahan, setShiftCekPesananTertahan] = useState(false);
@@ -429,6 +434,8 @@ export default function PointOfSale() {
         setShiftKasAwal(res.data.pos_shift_kas_awal || 0);
         setShiftSembunyikanSetor(!!res.data.pos_shift_sembunyikan_setor);
         setShiftCekPesananTertahan(!!res.data.pos_shift_cek_pesanan_tertahan);
+        setPembulatanKelipatan(String(res.data.pos_pembulatan_kelipatan ?? 0));
+        setPembulatanArah(res.data.pos_pembulatan_arah || 'terdekat');
 
         // Cek Stok settings
         setStokBlokirJualJikaKosong(res.data.pos_stok_blokir_jual_jika_kosong !== undefined ? !!res.data.pos_stok_blokir_jual_jika_kosong : true);
@@ -472,7 +479,7 @@ export default function PointOfSale() {
   };
 
   useEffect(() => {
-    if (activeMenu === 'catatan-resi' || activeMenu === 'email-laporan' || activeMenu === 'passkey' || activeMenu === 'ext-settings' || activeMenu === 'shift' || activeMenu === 'cek-stok' || activeMenu === 'antrian') {
+    if (activeMenu === 'catatan-resi' || activeMenu === 'email-laporan' || activeMenu === 'passkey' || activeMenu === 'ext-settings' || activeMenu === 'shift' || activeMenu === 'cek-stok' || activeMenu === 'pembulatan' || activeMenu === 'antrian') {
       fetchSettings();
       if (activeMenu === 'antrian') {
         fetchPOSAntrianDevices();
@@ -599,6 +606,23 @@ export default function PointOfSale() {
       triggerToast('Pengaturan Shift berhasil disimpan!');
     } catch (err) {
       console.error('Failed to save shift settings:', err);
+      triggerToast('Gagal menyimpan pengaturan.');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleSavePembulatan = async () => {
+    const kelipatan = Math.max(0, parseInt(pembulatanKelipatan, 10) || 0);
+    setSavingSettings(true);
+    try {
+      await apiClient.patch('/business-settings/', {
+        pos_pembulatan_kelipatan: kelipatan,
+        pos_pembulatan_arah: pembulatanArah,
+      });
+      triggerToast('Pengaturan Pembulatan berhasil disimpan! Kasir perlu refresh halaman.');
+    } catch (err) {
+      console.error('Failed to save pembulatan settings:', err);
       triggerToast('Gagal menyimpan pengaturan.');
     } finally {
       setSavingSettings(false);
@@ -2123,6 +2147,97 @@ export default function PointOfSale() {
                         </div>
                       </div>
                     )}
+                  </div>
+                </div>
+              ) : activeMenu === 'pembulatan' ? (
+                <div className="max-w-2xl w-full mx-auto space-y-6">
+                  <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                      <div>
+                        <h3 className="font-extrabold text-slate-800 text-sm">Pembulatan Total Penjualan</h3>
+                        <p className="text-[11px] text-slate-400">
+                          Total transaksi kasir dibulatkan ke kelipatan tertentu sebelum dibayar. Selisihnya dicatat
+                          terpisah di struk, laporan, dan jurnal (akun Pembulatan penjualan).
+                        </p>
+                      </div>
+                      <button
+                        onClick={handleSavePembulatan}
+                        disabled={savingSettings || loadingSettings}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow cursor-pointer flex items-center gap-1.5"
+                      >
+                        {savingSettings ? (
+                          <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        ) : (
+                          <CheckCircle size={14} />
+                        )}
+                        Simpan
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <label className="block">
+                        <span className="text-xs font-bold text-slate-800 block mb-1">Dibulatkan ke kelipatan</span>
+                        <select
+                          value={['0', '100', '500', '1000'].includes(String(pembulatanKelipatan)) ? String(pembulatanKelipatan) : 'lain'}
+                          onChange={(e) => setPembulatanKelipatan(e.target.value === 'lain' ? '2000' : e.target.value)}
+                          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="0">Tidak dibulatkan</option>
+                          <option value="100">Rp 100</option>
+                          <option value="500">Rp 500</option>
+                          <option value="1000">Rp 1.000</option>
+                          <option value="lain">Kelipatan lain...</option>
+                        </select>
+                        {!['0', '100', '500', '1000'].includes(String(pembulatanKelipatan)) && (
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={pembulatanKelipatan}
+                            onChange={(e) => setPembulatanKelipatan(e.target.value)}
+                            className="mt-2 w-full border border-slate-300 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500"
+                          />
+                        )}
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-bold text-slate-800 block mb-1">Arah pembulatan</span>
+                        <select
+                          value={pembulatanArah}
+                          onChange={(e) => setPembulatanArah(e.target.value)}
+                          disabled={Number(pembulatanKelipatan) <= 1}
+                          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 bg-white focus:outline-none focus:border-blue-500 disabled:opacity-50"
+                        >
+                          <option value="terdekat">Ke angka terdekat</option>
+                          <option value="atas">Selalu ke atas</option>
+                          <option value="bawah">Selalu ke bawah</option>
+                        </select>
+                      </label>
+                    </div>
+
+                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-xs font-semibold text-slate-700 space-y-1">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block">Contoh</span>
+                      {[29920, 29490, 150250].map((contoh) => {
+                        const hasil = bulatkanContoh(contoh, Number(pembulatanKelipatan), pembulatanArah);
+                        return (
+                          <div key={contoh} className="flex justify-between">
+                            <span>Total Rp {contoh.toLocaleString('id-ID')}</span>
+                            <span className="font-extrabold text-slate-900">
+                              Rp {hasil.toLocaleString('id-ID')}
+                              {hasil !== contoh && (
+                                <span className="ml-2 text-[10px] font-bold text-slate-400">
+                                  ({hasil > contoh ? '+' : '-'}Rp {Math.abs(hasil - contoh).toLocaleString('id-ID')})
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      Berlaku untuk penjualan lunas di kasir. Pesanan DP/Order belum ikut dibulatkan. Selisih dijurnal ke
+                      akun Pembulatan penjualan (Akuntansi &gt; Pengaturan POS); bila akun belum dipilih, selisih ikut
+                      pendapatan penjualan.
+                    </p>
                   </div>
                 </div>
               ) : activeMenu === 'cek-stok' ? (

@@ -185,6 +185,7 @@ export default function PosHistory({ onToggleSidebar }) {
           subtotal: item.subtotal,
           diskon: item.diskon,
           pajak: item.pajak,
+          pembulatan: item.pembulatan,
           dibayar: item.dibayar,
           kembalian: item.kembalian,
           catatan: item.catatan,

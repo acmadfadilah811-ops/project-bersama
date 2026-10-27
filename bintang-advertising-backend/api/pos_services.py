@@ -529,6 +529,10 @@ def create_sale(*, user, data):
         taxable = max(Decimal('0'), subtotal - total_diskon)
         tax = money(taxable * tax_pct / Decimal('100'))
         total = money(max(Decimal('0'), subtotal - total_diskon + tax))
+        # Pembulatan total sesuai Pengaturan POS (kelipatan & arah); total yang ditagih sudah dibulatkan.
+        from .services.pembulatan import hitung_pembulatan
+        pembulatan = money(hitung_pembulatan(total))
+        total = money(total + pembulatan)
         if status_val == 'paid' and paid < total:
             raise ValidationError({'error': 'Jumlah pembayaran belum mencukupi total server.'})
         client_total = data.get('total')
@@ -544,7 +548,7 @@ def create_sale(*, user, data):
             diskon_promo=promo_discount,
             loyalty_redemption=loyalty_obj, diskon_loyalti=loyalty_discount,
             diskon_tipe_pelanggan=customer_group_discount,
-            pajak=tax, total=total,
+            pajak=tax, pembulatan=pembulatan, total=total,
             metode_bayar=str(data.get('metode_bayar') or 'Cash')[:50], dibayar=paid,
             kembalian=money(max(Decimal('0'), paid-total)),
             catatan=str(data.get('catatan') or '')[:2000], status=status_val,

@@ -1,0 +1,26 @@
+"""Pengaturan POS > Pembulatan lewat /business-settings/ (2026-10-27)."""
+from django.contrib.auth import get_user_model
+from rest_framework.test import APITestCase
+
+
+class PembulatanPengaturanTests(APITestCase):
+    def setUp(self):
+        self.owner = get_user_model().objects.create_user(username='owner_bulat', password='x', role='owner')
+        self.client.force_authenticate(self.owner)
+
+    def test_bawaan_mati_lalu_simpan_dan_baca_kembali(self):
+        res = self.client.get('/api/business-settings/')
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual((res.json()['pos_pembulatan_kelipatan'], res.json()['pos_pembulatan_arah']), (0, 'terdekat'))
+
+        res = self.client.patch('/api/business-settings/', {'pos_pembulatan_kelipatan': 1000, 'pos_pembulatan_arah': 'atas'}, format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        res = self.client.get('/api/business-settings/')
+        self.assertEqual((res.json()['pos_pembulatan_kelipatan'], res.json()['pos_pembulatan_arah']), (1000, 'atas'))
+
+        from api import pos_settings
+        self.assertEqual((pos_settings.pembulatan_kelipatan(), pos_settings.pembulatan_arah()), (1000, 'atas'))
+
+    def test_arah_tidak_dikenal_dan_kelipatan_negatif_ditolak(self):
+        self.assertEqual(self.client.patch('/api/business-settings/', {'pos_pembulatan_arah': 'acak'}, format='json').status_code, 400)
+        self.assertEqual(self.client.patch('/api/business-settings/', {'pos_pembulatan_kelipatan': -5}, format='json').status_code, 400)

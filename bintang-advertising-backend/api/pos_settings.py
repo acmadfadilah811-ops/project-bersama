@@ -119,6 +119,19 @@ def pos_mengurangi_stok():
     return mode_stok_pos() == 'auto'
 
 
+def pembulatan_kelipatan():
+    """Kelipatan Rupiah pembulatan total penjualan (0 = mati)."""
+    try:
+        return max(0, int(str(_raw('pos_pembulatan_kelipatan') or 0).strip() or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def pembulatan_arah():
+    arah = str(_raw('pos_pembulatan_arah') or 'terdekat').strip().lower()
+    return arah if arah in ('terdekat', 'atas', 'bawah') else 'terdekat'
+
+
 def wajib_shift_aktif():
     """Menu Shift: transaksi POS hanya boleh saat ada shift terbuka."""
     return get_bool('pos_shift_aktif', False)
