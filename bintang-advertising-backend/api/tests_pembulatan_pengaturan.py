@@ -11,15 +11,20 @@ class PembulatanPengaturanTests(APITestCase):
     def test_bawaan_mati_lalu_simpan_dan_baca_kembali(self):
         res = self.client.get('/api/business-settings/')
         self.assertEqual(res.status_code, 200, res.content)
-        self.assertEqual((res.json()['pos_pembulatan_kelipatan'], res.json()['pos_pembulatan_arah']), (0, 'terdekat'))
+        self.assertEqual((res.json()['pos_pembulatan_aktif'], res.json()['pos_pembulatan_kelipatan'], res.json()['pos_pembulatan_arah']), (False, 0, 'terdekat'))
 
-        res = self.client.patch('/api/business-settings/', {'pos_pembulatan_kelipatan': 1000, 'pos_pembulatan_arah': 'atas'}, format='json')
+        res = self.client.patch('/api/business-settings/', {'pos_pembulatan_aktif': True, 'pos_pembulatan_kelipatan': 1000, 'pos_pembulatan_arah': 'atas'}, format='json')
         self.assertEqual(res.status_code, 200, res.content)
         res = self.client.get('/api/business-settings/')
-        self.assertEqual((res.json()['pos_pembulatan_kelipatan'], res.json()['pos_pembulatan_arah']), (1000, 'atas'))
+        self.assertEqual((res.json()['pos_pembulatan_aktif'], res.json()['pos_pembulatan_kelipatan'], res.json()['pos_pembulatan_arah']), (True, 1000, 'atas'))
 
         from api import pos_settings
         self.assertEqual((pos_settings.pembulatan_kelipatan(), pos_settings.pembulatan_arah()), (1000, 'atas'))
+
+        # Saklar Aktif dimatikan: pembagi tersimpan tetapi pembulatan tidak berlaku (seperti Olsera).
+        self.client.patch('/api/business-settings/', {'pos_pembulatan_aktif': False}, format='json')
+        self.assertEqual(pos_settings.pembulatan_kelipatan(), 0)
+        self.assertEqual(self.client.get('/api/business-settings/').json()['pos_pembulatan_kelipatan'], 1000)
 
     def test_arah_tidak_dikenal_dan_kelipatan_negatif_ditolak(self):
         self.assertEqual(self.client.patch('/api/business-settings/', {'pos_pembulatan_arah': 'acak'}, format='json').status_code, 400)

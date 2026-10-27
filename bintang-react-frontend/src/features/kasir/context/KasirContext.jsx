@@ -442,7 +442,7 @@ export function KasirProvider({ children }) {
   // Hanya berlaku untuk penjualan lunas langsung; pesanan DP/Order dan paket foto memakai total apa adanya.
   const getPembulatan = () => selisihPembulatan(
     getTotal(),
-    Number(businessSettings?.pos_pembulatan_kelipatan || 0),
+    businessSettings?.pos_pembulatan_aktif ? Number(businessSettings?.pos_pembulatan_kelipatan || 0) : 0,
     businessSettings?.pos_pembulatan_arah || 'terdekat',
   );
 

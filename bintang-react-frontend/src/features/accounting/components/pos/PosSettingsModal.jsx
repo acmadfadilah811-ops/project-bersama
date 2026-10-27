@@ -16,6 +16,8 @@ export default function PosSettingsModal({ isOpen, onClose }) {
   const [methods, setMethods] = useState([]);
   const [editingDefaults, setEditingDefaults] = useState(true);
   const [saving, setSaving] = useState(false);
+  // Aturan pembulatan kasir (Pengaturan POS > Pembulatan), hanya untuk ditampilkan di bawah akun Pembulatan.
+  const [aturanBulat, setAturanBulat] = useState(null);
   const [postingLogs, setPostingLogs] = useState([]);
   const [isLogOpen, setIsLogOpen] = useState(false);
   const { isAutoPostSaving, toggleAutoPost } = usePosAutoPostSetting(settings, setSettings);
@@ -52,6 +54,16 @@ export default function PosSettingsModal({ isOpen, onClose }) {
       .filter(({ account }) => account)
     : [];
 
+  useEffect(() => {
+    if (!isOpen) return;
+    apiClient.get('/business-settings/')
+      .then((res) => setAturanBulat({
+        aktif: !!res.data?.pos_pembulatan_aktif,
+        pembagi: Number(res.data?.pos_pembulatan_kelipatan) || 0,
+        arah: res.data?.pos_pembulatan_arah || 'terdekat',
+      }))
+      .catch(() => setAturanBulat(null));
+  }, [isOpen]);
   if (!isOpen) return null;
 
   const update = (key, value) => setSettings((current) => ({ ...current, [key]: value }));
@@ -90,6 +102,12 @@ export default function PosSettingsModal({ isOpen, onClose }) {
       setSaving(false);
     }
   };
+  const teksAturanBulat = !aturanBulat
+    ? ''
+    : aturanBulat.aktif && aturanBulat.pembagi > 1
+      ? `Pembulatan kasir AKTIF: pembagi Rp ${aturanBulat.pembagi.toLocaleString('id-ID')}, mode ${{ bawah: 'ke bawah', atas: 'ke atas', terdekat: 'otomatis (terdekat)' }[aturanBulat.arah] || aturanBulat.arah}.`
+      : 'Pembulatan kasir belum diaktifkan.';
+
   const openPostingLog = async () => {
     setIsLogOpen(true);
     try {
@@ -159,6 +177,12 @@ export default function PosSettingsModal({ isOpen, onClose }) {
                   <option value="">Pilih akun</option>
                   {accounts.map((account) => <option key={account.id} value={account.id}>{account.code} — {account.name}</option>)}
                 </select>
+                {key === 'pos_sales_rounding_account' && (
+                  <span className="block text-[11px] font-medium text-slate-400">
+                    Selisih pembulatan total penjualan kasir dijurnal ke akun ini (kredit bila pelanggan membayar lebih, debit bila dibulatkan ke bawah);
+                    bila kosong, selisih ikut Pendapatan Penjualan POS. {teksAturanBulat} Atur di Pengaturan POS &gt; Pembulatan.
+                  </span>
+                )}
               </label>)}
             </>}
           </section>

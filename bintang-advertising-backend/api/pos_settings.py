@@ -119,8 +119,14 @@ def pos_mengurangi_stok():
     return mode_stok_pos() == 'auto'
 
 
+def pembulatan_aktif():
+    return get_bool('pos_pembulatan_aktif', False)
+
+
 def pembulatan_kelipatan():
-    """Kelipatan Rupiah pembulatan total penjualan (0 = mati)."""
+    """Besar pembagi pembulatan total penjualan (0 = mati / saklar Aktif dimatikan)."""
+    if not pembulatan_aktif():
+        return 0
     try:
         return max(0, int(str(_raw('pos_pembulatan_kelipatan') or 0).strip() or 0))
     except (TypeError, ValueError):

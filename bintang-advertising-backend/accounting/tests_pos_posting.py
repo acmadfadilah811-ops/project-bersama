@@ -404,6 +404,7 @@ class PembulatanPenjualanPosTests(POSPostingTestCase):
 
     def _atur(self, kelipatan, arah='terdekat'):
         from api.models import SystemConfig
+        SystemConfig.objects.update_or_create(key='pos_pembulatan_aktif', defaults={'value': 'true'})
         SystemConfig.objects.update_or_create(key='pos_pembulatan_kelipatan', defaults={'value': str(kelipatan)})
         SystemConfig.objects.update_or_create(key='pos_pembulatan_arah', defaults={'value': arah})
 

@@ -1064,6 +1064,7 @@ class BusinessSettingsSerializer(serializers.Serializer):
     pos_shift_cek_pesanan_tertahan = serializers.BooleanField(required=False, default=False)
 
     # POS Pembulatan total penjualan (kelipatan Rp; 0 = mati) & arah (terdekat/atas/bawah)
+    pos_pembulatan_aktif = serializers.BooleanField(required=False, default=False)
     pos_pembulatan_kelipatan = serializers.IntegerField(required=False, default=0, min_value=0)
     pos_pembulatan_arah = serializers.ChoiceField(choices=['terdekat', 'atas', 'bawah'], required=False, default='terdekat')
 
@@ -1145,6 +1146,7 @@ class BusinessSettingsSerializer(serializers.Serializer):
         'pos_shift_cek_pesanan_tertahan':  'pos_shift_cek_pesanan_tertahan',
 
         # POS Pembulatan
+        'pos_pembulatan_aktif':            'pos_pembulatan_aktif',
         'pos_pembulatan_kelipatan':        'pos_pembulatan_kelipatan',
         'pos_pembulatan_arah':             'pos_pembulatan_arah',
 
@@ -1253,6 +1255,7 @@ class BusinessSettingsSerializer(serializers.Serializer):
             'pos_shift_cek_pesanan_tertahan': False,
 
             # POS Pembulatan Defaults (mati)
+            'pos_pembulatan_aktif': False,
             'pos_pembulatan_kelipatan': 0,
             'pos_pembulatan_arah': 'terdekat',
 
@@ -1297,7 +1300,7 @@ class BusinessSettingsSerializer(serializers.Serializer):
                     'pos_shift_aktif', 'pos_shift_sembunyikan_setor', 'pos_shift_cek_pesanan_tertahan',
                     'pos_stok_blokir_jual_jika_kosong', 'pos_stok_selalu_cek_sebelum_order',
                     'pos_stok_blokir_hapus_jika_ada', 'pos_stok_transfer_harus_proses_penerima',
-                    'pos_stok_posting_otomatis_laba_rugi', 'pos_antrian_aktif'
+                    'pos_stok_posting_otomatis_laba_rugi', 'pos_antrian_aktif', 'pos_pembulatan_aktif'
                 ]:
                     result[field_name] = (val.lower() == 'true')
                 elif field_name == 'pos_ext_settings':
@@ -1406,7 +1409,7 @@ class BusinessSettingsSerializer(serializers.Serializer):
                     'pos_shift_aktif', 'pos_shift_sembunyikan_setor', 'pos_shift_cek_pesanan_tertahan',
                     'pos_stok_blokir_jual_jika_kosong', 'pos_stok_selalu_cek_sebelum_order',
                     'pos_stok_blokir_hapus_jika_ada', 'pos_stok_transfer_harus_proses_penerima',
-                    'pos_stok_posting_otomatis_laba_rugi', 'pos_antrian_aktif'
+                    'pos_stok_posting_otomatis_laba_rugi', 'pos_antrian_aktif', 'pos_pembulatan_aktif'
                 ]:
                     val_str = 'true' if value_to_save else 'false'
                 else:
