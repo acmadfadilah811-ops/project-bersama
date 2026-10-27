@@ -148,6 +148,9 @@ class ContactViewSet(viewsets.ModelViewSet):
         walau toggle sudah dinyalakan balik. Toggle mati HARUS ikut hapus cache.
         """
         instance = serializer.save()
+        # Sama dengan CustomerViewSet.perform_update: nama kontak = nama pelanggan tertaut.
+        if 'nama' in serializer.validated_data and instance.customer_id and instance.nama:
+            type(instance.customer).objects.filter(pk=instance.customer_id).exclude(nama=instance.nama).update(nama=instance.nama)
         if 'handover_to_staff' in serializer.validated_data:
             cache_key = f"wa_handover_{instance.nomor_wa}"
             if instance.handover_to_staff:

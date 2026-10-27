@@ -248,11 +248,15 @@ class CustomerViewSet(ToggleStatusMixin, viewsets.ModelViewSet):
     def perform_update(self, serializer):
         raw_password = serializer.validated_data.get('password')
         if raw_password:
-            serializer.save(password=make_password(raw_password))
+            pelanggan = serializer.save(password=make_password(raw_password))
         else:
             # Kosong/tidak dikirim → jangan timpa password yang sudah tersimpan.
             serializer.validated_data.pop('password', None)
-            serializer.save()
+            pelanggan = serializer.save()
+        # Nama pelanggan = nama kontak tertaut (2026-10-27): kasir menampilkan nama dari dua daftar
+        # (Pelanggan dan Kontak); mengubah satu sisi dulu membuat sisi lain tetap bernama lama.
+        if 'nama' in serializer.validated_data:
+            pelanggan.contacts.exclude(nama=pelanggan.nama).update(nama=pelanggan.nama)
 
     @action(detail=True, methods=['post'], url_path='resolve-contact')
     def resolve_contact(self, request, pk=None):

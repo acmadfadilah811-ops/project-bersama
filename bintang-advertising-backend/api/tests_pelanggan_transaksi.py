@@ -120,3 +120,25 @@ class KasirKelolaPelangganTests(APITestCase):
         res = self.client.delete('/api/contacts/081211110003/')
         self.assertEqual(res.status_code, 400, res.content)
         self.assertTrue(Contact.objects.filter(nomor_wa='081211110003').exists())
+
+
+class SinkronNamaPelangganKontakTests(APITestCase):
+    """Ubah nama di satu sisi (kontak/pelanggan) ikut mengubah sisi tertaut (2026-10-27)."""
+
+    def setUp(self):
+        self.kasir = get_user_model().objects.create_user(username='kasir_nama_sinkron', password='x', role='kasir')
+        self.client.force_authenticate(self.kasir)
+        self.cust = Customer.objects.create(nama='Bu Eni', handphone='081211110009')
+        self.kontak = Contact.objects.create(nomor_wa='081211110009', nama='Bu Eni', customer=self.cust)
+
+    def test_ubah_nama_kontak_ikut_ke_pelanggan(self):
+        res = self.client.patch('/api/contacts/081211110009/', {'nama': 'Bu Eni Darsono'}, format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        self.cust.refresh_from_db()
+        self.assertEqual(self.cust.nama, 'Bu Eni Darsono')
+
+    def test_ubah_nama_pelanggan_ikut_ke_kontak(self):
+        res = self.client.patch(f'/api/customers/{self.cust.pk}/', {'nama': 'Ibu Eni'}, format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        self.kontak.refresh_from_db()
+        self.assertEqual(self.kontak.nama, 'Ibu Eni')

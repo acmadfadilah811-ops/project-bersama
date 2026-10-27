@@ -699,6 +699,7 @@ export default function PosTerminal({ onToggleSidebar }) {
 
       if (customerId) {
         await apiClient.patch(`/customers/${customerId}/`, {
+          nama: updatedData.nama,
           customer_group: updatedData.tipe_pelanggan || null,
           email: updatedData.email,
           handphone: updatedData.telepon,
