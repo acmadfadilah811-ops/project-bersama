@@ -1,7 +1,7 @@
 // Wilayah Indonesia untuk form alamat (Provinsi -> Kota/Kabupaten -> Kecamatan), 2026-10-27.
 // Daftar provinsi & kota: data/wilayahIndonesia.json (Kepmendagri 2025, 38 provinsi / 514 kab-kota).
-// Kecamatan: data/wilayahKecamatan.json ({ "Kabupaten Cilacap": ["Adipala", ...] }), dimuat malas
-// supaya tidak membebani bundel awal. Kolom tetap teks bebas -- saran hanya mempersempit pilihan.
+// Kecamatan: data/wilayahKecamatan.json ({ "Kabupaten Cilacap": ["Adipala", ...] }; 514 kab/kota, 7.285
+// kecamatan, sumber sama: github.com/cahyadsn/wilayah, MIT), dimuat malas supaya tidak membebani bundel awal. Kolom tetap teks bebas -- saran hanya mempersempit pilihan.
 import WILAYAH from '../data/wilayahIndonesia.json';
 
 export const PROVINSI = WILAYAH.map((w) => w.provinsi);
