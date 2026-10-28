@@ -109,7 +109,7 @@ class Product(models.Model):
         default=True, help_text='Tampilkan keterangan stok di kartu katalog Kasir POS Terminal',
     )
     rack = models.CharField(max_length=100, blank=True, default='', help_text="Lokasi rak penyimpanan")
-    qty_stok = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    qty_stok = models.DecimalField(max_digits=12, decimal_places=4, default=0.00)
     on_hold_qty = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, help_text="Qty stok yang sedang ditahan/dipesan")
     stok_minimum = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, help_text="Ambang batas Peringatan Sisa Stok")
     qty_fast_moving = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, help_text="Ambang batas kualifikasi produk 'fast moving'")
@@ -171,7 +171,7 @@ class ProductVariant(models.Model):
     harga_jual_online = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     harga_jual_toko = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     lacak_inventori = models.BooleanField(default=True)
-    qty_stok = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    qty_stok = models.DecimalField(max_digits=12, decimal_places=4, default=0.00)
     rack = models.CharField(max_length=100, blank=True, default='', help_text="Lokasi rak penyimpanan khusus varian ini")
     berat = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="Berat barang (gram), opsional")
     foto = models.ImageField(upload_to='variant_photos/', blank=True, null=True)
@@ -305,14 +305,14 @@ class ProductStockMovement(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='product_stock_movements')
 
     tipe = models.CharField(max_length=20, choices=TIPE_CHOICES)
-    qty = models.DecimalField(max_digits=10, decimal_places=2, help_text="Selalu positif; arah ditentukan oleh 'tipe'")
+    qty = models.DecimalField(max_digits=12, decimal_places=4, help_text="Selalu positif; arah ditentukan oleh 'tipe'")
     harga_beli = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True, help_text="Harga beli per unit saat stok masuk")
     hpp_total = models.DecimalField(
         max_digits=14, decimal_places=2, null=True, blank=True,
         help_text="HPP mutasi keluar, dihitung dari lapisan FIFO yang dikonsumsi",
     )
-    stok_awal = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    stok_akhir = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    stok_awal = models.DecimalField(max_digits=12, decimal_places=4, default=0.00)
+    stok_akhir = models.DecimalField(max_digits=12, decimal_places=4, default=0.00)
     catatan = models.TextField(blank=True, default='')
     tanggal = models.DateField(null=True, blank=True, help_text="Tanggal dokumen (boleh beda dari waktu input)")
     stock_in_document = models.ForeignKey('StockInDocument', on_delete=models.SET_NULL, null=True, blank=True, related_name='movements')
@@ -775,8 +775,8 @@ class StockLayer(models.Model):
     variant = models.ForeignKey(ProductVariant, on_delete=models.CASCADE, null=True, blank=True, related_name='stock_layers')
 
     tanggal_masuk = models.DateField(db_index=True)
-    qty_masuk = models.DecimalField(max_digits=12, decimal_places=2)
-    sisa_qty = models.DecimalField(max_digits=12, decimal_places=2, help_text="Sisa yang belum terpakai")
+    qty_masuk = models.DecimalField(max_digits=12, decimal_places=4)
+    sisa_qty = models.DecimalField(max_digits=12, decimal_places=4, help_text="Sisa yang belum terpakai")
     harga_beli = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text="Biaya per unit lapisan ini")
     tanggal_kadaluwarsa = models.DateField(null=True, blank=True, db_index=True)
     rak = models.CharField(max_length=100, blank=True, default='')
@@ -805,7 +805,7 @@ class StockLayerConsumption(models.Model):
     movement = models.ForeignKey(ProductStockMovement, on_delete=models.CASCADE, null=True, blank=True, related_name='layer_consumptions')
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='layer_consumptions')
     variant = models.ForeignKey(ProductVariant, on_delete=models.CASCADE, null=True, blank=True, related_name='layer_consumptions')
-    qty = models.DecimalField(max_digits=12, decimal_places=2)
+    qty = models.DecimalField(max_digits=12, decimal_places=4)
     harga_beli = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     is_shortfall = models.BooleanField(default=False, help_text="True bila lapisan tidak mencukupi")
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)

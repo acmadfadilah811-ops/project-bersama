@@ -12,6 +12,27 @@ from .product_models import (
 )
 from .protected_media import protected_media_url
 
+def rapikan_desimal_stok(nilai):
+    """'100.0000' -> '100.00', '95.0620' -> '95.062': minimal 2 angka di belakang koma, maksimal 4."""
+    teks = str(nilai)
+    if '.' not in teks:
+        return teks
+    bulat, desimal = teks.split('.')
+    return f"{bulat}.{desimal.rstrip('0').ljust(2, '0')}"
+
+
+class RapikanStokMixin:
+    """Kolom stok sekarang 4 desimal; API tetap menampilkan nilai tanpa nol berlebih seperti sebelumnya."""
+    kolom_stok = ('qty_stok', 'stok_awal', 'stok_akhir', 'qty', 'sisa_qty')
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        for kolom in self.kolom_stok:
+            if isinstance(data.get(kolom), str):
+                data[kolom] = rapikan_desimal_stok(data[kolom])
+        return data
+
+
 class ProductCategorySerializer(serializers.ModelSerializer):
     unit_bisnis_nama = serializers.ReadOnlyField(source='unit_bisnis.nama')
     products_count = serializers.SerializerMethodField()
@@ -50,7 +71,7 @@ class ProductImageSerializer(serializers.ModelSerializer):
         model = ProductImage
         fields = '__all__'
 
-class ProductVariantSerializer(serializers.ModelSerializer):
+class ProductVariantSerializer(RapikanStokMixin, serializers.ModelSerializer):
     class Meta:
         model = ProductVariant
         fields = '__all__'
@@ -68,7 +89,7 @@ class ProductSpecValueSerializer(serializers.ModelSerializer):
         model = ProductSpecValue
         fields = '__all__'
 
-class ProductSerializer(serializers.ModelSerializer):
+class ProductSerializer(RapikanStokMixin, serializers.ModelSerializer):
     fotos = ProductImageSerializer(many=True, read_only=True)
     foto_url = serializers.SerializerMethodField()
     variants = ProductVariantSerializer(many=True, read_only=True)
@@ -229,7 +250,7 @@ class SaleItemAddonSerializer(serializers.ModelSerializer):
         fields = ['id', 'addon', 'nama_snapshot', 'harga_snapshot', 'qty', 'subtotal']
 
 
-class ProductStockMovementSerializer(serializers.ModelSerializer):
+class ProductStockMovementSerializer(RapikanStokMixin, serializers.ModelSerializer):
     product_nama = serializers.ReadOnlyField(source='product.nama')
     variant_nama = serializers.ReadOnlyField(source='variant.nama_varian')
     user_nama = serializers.ReadOnlyField(source='user.username')

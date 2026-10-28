@@ -134,7 +134,8 @@ def kurangi_stok_produk_sumber(inventory_item, qty, *, user, catatan):
     from .. import stock_fifo
     from ..product_models import Product, ProductStockMovement
 
-    qty_dec = Decimal(str(qty)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    # 4 angka di belakang koma, sama dengan stok bahan (InventoryItem.stok) supaya kedua angka tidak bergeser.
+    qty_dec = Decimal(str(qty)).quantize(Decimal('0.0001'), rounding=ROUND_HALF_UP)
     if qty_dec <= 0:
         return None
 
