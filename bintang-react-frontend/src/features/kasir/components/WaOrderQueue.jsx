@@ -373,7 +373,7 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
 
     let hargaSatuan = 0;
     try {
-      hargaSatuan = await fetchHargaKatalog(product.id, { variantId: variant?.id, qty, panjang, lebar, paksaPerM2 });
+      hargaSatuan = await fetchHargaKatalog(product.id, { variantId: variant?.id, qty, panjang, lebar, paksaPerM2, nomorWa: selectedOrder?.nomor_wa });
     } catch (err) {
       console.error('[WaOrderQueue] Gagal hitung harga produk:', err);
     }
@@ -404,7 +404,7 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
     let hargaSatuan = current.harga_satuan || 0;
     try {
       hargaSatuan = await fetchHargaKatalog(product.id, {
-        variantId: variant.id, qty: current.qty, panjang: current.panjang, lebar: current.lebar, paksaPerM2,
+        variantId: variant.id, qty: current.qty, panjang: current.panjang, lebar: current.lebar, paksaPerM2, nomorWa: selectedOrder?.nomor_wa,
       });
     } catch (err) {
       console.error('[WaOrderQueue] Gagal hitung harga varian:', err);
@@ -429,11 +429,10 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
     const product = products.find((item) => String(item.id) === String(current.product));
     if (!product) return;
     const paksaPerM2 = product.price_type !== 'per_m2' && current.panjang > 0 && current.lebar > 0;
-    if (product.price_type === 'flat' && !paksaPerM2) return; // tarif tetap, tak perlu ke server
 
     try {
       const hargaSatuan = await fetchHargaKatalog(product.id, {
-        variantId: current.variant, qty: current.qty, panjang: current.panjang, lebar: current.lebar, paksaPerM2,
+        variantId: current.variant, qty: current.qty, panjang: current.panjang, lebar: current.lebar, paksaPerM2, nomorWa: selectedOrder?.nomor_wa,
       });
       setEditItems((prev) => {
         const updated = [...prev];

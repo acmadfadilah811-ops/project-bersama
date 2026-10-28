@@ -47,7 +47,7 @@ def _active_shift_for(user):
 
 
 def _record_order_payment(*, order, activity_log, actor, jumlah, metode, referensi='',
-                          idempotency_key=None, is_dp=False):
+                          idempotency_key=None, is_dp=False, pembulatan=0):
     """Simpan peristiwa pembayaran tanpa mengubah saldo agregat pada Order."""
     return OrderPayment.objects.create(
         order=order,
@@ -58,6 +58,7 @@ def _record_order_payment(*, order, activity_log, actor, jumlah, metode, referen
         referensi_pembayaran=(referensi or '')[:255],
         idempotency_key=idempotency_key or None,
         is_dp=is_dp,
+        pembulatan=pembulatan,
         dibuat_oleh=actor,
     )
 
@@ -291,10 +292,12 @@ class OrderViewSet(viewsets.ModelViewSet):
                 tindakan='PAYMENT',
                 keterangan=f'DP awal {instance.dp_dibayar} [dp-create]',
             )
+            from ..services.pembulatan import hitung_pembulatan_pembayaran
+            _bulat = hitung_pembulatan_pembayaran(instance.dp_dibayar)
             _record_order_payment(
                 order=instance, activity_log=_dp_log, actor=self.request.user,
                 jumlah=instance.dp_dibayar, metode=instance.metode_pembayaran,
-                referensi=instance.referensi_pembayaran, is_dp=True,
+                referensi=instance.referensi_pembayaran, is_dp=True, pembulatan=_bulat,
             )
             _post_order_payment(
                 order=instance,
@@ -302,6 +305,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 actor=self.request.user,
                 jumlah_bayar=_Decimal(str(instance.dp_dibayar)),
                 is_dp=True,
+                pembulatan=_bulat,
             )
 
     @action(detail=False, methods=['post'], url_path='checkout-pos',
@@ -662,11 +666,13 @@ class OrderViewSet(viewsets.ModelViewSet):
                 tindakan='PAYMENT',
                 keterangan=f'Pembayaran POS {jumlah_bayar} [{checkout_key}]',
             )
+            from ..services.pembulatan import hitung_pembulatan_pembayaran
+            _bulat = hitung_pembulatan_pembayaran(jumlah_bayar)
             _record_order_payment(
                 order=order, activity_log=payment_log, actor=request.user,
                 jumlah=jumlah_bayar, metode=order.metode_pembayaran,
                 referensi=order.referensi_pembayaran, idempotency_key=str(checkout_key),
-                is_dp=jumlah_bayar < order.total_harga,
+                is_dp=jumlah_bayar < order.total_harga, pembulatan=_bulat,
             )
             try:
                 post_order_payment_journal(
@@ -675,6 +681,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                     actor=request.user,
                     jumlah_bayar=Decimal(str(jumlah_bayar)),
                     is_dp=jumlah_bayar < order.total_harga,
+                    pembulatan=_bulat,
                 )
             except DjangoValidationError as exc:
                 # Mis. periode akuntansi sudah ditutup: sebelumnya 500 polos.
@@ -1115,10 +1122,12 @@ class OrderViewSet(viewsets.ModelViewSet):
         order._current_user = request.user
         order.save()
         payment_log = OrderActivityLog.objects.create(order=order, user=request.user, tindakan='PAYMENT', keterangan='Pembayaran %s [%s]' % (jumlah_bayar, idem or 'no-key'))
+        from ..services.pembulatan import hitung_pembulatan_pembayaran
+        _bulat = hitung_pembulatan_pembayaran(jumlah_bayar)
         _record_order_payment(
             order=order, activity_log=payment_log, actor=request.user,
             jumlah=jumlah_bayar, metode=metode, referensi=referensi,
-            idempotency_key=idem or None, is_dp=order.dp_dibayar < order.total_harga,
+            idempotency_key=idem or None, is_dp=order.dp_dibayar < order.total_harga, pembulatan=_bulat,
         )
 
         # T-202: satu-satunya writer jurnal pembayaran Order.
@@ -1140,6 +1149,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             actor=request.user,
             jumlah_bayar=_Decimal(str(jumlah_bayar)),
             is_dp=False,
+            pembulatan=_bulat,
         )
 
         # Update statistik Contact. Order draft (belum jadi pesanan riil) dan

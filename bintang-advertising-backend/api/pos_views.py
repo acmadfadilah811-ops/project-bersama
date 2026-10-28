@@ -220,7 +220,7 @@ class POSSaleViewSet(viewsets.ModelViewSet):
         order_payments = per_unit_scope(order_payments.select_related('dibuat_oleh'), 'dibuat_oleh__unit_bisnis')
 
         for p in order_payments:
-            jumlah = Decimal(str(p.jumlah or 0))
+            jumlah = Decimal(str(p.jumlah or 0)) + Decimal(str(p.pembulatan or 0))
             total_penjualan += jumlah
             jumlah_transaksi += 1
             metode = p.metode_pembayaran or 'tunai'

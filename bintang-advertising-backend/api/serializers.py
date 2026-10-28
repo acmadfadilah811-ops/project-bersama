@@ -66,7 +66,7 @@ class OrderPaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrderPayment
         fields = [
-            'id', 'jumlah', 'metode_pembayaran', 'referensi_pembayaran',
+            'id', 'jumlah', 'pembulatan', 'metode_pembayaran', 'referensi_pembayaran',
             'is_dp', 'shift', 'shift_nama', 'dibuat_oleh', 'dibuat_oleh_nama',
             'dibuat_pada',
         ]

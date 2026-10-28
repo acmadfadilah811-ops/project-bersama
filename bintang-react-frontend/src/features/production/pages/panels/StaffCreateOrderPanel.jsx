@@ -166,7 +166,7 @@ export default function StaffCreateOrderPanel() {
 
     let hargaSatuan = 0;
     try {
-      hargaSatuan = await fetchHargaKatalog(product.id, { variantId: variant?.id, qty, panjang, lebar, paksaPerM2 });
+      hargaSatuan = await fetchHargaKatalog(product.id, { variantId: variant?.id, qty, panjang, lebar, paksaPerM2, nomorWa });
     } catch (err) {
       console.error('[StaffCreateOrderPanel] Gagal hitung harga produk:', err);
     }
@@ -197,7 +197,7 @@ export default function StaffCreateOrderPanel() {
     let hargaSatuan = current.harga_satuan || 0;
     try {
       hargaSatuan = await fetchHargaKatalog(product.id, {
-        variantId: variant.id, qty: current.qty, panjang: current.panjang, lebar: current.lebar, paksaPerM2,
+        variantId: variant.id, qty: current.qty, panjang: current.panjang, lebar: current.lebar, paksaPerM2, nomorWa,
       });
     } catch (err) {
       console.error('[StaffCreateOrderPanel] Gagal hitung harga varian:', err);
@@ -239,16 +239,45 @@ export default function StaffCreateOrderPanel() {
     const product = products.find((item) => String(item.id) === String(current.product));
     if (!product) return;
     const paksaPerM2 = product.price_type !== 'per_m2' && current.panjang > 0 && current.lebar > 0;
-    if (product.price_type === 'flat' && !paksaPerM2) return;
     try {
       const hargaSatuan = await fetchHargaKatalog(product.id, {
-        variantId: current.variant, qty: current.qty, panjang: current.panjang, lebar: current.lebar, paksaPerM2,
+        variantId: current.variant, qty: current.qty, panjang: current.panjang, lebar: current.lebar, paksaPerM2, nomorWa,
       });
       handleItemChange(index, 'harga_satuan', hargaSatuan);
     } catch (err) {
       console.error('[StaffCreateOrderPanel] Gagal hitung ulang harga:', err);
     }
   };
+
+  // Pelanggan dipilih/diganti: harga semua item katalog dihitung ulang menurut Tipe Pelanggan-nya (sama dengan kasir).
+  useEffect(() => {
+    const wa = String(nomorWa || '').replace(/\D/g, '');
+    if (wa.length < 8) return undefined;
+    let batal = false;
+    const timer = setTimeout(async () => {
+      const hasil = await Promise.all(items.map(async (item) => {
+        if (!item.product) return null;
+        const product = products.find((p) => String(p.id) === String(item.product));
+        if (!product) return null;
+        const paksaPerM2 = product.price_type !== 'per_m2' && item.panjang > 0 && item.lebar > 0;
+        try {
+          return await fetchHargaKatalog(product.id, {
+            variantId: item.variant, qty: item.qty, panjang: item.panjang, lebar: item.lebar, paksaPerM2, nomorWa: wa,
+          });
+        } catch {
+          return null;
+        }
+      }));
+      if (batal) return;
+      setItems((prev) => prev.map((item, i) => {
+        const harga = hasil[i];
+        if (harga == null || prev[i]?.id !== items[i]?.id || Number(item.harga_satuan) === Number(harga)) return item;
+        return { ...item, harga_satuan: harga };
+      }));
+    }, 400);
+    return () => { batal = true; clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nomorWa, products]);
 
   const getTotal = () => items.reduce((sum, item) => sum + (parseFloat(item.harga_satuan || 0) * parseFloat(item.qty || 1)), 0);
 

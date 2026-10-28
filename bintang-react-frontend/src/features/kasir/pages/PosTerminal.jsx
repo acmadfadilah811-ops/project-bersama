@@ -111,6 +111,7 @@ export default function PosTerminal({ onToggleSidebar }) {
     cartNotes,
     getTotal,
     getPembulatan,
+    getPembulatanBayar,
     getSubtotal,
     getTaxAmount,
     setCartNotes,
@@ -1465,6 +1466,7 @@ export default function PosTerminal({ onToggleSidebar }) {
         onClose={() => setShowPaymentModal(false)}
         totalAmount={getTotal()}
         pembulatan={starfoto.item ? 0 : getPembulatan()}
+        hitungPembulatanBayar={getPembulatanBayar}
         subtotalAmount={Number(getSubtotal()) + cart.reduce((sum, item) => sum + itemDiscountTotal(item), 0)}
         discountAmount={cart.reduce((sum, item) => sum + itemDiscountTotal(item), 0) + Math.max(0, Number(getSubtotal()) + Number(getTaxAmount()) - Number(getTotal()))}
         onConfirmPayment={handleConfirmPayment}

@@ -351,6 +351,42 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, items]);
 
+  // Harga item katalog mengikuti Tingkatan Harga per Tipe Pelanggan pembeli (sama dengan kasir): dihitung ulang
+  // saat pelanggan/produk/qty berubah, kecuali harga yang diubah manual oleh pembuat order.
+  const kunciHarga = items.map((it) => `${it.id}:${it.product}:${it.qty}:${it.is_meteran ? 1 : 0}:${it.hargaManual ? 1 : 0}`).join('|');
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const wa = String(nomorWa || '').replace(/\D/g, '');
+    if (wa.length < 8) return undefined;
+    let batal = false;
+    const timer = setTimeout(async () => {
+      const hasil = {};
+      await Promise.all(items.map(async (it) => {
+        if (!it.product || it.hargaManual) return;
+        try {
+          const params = new URLSearchParams({ qty: it.qty || 1, nomor_wa: wa });
+          if (it.is_meteran) {
+            params.set('panjang', '1');
+            params.set('lebar', '1');
+            params.set('paksa_per_m2', 'true');
+          }
+          const res = await apiClient.get(`/products/${it.product}/hitung-harga/?${params.toString()}`);
+          hasil[it.id] = it.is_meteran ? res.data?.harga_per_m2 : res.data?.harga_satuan;
+        } catch {
+          // Gagal hitung: biarkan harga yang ada.
+        }
+      }));
+      if (batal) return;
+      setItems((prev) => prev.map((it) => {
+        const harga = hasil[it.id];
+        if (harga == null || it.hargaManual || Number(it.harga_jual) === Number(harga)) return it;
+        return { ...it, harga_jual: harga };
+      }));
+    }, 400);
+    return () => { batal = true; clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, nomorWa, kunciHarga]);
+
   if (!isOpen && !orderBaru) return null;
 
   const formatCurrency = (v) =>
@@ -1027,7 +1063,7 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
                           <td className="px-3 py-2">
                             <NumericInput
                               value={it.harga_jual}
-                              onChange={(val) => changeItem(idx, 'harga_jual', val)}
+                              onChange={(val) => { changeItem(idx, 'harga_jual', val); updateItem(idx, { hargaManual: true }); }}
                               className="w-24 bg-slate-50 border border-slate-200 rounded-lg px-2 py-0.5 text-right text-xs font-extrabold focus:bg-white focus:outline-none"
                             />
                           </td>

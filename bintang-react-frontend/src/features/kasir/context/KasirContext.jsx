@@ -4,7 +4,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useNotifikasiSiapDiambil } from '../hooks/useNotifikasiSiapDiambil';
 import { hargaTierAtauDasar } from '../../../utils/hargaTier';
 import { hargaSatuanMeteran, hitungLuas } from '../../../utils/meteran';
-import { selisihPembulatanPenjualan } from '../../../utils/pembulatan';
+import { selisihPembulatan, selisihPembulatanPenjualan } from '../../../utils/pembulatan';
 
 const KasirContext = createContext(null);
 
@@ -449,6 +449,14 @@ export function KasirProvider({ children }) {
     Number(businessSettings?.pos_pembulatan_breakpoint) || 50,
   );
 
+  // Pembulatan satu pembayaran (DP/cicilan/pelunasan order): arah pembayaran, sama dengan server.
+  const getPembulatanBayar = (jumlah) => selisihPembulatan(
+    jumlah,
+    businessSettings?.pos_pembulatan_aktif ? Number(businessSettings?.pos_pembulatan_kelipatan || 0) : 0,
+    businessSettings?.pos_pembulatan_arah || 'atas',
+    Number(businessSettings?.pos_pembulatan_breakpoint) || 50,
+  );
+
   return (
     <KasirContext.Provider
       value={{
@@ -495,6 +503,7 @@ export function KasirProvider({ children }) {
         getTaxAmount,
         getTotal,
         getPembulatan,
+        getPembulatanBayar,
         cartNotes,
         setCartNotes,
         siapDiambilCount: jumlahSiap,

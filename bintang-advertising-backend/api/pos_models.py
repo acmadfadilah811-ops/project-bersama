@@ -31,7 +31,10 @@ class POSSale(models.Model):
     pajak = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     # Selisih pembulatan total (Pengaturan POS > Pembulatan); positif = pelanggan bayar lebih. `total` sudah
     # termasuk pembulatan ini.
-    pembulatan = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    pembulatan = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        help_text='Selisih pembulatan total (Pengaturan POS > Pembulatan); positif = pelanggan bayar lebih. `total` sudah termasuk pembulatan ini.',
+    )
     total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     
     metode_bayar = models.CharField(max_length=50, default='Cash')

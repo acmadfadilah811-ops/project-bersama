@@ -642,6 +642,10 @@ class ProductViewSet(viewsets.ModelViewSet):
             kontak = Contact.objects.filter(pk=pelanggan_id).first()
             if kontak and kontak.customer_id and kontak.customer.customer_group_id:
                 customer_group_nama = kontak.customer.customer_group.nama
+        elif request.query_params.get('nomor_wa'):
+            # Form Buat Order staff/manager hanya tahu nomor WA pelanggan (bukan id kontak).
+            from .services.product_pricing import nama_grup_pelanggan
+            customer_group_nama = nama_grup_pelanggan(request.query_params.get('nomor_wa'))
 
         try:
             hasil = hitung_harga(

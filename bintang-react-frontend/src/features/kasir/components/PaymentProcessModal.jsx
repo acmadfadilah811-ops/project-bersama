@@ -9,6 +9,8 @@ export default function PaymentProcessModal({
   totalAmount = 0,
   // Selisih pembulatan untuk pembayaran Lunas (0 bila mati / pesanan DP-foto).
   pembulatan = 0,
+  // Pembulatan satu pembayaran (DP): (jumlah) => selisih Rp.
+  hitungPembulatanBayar = null,
   subtotalAmount = 0,
   discountAmount = 0,
   onConfirmPayment,
@@ -41,6 +43,8 @@ export default function PaymentProcessModal({
 
   const currentPayAmount = parseFloat(payAmountStr) || 0;
   const changeAmount = Math.max(0, currentPayAmount - totalTagihan);
+  // DP juga dibulatkan: pelanggan membayar DP + pembulatan, tagihan order berkurang sebesar DP.
+  const dpPembulatan = paymentType === 'dp' && hitungPembulatanBayar ? hitungPembulatanBayar(currentPayAmount) : 0;
 
   // Numpad key handlers
   const handleNumpadClick = (val) => {
@@ -223,6 +227,12 @@ export default function PaymentProcessModal({
                       </div>
                     )}
                     <div className="flex justify-between"><span>DP / Uang Muka</span><span>Rp {Math.round(currentPayAmount).toLocaleString('id-ID')}</span></div>
+                    {dpPembulatan !== 0 && (
+                      <>
+                        <div className="flex justify-between"><span>Pembulatan</span><span>{dpPembulatan > 0 ? '+' : '-'}Rp {Math.abs(Math.round(dpPembulatan)).toLocaleString('id-ID')}</span></div>
+                        <div className="flex justify-between font-extrabold"><span>Dibayar Pelanggan</span><span>Rp {Math.round(currentPayAmount + dpPembulatan).toLocaleString('id-ID')}</span></div>
+                      </>
+                    )}
                     <div className="flex justify-between"><span>Metode Pembayaran</span><span>{paymentMethods.find((item) => item.id === selectedMethod)?.label || selectedMethod}</span></div>
                     <div className="flex justify-between font-extrabold text-amber-800"><span>Sisa Tagihan</span><span>Rp {Math.max(0, Math.round(totalAmount - currentPayAmount)).toLocaleString('id-ID')}</span></div>
                   </div>

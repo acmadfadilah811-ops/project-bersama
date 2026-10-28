@@ -61,10 +61,11 @@ def calculate_shift_cash_summary(shift):
     # DP dan pelunasan Order yang dicatat oleh kasir pada shift aktif juga
     # merupakan uang fisik di laci bila metodenya tunai.
     for payment in OrderPayment.objects.filter(shift=shift):
-        add_payment(payment.metode_pembayaran, payment.jumlah, 'order')
+        diterima = Decimal(str(payment.jumlah or 0)) + Decimal(str(payment.pembulatan or 0))  # uang masuk laci termasuk pembulatan
+        add_payment(payment.metode_pembayaran, diterima, 'order')
         _, tipe = resolve_method(payment.metode_pembayaran)
         if tipe.casefold() == 'tunai':
-            penjualan_tunai += Decimal(str(payment.jumlah or 0))
+            penjualan_tunai += diterima
 
     rincian_metode = [
         {

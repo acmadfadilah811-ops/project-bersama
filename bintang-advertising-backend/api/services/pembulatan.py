@@ -57,6 +57,29 @@ def hitung_pembulatan_penjualan(total, total_diskon=0, kelipatan=None, arah_baya
     return bulatkan(total_setelah_diskon, kelipatan, arah_bayar or ARAH_ATAS, breakpoint_persen) - total
 
 
+def hitung_pembulatan_pembayaran(jumlah):
+    """Selisih pembulatan satu pembayaran (DP, cicilan, atau pelunasan; positif = pelanggan membayar lebih).
+    Ikut Pengaturan POS (pembagi, arah pembayaran, breakpoint). `jumlah` tetap nominal yang mengurangi
+    tagihan; selisihnya dijurnal ke akun Pembulatan. Bila akuntansi aktif tetapi akun Pembulatan belum
+    dipilih, pembulatan tidak dipakai (selisihnya tidak punya tempat di jurnal)."""
+    from .. import pos_settings
+    kelipatan = pos_settings.pembulatan_kelipatan()
+    jumlah = Decimal(str(jumlah or 0))
+    if jumlah <= 0 or kelipatan <= 1:
+        return 0
+    try:
+        from accounting.models import AccountingSettings
+        baris = AccountingSettings.objects.first()
+        if baris and baris.is_active and not baris.pos_sales_rounding_account_id:
+            return 0
+    except Exception:
+        pass
+    selisih = bulatkan(jumlah, kelipatan, pos_settings.pembulatan_arah(), pos_settings.pembulatan_breakpoint()) - jumlah
+    if jumlah + selisih <= 0:
+        return 0
+    return int(selisih)
+
+
 def hitung_pembulatan(total, kelipatan=None, arah=None, breakpoint_persen=None):
     """Selisih pembulatan (positif = pelanggan membayar lebih). Tanpa argumen = ikut pengaturan POS."""
     if kelipatan is None:

@@ -566,3 +566,75 @@ class OrderPostingViaAPITest(OrderPostingSetupMixin, APITestCase):
 
         self.order.refresh_from_db()
         self.assertEqual(self.order.dp_dibayar, 0)
+
+
+class OrderPembulatanPembayaranTest(OrderPostingSetupMixin, APITestCase):
+    """Pembulatan berlaku untuk setiap pembayaran order (DP, cicilan, pelunasan), bukan hanya pelunasan."""
+
+    def setUp(self):
+        from api.models import SystemConfig
+        self.client.force_authenticate(user=self.kasir)
+        cls_rev = AccountClassification.objects.get(name="Pendapatan Test")
+        self.rounding_account = Account.objects.create(
+            code="7-T202-001", name="Pembulatan Test T202", account_type="revenue", classification=cls_rev,
+        )
+        self.settings_row.pos_sales_rounding_account = self.rounding_account
+        self.settings_row.save()
+        for key, value in (('pos_pembulatan_aktif', 'true'), ('pos_pembulatan_kelipatan', '1000'),
+                           ('pos_pembulatan_arah', 'atas'), ('pos_pembulatan_breakpoint', '50')):
+            SystemConfig.objects.update_or_create(key=key, defaults={'value': value})
+        self.order = Order.objects.create(
+            nomor_wa="081234567891", nama="Pelanggan Bulat", dp_dibayar=0,
+            accounting_payment_method=self.payment_method,
+        )
+        OrderItem.objects.create(order=self.order, jenis_produk="Item Bulat", harga_jual=28424)
+        self.order.refresh_from_db()
+
+    def _bayar(self, jumlah, key):
+        res = self.client.post(f"/api/orders/{self.order.id}/bayar/", {
+            "jumlah_bayar": jumlah, "metode_pembayaran": "tunai", "idempotency_key": key}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_200_OK, res.content)
+        log = OrderActivityLog.objects.filter(order=self.order, tindakan="PAYMENT").order_by("-id").first()
+        entry = JournalEntry.objects.get(source_type=JournalEntry.SourceType.ORDER_PAYMENT, source_id=log.id)
+        return {l.account_id: (l.debit, l.kredit) for l in entry.lines.all()}, entry
+
+    def test_dp_dibulatkan_ke_atas_dan_jurnal_balance(self):
+        from api.models import OrderPayment
+        per_akun, entry = self._bayar(14212, "dp-bulat-1")
+        pay = OrderPayment.objects.get(order=self.order)
+        self.assertEqual((pay.jumlah, pay.pembulatan), (14212, 788))
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.dp_dibayar, 14212)                      # tagihan berkurang sebesar DP, bukan DP + pembulatan
+        self.assertEqual(per_akun[self.kas_account.id], (Decimal("15000"), Decimal("0")))
+        self.assertEqual(per_akun[self.rounding_account.id], (Decimal("0"), Decimal("788")))
+        self.assertEqual(sum(l.debit for l in entry.lines.all()), sum(l.kredit for l in entry.lines.all()))
+
+    def test_pelunasan_sisa_dibulatkan_ke_atas(self):
+        from api.models import OrderPayment
+        self._bayar(14212, "dp-bulat-2")
+        per_akun, entry = self._bayar(14212, "lunas-bulat-2")
+        self.assertEqual(OrderPayment.objects.filter(order=self.order).count(), 2)
+        self.order.refresh_from_db()
+        self.assertEqual((self.order.dp_dibayar, self.order.sisa_tagihan), (28424, 0))
+        self.assertEqual(per_akun[self.rounding_account.id], (Decimal("0"), Decimal("788")))
+
+    def test_jumlah_sudah_kelipatan_tanpa_pembulatan(self):
+        from api.models import OrderPayment
+        per_akun, _ = self._bayar(10000, "dp-bulat-3")
+        self.assertEqual(OrderPayment.objects.get(order=self.order).pembulatan, 0)
+        self.assertNotIn(self.rounding_account.id, per_akun)
+
+    def test_tanpa_akun_pembulatan_di_pengaturan_akuntansi_tidak_dibulatkan(self):
+        from api.models import OrderPayment
+        self.settings_row.pos_sales_rounding_account = None
+        self.settings_row.save()
+        self._bayar(14212, "dp-bulat-4")
+        self.assertEqual(OrderPayment.objects.get(order=self.order).pembulatan, 0)
+
+    def test_ringkasan_shift_menghitung_uang_diterima_termasuk_pembulatan(self):
+        from api.models import SaldoKasHarian
+        from api.services.shift_summary import calculate_shift_cash_summary
+        shift = SaldoKasHarian.objects.create(kasir=self.kasir, shift="Shift Uji", kas_awal=0, waktu_buka=timezone.now())
+        self._bayar(14212, "dp-bulat-5")
+        hasil = calculate_shift_cash_summary(shift)
+        self.assertEqual(hasil["penjualan_tunai"], Decimal("15000"))

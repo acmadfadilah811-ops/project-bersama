@@ -196,6 +196,23 @@ class HitungHargaEndpointTest(APITestCase):
         self.assertEqual(res.data['harga_satuan'], 150000.0)
         self.assertEqual(res.data['total'], 300000.0)
 
+    def test_nomor_wa_pelanggan_menentukan_harga_tipe_pelanggan(self):
+        """Form Buat Order staff/manager hanya tahu nomor WA: harga ikut Tipe Pelanggan seperti kasir."""
+        from .customer_models import Customer, CustomerGroup
+        from .models import Contact
+        grup = CustomerGroup.objects.create(nama='Agen Uji WA')
+        cust = Customer.objects.create(nama='Toko Agen', customer_group=grup)
+        Contact.objects.create(nomor_wa='6281200033322', nama='Toko Agen', customer=cust)
+        p = Product.objects.create(nama='Kartu Nama Tier', price_type='flat', harga_jual_toko=60000, tiers=[
+            {'price': 50000, 'min_qty': 1, 'tipe_pelanggan': 'Agen Uji WA'},
+        ])
+        res = self.client.get(f'/api/products/{p.id}/hitung-harga/', {'qty': 1, 'nomor_wa': '6281200033322'})
+        self.assertEqual(res.data['harga_satuan'], 50000.0)
+        res = self.client.get(f'/api/products/{p.id}/hitung-harga/', {'qty': 1, 'nomor_wa': '6289999999999'})
+        self.assertEqual(res.data['harga_satuan'], 60000.0)   # bukan pelanggan terdaftar = Guest -> harga dasar
+        res = self.client.get(f'/api/products/{p.id}/hitung-harga/', {'qty': 1})
+        self.assertEqual(res.data['harga_satuan'], 60000.0)
+
     def test_per_m2_tanpa_ukuran_dibalas_400_bukan_crash(self):
         p = Product.objects.create(nama='Banner Flexi', price_type='per_m2', harga_jual_toko=25000)
         res = self.client.get(f'/api/products/{p.id}/hitung-harga/', {'qty': 1})

@@ -6,6 +6,7 @@ import NumericInput from '../../../components/NumericInput';
 import OrderInvoicePrint from './OrderInvoicePrint';
 import KirimIdPesananButton from './KirimIdPesananButton';
 import { requestBrowserPrint } from '../../printing/services/printService';
+import { selisihPembulatan } from '../../../utils/pembulatan';
 
 /**
  * Penerimaan pelunasan untuk pesanan yang sudah siap diambil.
@@ -42,6 +43,10 @@ export default function PelunasanModal({ order, onClose, onSelesai }) {
   const jumlahNum = Number(jumlah || 0);
   const sisaSetelah = Math.max(0, sisaAwal - jumlahNum);
   const bisaProses = jumlahNum > 0 && jumlahNum <= sisaAwal && !memproses;
+  // Pembayaran dibulatkan (Pengaturan POS > Pembulatan): tagihan berkurang sebesar jumlah, uang diterima = jumlah + pembulatan.
+  const pembulatan = businessSettings?.pos_pembulatan_aktif && jumlahNum > 0
+    ? selisihPembulatan(jumlahNum, Number(businessSettings.pos_pembulatan_kelipatan || 0), businessSettings.pos_pembulatan_arah || 'atas', Number(businessSettings.pos_pembulatan_breakpoint) || 50)
+    : 0;
 
   const proses = async () => {
     if (!bisaProses) return;
@@ -90,7 +95,7 @@ export default function PelunasanModal({ order, onClose, onSelesai }) {
   return (
     <>
       {orderLunas && (
-        <OrderInvoicePrint order={orderLunas} dibayarSekarang={jumlahNum} metode={metode} settings={businessSettings} />
+        <OrderInvoicePrint order={orderLunas} dibayarSekarang={jumlahNum} pembulatanSekarang={pembulatan} metode={metode} settings={businessSettings} />
       )}
 
       <div className="fixed inset-0 z-[9999] flex items-center justify-center p-5 print:hidden">
@@ -167,6 +172,19 @@ export default function PelunasanModal({ order, onClose, onSelesai }) {
                       <span className="block text-[11px] text-slate-400">Matikan bila staff sudah membuat faktur manual.</span>
                     </span>
                   </label>
+                )}
+
+                {pembulatan !== 0 && (
+                  <div className="flex justify-between items-center text-xs font-bold text-slate-600">
+                    <span>Pembulatan</span>
+                    <span>{pembulatan > 0 ? '+' : '-'}{formatCurrency(Math.abs(pembulatan))}</span>
+                  </div>
+                )}
+                {pembulatan !== 0 && (
+                  <div className="flex justify-between items-center text-xs font-black text-slate-800">
+                    <span>Total dibayar pelanggan</span>
+                    <span>{formatCurrency(jumlahNum + pembulatan)}</span>
+                  </div>
                 )}
 
                 <div className="flex justify-between items-center pt-1 text-xs font-bold text-slate-600">

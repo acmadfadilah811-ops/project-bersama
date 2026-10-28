@@ -1658,7 +1658,7 @@ def rpt_ringkasan_metode(params):
     paid_order_ids = set(payments.values_list('order_id', flat=True))
     for payment in payments:
         k = (payment.metode_pembayaran or 'tunai').lower()
-        agg[k] = agg.get(k, 0.0) + _num(payment.jumlah)
+        agg[k] = agg.get(k, 0.0) + _num(payment.jumlah) + _num(payment.pembulatan)
 
     # Data historis sebelum model OrderPayment diperkenalkan tetap tampil
     # menggunakan agregat lama, tetapi transaksi baru selalu memakai blok di atas.

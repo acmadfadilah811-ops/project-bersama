@@ -668,6 +668,12 @@ class OrderPayment(models.Model):
         related_name='order_payments',
     )
     jumlah = models.PositiveIntegerField()
+    # Selisih pembulatan pembayaran (Pengaturan POS > Pembulatan): positif = pelanggan membayar lebih dari `jumlah`.
+    # `jumlah` tetap nominal yang mengurangi tagihan order; uang yang diterima kasir = jumlah + pembulatan.
+    pembulatan = models.IntegerField(
+        default=0,
+        help_text='Selisih pembulatan pembayaran; positif = pelanggan membayar lebih dari `jumlah`.',
+    )
     metode_pembayaran = models.CharField(max_length=50, default='tunai')
     referensi_pembayaran = models.CharField(max_length=255, blank=True, default='')
     idempotency_key = models.CharField(max_length=64, null=True, blank=True, unique=True)
