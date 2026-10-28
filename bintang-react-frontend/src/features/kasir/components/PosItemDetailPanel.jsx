@@ -138,8 +138,10 @@ export default function PosItemDetailPanel({ item, addons = [], onSave, onAddMor
       ? hargaSatuanMeteran(luas, hargaPerM2)
       : (parseFloat(harga) || 0);
     const rowFinishing = parseFloat(row.finishingBiaya) || 0;
-    // Qty boleh pakai koma (2 desimal), mis. produk Custom: qty = nominal / harga satuan.
-    const rowQty = Math.max(0.01, Math.round((parseFloat(row.qty) || 1) * 100) / 100);
+    // Qty boleh pakai koma, mis. produk Custom: qty = nominal / harga satuan. Produk tanpa pelacakan stok 4 angka
+    // di belakang koma, produk berstok 2 angka (sama dengan server).
+    const presisiQty = item?.product?.lacak_inventori === false ? 10000 : 100;
+    const rowQty = Math.max(1 / presisiQty, Math.round((parseFloat(row.qty) || 1) * presisiQty) / presisiQty);
     return {
       p, l, luas, hargaSatuan, rowQty,
       subtotal: (hargaSatuan + rowFinishing) * rowQty,
@@ -372,7 +374,9 @@ export default function PosItemDetailPanel({ item, addons = [], onSave, onAddMor
                       onChange={(val) => updateRow(idx, 'qty', val)}
                       className="w-24 bg-white px-2 py-1.5 border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-500"
                     />
-                    <span className="block text-[9px] font-semibold text-slate-400 mt-0.5">Boleh koma, mis. 2,5</span>
+                    <span className="block text-[9px] font-semibold text-slate-400 mt-0.5">
+                      Boleh koma, mis. 2,5 (maks. {item?.product?.lacak_inventori === false ? 4 : 2} angka di belakang koma)
+                    </span>
                   </div>
                 )}
 

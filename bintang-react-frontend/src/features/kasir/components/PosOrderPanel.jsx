@@ -143,7 +143,7 @@ export default function PosOrderPanel({
                     )}
                   </div>
                   <div className="w-1/4 text-center text-slate-500 font-semibold text-[11px]">
-                    {Number(item.qty).toLocaleString('id-ID')} x {Number(item.harga).toLocaleString('id-ID')}
+                    {Number(item.qty).toLocaleString('id-ID', { maximumFractionDigits: 4 })} x {Number(item.harga).toLocaleString('id-ID')}
                   </div>
                   <div className="w-1/4 text-right font-bold text-slate-900 text-xs">
                     {lineTotal.toLocaleString('id-ID')}

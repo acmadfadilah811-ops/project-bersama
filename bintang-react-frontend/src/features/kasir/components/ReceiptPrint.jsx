@@ -104,7 +104,7 @@ export default function ReceiptPrint({ receipt, settings }) {
                       </span>
                     )}
                   </td>
-                  <td className="py-3 text-right font-bold">{Number(item.qty).toLocaleString('id-ID')}</td>
+                  <td className="py-3 text-right font-bold">{Number(item.qty).toLocaleString('id-ID', { maximumFractionDigits: 4 })}</td>
                   <td className="py-3 text-right">{formatCurrency(item.harga_snapshot)}</td>
                   <td className="py-3 text-right font-extrabold text-slate-900 pr-2">{formatCurrency(item.subtotal)}</td>
                 </tr>
@@ -289,7 +289,7 @@ export default function ReceiptPrint({ receipt, settings }) {
               <span>{formatCurrency(item.subtotal)}</span>
             </div>
             <div className="text-[8px] text-slate-700">
-              {Number(item.qty).toLocaleString('id-ID')} {item.uom_kode || 'pcs'} x {formatCurrency(item.harga_snapshot)}
+              {Number(item.qty).toLocaleString('id-ID', { maximumFractionDigits: 4 })} {item.uom_kode || 'pcs'} x {formatCurrency(item.harga_snapshot)}
             </div>
             {(item.addons || []).map((addon) => (
               <div key={addon.id} className="flex justify-between text-[8px] text-slate-600 pl-2">

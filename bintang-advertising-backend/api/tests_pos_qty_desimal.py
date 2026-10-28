@@ -28,7 +28,22 @@ class PosQtyDesimalTest(TestCase):
         self.assertEqual(sale.total, Decimal('37500.00'))
         self.assertEqual(sale.items.first().qty, Decimal('3.75'))
 
-    def test_qty_lebih_dari_dua_desimal_dibulatkan_ke_dua_desimal(self):
+    def test_produk_tanpa_stok_menerima_qty_empat_desimal(self):
+        sale = self._jual('1.2345')
+        self.assertEqual(sale.items.first().qty, Decimal('1.2345'))
+        self.assertEqual(sale.total, Decimal('12345.00'))
+        # Lebih dari 4 angka dibulatkan ke 4 angka.
+        self.assertEqual(self._jual('2.123456').items.first().qty, Decimal('2.1235'))
+
+    def test_produk_berstok_tetap_dua_desimal(self):
+        self.produk.lacak_inventori = True
+        self.produk.qty_stok = Decimal('50')
+        self.produk.save()
         sale = self._jual('1.234')
         self.assertEqual(sale.items.first().qty, Decimal('1.23'))
         self.assertEqual(sale.total, Decimal('12300.00'))
+
+    def test_qty_terlalu_kecil_ditolak(self):
+        from rest_framework.exceptions import ValidationError
+        with self.assertRaises(ValidationError):
+            self._jual('0.00001')

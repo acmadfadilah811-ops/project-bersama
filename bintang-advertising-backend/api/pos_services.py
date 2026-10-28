@@ -15,6 +15,7 @@ from .services.product_pricing import hitung_harga as hitung_harga_produk, Harga
 
 MONEY = Decimal('0.01')
 QTY = Decimal('0.01')
+QTY_4 = Decimal('0.0001')  # produk tanpa pelacakan stok (custom/jasa) boleh qty 4 angka di belakang koma
 
 
 def _potong_bahan_baku_bom(product, variant, qty_base, sale, user):
@@ -300,7 +301,10 @@ def create_sale(*, user, data):
             if input_qty <= 0:
                 raise ValidationError({'error': f"Qty {product.nama} harus lebih dari nol."})
             conversion = uom.resolve(product, raw.get('uom_kode'), input_qty, None, variant)
-            qty_base = Decimal(str(conversion['qty_dasar'])).quantize(QTY)
+            # Produk berstok tetap 2 angka (stok & FIFO 2 desimal); produk custom/jasa tanpa pelacakan stok 4 angka.
+            qty_base = Decimal(str(conversion['qty_dasar'])).quantize(QTY if product.lacak_inventori else QTY_4)
+            if qty_base <= 0:
+                raise ValidationError({'error': f"Qty {product.nama} terlalu kecil."})
 
             # Produk meteran (price_type='per_m2') & Finishing — sebelumnya item
             # begini dikirim TANPA product_id sama sekali (dianggap item kustom),
