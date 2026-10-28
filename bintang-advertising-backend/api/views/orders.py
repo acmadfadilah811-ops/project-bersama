@@ -217,6 +217,16 @@ class OrderViewSet(viewsets.ModelViewSet):
             # boleh mengatur diskon/status; yang memakai DP atau sumber eksplisit tidak diubah.
             serializer.validated_data['sumber'] = 'staff'
 
+        # Manager/owner/admin memilih kasir tujuan lewat unit bisnis: order hanya tampil di kasir unit itu
+        # (order tanpa unit tampil di semua kasir). Tanpa pilihan, unit diisi dari karyawan yang melayani.
+        if self.request.user.role in ('manager', 'owner', 'admin') and self.request.data.get('unit_bisnis'):
+            from ..models import UnitBisnis
+            unit_tujuan = UnitBisnis.objects.filter(pk=str(self.request.data.get('unit_bisnis')).strip()).first() \
+                if str(self.request.data.get('unit_bisnis')).strip().isdigit() else None
+            if unit_tujuan is None:
+                raise ValidationError({'error': 'Unit bisnis tujuan tidak ditemukan.'})
+            serializer.validated_data['unit_bisnis'] = unit_tujuan
+
         # ── Validasi data pelanggan & pelayan WAJIB sebelum order tersimpan ──
         # Sebelumnya order bisa dibuat dengan nomor asal-asalan (mis. bukan
         # format WA sama sekali) — hanya field kosong yang tertolak DRF secara

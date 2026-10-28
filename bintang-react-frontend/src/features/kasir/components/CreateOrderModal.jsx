@@ -11,6 +11,8 @@ import { useKasir } from '../context/KasirContext';
 import RiwayatPelanggan from '../../../components/RiwayatPelanggan';
 import { cariPelanggan, pakaiPelanggan } from '../../../utils/pelanggan';
 import { hitungHargaMeteran } from '../../../utils/meteran';
+import { useAuth } from '../../../context/AuthContext';
+import { bolehKelompokUnit, useDaftarUnitBisnis } from '../../../utils/unitBisnis';
 
 const emptyItem = () => ({
   id: `new-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -86,6 +88,11 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
 
   // "Dilayani oleh" — karyawan yang melayani (bukan pemroses SPK).
   const [pelayanId, setPelayanId] = useState('');
+  // Kasir tujuan (unit bisnis): hanya untuk owner/manager/admin, supaya order masuk antrean kasir yang benar.
+  const { user: penggunaLogin } = useAuth();
+  const pilihUnitTujuan = bolehKelompokUnit(penggunaLogin?.role);
+  const daftarUnit = useDaftarUnitBisnis();
+  const [unitTujuanId, setUnitTujuanId] = useState('');
   const [staffList, setStaffList] = useState([]);
   useEffect(() => {
     if (!isOpen) return;
@@ -493,6 +500,10 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
       alert('Karyawan yang melayani (Dilayani Oleh) wajib dipilih, supaya order dapat dipertanggungjawabkan.');
       return;
     }
+    if (pilihUnitTujuan && !unitTujuanId) {
+      alert('Pilih kasir tujuan (unit bisnis) supaya order masuk ke antrean kasir yang benar.');
+      return;
+    }
     const validItems = items.filter((it) => it.jenis_produk.trim());
     if (validItems.length === 0) {
       alert('Order harus memuat minimal satu item pesanan.');
@@ -513,6 +524,7 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
         // dihitung server dari item pesanan, bukan dari angka di layar (M6).
         metode_diskon: metodeDiskon === 'kupon' ? 'tidak_ada' : metodeDiskon,
         dilayani_oleh: pelayanId || null,
+        ...(pilihUnitTujuan && unitTujuanId ? { unit_bisnis: Number(unitTujuanId) } : {}),
       });
       const orderId = resOrder.data.id;
       for (const it of validItems) {
@@ -561,6 +573,7 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
     setCouponInput('');
     setSelectedCoupon(null);
     setPelayanId('');
+    setUnitTujuanId('');
     setItems([emptyItem()]);
     if (onSuccess) onSuccess();
     if (onClose) onClose();
@@ -858,6 +871,25 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
                     ))}
                   </select>
                 </div>
+
+                {/* Kasir tujuan: order hanya tampil di antrean kasir unit ini. */}
+                {pilihUnitTujuan && (
+                  <div className="mt-3">
+                    <label className="text-[11px] font-bold text-slate-500 block mb-1 flex items-center gap-1">
+                      <ShoppingCart size={12} /> Kasir tujuan (unit bisnis) <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={unitTujuanId}
+                      onChange={(e) => setUnitTujuanId(e.target.value)}
+                      className={`${inputCls} ${!unitTujuanId ? 'border-rose-300' : ''}`}
+                    >
+                      <option value="">— Pilih unit kasir tujuan —</option>
+                      {daftarUnit.map((u) => (
+                        <option key={u.id} value={u.id}>{u.nama}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
               {/* Order Items Table Card */}
