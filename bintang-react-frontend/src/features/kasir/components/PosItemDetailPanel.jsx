@@ -138,7 +138,8 @@ export default function PosItemDetailPanel({ item, addons = [], onSave, onAddMor
       ? hargaSatuanMeteran(luas, hargaPerM2)
       : (parseFloat(harga) || 0);
     const rowFinishing = parseFloat(row.finishingBiaya) || 0;
-    const rowQty = Math.max(1, parseInt(row.qty || 1));
+    // Qty boleh pakai koma (2 desimal), mis. produk Custom: qty = nominal / harga satuan.
+    const rowQty = Math.max(0.01, Math.round((parseFloat(row.qty) || 1) * 100) / 100);
     return {
       p, l, luas, hargaSatuan, rowQty,
       subtotal: (hargaSatuan + rowFinishing) * rowQty,
@@ -352,8 +353,9 @@ export default function PosItemDetailPanel({ item, addons = [], onSave, onAddMor
                       <label className="text-[9px] font-bold text-slate-500 block mb-0.5">Qty</label>
                       <NumericInput
                         value={row.qty}
-                        min={1}
-                        onChange={(val) => updateRow(idx, 'qty', Math.max(1, val))}
+                        min={0.01}
+                        allowDecimal
+                        onChange={(val) => updateRow(idx, 'qty', val)}
                         className="w-full bg-white px-2 py-1.5 border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-500"
                       />
                     </div>
@@ -365,10 +367,12 @@ export default function PosItemDetailPanel({ item, addons = [], onSave, onAddMor
                     <label className="text-[9px] font-bold text-slate-500 block mb-0.5">Qty</label>
                     <NumericInput
                       value={row.qty}
-                      min={1}
-                      onChange={(val) => updateRow(idx, 'qty', Math.max(1, val))}
+                      min={0.01}
+                      allowDecimal
+                      onChange={(val) => updateRow(idx, 'qty', val)}
                       className="w-24 bg-white px-2 py-1.5 border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-500"
                     />
+                    <span className="block text-[9px] font-semibold text-slate-400 mt-0.5">Boleh koma, mis. 2,5</span>
                   </div>
                 )}
 
