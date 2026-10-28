@@ -28,6 +28,7 @@ import WaOrderList from './WaOrderList';
 import { fetchActiveProducts, fetchActivePackages, fetchHargaKatalog } from '../utils/orderCatalogPricing';
 import { todayISO } from '../../../utils/date';
 import { selisihPembulatan } from '../../../utils/pembulatan';
+import useMetodePembayaran from '../hooks/useMetodePembayaran';
 
 export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntrean = 'Pesanan WhatsApp Otomatis' }) {
   // Kasir hanya boleh menerbitkan SPK ke antrean divisi — aturan sama dgn
@@ -53,6 +54,13 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
   const [evaluatingCoupon, setEvaluatingCoupon] = useState(false);
   const [salesDiscountPreview, setSalesDiscountPreview] = useState(null);
   const [editMetode, setEditMetode] = useState('tunai');
+  // Metode DP = master Finance; nilai lama order ('tunai'/'qris'/...) yang tak cocok jatuh ke metode Tunai master.
+  const metodeMaster = useMetodePembayaran(true);
+  const adaMasterMetode = Array.isArray(metodeMaster) && metodeMaster.length > 0;
+  const metodeCocok = adaMasterMetode ? metodeMaster.find((m) => String(m.nama).toLowerCase() === String(editMetode).toLowerCase()) : null;
+  const metodePakai = adaMasterMetode
+    ? (metodeCocok || metodeMaster.find((m) => m.tipe === 'Tunai') || metodeMaster[0]).nama
+    : editMetode;
   const [editCatatan, setEditCatatan] = useState('');
   const [editPelayanId, setEditPelayanId] = useState('');
   const [editItems, setEditItems] = useState([]);
@@ -534,6 +542,20 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
     }
   };
 
+  const getDpBaru = () => Math.max(0, Math.round(Number(editDp) || 0) - (Number(selectedOrder?.dp_dibayar) || 0));
+
+  // Pembulatan pembayaran DP baru (sama dengan server: pembayaran dibulatkan ke atas).
+  const getPembulatanDpBaru = () => {
+    const dpBaru = getDpBaru();
+    if (!businessSettings?.pos_pembulatan_aktif || dpBaru <= 0) return 0;
+    return selisihPembulatan(
+      dpBaru,
+      Number(businessSettings.pos_pembulatan_kelipatan || 0),
+      businessSettings.pos_pembulatan_arah || 'atas',
+      Number(businessSettings.pos_pembulatan_breakpoint) || 50,
+    );
+  };
+
   // Pembulatan bila sisa tagihan dilunasi (Pengaturan POS > Pembulatan); pembayaran dibulatkan ke atas.
   const getPembulatanSisa = () => {
     const sisa = getSisaTagihan();
@@ -552,17 +574,21 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
 
   const handleSaveOrderChanges = async ({ notify = true } = {}) => {
     if (!selectedOrder) return false;
+    const dpTercatat = Number(selectedOrder.dp_dibayar) || 0;
+    if (Math.round(Number(editDp) || 0) < dpTercatat) {
+      alert(`DP yang sudah tercatat (Rp ${dpTercatat.toLocaleString('id-ID')}) tidak bisa dikurangi di sini.`);
+      return false;
+    }
     setSaving(true);
     try {
       // 1. Update Order Header
       await apiClient.patch(`/orders/${selectedOrder.id}/`, {
         nama: editNama,
         nomor_wa: editWa,
-        dp_dibayar: editDp,
         diskon_persen: editDiskon,
         // Kupon diterapkan setelah item tersimpan (di bawah) supaya potongannya dihitung server dari item terbaru.
         metode_diskon: metodeDiskon === 'kupon' ? 'tidak_ada' : metodeDiskon,
-        metode_pembayaran: editMetode,
+        metode_pembayaran: metodePakai,
         catatan_pelanggan: editCatatan,
         dilayani_oleh: editPelayanId || null,
       });
@@ -602,6 +628,28 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
             'Nota tersimpan, tetapi kupon ditolak: ' +
               (errKupon.response?.data?.error || errKupon.response?.data?.detail || 'syarat kupon tidak terpenuhi.')
           );
+        }
+      }
+
+      // DP/uang muka tercatat sungguhan: selisih dari DP yang sudah tercatat dibayarkan lewat /bayar/
+      // (riwayat pembayaran, kas shift, jurnal, dan pembulatan), setelah total final dihitung server.
+      const dpBaru = Math.round(Number(editDp) || 0) - dpTercatat;
+      if (dpBaru > 0) {
+        try {
+          const resBayar = await apiClient.post(`/orders/${selectedOrder.id}/bayar/`, {
+            jumlah_bayar: dpBaru,
+            metode_pembayaran: metodePakai,
+            idempotency_key: globalThis.crypto?.randomUUID?.() || `dp-antrean-${Date.now()}-${Math.random()}`,
+            kirim_wa: kirimWaPelanggan,
+          });
+          setEditDp(resBayar.data?.dp_dibayar ?? editDp);
+        } catch (errBayar) {
+          alert(
+            'Nota tersimpan, tetapi DP belum tercatat: ' +
+              (errBayar.response?.data?.error || errBayar.response?.data?.detail || 'pembayaran gagal diproses.')
+          );
+          await fetchQueue();
+          return false;
         }
       }
 
@@ -1065,17 +1113,39 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
                     />
                   </div>
 
+                  <p className="text-[11px] text-slate-500 -mt-1">
+                    Tercatat: {formatCurrency(Number(selectedOrder?.dp_dibayar) || 0)}. Kenaikan DP dicatat sebagai pembayaran baru saat nota disimpan.
+                  </p>
+                  {getDpBaru() > 0 && getPembulatanDpBaru() !== 0 && (
+                    <>
+                      <div className="flex justify-between">
+                        <span>Pembulatan DP baru ({formatCurrency(getDpBaru())})</span>
+                        <span>{getPembulatanDpBaru() > 0 ? '+' : '-'}{formatCurrency(Math.abs(getPembulatanDpBaru()))}</span>
+                      </div>
+                      <div className="flex justify-between font-black text-slate-800">
+                        <span>DP Dibayar Pelanggan</span>
+                        <span>{formatCurrency(getDpBaru() + getPembulatanDpBaru())}</span>
+                      </div>
+                    </>
+                  )}
+
                   <div className="flex items-center justify-between">
                     <span>Metode Pembayaran DP</span>
                     <select
-                      value={editMetode}
+                      value={metodePakai}
                       onChange={(e) => setEditMetode(e.target.value)}
                       className="bg-white border border-slate-200 rounded-md px-2 py-0.5 font-bold text-slate-700 focus:outline-none"
                     >
-                      <option value="tunai">Tunai / Cash</option>
-                      <option value="transfer">Transfer</option>
-                      <option value="debit">Debit</option>
-                      <option value="qris">QRIS</option>
+                      {adaMasterMetode ? (
+                        metodeMaster.map((m) => <option key={m.id} value={m.nama}>{m.nama}</option>)
+                      ) : (
+                        <>
+                          <option value="tunai">Tunai / Cash</option>
+                          <option value="transfer">Transfer</option>
+                          <option value="debit">Debit</option>
+                          <option value="qris">QRIS</option>
+                        </>
+                      )}
                     </select>
                   </div>
 

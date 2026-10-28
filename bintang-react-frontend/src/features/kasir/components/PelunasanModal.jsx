@@ -7,6 +7,7 @@ import OrderInvoicePrint from './OrderInvoicePrint';
 import KirimIdPesananButton from './KirimIdPesananButton';
 import { requestBrowserPrint } from '../../printing/services/printService';
 import { selisihPembulatan } from '../../../utils/pembulatan';
+import useMetodePembayaran from '../hooks/useMetodePembayaran';
 
 /**
  * Penerimaan pelunasan untuk pesanan yang sudah siap diambil.
@@ -20,7 +21,12 @@ export default function PelunasanModal({ order, onClose, onSelesai }) {
   const sisaAwal = Math.max(0, Number(order?.sisa_tagihan || 0));
 
   const [jumlah, setJumlah] = useState(sisaAwal);
-  const [metode, setMetode] = useState('tunai');
+  // Metode pembayaran = master Finance (Pengaturan POS > Pembayaran); cadangan bila gagal dimuat.
+  const metodeMaster = useMetodePembayaran(true);
+  const adaMaster = Array.isArray(metodeMaster) && metodeMaster.length > 0;
+  const namaDefault = adaMaster ? (metodeMaster.find((m) => m.tipe === 'Tunai') || metodeMaster[0]).nama : 'tunai';
+  const [metodePilihan, setMetode] = useState('');
+  const metode = metodePilihan || namaDefault;
   // Pesanan offline dari staff: kasir boleh tidak mengirim ID pesanan via WA (faktur manual).
   const [kirimWa, setKirimWa] = useState(true);
   const [memproses, setMemproses] = useState(false);
@@ -157,10 +163,16 @@ export default function PelunasanModal({ order, onClose, onSelesai }) {
                 <div>
                   <label className="text-[11px] font-bold text-slate-500 block mb-1">Metode Pembayaran</label>
                   <select value={metode} onChange={(e) => setMetode(e.target.value)} className={inputCls}>
-                    <option value="tunai">Tunai</option>
-                    <option value="transfer">Transfer</option>
-                    <option value="debit">Debit</option>
-                    <option value="qris">QRIS</option>
+                    {adaMaster ? (
+                      metodeMaster.map((m) => <option key={m.id} value={m.nama}>{m.nama}</option>)
+                    ) : (
+                      <>
+                        <option value="tunai">Tunai</option>
+                        <option value="transfer">Transfer</option>
+                        <option value="debit">Debit</option>
+                        <option value="qris">QRIS</option>
+                      </>
+                    )}
                   </select>
                 </div>
 
