@@ -1256,6 +1256,7 @@ export default function PosTerminal({ onToggleSidebar }) {
           selectedPelayanId={selectedPelayanId}
           onSelectStaff={(staff) => setSelectedPelayanId(staff.id || staff)}
           totalAmount={getTotal()}
+          pembulatan={starfoto.item ? 0 : getPembulatan()}
           onOpenCustomerList={() => setRightPanelMode('customerList')}
           onOpenCustomerSelect={() => setRightPanelMode('customerList')}
           onAddNewCustomerClick={() => {

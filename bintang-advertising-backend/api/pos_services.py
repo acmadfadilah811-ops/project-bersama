@@ -529,9 +529,9 @@ def create_sale(*, user, data):
         taxable = max(Decimal('0'), subtotal - total_diskon)
         tax = money(taxable * tax_pct / Decimal('100'))
         total = money(max(Decimal('0'), subtotal - total_diskon + tax))
-        # Pembulatan total sesuai Pengaturan POS (kelipatan & arah); total yang ditagih sudah dibulatkan.
-        from .services.pembulatan import hitung_pembulatan
-        pembulatan = money(hitung_pembulatan(total))
+        # Pembulatan sesuai Pengaturan POS: diskon ke bawah, total yang ditagih ke atas (bawaan); selisih gabungan masuk `pembulatan`.
+        from .services.pembulatan import hitung_pembulatan_penjualan
+        pembulatan = money(hitung_pembulatan_penjualan(total, total_diskon))
         total = money(total + pembulatan)
         if status_val == 'paid' and paid < total:
             raise ValidationError({'error': 'Jumlah pembayaran belum mencukupi total server.'})

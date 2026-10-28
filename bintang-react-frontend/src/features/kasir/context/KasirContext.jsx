@@ -4,7 +4,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useNotifikasiSiapDiambil } from '../hooks/useNotifikasiSiapDiambil';
 import { hargaTierAtauDasar } from '../../../utils/hargaTier';
 import { hargaSatuanMeteran, hitungLuas } from '../../../utils/meteran';
-import { selisihPembulatan } from '../../../utils/pembulatan';
+import { selisihPembulatanPenjualan } from '../../../utils/pembulatan';
 
 const KasirContext = createContext(null);
 
@@ -440,10 +440,13 @@ export function KasirProvider({ children }) {
 
   // Pembulatan total (Pengaturan POS > Pembulatan), sama dengan server (api/services/pembulatan.py).
   // Hanya berlaku untuk penjualan lunas langsung; pesanan DP/Order dan paket foto memakai total apa adanya.
-  const getPembulatan = () => selisihPembulatan(
+  const getPembulatan = () => selisihPembulatanPenjualan(
     getTotal(),
+    getDiscountAmount() + getPromoDiscountAmount() + getPosPromotionDiscountAmount() + getLoyaltyDiscountAmount(),
     businessSettings?.pos_pembulatan_aktif ? Number(businessSettings?.pos_pembulatan_kelipatan || 0) : 0,
-    businessSettings?.pos_pembulatan_arah || 'terdekat',
+    businessSettings?.pos_pembulatan_arah || 'atas',
+    businessSettings?.pos_pembulatan_arah_diskon || 'bawah',
+    Number(businessSettings?.pos_pembulatan_breakpoint) || 50,
   );
 
   return (

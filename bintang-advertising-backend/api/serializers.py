@@ -1066,7 +1066,9 @@ class BusinessSettingsSerializer(serializers.Serializer):
     # POS Pembulatan total penjualan (kelipatan Rp; 0 = mati) & arah (terdekat/atas/bawah)
     pos_pembulatan_aktif = serializers.BooleanField(required=False, default=False)
     pos_pembulatan_kelipatan = serializers.IntegerField(required=False, default=0, min_value=0)
-    pos_pembulatan_arah = serializers.ChoiceField(choices=['terdekat', 'atas', 'bawah'], required=False, default='terdekat')
+    pos_pembulatan_arah = serializers.ChoiceField(choices=['terdekat', 'atas', 'bawah'], required=False, default='atas')
+    pos_pembulatan_arah_diskon = serializers.ChoiceField(choices=['terdekat', 'atas', 'bawah'], required=False, default='bawah')
+    pos_pembulatan_breakpoint = serializers.IntegerField(required=False, default=50, min_value=1, max_value=99)
 
     # POS Mode Cek Stok Settings
     pos_stok_blokir_jual_jika_kosong = serializers.BooleanField(required=False, default=True)
@@ -1149,6 +1151,8 @@ class BusinessSettingsSerializer(serializers.Serializer):
         'pos_pembulatan_aktif':            'pos_pembulatan_aktif',
         'pos_pembulatan_kelipatan':        'pos_pembulatan_kelipatan',
         'pos_pembulatan_arah':             'pos_pembulatan_arah',
+        'pos_pembulatan_arah_diskon':      'pos_pembulatan_arah_diskon',
+        'pos_pembulatan_breakpoint':       'pos_pembulatan_breakpoint',
 
         # POS Mode Cek Stok Settings
         'pos_stok_blokir_jual_jika_kosong':      'pos_stok_blokir_jual_jika_kosong',
@@ -1257,7 +1261,9 @@ class BusinessSettingsSerializer(serializers.Serializer):
             # POS Pembulatan Defaults (mati)
             'pos_pembulatan_aktif': False,
             'pos_pembulatan_kelipatan': 0,
-            'pos_pembulatan_arah': 'terdekat',
+            'pos_pembulatan_arah': 'atas',
+            'pos_pembulatan_arah_diskon': 'bawah',
+            'pos_pembulatan_breakpoint': 50,
 
             # POS Mode Cek Stok Defaults
             'pos_stok_blokir_jual_jika_kosong': True,
@@ -1288,7 +1294,7 @@ class BusinessSettingsSerializer(serializers.Serializer):
                 if config_key not in semua_config:
                     raise SystemConfig.DoesNotExist
                 val = semua_config[config_key]
-                if field_name in ['ppn_default', 'payroll_toleransi_menit', 'biaya_potongan_terlambat', 'smtp_port', 'pos_shift_kas_awal', 'pos_pembulatan_kelipatan', 'job_macet_jam_antrean', 'job_macet_jam_dikerjakan']:
+                if field_name in ['ppn_default', 'payroll_toleransi_menit', 'biaya_potongan_terlambat', 'smtp_port', 'pos_shift_kas_awal', 'pos_pembulatan_kelipatan', 'pos_pembulatan_breakpoint', 'job_macet_jam_antrean', 'job_macet_jam_dikerjakan']:
                     try:
                         result[field_name] = int(val)
                     except ValueError:

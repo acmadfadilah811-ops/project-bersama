@@ -134,8 +134,23 @@ def pembulatan_kelipatan():
 
 
 def pembulatan_arah():
-    arah = str(_raw('pos_pembulatan_arah') or 'terdekat').strip().lower()
-    return arah if arah in ('terdekat', 'atas', 'bawah') else 'terdekat'
+    """Arah pembulatan pembayaran (total yang ditagih); bawaan ke atas."""
+    arah = str(_raw('pos_pembulatan_arah') or 'atas').strip().lower()
+    return arah if arah in ('terdekat', 'atas', 'bawah') else 'atas'
+
+
+def pembulatan_breakpoint():
+    """Titik pembulatan ke bawah mode Otomatis, persen dari besar pembagi (1-99, bawaan 50)."""
+    try:
+        return min(99, max(1, int(str(_raw('pos_pembulatan_breakpoint') or 50).strip() or 50)))
+    except (TypeError, ValueError):
+        return 50
+
+
+def pembulatan_arah_diskon():
+    """Arah pembulatan diskon; bawaan ke bawah."""
+    arah = str(_raw('pos_pembulatan_arah_diskon') or 'bawah').strip().lower()
+    return arah if arah in ('terdekat', 'atas', 'bawah') else 'bawah'
 
 
 def wajib_shift_aktif():
