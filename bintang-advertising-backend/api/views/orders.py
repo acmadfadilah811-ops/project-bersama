@@ -206,6 +206,16 @@ class OrderViewSet(viewsets.ModelViewSet):
             serializer.validated_data['diskon_persen'] = 0
             serializer.validated_data['metode_diskon'] = 'tidak_ada'
             serializer.validated_data.pop('kupon', None)
+        elif (
+            self.request.user.role == 'manager'
+            and 'sumber' not in self.request.data
+            and not serializer.validated_data.get('dp_dibayar')
+            and serializer.validated_data.get('status_global', 'review') in ('draft', 'review')
+        ):
+            # Order manager yang belum dibayar (tanpa DP) menunggu kasir seperti order staff:
+            # sumber 'staff' memasukkannya ke antrean "Antrean Online & Offline". Manager tetap
+            # boleh mengatur diskon/status; yang memakai DP atau sumber eksplisit tidak diubah.
+            serializer.validated_data['sumber'] = 'staff'
 
         # ── Validasi data pelanggan & pelayan WAJIB sebelum order tersimpan ──
         # Sebelumnya order bisa dibuat dengan nomor asal-asalan (mis. bukan
