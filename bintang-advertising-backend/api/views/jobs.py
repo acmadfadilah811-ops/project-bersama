@@ -142,10 +142,11 @@ def deduct_job_materials_if_needed(job, user):
                 item = InventoryItem.objects.select_for_update().get(pk=item.pk)
 
                 luas = order_item.luas
+                qty_item = float(order_item.qty)  # OrderItem.qty desimal; luas & qty_required_per_unit float
                 if luas > 0:
-                    qty_needed = round(luas * order_item.qty * bom_item.qty_required_per_unit, 4)
+                    qty_needed = round(luas * qty_item * bom_item.qty_required_per_unit, 4)
                 else:
-                    qty_needed = round(order_item.qty * bom_item.qty_required_per_unit, 4)
+                    qty_needed = round(qty_item * bom_item.qty_required_per_unit, 4)
 
                 if qty_needed <= 0:
                     continue

@@ -14,6 +14,7 @@ from .models import (
 )
 from .product_serializers import SaleItemAddonSerializer
 from .services.order_stock import potong_stok_order_item
+from .qty_format import qty_json
 from .protected_media import protected_media_url
 
 logger = logging.getLogger(__name__)
@@ -385,7 +386,16 @@ class JobBoardSerializer(serializers.ModelSerializer):
         return "-"
 
 # --- 4. Order Item Serializer (Detail Pecahan) ---
+class QtyPesananField(serializers.DecimalField):
+    """Qty item pesanan: kolom desimal (4 angka) tetapi API tetap mengirim bilangan (1 / 2.5), bukan string '1.0000'."""
+
+    def to_representation(self, value):
+        return qty_json(value)
+
+
 class OrderItemSerializer(serializers.ModelSerializer):
+    qty = QtyPesananField(max_digits=12, decimal_places=4, required=False)
+
     jobs = JobBoardSerializer(many=True, read_only=True) # Nested JobBoard
     addons = SaleItemAddonSerializer(many=True, read_only=True)
     insentif = serializers.SerializerMethodField()
@@ -425,10 +435,16 @@ class OrderItemSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         """Paket WA/admin tidak boleh membawa harga yang ditentukan browser."""
         qty = attrs.get('qty', getattr(self.instance, 'qty', 1))
-        if qty is None or qty < 1:
-            raise serializers.ValidationError({'qty': 'Qty harus minimal 1.'})
+        if qty is None or qty <= 0:
+            raise serializers.ValidationError({'qty': 'Qty harus lebih dari nol.'})
 
         package = attrs.get('paket') or getattr(self.instance, 'paket', None)
+        if package and Decimal(str(qty)) != Decimal(str(qty)).to_integral_value():
+            raise serializers.ValidationError({'qty': 'Qty paket harus bilangan bulat.'})
+        product = attrs.get('product') or getattr(self.instance, 'product', None)
+        if (not package and product is not None and product.lacak_inventori
+                and Decimal(str(qty)) != Decimal(str(qty)).quantize(Decimal('0.01'))):
+            raise serializers.ValidationError({'qty': 'Qty produk berstok maksimal 2 angka di belakang koma.'})
         if not package:
             return attrs
 

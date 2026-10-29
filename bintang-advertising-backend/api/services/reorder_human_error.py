@@ -39,14 +39,14 @@ def _item_reorder(order_asal):
     for it in order_asal.items.all():
         if it.paket_id:
             continue
-        qty = int(it.qty or 1) or 1
+        qty = Decimal(str(it.qty or 1)) or Decimal('1')
         harga_satuan = (Decimal(str(it.harga_jual or 0)) / qty * PERSEN_TANGGUNGAN).quantize(
             Decimal('1'), rounding=ROUND_HALF_UP,
         )
         items.append({
             'product_id': it.product_id,
             'variant_id': it.variant_id,
-            'qty': qty,
+            'qty': str(qty.normalize()) if qty != qty.to_integral_value() else int(qty),
             'harga_satuan': int(harga_satuan),
             'nama': it.jenis_produk or 'Item Reorder',
             'is_custom_priced': True,

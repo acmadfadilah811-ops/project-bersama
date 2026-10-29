@@ -78,7 +78,7 @@ def hitung_ringkasan_invoice_dp(order):
         if configured_discount <= 0:
             continue
         if detail.get('tipe_diskon') == 'nominal':
-            diskon_item += configured_discount * max(1, _to_int(item.qty))
+            diskon_item += int(round(configured_discount * (float(item.qty) if item.qty else 1.0)))
         elif 0 < configured_discount < 100:
             before_discount = round(final_line_total / (1 - (configured_discount / 100)))
             diskon_item += max(0, before_discount - final_line_total)

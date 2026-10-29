@@ -3,6 +3,7 @@ import logging
 import csv
 import io
 import datetime
+from decimal import Decimal, ROUND_HALF_UP
 from rest_framework import viewsets, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -35,6 +36,10 @@ from .jobs import deduct_job_materials_if_needed
 from ..pos_services import stok_kritis_warnings
 
 logger = logging.getLogger(__name__)
+
+# Presisi qty item pesanan DP: produk berstok 2 angka (stok & FIFO), produk custom/jasa tanpa pelacakan stok 4 angka.
+PRESISI_QTY_STOK = Decimal('0.01')
+PRESISI_QTY_TANPA_STOK = Decimal('0.0001')
 
 
 def _active_shift_for(user):
@@ -475,11 +480,11 @@ class OrderViewSet(viewsets.ModelViewSet):
         grup_pelanggan = nama_grup_pelanggan(nomor_wa)
         for raw_item in items_data:
             try:
-                qty = int(raw_item.get('qty') or 0)
+                qty = Decimal(str(raw_item.get('qty') or 0))
                 harga_satuan = int(raw_item.get('harga_satuan') or 0)
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, ArithmeticError):
                 raise ValidationError({'error': 'Qty atau harga item tidak valid.'})
-            if qty <= 0 or harga_satuan < 0:
+            if not qty.is_finite() or qty <= 0 or harga_satuan < 0:
                 raise ValidationError({'error': 'Qty harus lebih dari nol dan harga tidak boleh negatif.'})
 
             product = None
@@ -489,10 +494,12 @@ class OrderViewSet(viewsets.ModelViewSet):
             addon_total = Decimal('0')
             package_id = raw_item.get('package_id') or raw_item.get('paket_id')
             if package_id:
+                if qty != qty.to_integral_value():
+                    raise ValidationError({'error': 'Qty paket harus bilangan bulat.'})
                 package, package_qty, package_price = resolve_package_for_sale(
                     package_id, qty, channel='pos', lock=True,
                 )
-                qty = int(package_qty)
+                qty = Decimal(int(package_qty))
                 harga_satuan = int(package_price)
                 # Paket tidak punya stok sendiri — mutasi dihitung dari komponen
                 # master paket, sama seperti create_sale() di pos_services.py.
@@ -514,6 +521,10 @@ class OrderViewSet(viewsets.ModelViewSet):
                 product = Product.objects.select_for_update().filter(pk=raw_item['product_id']).first()
                 if not product:
                     raise ValidationError({'error': 'Produk pada keranjang tidak ditemukan.'})
+                # Produk berstok 2 angka di belakang koma (stok & FIFO), produk custom/jasa 4 angka -- sama dengan kasir lunas.
+                qty = qty.quantize(PRESISI_QTY_STOK if product.lacak_inventori else PRESISI_QTY_TANPA_STOK)
+                if qty <= 0:
+                    raise ValidationError({'error': f"Qty {product.nama} terlalu kecil."})
                 if raw_item.get('variant_id'):
                     variant = ProductVariant.objects.select_for_update().filter(pk=raw_item['variant_id'], product=product).first()
                     if not variant:
@@ -529,7 +540,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                         )['harga_satuan'])
                     except HargaProdukError:
                         pass  # produk per_m2 tanpa ukuran dsb: tetap harga dasar seperti sebelumnya
-                qty_decimal = Decimal(str(qty))
+                qty_decimal = qty
                 key = (product.id, variant.id if variant else None)
                 stock_requested[key] = stock_requested.get(key, Decimal('0')) + qty_decimal
                 stock_owners[key] = (product, variant)
@@ -542,6 +553,12 @@ class OrderViewSet(viewsets.ModelViewSet):
                 )
                 addon_total = sum((Decimal(str(a.harga or 0)) * q for a, q in item_addons), Decimal('0'))
 
+            if not product and not package:
+                # Item kustom tanpa produk master: tidak melacak stok, 4 angka di belakang koma.
+                qty = qty.quantize(PRESISI_QTY_TANPA_STOK)
+                if qty <= 0:
+                    raise ValidationError({'error': 'Qty item terlalu kecil.'})
+            total_baris = (Decimal(harga_satuan) * qty).quantize(Decimal('1'), rounding=ROUND_HALF_UP) + int(addon_total)
             detail = raw_item.get('detail') if isinstance(raw_item.get('detail'), dict) else {}
             item = OrderItem(
                 order=order,
@@ -555,7 +572,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 lebar=float(raw_item.get('lebar') or 0),
                 harga_per_m2=int(raw_item.get('harga_per_m2') or 0),
                 qty=qty,
-                harga_jual=harga_satuan * qty + int(addon_total),
+                harga_jual=int(total_baris),
                 detail=[detail] if detail else [],
                 keterangan_detail=str(raw_item.get('catatan') or '')[:2000],
                 # Stok item ini dipotong di blok stock_lines di bawah (produk

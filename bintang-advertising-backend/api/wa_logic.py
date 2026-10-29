@@ -17,6 +17,8 @@ import re
 import difflib
 import logging
 
+from .qty_format import tampil_qty
+
 logger = logging.getLogger(__name__)
 
 # ── Peta ID tombol WA lama -> teks polos ────────────────────────────
@@ -335,7 +337,7 @@ def format_tracking(order, panggilan="Kak", tampil_harga=True):
     else:
         lines.append(f"🛒 *{items.count()} Item Pesanan:*")
         for i, item in enumerate(items, 1):
-            lines.append(f"\n  *{i}. {item.jenis_produk}* (qty: {item.qty})")
+            lines.append(f"\n  *{i}. {item.jenis_produk}* (qty: {tampil_qty(item.qty)})")
             latest_job = item.jobs.order_by('-id').first()
             if latest_job:
                 emoji, deskripsi = deskripsi_job_sesi(latest_job) or STATUS_LABEL.get(

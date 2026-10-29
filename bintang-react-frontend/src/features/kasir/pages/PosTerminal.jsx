@@ -843,11 +843,6 @@ export default function PosTerminal({ onToggleSidebar }) {
         notifyError('Karyawan diperlukan', 'Pilih karyawan yang melayani sebelum menerima DP.');
         return;
       }
-      // Order DP menyimpan qty sebagai bilangan bulat; qty dengan koma hanya untuk pembayaran lunas.
-      if (cart.some((it) => !Number.isInteger(Number(it.qty)))) {
-        notifyError('Qty memakai koma', 'Qty dengan koma hanya bisa untuk pembayaran lunas. Untuk DP, ubah qty menjadi bilangan bulat.');
-        return;
-      }
     }
     const pembayaran = { ...paymentData, checkoutKey: makeCheckoutKey() };
     setPendingPayment(pembayaran);

@@ -6,6 +6,8 @@ import re
 import uuid
 import logging
 
+from .qty_format import tampil_qty
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------
@@ -821,7 +823,8 @@ class OrderItem(models.Model):
     # Format Tabel Excel disimpan di sini dalam bentuk JSON (termasuk list Finishing)
     detail = models.JSONField(default=list, null=True, blank=True, help_text="Spesifikasi awal dari customer dalam format Tabel/JSON") 
     
-    qty = models.IntegerField(default=1)
+    # Desimal (2026-10-29): DP kasir boleh qty berkoma (produk Custom/jasa 4 angka, produk berstok 2 angka).
+    qty = models.DecimalField(max_digits=12, decimal_places=4, default=1)
     harga_jual = models.IntegerField(default=0)
     biaya_bahan = models.IntegerField(default=0)
     estimasi = models.CharField(max_length=50, default="-")
@@ -847,8 +850,8 @@ class OrderItem(models.Model):
         # inventori/akuntansi & pergerakan stok (baris penjualan/pesanan
         # kosong tapi tetap tercatat). Dicek di sini (bukan cuma serializer)
         # supaya semua jalur (form WA, order manual, admin) ikut terlindungi.
-        if self.qty is None or self.qty < 1:
-            raise ValueError(f"Qty '{self.jenis_produk or 'item'}' harus minimal 1, bukan {self.qty}.")
+        if self.qty is None or self.qty <= 0:
+            raise ValueError(f"Qty '{self.jenis_produk or 'item'}' harus lebih dari nol, bukan {self.qty}.")
         # Auto kalkulasi luas m2 dari P x L sebelum disimpan ke database
         self.luas = round(self.panjang * self.lebar, 4)
         is_new = not self.pk
@@ -899,7 +902,7 @@ class OrderItem(models.Model):
                         order=self.order,
                         user=user,
                         tindakan="ADD_ITEM",
-                        keterangan=f"Menambahkan item baru: '{self.jenis_produk}' (Bahan: {self.bahan or '-'}, Qty: {self.qty}, Harga: Rp{self.harga_jual})"
+                        keterangan=f"Menambahkan item baru: '{self.jenis_produk}' (Bahan: {self.bahan or '-'}, Qty: {tampil_qty(self.qty)}, Harga: Rp{self.harga_jual})"
                     )
                 except Exception as e:
                     logger.error(f"Failed to log item creation: {e}")
@@ -949,7 +952,7 @@ class OrderItem(models.Model):
                 order=order,
                 user=user,
                 tindakan="DELETE_ITEM",
-                keterangan=f"Menghapus item: '{self.jenis_produk}' (Qty: {self.qty}, Harga: Rp{self.harga_jual})"
+                keterangan=f"Menghapus item: '{self.jenis_produk}' (Qty: {tampil_qty(self.qty)}, Harga: Rp{self.harga_jual})"
             )
         except Exception as e:
             logger.error(f"Failed to log item deletion: {e}")
