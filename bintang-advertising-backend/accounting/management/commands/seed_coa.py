@@ -92,6 +92,7 @@ ACCOUNTS = [
     ("60400", "Biaya penyusutan", "Pengeluaran", AccountType.EXPENSE, False, ""),
     ("60500", "Biaya transfer", "Pengeluaran", AccountType.EXPENSE, False, ""),
     ("60600", "Beban BPJS perusahaan", "Pengeluaran", AccountType.EXPENSE, False, ""),
+    ("60700", "Biaya uang makan", "Pengeluaran", AccountType.EXPENSE, False, "Uang makan mingguan karyawan dari HR."),
     ("70000", "Pendapatan lain lain", "Pendapatan Lain", AccountType.REVENUE, False, ""),
     ("70001", "Pembulatan", "Pendapatan Lain", AccountType.REVENUE, False, ""),
     ("70002", "Code Uniq Penjualan", "Pendapatan Lain", AccountType.REVENUE, False, ""),

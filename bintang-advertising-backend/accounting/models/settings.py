@@ -230,6 +230,20 @@ class AccountingSettings(models.Model):
         Account, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
         help_text="Akun Beban iuran perusahaan (mis. BPJS) -- hanya wajib bila ada iuran perusahaan.",
     )
+    # Uang makan mingguan dari HR (services/uang_makan_posting.py, 2026-10-30): jurnal otomatis saat
+    # HR menandai dibayar -- Dr akun biaya / Cr Kas (tunai) atau Bank (transfer). Kosong = ditolak.
+    uang_makan_expense_account = models.ForeignKey(
+        Account, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+        help_text="Akun Biaya uang makan yang didebit saat HR membayar uang makan mingguan.",
+    )
+    uang_makan_tunai_account = models.ForeignKey(
+        Account, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+        help_text="Akun Kas yang dikredit untuk uang makan yang dibayar tunai.",
+    )
+    uang_makan_transfer_account = models.ForeignKey(
+        Account, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+        help_text="Akun Bank yang dikredit untuk uang makan yang dibayar transfer.",
+    )
     # Persetujuan pencairan gaji 5 tahap (services/payroll_persetujuan.py).
     payroll_batas_selisih_persen = models.DecimalField(
         max_digits=5, decimal_places=2, default=10,
