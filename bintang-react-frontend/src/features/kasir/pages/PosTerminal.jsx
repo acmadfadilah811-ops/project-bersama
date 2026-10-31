@@ -105,6 +105,8 @@ export default function PosTerminal({ onToggleSidebar }) {
     setSelectedCoupon,
     metodeDiskon,
     setMetodeDiskon,
+    diskonManual,
+    setDiskonManual,
     selectedRedemption,
     setSelectedRedemption,
     taxPercent,
@@ -787,6 +789,9 @@ export default function PosTerminal({ onToggleSidebar }) {
         dilayani_oleh_id: selectedPelayanId || null,
         metode_diskon: metodeDiskon,
         kupon_kode: selectedCoupon?.kode || undefined,
+        ...(metodeDiskon === 'manual'
+          ? { diskon_manual_tipe: diskonManual.tipe, diskon_manual_nilai: diskonManual.nilai }
+          : {}),
         loyalty_redemption_id: selectedRedemption?.id || undefined,
         spk: spkPayload,
         // Sebelumnya cuma dikirim di alur DP (/orders/checkout-pos/) --
@@ -924,6 +929,9 @@ export default function PosTerminal({ onToggleSidebar }) {
         diskon_persen: discountPercent,
         metode_diskon: metodeDiskon,
         kupon_kode: selectedCoupon?.kode || undefined,
+        ...(metodeDiskon === 'manual'
+          ? { diskon_manual_tipe: diskonManual.tipe, diskon_manual_nilai: diskonManual.nilai }
+          : {}),
         catatan: cartNotes,
         jatuh_tempo: pembayaran.dueDate,
         dilayani_oleh_id: selectedPelayanId,
@@ -1424,6 +1432,18 @@ export default function PosTerminal({ onToggleSidebar }) {
         onApplyCoupon={handleApplyCoupon}
         onRemoveCoupon={() => {
           setSelectedCoupon(null);
+          setMetodeDiskon('tidak_ada');
+        }}
+        diskonManual={diskonManual}
+        isManualDiscountActive={metodeDiskon === 'manual'}
+        onApplyManualDiscount={(tipe, nilai) => {
+          // Pilihan ketiga: menggantikan kupon / Diskon Penjualan otomatis (tidak ditumpuk).
+          setSelectedCoupon(null);
+          setDiskonManual({ tipe, nilai });
+          setMetodeDiskon('manual');
+        }}
+        onRemoveManualDiscount={() => {
+          setDiskonManual({ tipe: 'persen', nilai: 0 });
           setMetodeDiskon('tidak_ada');
         }}
         salesDiscountPreview={salesDiscountPreview}

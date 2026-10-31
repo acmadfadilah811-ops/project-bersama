@@ -172,6 +172,12 @@ def create_sale(*, user, data):
         raise ValidationError({
             'error': 'Diskon manual tidak diizinkan. Gunakan kupon atau Diskon Penjualan yang aktif di Marketing.',
         })
+    # Diskon custom kasir (keputusan manager 2026-10-31): Rp atau %, pilihan ketiga di samping kupon dan
+    # Diskon Penjualan otomatis (keduanya tidak dievaluasi bila metode ini dipilih).
+    diskon_manual = None
+    if data.get('metode_diskon') == 'manual':
+        from .services import diskon_manual as dm
+        diskon_manual = dm.baca(data)
 
     with transaction.atomic():
         shift = (SaldoKasHarian.objects.select_for_update()
@@ -522,7 +528,11 @@ def create_sale(*, user, data):
                 )})
             loyalty_discount = loyalty_svc.compute_redemption_discount(loyalty_obj, subtotal)
 
-        discount = money(subtotal * discount_pct / Decimal('100'))
+        if diskon_manual is not None:
+            from .services import diskon_manual as dm
+            discount = money(dm.hitung(subtotal, *diskon_manual))
+        else:
+            discount = money(subtotal * discount_pct / Decimal('100'))
         # Diskon Khusus Tipe Pelanggan -- otomatis, SELALU dievaluasi &
         # menumpuk dengan diskon lain (sama seperti Promosi POS di atas),
         # karena ini hak pelanggan berdasarkan tipenya, bukan pilihan

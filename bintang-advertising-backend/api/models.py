@@ -274,6 +274,8 @@ class Order(models.Model):
     kupon = models.ForeignKey('DiscountCoupon', on_delete=models.SET_NULL, null=True, blank=True, related_name='orders')
     diskon_kupon = models.IntegerField(default=0, help_text="Potongan nominal dari kupon")
     diskon_otomatis = models.IntegerField(default=0, help_text="Potongan nominal dari Diskon Penjualan (Toko Online)")
+    # Diskon custom kasir (keputusan manager 2026-10-31), rupiah; persen dikonversi saat checkout.
+    diskon_manual = models.IntegerField(default=0, help_text="Potongan diskon custom kasir (Rp)")
     diskon_tipe_pelanggan = models.IntegerField(
         default=0,
         help_text="Potongan nominal otomatis dari Diskon Khusus Tipe Pelanggan (CustomerGroup), dihitung ulang tiap save().",
@@ -293,6 +295,7 @@ class Order(models.Model):
         ('tidak_ada', 'Tidak Ada'),
         ('otomatis', 'Diskon Penjualan Otomatis'),
         ('kupon', 'Kupon Diskon'),
+        ('manual', 'Diskon Custom Kasir'),
     ]
     metode_diskon = models.CharField(max_length=20, choices=METODE_DISKON_CHOICES, default='tidak_ada')
 
@@ -391,10 +394,14 @@ class Order(models.Model):
             logger.warning(f"Failed to resolve customer group discount for order {self.pk}: {e}")
             return 0
 
+    def _potongan_nota(self, subtotal):
+        """Diskon nota persen (diskon_persen) + diskon custom kasir (rupiah, tidak melebihi subtotal)."""
+        return int(subtotal * (self.diskon_persen / 100)) + min(int(self.diskon_manual or 0), int(subtotal or 0))
+
     def update_totals(self):
         """Method bantuan untuk menghitung ulang total dan sisa tagihan dari item-itemnya."""
         subtotal = sum(item.harga_jual for item in self.items.all())
-        potongan = int(subtotal * (self.diskon_persen / 100))
+        potongan = self._potongan_nota(subtotal)
         self.total_harga = subtotal - potongan
         try:
             from api.marketing_models import CouponUsage
@@ -424,7 +431,7 @@ class Order(models.Model):
             if self.pk:
                 try:
                     subtotal = sum(item.harga_jual for item in self.items.all())
-                    potongan = int(subtotal * (self.diskon_persen / 100))
+                    potongan = self._potongan_nota(subtotal)
                     self.total_harga = subtotal - potongan
                     try:
                         from api.marketing_models import CouponUsage
@@ -915,7 +922,7 @@ class OrderItem(models.Model):
                 from django.db.models import Sum
                 order = self.order
                 subtotal = order.items.aggregate(total=Sum('harga_jual'))['total'] or 0
-                potongan = int(subtotal * (order.diskon_persen / 100))
+                potongan = order._potongan_nota(subtotal)
                 total_harga = subtotal - potongan
                 try:
                     from api.marketing_models import CouponUsage
@@ -963,7 +970,7 @@ class OrderItem(models.Model):
             try:
                 from django.db.models import Sum
                 subtotal = order.items.aggregate(total=Sum('harga_jual'))['total'] or 0
-                potongan = int(subtotal * (order.diskon_persen / 100))
+                potongan = order._potongan_nota(subtotal)
                 total_harga = subtotal - potongan
                 # Sebelumnya blok ini TIDAK subtract diskon_otomatis maupun
                 # kupon sama sekali (beda dari OrderItem.save()/Order.save())

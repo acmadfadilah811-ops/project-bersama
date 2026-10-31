@@ -38,6 +38,8 @@ export function KasirProvider({ children }) {
   // dibandingkan diam-diam) — mengurangi risiko kasir salah paham diskon mana
   // yang sebenarnya berlaku. Tebus Poin Loyalti tetap independen (bisa gabung).
   const [metodeDiskon, setMetodeDiskon] = useState('tidak_ada');
+  // Diskon custom kasir (keputusan manager 2026-10-31): dipakai bila metodeDiskon === 'manual'.
+  const [diskonManual, setDiskonManual] = useState({ tipe: 'persen', nilai: 0 });
   // Opsi penukaran poin loyalty yang diterapkan pada transaksi (atau null).
   const [selectedRedemption, setSelectedRedemption] = useState(null);
   // Karyawan yang melayani (service order) — id User, diinput kasir.
@@ -239,6 +241,7 @@ export function KasirProvider({ children }) {
     setTaxPercent(0);
     setSelectedCoupon(null);
     setMetodeDiskon('tidak_ada');
+    setDiskonManual({ tipe: 'persen', nilai: 0 });
     setSelectedRedemption(null);
   };
 
@@ -302,7 +305,14 @@ export function KasirProvider({ children }) {
   };
 
   const getDiscountAmount = () => {
-    return Math.round((getSubtotal() * Number(discountPercent || 0)) / 100);
+    const subtotal = getSubtotal();
+    if (metodeDiskon === 'manual') {
+      // Sama dengan api/services/diskon_manual.hitung: rupiah utuh, tidak melebihi subtotal.
+      const nilai = Number(diskonManual.nilai || 0);
+      const potongan = diskonManual.tipe === 'persen' ? Math.round((subtotal * nilai) / 100) : Math.round(nilai);
+      return Math.max(0, Math.min(potongan, subtotal));
+    }
+    return Math.round((subtotal * Number(discountPercent || 0)) / 100);
   };
 
   const getCouponDiscountAmount = () => {
@@ -486,6 +496,8 @@ export function KasirProvider({ children }) {
         setSelectedCoupon,
         metodeDiskon,
         setMetodeDiskon,
+        diskonManual,
+        setDiskonManual,
         selectedRedemption,
         setSelectedRedemption,
         selectedPelayanId,

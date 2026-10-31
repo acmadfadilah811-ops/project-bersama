@@ -391,12 +391,17 @@ class OrderViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_400_BAD_REQUEST)
 
         metode_diskon = str(request.data.get('metode_diskon') or 'tidak_ada').strip()
-        if metode_diskon not in ('tidak_ada', 'kupon', 'otomatis'):
+        if metode_diskon not in ('tidak_ada', 'kupon', 'otomatis', 'manual'):
             return Response({'error': 'Metode diskon tidak valid.'}, status=status.HTTP_400_BAD_REQUEST)
         kupon_kode = str(request.data.get('kupon_kode') or '').strip()
         if metode_diskon == 'kupon' and not kupon_kode:
             return Response({'error': 'Kode kupon wajib dipilih dari Diskon Pesanan.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        # Diskon custom kasir (2026-10-31): Rp atau %, menggantikan kupon/diskon otomatis (bukan ditumpuk).
+        diskon_manual = None
+        if metode_diskon == 'manual':
+            from ..services import diskon_manual as dm
+            diskon_manual = dm.baca(request.data)
 
         due_date_raw = str(request.data.get('jatuh_tempo') or '').strip()
         due_date = parse_date(due_date_raw) if due_date_raw else None
@@ -443,6 +448,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             items_data = rencana_reorder['items']
             nama, nomor_wa = reorder_dari.nama, reorder_dari.nomor_wa
             metode_diskon, kupon_kode = 'tidak_ada', ''
+            diskon_manual = None
 
         order = Order.objects.create(
             id=order_id,
@@ -619,6 +625,10 @@ class OrderViewSet(viewsets.ModelViewSet):
         # Item.save menghitung subtotal; simpan header sekali agar diskon dan sisa
         # tagihan dihitung dari seluruh keranjang sebelum nominal DP divalidasi.
         order.refresh_from_db()
+        if diskon_manual is not None:
+            from ..services import diskon_manual as dm
+            subtotal_order = sum(it.harga_jual for it in order.items.all())
+            order.diskon_manual = int(dm.hitung(subtotal_order, *diskon_manual))
         order._current_user = request.user
         order.save()
         order.refresh_from_db()

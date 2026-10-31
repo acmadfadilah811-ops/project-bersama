@@ -704,7 +704,7 @@ class OrderSerializer(serializers.ModelSerializer):
             'diskon_total',
             'dilayani_oleh', 'dilayani_oleh_nama', 'crm_sales_nama',
             'unit_bisnis', 'unit_bisnis_nama',
-            'metode_diskon', 'diskon_otomatis',
+            'metode_diskon', 'diskon_otomatis', 'diskon_manual',
             # Metadata & Pengiriman (T-209 Revisi 2)
             'email_pelanggan', 'alamat_pelanggan', 'kurir_pengiriman', 'layanan_pengiriman',
             'tanggal_pengiriman', 'toko_dropship', 'pengirim_dropship', 'telepon_dropship',
@@ -718,6 +718,7 @@ class OrderSerializer(serializers.ModelSerializer):
             'id': {'read_only': True},
             'waktu': {'required': False},
             'total_harga': {'read_only': True},  # Biarkan backend yang menjumlahkan totalnya
+            'diskon_manual': {'read_only': True},  # hanya diisi checkout-pos (diskon custom kasir)
             'sisa_tagihan': {'read_only': True}, # Backend auto kurang total dengan DP
             # Provenans order (wa/pos/manual) hanya boleh diset server saat
             # dibuat (form WA, checkout_pos, dst) — bukan dari payload klien.
