@@ -62,6 +62,16 @@ def _kirim_aman(order_id):
         close_old_connections()
 
 
+def _rincian_item(order):
+    """Item order untuk ditampilkan di Opportunity CRM (nama, qty tanpa nol berlebih, subtotal baris)."""
+    from ..qty_format import qty_json
+
+    return [
+        {'nama': item.jenis_produk, 'qty': qty_json(item.qty), 'subtotal': int(item.harga_jual or 0)}
+        for item in order.items.all().order_by('id')
+    ]
+
+
 def _payload(order, lunas):
     from .pelanggan_nomor import cari_customer_per_nomor
 
@@ -78,6 +88,15 @@ def _payload(order, lunas):
             'tanggal': timezone.localtime(order.waktu).date().isoformat(),
             'lunas': lunas,
             'unit_bisnis': unit,
+            # Rincian untuk Opportunity CRM (nama jelas, deskripsi, langkah berikutnya).
+            'pelanggan': order.nama,
+            'status_order': order.get_status_global_display(),
+            'dp_dibayar': int(order.dp_dibayar or 0),
+            'sisa_tagihan': int(order.sisa_tagihan or 0),
+            'metode_pembayaran': order.metode_pembayaran,
+            'dilayani_oleh': penjual.get_full_name() if penjual else '',
+            'catatan': (order.catatan_pelanggan or '')[:500],
+            'items': _rincian_item(order),
         },
         'penjual_hr_employee_id': getattr(penjual, 'hr_employee_id', None),
     }
