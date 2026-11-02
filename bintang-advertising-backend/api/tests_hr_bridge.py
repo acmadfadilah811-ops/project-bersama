@@ -340,3 +340,49 @@ class AbsensiStatusViewTests(APITestCase):
         response = self._get(604)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertFalse(response.data["has_open_session"])
+
+
+class HRBridgeRoleManajerTests(APITestCase):
+    """Regresi 2026-11-02: jabatan "Manajer Operasional" jatuh ke role 'staff' karena hanya
+    "manager"/"ceo" persis yang dikenali; akun manajer kehilangan aksesnya saat HR menyimpan data kerja."""
+
+    def setUp(self):
+        self.env_patch = mock.patch.dict(os.environ, {"HR_BRIDGE_API_KEY": "kunci-uji"})
+        self.env_patch.start()
+        self.addCleanup(self.env_patch.stop)
+
+    def _post(self, job_position, hr_employee_id=601):
+        return self.client.post(
+            URL,
+            {
+                "hr_employee_id": hr_employee_id, "first_name": "Nasul", "last_name": "Fikar",
+                "email": f"nasul{hr_employee_id}@contoh.com", "job_position": job_position,
+                "department": "Digital Printing",
+            },
+            format="json", HTTP_X_API_KEY="kunci-uji", HTTP_X_FORWARDED_PROTO="https",
+        )
+
+    def test_pemetaan_nama_jabatan_manajer(self):
+        from .views.hr_bridge import _map_job_position_ke_role
+
+        for jabatan in ("Manajer Operasional", "manajer", "Manager Operasional", "Manager", "CEO"):
+            self.assertEqual(_map_job_position_ke_role(jabatan), "manager", jabatan)
+        # Yang bukan manajer tetap seperti semula.
+        self.assertEqual(_map_job_position_ke_role("Operator Banner"), "staff")
+        self.assertEqual(_map_job_position_ke_role("SPV Divisi Foto"), "spv")
+        self.assertEqual(_map_job_position_ke_role("Kasir Photo"), "kasir")
+
+    def test_manajer_operasional_jadi_role_manager_dan_simpan_ulang_memulihkan_role_staff(self):
+        from .models import CustomUser
+
+        response = self._post("Manajer Operasional")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.content)
+        akun = CustomUser.objects.get(hr_employee_id=601)
+        self.assertEqual(akun.role, "manager")
+
+        # Akun yang terlanjur 'staff' (kerusakan lama) pulih saat HR menyimpan ulang data kerja.
+        CustomUser.objects.filter(pk=akun.pk).update(role="staff")
+        response2 = self._post("Manajer Operasional")
+        self.assertEqual(response2.status_code, status.HTTP_200_OK, response2.content)
+        akun.refresh_from_db()
+        self.assertEqual(akun.role, "manager")
