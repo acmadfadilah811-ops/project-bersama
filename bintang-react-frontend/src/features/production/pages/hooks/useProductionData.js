@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
+import { segarkanKpi } from '../../../dashboard/components/KpiSayaCard';
 import apiClient from '../../../../api/apiClient';
 import { todayISO } from '../../../../utils/date';
 
@@ -272,6 +273,7 @@ export default function useProductionData() {
   const completeJob = async (jobId) => {
     try {
       const res = await apiClient.post(`/jobs/${jobId}/complete/`);
+      segarkanKpi(); // KPI karyawan langsung dihitung ulang setelah SPK selesai
       // Selesai memindahkan job dari kolom aktif -> kolom Selesai.
       await Promise.all([refetchMyActiveJobs(false), refetchMyDoneJobs()]);
       addLocalLog(`Pekerjaan #${jobId} selesai dikerjakan.`);

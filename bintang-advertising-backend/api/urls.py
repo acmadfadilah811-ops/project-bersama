@@ -135,6 +135,7 @@ router.register(r'suppliers', customer_views.SupplierViewSet, basename='supplier
 from . import ai_business_analyst_views
 from . import executive_dashboard_views
 from .views.insights import CombinedInsightsView
+from .views.kpi import KpiSayaView, MetrikKpiBridgeView
 from .views import finance_dashboard as finance_dashboard_views
 from . import pos_views
 router.register(r'pos/sales', pos_views.POSSaleViewSet, basename='pos-sale')
@@ -272,6 +273,8 @@ urlpatterns = [
     path('bridge/hr-employee-status/', HRBridgeSetStatusView.as_view(), name='hr-bridge-set-status'),
     path('bridge/absensi-status/', AbsensiStatusView.as_view(), name='hr-bridge-absensi-status'),
     path('bridge/kinerja-staff/', KinerjaStaffView.as_view(), name='hr-bridge-kinerja-staff'),
+    path('bridge/metrik-kpi/', MetrikKpiBridgeView.as_view(), name='hr-bridge-metrik-kpi'),
+    path('kpi-saya/', KpiSayaView.as_view(), name='kpi-saya'),
     path('bridge/tanggungan-reorder/', TanggunganReorderBridgeView.as_view(), name='hr-bridge-tanggungan-reorder'),
     path('bridge/tanggungan-reorder/tandai/', TanggunganReorderTandaiBridgeView.as_view(), name='hr-bridge-tanggungan-reorder-tandai'),
     path('bridge/notifikasi-keuangan/', NotifikasiKeuanganBridgeView.as_view(), name='hr-bridge-notifikasi-keuangan'),
