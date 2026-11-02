@@ -114,8 +114,11 @@ def _payload(order, lunas):
     return payload
 
 
-def kirim_order_ke_crm(order_id):
-    """Kirim/perbarui satu order kasir. Aman dipanggil berulang (CRM idempoten)."""
+def kirim_order_ke_crm(order_id, paksa=False):
+    """Kirim/perbarui satu order kasir. Aman dipanggil berulang (CRM idempoten).
+
+    `paksa=True` melewati penjaga "sudah terkirim" -- dipakai sinkron ulang rincian untuk
+    Peluang lama (lihat perintah sinkron_rincian_peluang_crm)."""
     from ..crm_order_models import OrderAsalCRM
     from ..crm_push_models import OrderKeCRM
     from ..models import Order
@@ -138,7 +141,7 @@ def kirim_order_ke_crm(order_id):
     # Penjaga idempoten: beberapa save dalam satu transaksi menjadwalkan beberapa
     # panggilan; yang sudah terkirim dengan total & status lunas sama dilewati.
     ada = OrderKeCRM.objects.filter(order_id=order.pk).first()
-    if ada and ada.terkirim_pada and ada.total_terkirim == total and (
+    if not paksa and ada and ada.terkirim_pada and ada.total_terkirim == total and (
         not lunas or ada.lunas_terkirim_pada is not None
     ):
         return
@@ -153,7 +156,7 @@ def kirim_order_ke_crm(order_id):
         data = r.json() if r.content else {}
     except Exception:  # noqa: BLE001
         logger.exception('CRM: gagal mengirim order %s ke CRM.', order_id)
-        return
+        return False
 
     sekarang = timezone.now()
     OrderKeCRM.objects.update_or_create(order_id=order.pk, defaults={
@@ -162,3 +165,4 @@ def kirim_order_ke_crm(order_id):
         'crm_opportunity_id': data.get('opportunity_id'),
         **({'lunas_terkirim_pada': sekarang} if lunas else {}),
     })
+    return True

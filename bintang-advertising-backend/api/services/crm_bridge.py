@@ -22,20 +22,46 @@ DEFAULT_CRM_BRIDGE_URL = 'https://crm.starphotoadvertising.com/api/bridge/bintan
 TIMEOUT = 10
 
 
-def sync_possale_ke_crm(sale_id):
+def _rincian_possale(sale, kontak):
+    """Rincian penjualan POS untuk Peluang CRM (nama pelanggan, unit, item) -- 2026-11-02."""
+    from ..qty_format import qty_json
+
+    pelayan = sale.dilayani_oleh or sale.kasir
+    return {
+        'unit_bisnis': sale.unit_bisnis.nama if sale.unit_bisnis_id else '',
+        'lunas': True,  # POSSale hanya dikirim saat 'paid'
+        'pelanggan': kontak.nama,
+        'dilayani_oleh': pelayan.get_full_name() if pelayan else '',
+        'metode_pembayaran': sale.metode_bayar,
+        'catatan': (sale.catatan or '')[:500],
+        'items': [
+            {
+                'nama': item.nama_snapshot,
+                'qty': qty_json(item.uom_qty if item.uom_qty is not None else item.qty),
+                'subtotal': int(item.subtotal or 0),
+            }
+            for item in sale.items.all().order_by('id')
+        ],
+    }
+
+
+def sync_possale_ke_crm(sale_id, paksa=False):
     """Kirim satu POSSale (harus sudah berstatus 'paid') ke CRM. Aman
     dipanggil berkali-kali untuk sale yang sama -- CRM dedup by
     bintang_sale_id, dan sale yang sudah synced_to_crm_at dilewati di sini
-    juga supaya tidak ada panggilan jaringan sia-sia."""
+    juga supaya tidak ada panggilan jaringan sia-sia. `paksa=True` melewati
+    penjaga itu (sinkron ulang rincian untuk Peluang lama)."""
     from ..pos_models import POSSale
 
     try:
-        sale = POSSale.objects.select_related('pelanggan', 'pelanggan__customer').get(pk=sale_id)
+        sale = POSSale.objects.select_related(
+            'pelanggan', 'pelanggan__customer', 'unit_bisnis', 'dilayani_oleh', 'kasir',
+        ).get(pk=sale_id)
     except POSSale.DoesNotExist:
         logger.warning('CRM bridge: POSSale id=%s tidak ditemukan, dilewati.', sale_id)
         return
 
-    if sale.synced_to_crm_at is not None:
+    if sale.synced_to_crm_at is not None and not paksa:
         return
     if sale.status != 'paid':
         return
@@ -60,6 +86,7 @@ def sync_possale_ke_crm(sale_id):
             'nomor': sale.nomor,
             'total': float(sale.total),
             'tanggal': sale.created_at.date().isoformat(),
+            **_rincian_possale(sale, kontak),
         },
     }
     if member is not None:
@@ -80,7 +107,9 @@ def sync_possale_ke_crm(sale_id):
         response.raise_for_status()
     except Exception:
         logger.exception('CRM bridge: gagal sync POSSale id=%s ke CRM.', sale_id)
-        return
+        return False
 
-    sale.synced_to_crm_at = timezone.now()
-    sale.save(update_fields=['synced_to_crm_at'])
+    if sale.synced_to_crm_at is None:
+        sale.synced_to_crm_at = timezone.now()
+        sale.save(update_fields=['synced_to_crm_at'])
+    return True
