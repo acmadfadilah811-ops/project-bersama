@@ -4,7 +4,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useNotifikasiSiapDiambil } from '../hooks/useNotifikasiSiapDiambil';
 import { hargaTierAtauDasar } from '../../../utils/hargaTier';
 import { hargaSatuanMeteran, hitungLuas } from '../../../utils/meteran';
-import { selisihPembulatan, selisihPembulatanPenjualan } from '../../../utils/pembulatan';
+import { bulatkanContoh, selisihPembulatan, selisihPembulatanPenjualan } from '../../../utils/pembulatan';
 
 const KasirContext = createContext(null);
 
@@ -450,14 +450,43 @@ export function KasirProvider({ children }) {
 
   // Pembulatan total (Pengaturan POS > Pembulatan), sama dengan server (api/services/pembulatan.py).
   // Hanya berlaku untuk penjualan lunas langsung; pesanan DP/Order dan paket foto memakai total apa adanya.
-  const getPembulatan = () => selisihPembulatanPenjualan(
-    getTotal(),
-    getDiscountAmount() + getPromoDiscountAmount() + getPosPromotionDiscountAmount() + getLoyaltyDiscountAmount(),
-    businessSettings?.pos_pembulatan_aktif ? Number(businessSettings?.pos_pembulatan_kelipatan || 0) : 0,
-    businessSettings?.pos_pembulatan_arah || 'atas',
-    businessSettings?.pos_pembulatan_arah_diskon || 'bawah',
-    Number(businessSettings?.pos_pembulatan_breakpoint) || 50,
-  );
+  const kelipatanPembulatan = businessSettings?.pos_pembulatan_aktif ? Number(businessSettings?.pos_pembulatan_kelipatan || 0) : 0;
+  const arahPembulatan = businessSettings?.pos_pembulatan_arah || 'atas';
+  const breakpointPembulatan = Number(businessSettings?.pos_pembulatan_breakpoint) || 50;
+  // Mode "per item": tiap baris keranjang dibulatkan sendiri (cermin api/services/pembulatan.hitung_pembulatan_baris).
+  const pembulatanPerItem = kelipatanPembulatan > 1 && businessSettings?.pos_pembulatan_mode === 'item';
+
+  // Nilai asli baris (2 desimal, sama dengan money() di server).
+  const getNilaiBaris = (item) => Math.round(
+    (item.hargaTotal != null ? Number(item.hargaTotal) : Number(item.harga) * Number(item.qty)) * 100,
+  ) / 100;
+
+  // Yang ditagih untuk satu baris: dibulatkan pada mode per item (selama masih ada yang ditagih), selain itu nilai asli.
+  const getTagihBaris = (item) => {
+    const nilai = getNilaiBaris(item);
+    if (!pembulatanPerItem || nilai <= 0 || getTotal() <= 0) return nilai;
+    return bulatkanContoh(nilai, kelipatanPembulatan, arahPembulatan, breakpointPembulatan);
+  };
+
+  // Jumlah selisih semua baris terhadap subtotal layar (0 pada mode per nota).
+  const getPembulatanBarisTotal = () => {
+    if (!pembulatanPerItem || getTotal() <= 0) return 0;
+    return Math.round((cart.reduce((jumlah, item) => jumlah + getTagihBaris(item), 0) - getSubtotal()) * 100) / 100;
+  };
+
+  const getPembulatan = () => {
+    const totalDiskon = getDiscountAmount() + getPromoDiscountAmount() + getPosPromotionDiscountAmount() + getLoyaltyDiscountAmount();
+    const dariBaris = getPembulatanBarisTotal();
+    // Sisa selisih nota (karena diskon/pajak) dibulatkan seperti biasa supaya total yang ditagih tetap bulat.
+    return dariBaris + selisihPembulatanPenjualan(
+      getTotal() + dariBaris,
+      totalDiskon,
+      kelipatanPembulatan,
+      arahPembulatan,
+      businessSettings?.pos_pembulatan_arah_diskon || 'bawah',
+      breakpointPembulatan,
+    );
+  };
 
   // Pembulatan satu pembayaran (DP/cicilan/pelunasan order): arah pembayaran, sama dengan server.
   const getPembulatanBayar = (jumlah) => selisihPembulatan(
@@ -516,6 +545,8 @@ export function KasirProvider({ children }) {
         getTotal,
         getPembulatan,
         getPembulatanBayar,
+        getTagihBaris,
+        getPembulatanBarisTotal,
         cartNotes,
         setCartNotes,
         siapDiambilCount: jumlahSiap,

@@ -57,6 +57,23 @@ def hitung_pembulatan_penjualan(total, total_diskon=0, kelipatan=None, arah_baya
     return bulatkan(total_setelah_diskon, kelipatan, arah_bayar or ARAH_ATAS, breakpoint_persen) - total
 
 
+def hitung_pembulatan_baris(subtotal_baris, kelipatan=None, arah_bayar=None, breakpoint_persen=None):
+    """Selisih pembulatan satu baris item (mode "per item" di Pengaturan POS; positif = pelanggan membayar lebih).
+    Memakai pembagi, arah pembayaran, dan breakpoint yang sama dengan pembulatan total. Tanpa argumen = ikut
+    Pengaturan POS."""
+    if kelipatan is None:
+        from .. import pos_settings
+        kelipatan = pos_settings.pembulatan_kelipatan()
+        arah_bayar = pos_settings.pembulatan_arah()
+        breakpoint_persen = pos_settings.pembulatan_breakpoint()
+    if breakpoint_persen is None:
+        breakpoint_persen = BREAKPOINT_BAWAAN
+    subtotal_baris = Decimal(str(subtotal_baris or 0))
+    if subtotal_baris <= 0 or Decimal(str(kelipatan or 0)) <= 1:
+        return Decimal('0')
+    return bulatkan(subtotal_baris, kelipatan, arah_bayar or ARAH_ATAS, breakpoint_persen) - subtotal_baris
+
+
 def hitung_pembulatan_pembayaran(jumlah):
     """Selisih pembulatan satu pembayaran (DP, cicilan, atau pelunasan; positif = pelanggan membayar lebih).
     Ikut Pengaturan POS (pembagi, arah pembayaran, breakpoint). `jumlah` tetap nominal yang mengurangi

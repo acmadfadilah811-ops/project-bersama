@@ -328,6 +328,8 @@ export default function PointOfSale() {
   const [pembulatanArah, setPembulatanArah] = useState('atas');
   const [pembulatanArahDiskon, setPembulatanArahDiskon] = useState('bawah');
   const [pembulatanBreakpoint, setPembulatanBreakpoint] = useState('50');
+  // 'nota' = dibulatkan sekali untuk total nota; 'item' = tiap baris item dibulatkan sendiri.
+  const [pembulatanMode, setPembulatanMode] = useState('nota');
   const [pembulatanSimulasiBuka, setPembulatanSimulasiBuka] = useState(false);
   const [pembulatanSimulasiDiskon, setPembulatanSimulasiDiskon] = useState('0');
   const [shiftKasAwal, setShiftKasAwal] = useState(0);
@@ -445,6 +447,7 @@ export default function PointOfSale() {
         setPembulatanArah(res.data.pos_pembulatan_arah || 'atas');
         setPembulatanArahDiskon(res.data.pos_pembulatan_arah_diskon || 'bawah');
         setPembulatanBreakpoint(String(res.data.pos_pembulatan_breakpoint || 50));
+        setPembulatanMode(res.data.pos_pembulatan_mode === 'item' ? 'item' : 'nota');
 
         // Cek Stok settings
         setStokBlokirJualJikaKosong(res.data.pos_stok_blokir_jual_jika_kosong !== undefined ? !!res.data.pos_stok_blokir_jual_jika_kosong : true);
@@ -631,6 +634,7 @@ export default function PointOfSale() {
         pos_pembulatan_arah: pembulatanArah,
         pos_pembulatan_arah_diskon: pembulatanArahDiskon,
         pos_pembulatan_breakpoint: Math.min(99, Math.max(1, parseInt(pembulatanBreakpoint, 10) || 50)),
+        pos_pembulatan_mode: pembulatanMode,
       });
       triggerToast('Pengaturan Pembulatan berhasil disimpan! Kasir perlu refresh halaman.');
     } catch (err) {
@@ -2271,6 +2275,27 @@ export default function PointOfSale() {
                               </div>
                             </div>
 
+                            <div>
+                              <span className="text-xs font-bold text-slate-800 block mb-1">Dibulatkan per</span>
+                              <div className="grid grid-cols-2 border border-slate-300 rounded-lg overflow-hidden">
+                                {[['nota', 'Nota'], ['item', 'Item']].map(([nilai, label]) => (
+                                  <button
+                                    key={nilai}
+                                    type="button"
+                                    onClick={() => setPembulatanMode(nilai)}
+                                    className={`py-2 text-xs font-bold cursor-pointer transition-colors ${pembulatanMode === nilai ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                                  >
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
+                              <p className="text-[11px] text-slate-400 mt-1">
+                                {pembulatanMode === 'item'
+                                  ? 'Harga tiap baris item dibulatkan sendiri-sendiri, lalu dijumlahkan menjadi total nota.'
+                                  : 'Total nota dibulatkan satu kali.'}
+                              </p>
+                            </div>
+
                             {adaOtomatis && rentang()}
 
                             <button
@@ -2290,6 +2315,13 @@ export default function PointOfSale() {
                                     Sistem akan membulatkan ke atas atau ke bawah berdasarkan pengaturan <b>Mode pembulatan</b>. Diskon
                                     dibulatkan ke bawah dan pembayaran ke atas (bawaan); selisihnya tampil sebagai baris Pembulatan di kasir dan struk.
                                   </p>
+                                  {pembulatanMode === 'item' && (
+                                    <p>
+                                      Pada mode <b>Item</b>, pembulatan dihitung per baris keranjang (setelah dikali jumlah/ukuran). Bila masih ada
+                                      diskon atau pajak, sisa selisihnya dibulatkan lagi di tingkat nota supaya total yang ditagih tetap bulat.
+                                      Berlaku untuk penjualan kasir lunas langsung; pesanan DP tetap dibulatkan per pembayaran.
+                                    </p>
+                                  )}
                                   {k > 1 && (
                                     <>
                                       <p>Contoh, jika pengaturan sebagai berikut:</p>

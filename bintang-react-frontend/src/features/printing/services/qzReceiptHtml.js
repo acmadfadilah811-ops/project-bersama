@@ -1,4 +1,4 @@
-import { cetakConfig, itemUntukCetak, judulDokumen, totalQtyItem } from './receiptConfig';
+import { cetakConfig, itemUntukCetak, judulDokumen, nilaiBarisCetak, pembulatanNotaCetak, subtotalCetak, totalQtyItem } from './receiptConfig';
 
 const PAPER_WIDTH_MM = {
   '58mm': 58,
@@ -36,7 +36,7 @@ export function buildQzReceiptHtml({ receipt, settings, paperSize, logoDataUrl =
         <small>${escapeHtml(item.qty || 0)} ${escapeHtml(item.uom_kode || 'pcs')} x ${escapeHtml(formatCurrency(item.harga_snapshot ?? item.harga))}</small>
         ${cfg.catatanItem && item.catatan ? `<br><small><em>* ${escapeHtml(item.catatan)}</em></small>` : ''}
       </td>
-      <td class="right">${escapeHtml(formatCurrency(item.subtotal ?? item.hargaTotal))}</td>
+      <td class="right">${escapeHtml(formatCurrency(nilaiBarisCetak(item)))}</td>
     </tr>`).join('');
   const customer = receipt?.pelanggan_name || receipt?.customerName;
   const documentTitle = judulDokumen(receipt, cfg);
@@ -64,9 +64,10 @@ export function buildQzReceiptHtml({ receipt, settings, paperSize, logoDataUrl =
   <tr><td>Kasir</td><td class="right">${escapeHtml(receipt?.kasir_name || 'POS')}</td></tr>
   ${customer ? `<tr><td>Pelanggan</td><td class="right">${escapeHtml(customer)}</td></tr>` : ''}</table>
   <div class="divider"></div><table>${itemRows}</table><div class="divider"></div>
-  <table><tr><td>Subtotal</td><td class="right">${escapeHtml(formatCurrency(receipt?.subtotal))}</td></tr>
+  <table><tr><td>Subtotal</td><td class="right">${escapeHtml(formatCurrency(subtotalCetak(receipt)))}</td></tr>
   ${Number(receipt?.diskon || 0) ? `<tr><td>Diskon</td><td class="right">-${escapeHtml(formatCurrency(receipt.diskon))}</td></tr>` : ''}
   ${Number(receipt?.pajak || 0) ? `<tr><td>Pajak</td><td class="right">${escapeHtml(formatCurrency(receipt.pajak))}</td></tr>` : ''}
+  ${pembulatanNotaCetak(receipt) ? `<tr><td>Pembulatan</td><td class="right">${pembulatanNotaCetak(receipt) < 0 ? '-' : ''}${escapeHtml(formatCurrency(Math.abs(pembulatanNotaCetak(receipt))))}</td></tr>` : ''}
   <tr class="total"><td>Total</td><td class="right">${escapeHtml(formatCurrency(receipt?.total))}</td></tr>
   ${receipt?.isDraft ? '<tr><td colspan="2" class="total">STATUS: BELUM DIBAYAR</td></tr>' : `<tr><td>Dibayar</td><td class="right">${escapeHtml(formatCurrency(receipt?.dibayar))}</td></tr>
   <tr><td>Kembalian</td><td class="right">${escapeHtml(formatCurrency(receipt?.kembalian))}</td></tr>`}</table>

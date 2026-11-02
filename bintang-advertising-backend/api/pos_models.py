@@ -308,6 +308,10 @@ class POSSaleItem(models.Model):
     harga_snapshot = models.DecimalField(max_digits=12, decimal_places=2, help_text="Harga per satuan DASAR")
     qty = models.DecimalField(max_digits=12, decimal_places=4, help_text="Qty dalam satuan DASAR")
     subtotal = models.DecimalField(max_digits=12, decimal_places=2)
+    # Selisih pembulatan baris ini (Pengaturan POS > Pembulatan > "per item"); positif = pelanggan bayar lebih.
+    # `subtotal` tetap nilai asli (laporan produk & pendapatan); yang ditagih untuk baris = subtotal + pembulatan.
+    # Jumlah semua baris ikut masuk `POSSale.pembulatan` (satu angka, satu akun jurnal).
+    pembulatan = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     catatan = models.TextField(blank=True, default='')
     # Satuan alternatif (UOM) yang dipilih kasir; qty/harga di atas tetap basis dasar.
     uom_kode = models.CharField(max_length=10, blank=True, default='')

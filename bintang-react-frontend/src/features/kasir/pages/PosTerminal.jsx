@@ -114,6 +114,8 @@ export default function PosTerminal({ onToggleSidebar }) {
     getTotal,
     getPembulatan,
     getPembulatanBayar,
+    getTagihBaris,
+    getPembulatanBarisTotal,
     getSubtotal,
     getTaxAmount,
     setCartNotes,
@@ -817,11 +819,13 @@ export default function PosTerminal({ onToggleSidebar }) {
         payAmount: Number(res.data.dibayar),
         changeAmount: Number(res.data.kembalian),
         method: res.data.metode_bayar,
-        items: cart.map((item) => ({
+        items: cart.map((item, idx) => ({
           ...item,
           nama_snapshot: item.nama,
           harga_snapshot: Math.round(Number(item.hargaTotal ?? (item.harga * item.qty)) / (Number(item.qty) || 1)),
           subtotal: Number(item.hargaTotal ?? (item.harga * item.qty)),
+          // Pembulatan per item: selisih baris sebagaimana disimpan server (urutan sama dengan keranjang).
+          pembulatan: Number(res.data.items?.[idx]?.pembulatan || 0),
           catatan: itemReceiptNote(item),
         })),
       });
@@ -1266,6 +1270,8 @@ export default function PosTerminal({ onToggleSidebar }) {
           onSelectStaff={(staff) => setSelectedPelayanId(staff.id || staff)}
           totalAmount={getTotal()}
           pembulatan={starfoto.item ? 0 : getPembulatan()}
+          getTagihBaris={starfoto.item ? null : getTagihBaris}
+          pembulatanBarisTotal={starfoto.item ? 0 : getPembulatanBarisTotal()}
           onOpenCustomerList={() => setRightPanelMode('customerList')}
           onOpenCustomerSelect={() => setRightPanelMode('customerList')}
           onAddNewCustomerClick={() => {

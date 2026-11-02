@@ -387,6 +387,13 @@ def create_sale(*, user, data):
             ))
             subtotal += line_total
 
+        # Pembulatan "per item" (Pengaturan POS > Pembulatan): tiap baris dibulatkan sendiri-sendiri. Nilai asli
+        # baris (`subtotal`) tidak diubah; selisihnya disimpan di baris dan dijumlah ke pembulatan nota.
+        from .services.pembulatan import hitung_pembulatan_baris
+        pembulatan_baris = [Decimal('0')] * len(prepared)
+        if pos_settings.pembulatan_per_item() and pos_settings.pembulatan_kelipatan() > 1:
+            pembulatan_baris = [money(hitung_pembulatan_baris(p[6])) for p in prepared]
+
         # Guard ini SEBELUMNYA tidak memeriksa blokir_jual_jika_stok_kosong()
         # sama sekali -- toggle di Pengaturan POS untuk mengizinkan jual
         # walau stok kurang (backorder, stok tetap dipotong otomatis lewat
@@ -544,9 +551,16 @@ def create_sale(*, user, data):
         tax = money(taxable * tax_pct / Decimal('100'))
         total = money(max(Decimal('0'), subtotal - total_diskon + tax))
         # Pembulatan sesuai Pengaturan POS: diskon ke bawah, total yang ditagih ke atas (bawaan); selisih gabungan masuk `pembulatan`.
+        # Mode per item: selisih tiap baris ditambahkan dulu (hanya bila masih ada yang ditagih), lalu sisa selisih
+        # nota (karena diskon/pajak) dibulatkan seperti biasa supaya total yang ditagih tetap bulat.
         from .services.pembulatan import hitung_pembulatan_penjualan
-        pembulatan = money(hitung_pembulatan_penjualan(total, total_diskon))
-        total = money(total + pembulatan)
+        if total <= 0:
+            pembulatan_baris = [Decimal('0')] * len(prepared)
+        pembulatan_dari_baris = sum(pembulatan_baris, Decimal('0'))
+        total = money(total + pembulatan_dari_baris)
+        pembulatan_nota = money(hitung_pembulatan_penjualan(total, total_diskon))
+        total = money(total + pembulatan_nota)
+        pembulatan = money(pembulatan_dari_baris + pembulatan_nota)
         if status_val == 'paid' and paid < total:
             raise ValidationError({'error': 'Jumlah pembayaran belum mencukupi total server.'})
         client_total = data.get('total')
@@ -576,11 +590,11 @@ def create_sale(*, user, data):
             )
             kupon_obj.penggunaan_count = CouponUsage.objects.filter(kupon=kupon_obj).count()
             kupon_obj.save(update_fields=['penggunaan_count'])
-        for (raw, product, variant, conversion, qty_base, price_base, line_total, item_nama, package,
-             item_addons, panjang, lebar, finishing_biaya, serial_numbers_line) in prepared:
+        for idx, (raw, product, variant, conversion, qty_base, price_base, line_total, item_nama, package,
+                  item_addons, panjang, lebar, finishing_biaya, serial_numbers_line) in enumerate(prepared):
             sale_item = POSSaleItem.objects.create(
                 sale=sale, product=product, variant=variant, paket=package, nama_snapshot=item_nama,
-                harga_snapshot=price_base, qty=qty_base, subtotal=line_total,
+                harga_snapshot=price_base, qty=qty_base, subtotal=line_total, pembulatan=pembulatan_baris[idx],
                 catatan=str(raw.get('catatan') or '')[:2000],
                 uom_kode=conversion['uom_kode'], uom_konverter=conversion['uom_konverter'],
                 uom_qty=conversion['uom_qty'],

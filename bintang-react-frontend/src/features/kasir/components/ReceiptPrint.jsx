@@ -1,7 +1,7 @@
 import React from 'react';
 import logoStarfoto from '../../../assets/logo-starfoto.png';
 import { getLocalPrinterSettings } from '../../printing/services/printService';
-import { cetakConfig, itemUntukCetak, judulDokumen, totalQtyItem } from '../../printing/services/receiptConfig';
+import { cetakConfig, itemUntukCetak, judulDokumen, nilaiBarisCetak, pembulatanNotaCetak, subtotalCetak, totalQtyItem } from '../../printing/services/receiptConfig';
 
 export default function ReceiptPrint({ receipt, settings }) {
   if (!receipt) return null;
@@ -36,6 +36,9 @@ export default function ReceiptPrint({ receipt, settings }) {
   // "Sembunyikan item paket" tidak berlaku.)
   const itemsToPrint = itemUntukCetak(receipt.items, cfg);
   const totalQty = totalQtyItem(itemsToPrint);
+  // Pembulatan per item: baris & subtotal tercetak sudah dibulatkan; baris "Pembulatan" hanya memuat sisa tingkat nota.
+  const subtotalTercetak = subtotalCetak(receipt);
+  const pembulatanNota = pembulatanNotaCetak(receipt);
 
   // Render A4/Carbon Copy invoice layout
   if (isA4Layout) {
@@ -106,7 +109,7 @@ export default function ReceiptPrint({ receipt, settings }) {
                   </td>
                   <td className="py-3 text-right font-bold">{Number(item.qty).toLocaleString('id-ID', { maximumFractionDigits: 4 })}</td>
                   <td className="py-3 text-right">{formatCurrency(item.harga_snapshot)}</td>
-                  <td className="py-3 text-right font-extrabold text-slate-900 pr-2">{formatCurrency(item.subtotal)}</td>
+                  <td className="py-3 text-right font-extrabold text-slate-900 pr-2">{formatCurrency(nilaiBarisCetak(item))}</td>
                 </tr>
                 {(item.addons || []).map((addon) => (
                   <tr key={addon.id} className="text-slate-500">
@@ -157,7 +160,7 @@ export default function ReceiptPrint({ receipt, settings }) {
           <div className="w-1/3 space-y-1.5 text-right font-semibold text-slate-600 text-xs">
             <div className="flex justify-between">
               <span>Subtotal:</span>
-              <span className="font-bold text-slate-800">{formatCurrency(receipt.subtotal)}</span>
+              <span className="font-bold text-slate-800">{formatCurrency(subtotalTercetak)}</span>
             </div>
             {parseFloat(receipt.diskon) > 0 && (
               <div className="flex justify-between text-rose-600">
@@ -171,10 +174,10 @@ export default function ReceiptPrint({ receipt, settings }) {
                 <span className="font-bold text-slate-800">{formatCurrency(receipt.pajak)}</span>
               </div>
             )}
-            {parseFloat(receipt.pembulatan) !== 0 && !Number.isNaN(parseFloat(receipt.pembulatan)) && (
+            {pembulatanNota !== 0 && !Number.isNaN(pembulatanNota) && (
               <div className="flex justify-between">
                 <span>Pembulatan:</span>
-                <span className="font-bold text-slate-800">{parseFloat(receipt.pembulatan) < 0 ? '-' : ''}{formatCurrency(Math.abs(parseFloat(receipt.pembulatan)))}</span>
+                <span className="font-bold text-slate-800">{pembulatanNota < 0 ? '-' : ''}{formatCurrency(Math.abs(pembulatanNota))}</span>
               </div>
             )}
             <div className="h-px bg-slate-200 my-1" />
@@ -286,7 +289,7 @@ export default function ReceiptPrint({ receipt, settings }) {
           <div key={item.id || idx} className="text-[9px]">
             <div className="flex justify-between items-start font-bold">
               <span className="break-words max-w-[180px]">{item.nama_snapshot}</span>
-              <span>{formatCurrency(item.subtotal)}</span>
+              <span>{formatCurrency(nilaiBarisCetak(item))}</span>
             </div>
             <div className="text-[8px] text-slate-700">
               {Number(item.qty).toLocaleString('id-ID', { maximumFractionDigits: 4 })} {item.uom_kode || 'pcs'} x {formatCurrency(item.harga_snapshot)}
@@ -313,7 +316,7 @@ export default function ReceiptPrint({ receipt, settings }) {
       <div className="space-y-0.5 text-[9px] font-semibold">
         <div className="flex justify-between">
           <span>Subtotal</span>
-          <span>{formatCurrency(receipt.subtotal)}</span>
+          <span>{formatCurrency(subtotalTercetak)}</span>
         </div>
         {parseFloat(receipt.diskon) > 0 && (
           <div className="flex justify-between">
@@ -327,10 +330,10 @@ export default function ReceiptPrint({ receipt, settings }) {
             <span>{formatCurrency(receipt.pajak)}</span>
           </div>
         )}
-        {parseFloat(receipt.pembulatan) !== 0 && !Number.isNaN(parseFloat(receipt.pembulatan)) && (
+        {pembulatanNota !== 0 && !Number.isNaN(pembulatanNota) && (
           <div className="flex justify-between">
             <span>Pembulatan</span>
-            <span>{parseFloat(receipt.pembulatan) < 0 ? '-' : ''}{formatCurrency(Math.abs(parseFloat(receipt.pembulatan)))}</span>
+            <span>{pembulatanNota < 0 ? '-' : ''}{formatCurrency(Math.abs(pembulatanNota))}</span>
           </div>
         )}
         <div className="flex justify-between font-black text-xs pt-1 border-t border-dotted border-black">

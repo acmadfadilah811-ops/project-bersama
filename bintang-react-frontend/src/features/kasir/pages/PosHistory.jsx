@@ -49,6 +49,8 @@ function normalizePosItem(it) {
     // langsung, jangan diubah supaya cetak resi POS tidak ikut rusak.
     nama_snapshot: nama, harga_snapshot: namaSatuan, subtotal: jumlah,
     uom_kode: it.uom_kode,
+    // Pembulatan per item (Pengaturan POS): selisih baris ini; 0 pada mode per nota.
+    pembulatan: Number(it.pembulatan || 0),
   };
 }
 

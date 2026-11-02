@@ -147,6 +147,11 @@ def pembulatan_breakpoint():
         return 50
 
 
+def pembulatan_per_item():
+    """True bila pembulatan penjualan dihitung per baris item (bukan sekali untuk total nota)."""
+    return str(_raw('pos_pembulatan_mode') or 'nota').strip().lower() == 'item'
+
+
 def pembulatan_arah_diskon():
     """Arah pembulatan diskon; bawaan ke bawah."""
     arah = str(_raw('pos_pembulatan_arah_diskon') or 'bawah').strip().lower()
