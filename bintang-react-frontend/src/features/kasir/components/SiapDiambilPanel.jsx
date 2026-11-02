@@ -669,8 +669,25 @@ export default function SiapDiambilPanel({ ringkas = false }) {
                             {tuntas}/{total} item selesai
                           </span>
                         </button>
-                        <div className="px-3 pb-2 -mt-1 pl-9">
+                        <div className="px-3 pb-2 -mt-1 pl-9 flex items-center justify-between gap-2 flex-wrap">
                           <KeteranganWaktu order={order} />
+                          {/* Pelunasan boleh dicatat walau produksi belum selesai (2026-11-02): masuk Uang Muka
+                              Pelanggan dan diakui jadi pendapatan saat pesanan selesai. Transaksi POS sudah lunas. */}
+                          {order._origin !== 'pos' && Number(order.sisa_tagihan || 0) > 0 && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] font-bold text-rose-600">
+                                Sisa {formatCurrency(order.sisa_tagihan)}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setOrderDibayar(order)}
+                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black rounded-lg flex items-center gap-1 transition-all cursor-pointer shadow-sm"
+                                title="Terima pelunasan walau pesanan belum selesai dikerjakan"
+                              >
+                                <Wallet size={12} /> Lunasi
+                              </button>
+                            </div>
+                          )}
                         </div>
 
                         {isTerbuka && (
