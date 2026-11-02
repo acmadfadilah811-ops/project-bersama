@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2, MonitorCog, Printer, RefreshCw, Settings2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, FileText, MonitorCog, Printer, RefreshCw, Settings2 } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import { useAuth } from '../../../context/AuthContext';
 import { notify, notifyApiError } from '../../../utils/notify';
@@ -13,6 +13,7 @@ import {
   saveLocalPrinterSettings,
 } from '../services/printService';
 import { getQzPrinters } from '../services/qzTrayService';
+import { JENIS_DOKUMEN } from '../services/qzDokumenHtml';
 
 export default function PrinterSettings() {
   const location = useLocation();
@@ -60,6 +61,11 @@ export default function PrinterSettings() {
       setSavingLocal(false);
     }
   };
+
+  const ubahDokumen = (type, perubahan) => setLocalSettings((current) => ({
+    ...current,
+    dokumen: { ...(current.dokumen || {}), [type]: { ...(current.dokumen?.[type] || {}), ...perubahan } },
+  }));
 
   const testPrint = async () => {
     const receipt = {
@@ -227,6 +233,58 @@ export default function PrinterSettings() {
 
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-start gap-3">
+            <div className="rounded-xl bg-emerald-50 p-2 text-emerald-600"><FileText size={20} /></div>
+            <div>
+              <h2 className="font-bold text-slate-800">Dokumen lain di PC kasir ini</h2>
+              <p className="text-xs text-slate-500">
+                Invoice, SPK, dan Surat Jalan (A4) bisa langsung dicetak ke printer masing-masing begitu transaksi selesai, tanpa dialog.
+                Printer USB atau Bluetooth yang sudah terpasang di Windows muncul di daftar.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            {Object.entries(JENIS_DOKUMEN).map(([type, info]) => {
+              const cfg = localSettings.dokumen?.[type] || {};
+              return (
+                <div key={type} className="grid items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3 sm:grid-cols-[1fr_1.4fr]">
+                  <label className="flex cursor-pointer items-center gap-2 text-xs font-bold text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(cfg.auto)}
+                      onChange={(event) => ubahDokumen(type, { auto: event.target.checked })}
+                    />
+                    <span>Cetak otomatis {info.label}</span>
+                  </label>
+                  <select
+                    value={cfg.printerName || ''}
+                    onChange={(event) => ubahDokumen(type, { printerName: event.target.value })}
+                    onFocus={() => { if (!qzPrinters.length && qzState.status !== 'loading') void refreshQzTray(); }}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium outline-none focus:border-blue-500"
+                  >
+                    <option value="">Printer belum dipilih (pakai dialog browser)</option>
+                    {cfg.printerName && !qzPrinters.includes(cfg.printerName) && <option value={cfg.printerName}>{cfg.printerName}</option>}
+                    {qzPrinters.map((printer) => <option key={printer} value={printer}>{printer}</option>)}
+                  </select>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-600">
+            <button type="button" onClick={refreshQzTray} disabled={qzState.status === 'loading'} className="inline-flex items-center gap-1 font-bold underline disabled:opacity-60">
+              <RefreshCw size={13} className={qzState.status === 'loading' ? 'animate-spin' : ''} /> Muat daftar printer
+            </button>
+            <span>{qzState.message || 'Butuh QZ Tray aktif di PC ini.'}</span>
+          </div>
+          <div className="mt-4">
+            <button type="button" onClick={saveLocal} disabled={savingLocal} className="rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-60">
+              {savingLocal ? 'Menyimpan...' : 'Simpan Perangkat'}
+            </button>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-start gap-3">
             <div className="rounded-xl bg-violet-50 p-2 text-violet-600"><Settings2 size={20} /></div>
             <div>
               <h2 className="font-bold text-slate-800">Kebijakan cetak POS</h2>
@@ -239,6 +297,10 @@ export default function PrinterSettings() {
               <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-100 p-3 text-xs text-slate-700">
                 <input type="checkbox" checked={policy.autoPrintPosReceipt} disabled={savingGlobal} onChange={(event) => saveGlobal('auto_print_pos_receipt', event.target.checked)} className="mt-0.5" />
                 <span><strong>Izinkan cetak resi otomatis</strong><br />PC kasir tetap harus mengaktifkannya pada profil perangkat masing-masing.</span>
+              </label>
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-100 p-3 text-xs text-slate-700">
+                <input type="checkbox" checked={policy.autoPrintDokumen} disabled={savingGlobal} onChange={(event) => saveGlobal('auto_print_dokumen', event.target.checked)} className="mt-0.5" />
+                <span><strong>Izinkan cetak otomatis Invoice, SPK, dan Surat Jalan</strong><br />PC kasir tetap harus memilih printer dan mengaktifkannya pada profil perangkat masing-masing.</span>
               </label>
               <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-100 p-3 text-xs text-slate-700">
                 <input type="checkbox" checked={policy.useA4ReceiptLayout} disabled={savingGlobal} onChange={(event) => saveGlobal('pos_custom_resi_windows', event.target.checked)} className="mt-0.5" />

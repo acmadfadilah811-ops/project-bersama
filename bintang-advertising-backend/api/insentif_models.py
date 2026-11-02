@@ -19,6 +19,12 @@ class JenisInsentif(models.Model):
     # Unit bisnis pemilik (2026-10-11). Kosong = berlaku untuk semua unit.
     unit_bisnis = models.ForeignKey('UnitBisnis', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
     nominal_default = models.PositiveIntegerField(default=0, help_text='Nominal standar (Rp) saat masuk ke SPK')
+    # Cara hitung (2026-11-02): nominal tetap, atau persen dari harga jual item/paket SPK-nya.
+    CARA_NOMINAL = 'nominal'
+    CARA_PERSEN = 'persen'
+    CARA_CHOICES = [(CARA_NOMINAL, 'Nominal tetap'), (CARA_PERSEN, 'Persen dari harga jual')]
+    cara_hitung = models.CharField(max_length=10, choices=CARA_CHOICES, default=CARA_NOMINAL)
+    persen = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     # Kosong = tidak pernah otomatis, hanya bisa ditambahkan manual oleh Manager.
     divisi = models.ManyToManyField('Divisi', blank=True, related_name='jenis_insentif')
     aktif = models.BooleanField(default=True)

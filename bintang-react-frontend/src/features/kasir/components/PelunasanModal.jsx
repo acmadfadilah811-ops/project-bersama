@@ -5,7 +5,14 @@ import { useAuth } from '../../../context/AuthContext';
 import NumericInput from '../../../components/NumericInput';
 import OrderInvoicePrint from './OrderInvoicePrint';
 import KirimIdPesananButton from './KirimIdPesananButton';
-import { requestBrowserPrint } from '../../printing/services/printService';
+import {
+  getPrintErrorMessage,
+  jenisDokumenOtomatis,
+  printDokumen,
+  requestBrowserPrint,
+} from '../../printing/services/printService';
+import { fakturDariOrder } from '../../printing/services/qzDokumenHtml';
+import { notifyError } from '../../../utils/notify';
 import { selisihPembulatan } from '../../../utils/pembulatan';
 import useMetodePembayaran from '../hooks/useMetodePembayaran';
 
@@ -66,6 +73,11 @@ export default function PelunasanModal({ order, onClose, onSelesai }) {
         kirim_wa: kirimWa,
       });
       setOrderLunas(res.data);
+      if (jenisDokumenOtomatis(businessSettings).includes('invoice')) {
+        // Faktur pelunasan langsung ke printer faktur PC ini; gagal tidak menggagalkan pembayaran.
+        printDokumen({ type: 'invoice', data: fakturDariOrder(res.data, metode), businessSettings })
+          .catch((error) => notifyError('Cetak faktur otomatis gagal', getPrintErrorMessage(error)));
+      }
       if (onSelesai) onSelesai(res.data);
     } catch (err) {
       console.error('Gagal memproses pelunasan:', err);
@@ -77,6 +89,17 @@ export default function PelunasanModal({ order, onClose, onSelesai }) {
     } finally {
       setMemproses(false);
     }
+  };
+
+  // Printer faktur khusus diatur -> langsung cetak tanpa dialog; kalau belum, dialog browser seperti biasa.
+  const cetakFaktur = async () => {
+    try {
+      if (await printDokumen({ type: 'invoice', data: fakturDariOrder(orderLunas, metode), businessSettings })) return;
+    } catch (error) {
+      notifyError('Cetak faktur gagal', getPrintErrorMessage(error));
+      return;
+    }
+    requestBrowserPrint();
   };
 
   const kirimInvoiceWa = async () => {
@@ -227,7 +250,7 @@ export default function PelunasanModal({ order, onClose, onSelesai }) {
                 </button>
                 <button
                   type="button"
-                  onClick={requestBrowserPrint}
+                  onClick={cetakFaktur}
                   className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-black text-xs rounded-xl flex items-center gap-1.5 cursor-pointer"
                 >
                   <Printer size={14} /> Cetak Faktur

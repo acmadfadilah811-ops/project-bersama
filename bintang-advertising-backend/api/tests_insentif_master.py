@@ -205,3 +205,55 @@ class InsentifManualTests(InsentifBase):
         job = JobBoard.objects.create(order_item=self.item, tahap=self.t_desain, insentif=5000)
         job.refresh_from_db()
         self.assertEqual(job.insentif, 15000)  # 5000 manual + 10000 otomatis (divisi desain)
+
+
+class JenisInsentifPersenTests(InsentifBase):
+    """Jenis Insentif umum bisa persen dari harga jual item (2026-11-02)."""
+
+    def setUp(self):
+        super().setUp()
+        self.persen = JenisInsentif.objects.create(
+            nama='Komisi Desain', cara_hitung='persen', persen='10', nominal_default=0,
+        )
+        self.persen.divisi.add(self.d_desain)
+
+    def test_spk_ke_divisi_target_dapat_persen_dari_harga_jual(self):
+        res = self.assign(divisi_id=self.d_desain.id)
+        self.assertEqual(res.status_code, 200, res.content)
+        job = JobBoard.objects.get(order_item=self.item, tahap=self.t_desain)
+        # Insentif Desain nominal 10.000 + Komisi Desain 10% x 50.000 = 5.000
+        self.assertEqual(dict(job.rincian_insentif.values_list('nama', 'nominal')), {
+            'Insentif Desain': 10000, 'Komisi Desain': 5000,
+        })
+        self.assertEqual(job.insentif, 15000)
+
+    def test_persen_ikut_qty_dan_harga_baris(self):
+        self.item.qty, self.item.harga_jual = 3, 200000
+        self.item.save()
+        self.assign(divisi_id=self.d_desain.id)
+        job = JobBoard.objects.get(order_item=self.item, tahap=self.t_desain)
+        self.assertEqual(job.rincian_insentif.get(nama='Komisi Desain').nominal, 20000)
+
+    def test_tambah_manual_jenis_persen_memakai_harga_jual_spk(self):
+        job = JobBoard.objects.create(order_item=self.item, tahap=self.t_cetak, pic_staff=self.staff)
+        self.client.force_authenticate(self.manager)
+        res = self.client.post(f'/api/jobs/{job.id}/insentif/', {'jenis_id': self.persen.id}, format='json')
+        self.assertEqual(res.status_code, 201, res.content)
+        self.assertEqual(res.data['rincian_insentif'][-1]['nominal'], 5000)
+
+    def test_api_persen_wajib_valid_dan_nominal_dinolkan(self):
+        self.client.force_authenticate(self.manager)
+        base = {'nama': 'Komisi Cetak', 'cara_hitung': 'persen', 'divisi': [self.d_cetak.id]}
+        self.assertEqual(self.client.post('/api/jenis-insentif/', {**base, 'persen': 0}, format='json').status_code, 400)
+        self.assertEqual(self.client.post('/api/jenis-insentif/', {**base, 'persen': 101}, format='json').status_code, 400)
+        res = self.client.post('/api/jenis-insentif/', {**base, 'persen': 2.5, 'nominal_default': 999}, format='json')
+        self.assertEqual(res.status_code, 201, res.content)
+        self.assertEqual((res.data['nominal_default'], res.data['persen'], res.data['cara_hitung']), (0, '2.50', 'persen'))
+
+    def test_pindah_ke_nominal_menolkan_persen(self):
+        self.client.force_authenticate(self.manager)
+        res = self.client.patch(
+            f'/api/jenis-insentif/{self.persen.id}/', {'cara_hitung': 'nominal', 'nominal_default': 7000}, format='json',
+        )
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual((res.data['persen'], res.data['nominal_default']), ('0.00', 7000))
