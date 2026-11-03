@@ -551,14 +551,15 @@ def create_sale(*, user, data):
         tax = money(taxable * tax_pct / Decimal('100'))
         total = money(max(Decimal('0'), subtotal - total_diskon + tax))
         # Pembulatan sesuai Pengaturan POS: diskon ke bawah, total yang ditagih ke atas (bawaan); selisih gabungan masuk `pembulatan`.
-        # Mode per item: selisih tiap baris ditambahkan dulu (hanya bila masih ada yang ditagih), lalu sisa selisih
-        # nota (karena diskon/pajak) dibulatkan seperti biasa supaya total yang ditagih tetap bulat.
+        # Mode per item: selisih tiap baris ditambahkan dulu (hanya bila masih ada yang ditagih). Pada mode 'keduanya'
+        # sisa selisih nota (karena diskon/pajak) dibulatkan lagi supaya total yang ditagih tetap bulat.
         from .services.pembulatan import hitung_pembulatan_penjualan
         if total <= 0:
             pembulatan_baris = [Decimal('0')] * len(prepared)
         pembulatan_dari_baris = sum(pembulatan_baris, Decimal('0'))
         total = money(total + pembulatan_dari_baris)
-        pembulatan_nota = money(hitung_pembulatan_penjualan(total, total_diskon))
+        # Mode 'item' saja: total tidak dibulatkan lagi (sisa selisih diskon/pajak dibiarkan apa adanya).
+        pembulatan_nota = money(hitung_pembulatan_penjualan(total, total_diskon)) if pos_settings.pembulatan_per_nota() else Decimal('0')
         total = money(total + pembulatan_nota)
         pembulatan = money(pembulatan_dari_baris + pembulatan_nota)
         if status_val == 'paid' and paid < total:

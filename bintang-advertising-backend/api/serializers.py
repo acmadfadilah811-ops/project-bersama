@@ -1087,7 +1087,7 @@ class BusinessSettingsSerializer(serializers.Serializer):
     pos_pembulatan_arah_diskon = serializers.ChoiceField(choices=['terdekat', 'atas', 'bawah'], required=False, default='bawah')
     pos_pembulatan_breakpoint = serializers.IntegerField(required=False, default=50, min_value=1, max_value=99)
     # 'nota' = dibulatkan sekali untuk total nota (bawaan); 'item' = tiap baris item dibulatkan sendiri
-    pos_pembulatan_mode = serializers.ChoiceField(choices=['nota', 'item'], required=False, default='nota')
+    pos_pembulatan_mode = serializers.ChoiceField(choices=['nota', 'item', 'keduanya'], required=False, default='nota')
 
     # POS Mode Cek Stok Settings
     pos_stok_blokir_jual_jika_kosong = serializers.BooleanField(required=False, default=True)

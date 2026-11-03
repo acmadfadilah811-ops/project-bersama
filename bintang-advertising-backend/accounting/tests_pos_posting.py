@@ -569,7 +569,7 @@ class PembulatanPerItemPosTests(POSPostingTestCase):
         self.assertEqual(sum(l.debit for l in entry.lines.all()), sum(l.kredit for l in entry.lines.all()))
 
     def test_dengan_diskon_sisa_selisih_nota_tetap_membuat_total_bulat(self):
-        self._atur('item')
+        self._atur('keduanya')
         sale = self._jual(metode_diskon='manual', diskon_manual_tipe='nominal', diskon_manual_nilai=1500)
         # 46.750 - 1.500 = 45.250; baris +1.250 = 46.500; diskon 1.500 dibulatkan ke bawah (1.000) -> 47.000.
         self.assertEqual(sale.total, Decimal('47000.00'))
@@ -614,4 +614,27 @@ class PembulatanPerItemPosTests(POSPostingTestCase):
         self.assertEqual(client.get('/api/business-settings/').json()['pos_pembulatan_mode'], 'nota')
         self.assertEqual(client.patch('/api/business-settings/', {'pos_pembulatan_mode': 'item'}, format='json').status_code, 200)
         self.assertEqual(client.get('/api/business-settings/').json()['pos_pembulatan_mode'], 'item')
+        self.assertEqual(client.patch('/api/business-settings/', {'pos_pembulatan_mode': 'keduanya'}, format='json').status_code, 200)
+        self.assertEqual(client.get('/api/business-settings/').json()['pos_pembulatan_mode'], 'keduanya')
         self.assertEqual(client.patch('/api/business-settings/', {'pos_pembulatan_mode': 'acak'}, format='json').status_code, 400)
+
+    def test_mode_item_saja_total_tidak_dibulatkan_lagi_saat_ada_diskon(self):
+        self._atur('item')
+        sale = self._jual(metode_diskon='manual', diskon_manual_tipe='nominal', diskon_manual_nilai=1500)
+        # 46.750 - 1.500 = 45.250; baris +1.250 = 46.500; mode item saja: tidak ada pembulatan nota lagi.
+        self.assertEqual(sale.total, Decimal('46500.00'))
+        self.assertEqual(sale.pembulatan, Decimal('1250.00'))
+        self.assertEqual(sum(i.pembulatan for i in sale.items.all()), Decimal('1250.00'))
+
+    def test_mode_keduanya_tanpa_diskon_sama_dengan_item(self):
+        self._atur('keduanya')
+        sale = self._jual()
+        self.assertEqual((sale.subtotal, sale.pembulatan, sale.total), (Decimal('46750.00'), Decimal('1250.00'), Decimal('48000.00')))
+
+    def test_mode_tidak_dikenal_dianggap_nota(self):
+        from api.models import SystemConfig
+        self._atur('item')
+        SystemConfig.objects.filter(key='pos_pembulatan_mode').update(value='acak')
+        sale = self._jual()
+        self.assertEqual((sale.pembulatan, sale.total), (Decimal('250.00'), Decimal('47000.00')))
+        self.assertTrue(all(i.pembulatan == 0 for i in sale.items.all()))

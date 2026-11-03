@@ -147,9 +147,21 @@ def pembulatan_breakpoint():
         return 50
 
 
+def pembulatan_mode():
+    """'nota' (total dibulatkan sekali), 'item' (tiap baris saja), atau 'keduanya' (tiap baris lalu sisa di total nota).
+    Nilai lain dianggap 'nota' (perilaku lama)."""
+    mode = str(_raw('pos_pembulatan_mode') or 'nota').strip().lower()
+    return mode if mode in ('nota', 'item', 'keduanya') else 'nota'
+
+
 def pembulatan_per_item():
-    """True bila pembulatan penjualan dihitung per baris item (bukan sekali untuk total nota)."""
-    return str(_raw('pos_pembulatan_mode') or 'nota').strip().lower() == 'item'
+    """True bila tiap baris item dibulatkan sendiri (mode 'item' atau 'keduanya')."""
+    return pembulatan_mode() in ('item', 'keduanya')
+
+
+def pembulatan_per_nota():
+    """True bila total nota (termasuk sisa selisih diskon/pajak) dibulatkan (mode 'nota' atau 'keduanya')."""
+    return pembulatan_mode() in ('nota', 'keduanya')
 
 
 def pembulatan_arah_diskon():

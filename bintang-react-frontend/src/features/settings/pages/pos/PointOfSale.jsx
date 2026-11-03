@@ -447,7 +447,7 @@ export default function PointOfSale() {
         setPembulatanArah(res.data.pos_pembulatan_arah || 'atas');
         setPembulatanArahDiskon(res.data.pos_pembulatan_arah_diskon || 'bawah');
         setPembulatanBreakpoint(String(res.data.pos_pembulatan_breakpoint || 50));
-        setPembulatanMode(res.data.pos_pembulatan_mode === 'item' ? 'item' : 'nota');
+        setPembulatanMode(['item', 'keduanya'].includes(res.data.pos_pembulatan_mode) ? res.data.pos_pembulatan_mode : 'nota');
 
         // Cek Stok settings
         setStokBlokirJualJikaKosong(res.data.pos_stok_blokir_jual_jika_kosong !== undefined ? !!res.data.pos_stok_blokir_jual_jika_kosong : true);
@@ -2276,23 +2276,34 @@ export default function PointOfSale() {
                             </div>
 
                             <div>
-                              <span className="text-xs font-bold text-slate-800 block mb-1">Dibulatkan per</span>
-                              <div className="grid grid-cols-2 border border-slate-300 rounded-lg overflow-hidden">
-                                {[['nota', 'Nota'], ['item', 'Item']].map(([nilai, label]) => (
-                                  <button
-                                    key={nilai}
-                                    type="button"
-                                    onClick={() => setPembulatanMode(nilai)}
-                                    className={`py-2 text-xs font-bold cursor-pointer transition-colors ${pembulatanMode === nilai ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
-                                  >
-                                    {label}
-                                  </button>
-                                ))}
+                              <span className="text-xs font-bold text-slate-800 block mb-1">Dibulatkan pada</span>
+                              <div className="space-y-1.5">
+                                {[
+                                  ['item', 'Tiap item', 'Harga tiap baris item dibulatkan sendiri-sendiri.'],
+                                  ['nota', 'Total nota', 'Total yang ditagih dibulatkan, termasuk sisa selisih karena diskon atau pajak.'],
+                                ].map(([bagian, label, keterangan]) => {
+                                  const aktifItem = pembulatanMode !== 'nota';
+                                  const aktifNota = pembulatanMode !== 'item';
+                                  const dicentang = bagian === 'item' ? aktifItem : aktifNota;
+                                  const ubah = (centang) => {
+                                    const item = bagian === 'item' ? centang : aktifItem;
+                                    const nota = bagian === 'nota' ? centang : aktifNota;
+                                    if (!item && !nota) return; // minimal satu bagian harus aktif; matikan pembulatan lewat saklar di atas
+                                    setPembulatanMode(item && nota ? 'keduanya' : item ? 'item' : 'nota');
+                                  };
+                                  return (
+                                    <label key={bagian} className="flex items-start gap-2 border border-slate-200 rounded-lg px-3 py-2 cursor-pointer hover:bg-slate-50">
+                                      <input type="checkbox" className="mt-0.5" checked={dicentang} onChange={(e) => ubah(e.target.checked)} />
+                                      <span>
+                                        <span className="text-xs font-bold text-slate-800 block">{label}</span>
+                                        <span className="text-[11px] text-slate-400">{keterangan}</span>
+                                      </span>
+                                    </label>
+                                  );
+                                })}
                               </div>
                               <p className="text-[11px] text-slate-400 mt-1">
-                                {pembulatanMode === 'item'
-                                  ? 'Harga tiap baris item dibulatkan sendiri-sendiri, lalu dijumlahkan menjadi total nota.'
-                                  : 'Total nota dibulatkan satu kali.'}
+                                Boleh dicentang keduanya: tiap item dibulatkan dulu, lalu total nota dibulatkan lagi bila masih ada selisih.
                               </p>
                             </div>
 
@@ -2315,11 +2326,13 @@ export default function PointOfSale() {
                                     Sistem akan membulatkan ke atas atau ke bawah berdasarkan pengaturan <b>Mode pembulatan</b>. Diskon
                                     dibulatkan ke bawah dan pembayaran ke atas (bawaan); selisihnya tampil sebagai baris Pembulatan di kasir dan struk.
                                   </p>
-                                  {pembulatanMode === 'item' && (
+                                  {pembulatanMode !== 'nota' && (
                                     <p>
-                                      Pada mode <b>Item</b>, pembulatan dihitung per baris keranjang (setelah dikali jumlah/ukuran). Bila masih ada
-                                      diskon atau pajak, sisa selisihnya dibulatkan lagi di tingkat nota supaya total yang ditagih tetap bulat.
-                                      Berlaku untuk penjualan kasir lunas langsung; pesanan DP tetap dibulatkan per pembayaran.
+                                      Pembulatan <b>tiap item</b> dihitung per baris keranjang (setelah dikali jumlah/ukuran).
+                                      {pembulatanMode === 'keduanya'
+                                        ? ' Bila masih ada diskon atau pajak, sisa selisihnya dibulatkan lagi di total nota supaya total yang ditagih tetap bulat.'
+                                        : ' Total nota tidak dibulatkan lagi, jadi bila ada diskon atau pajak totalnya bisa tidak bulat.'}
+                                      {' '}Berlaku untuk penjualan kasir lunas langsung; pesanan DP tetap dibulatkan per pembayaran.
                                     </p>
                                   )}
                                   {k > 1 && (

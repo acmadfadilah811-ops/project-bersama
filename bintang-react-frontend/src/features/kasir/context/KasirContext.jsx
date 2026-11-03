@@ -453,8 +453,11 @@ export function KasirProvider({ children }) {
   const kelipatanPembulatan = businessSettings?.pos_pembulatan_aktif ? Number(businessSettings?.pos_pembulatan_kelipatan || 0) : 0;
   const arahPembulatan = businessSettings?.pos_pembulatan_arah || 'atas';
   const breakpointPembulatan = Number(businessSettings?.pos_pembulatan_breakpoint) || 50;
-  // Mode "per item": tiap baris keranjang dibulatkan sendiri (cermin api/services/pembulatan.hitung_pembulatan_baris).
-  const pembulatanPerItem = kelipatanPembulatan > 1 && businessSettings?.pos_pembulatan_mode === 'item';
+  // Mode "item"/"keduanya": tiap baris keranjang dibulatkan sendiri (cermin api/services/pembulatan.hitung_pembulatan_baris).
+  // Mode "nota"/"keduanya": total nota (termasuk sisa selisih diskon/pajak) dibulatkan. Mode lain/kosong = "nota".
+  const modePembulatan = ['item', 'keduanya'].includes(businessSettings?.pos_pembulatan_mode) ? businessSettings.pos_pembulatan_mode : 'nota';
+  const pembulatanPerItem = kelipatanPembulatan > 1 && modePembulatan !== 'nota';
+  const pembulatanPerNota = modePembulatan !== 'item';
 
   // Nilai asli baris (2 desimal, sama dengan money() di server).
   const getNilaiBaris = (item) => Math.round(
@@ -477,7 +480,9 @@ export function KasirProvider({ children }) {
   const getPembulatan = () => {
     const totalDiskon = getDiscountAmount() + getPromoDiscountAmount() + getPosPromotionDiscountAmount() + getLoyaltyDiscountAmount();
     const dariBaris = getPembulatanBarisTotal();
-    // Sisa selisih nota (karena diskon/pajak) dibulatkan seperti biasa supaya total yang ditagih tetap bulat.
+    // Mode "item" saja: total tidak dibulatkan lagi. Selain itu sisa selisih nota (karena diskon/pajak)
+    // dibulatkan seperti biasa supaya total yang ditagih tetap bulat.
+    if (!pembulatanPerNota) return dariBaris;
     return dariBaris + selisihPembulatanPenjualan(
       getTotal() + dariBaris,
       totalDiskon,
