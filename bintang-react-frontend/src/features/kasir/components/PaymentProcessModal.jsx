@@ -18,7 +18,15 @@ export default function PaymentProcessModal({
   defaultDueDate = '',
   minDp = 0,
   minDpPersen = null,
+  // Mode "pelunasan" (2026-11-03): kalkulator yang sama dipakai untuk melunasi sisa tagihan pesanan.
+  // `totalAmount` = sisa tagihan; tombol kedua jadi "Bayar Sebagian"; tanpa jatuh tempo/DP minimal.
+  mode = 'terminal',
+  infoPesanan = null, // { id, nama, nomorWa }
+  kirimWaOpsi = null, // { nilai, onChange } -- hanya untuk pesanan staff
+  memproses = false,
+  errorMessage = '',
 }) {
+  const isPelunasan = mode === 'pelunasan';
   const [selectedMethod, setSelectedMethod] = useState('CASH');
   const metodeMaster = useMetodePembayaran(isOpen);
   // Metode awal = metode bertipe Tunai pertama dari master Finance (cadangan: 'CASH').
@@ -44,7 +52,7 @@ export default function PaymentProcessModal({
   const currentPayAmount = parseFloat(payAmountStr) || 0;
   const changeAmount = Math.max(0, currentPayAmount - totalTagihan);
   // DP juga dibulatkan: pelanggan membayar DP + pembulatan, tagihan order berkurang sebesar DP.
-  const dpPembulatan = paymentType === 'dp' && hitungPembulatanBayar ? hitungPembulatanBayar(currentPayAmount) : 0;
+  const dpPembulatan = (paymentType === 'dp' || paymentType === 'sebagian') && hitungPembulatanBayar ? hitungPembulatanBayar(currentPayAmount) : 0;
 
   // Numpad key handlers
   const handleNumpadClick = (val) => {
@@ -68,6 +76,25 @@ export default function PaymentProcessModal({
   };
 
   const handlePaySubmit = () => {
+    if (memproses) return;
+    if (isPelunasan) {
+      if (paymentType === 'lunas' && currentPayAmount < totalTagihan) {
+        alert(`Nominal pembayaran (Rp ${currentPayAmount.toLocaleString('id-ID')}) kurang dari sisa tagihan (Rp ${Math.round(totalTagihan).toLocaleString('id-ID')}). Pilih Bayar Sebagian bila pelanggan membayar sebagian.`);
+        return;
+      }
+      if (paymentType === 'sebagian' && (currentPayAmount <= 0 || currentPayAmount > totalAmount)) {
+        alert('Nominal harus lebih dari 0 dan tidak melebihi sisa tagihan.');
+        return;
+      }
+      onConfirmPayment({
+        method: selectedMethod,
+        paymentType,
+        payAmount: currentPayAmount,
+        changeAmount,
+        dueDate: null,
+      });
+      return;
+    }
     if (paymentType === 'lunas' && currentPayAmount < totalTagihan) {
       alert(`Nominal pembayaran (Rp ${currentPayAmount.toLocaleString('id-ID')}) kurang dari total tagihan (Rp ${totalTagihan.toLocaleString('id-ID')}).`);
       return;
@@ -156,7 +183,7 @@ export default function PaymentProcessModal({
     return chips.slice(0, 3);
   };
 
-  const quickChips = generateQuickChips();
+  const quickChips = isPelunasan && paymentType !== 'lunas' ? [] : generateQuickChips();
 
   // Daftar cadangan hanya dipakai bila master metode gagal dimuat.
   const metodeCadangan = [
@@ -200,16 +227,53 @@ export default function PaymentProcessModal({
                   onClick={() => { setPaymentType('lunas'); setPayAmountStr(String(Math.round(totalAmount + pembulatan))); }}
                   className={`rounded-lg px-2.5 py-2 text-xs font-extrabold border transition-all ${paymentType === 'lunas' ? 'bg-emerald-500 text-white border-emerald-300' : 'bg-white/10 text-white border-white/30 hover:bg-white/20'}`}
                 >
-                  Bayar Lunas
+                  {isPelunasan ? 'Lunasi Sisa' : 'Bayar Lunas'}
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setPaymentType('dp'); setPayAmountStr(minDp > 0 ? String(Math.round(minDp)) : ''); }}
-                  className={`rounded-lg px-2.5 py-2 text-xs font-extrabold border transition-all ${paymentType === 'dp' ? 'bg-amber-400 text-slate-900 border-amber-200' : 'bg-white/10 text-white border-white/30 hover:bg-white/20'}`}
+                  onClick={() => {
+                    if (isPelunasan) { setPaymentType('sebagian'); setPayAmountStr(''); return; }
+                    setPaymentType('dp');
+                    setPayAmountStr(minDp > 0 ? String(Math.round(minDp)) : '');
+                  }}
+                  className={`rounded-lg px-2.5 py-2 text-xs font-extrabold border transition-all ${(isPelunasan ? paymentType === 'sebagian' : paymentType === 'dp') ? 'bg-amber-400 text-slate-900 border-amber-200' : 'bg-white/10 text-white border-white/30 hover:bg-white/20'}`}
                 >
-                  DP / Uang Muka
+                  {isPelunasan ? 'Bayar Sebagian' : 'DP / Uang Muka'}
                 </button>
               </div>
+              {isPelunasan && (
+                <div className="space-y-2 rounded-lg bg-white/10 p-3 text-[11px] font-semibold text-white">
+                  {infoPesanan && (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-white/60">Pesanan</p>
+                      <p className="text-xs font-extrabold">{infoPesanan.id}</p>
+                      <p className="text-white/80">{[infoPesanan.nama, infoPesanan.nomorWa].filter(Boolean).join(' - ')}</p>
+                    </div>
+                  )}
+                  <div className="space-y-1 border-t border-white/20 pt-2">
+                    <div className="flex justify-between font-extrabold"><span>Sisa Tagihan</span><span>Rp {Math.round(totalAmount).toLocaleString('id-ID')}</span></div>
+                    {paymentType === 'lunas' && pembulatan !== 0 && (
+                      <div className="flex justify-between"><span>Pembulatan</span><span>{pembulatan > 0 ? '+' : '-'}Rp {Math.abs(Math.round(pembulatan)).toLocaleString('id-ID')}</span></div>
+                    )}
+                    {paymentType === 'sebagian' && (
+                      <>
+                        <div className="flex justify-between"><span>Dibayar sekarang</span><span>Rp {Math.round(currentPayAmount).toLocaleString('id-ID')}</span></div>
+                        {dpPembulatan !== 0 && (
+                          <div className="flex justify-between"><span>Pembulatan</span><span>{dpPembulatan > 0 ? '+' : '-'}Rp {Math.abs(Math.round(dpPembulatan)).toLocaleString('id-ID')}</span></div>
+                        )}
+                        <div className="flex justify-between font-extrabold"><span>Sisa setelah bayar</span><span>Rp {Math.max(0, Math.round(totalAmount - currentPayAmount)).toLocaleString('id-ID')}</span></div>
+                      </>
+                    )}
+                  </div>
+                  {kirimWaOpsi && (
+                    <label className="flex items-start gap-2 border-t border-white/20 pt-2 cursor-pointer">
+                      <input type="checkbox" className="mt-0.5" checked={kirimWaOpsi.nilai} onChange={(e) => kirimWaOpsi.onChange(e.target.checked)} />
+                      <span>Kirim ID pesanan ke WhatsApp pelanggan<span className="block text-white/60">Matikan bila staff sudah membuat faktur manual.</span></span>
+                    </label>
+                  )}
+                  {errorMessage && <p className="rounded-md bg-rose-100 p-2 text-[11px] font-bold text-rose-700">{errorMessage}</p>}
+                </div>
+              )}
               {paymentType === 'dp' && (
                 <div className="space-y-2 rounded-lg bg-amber-50 p-3 text-[11px] font-semibold text-amber-950">
                   <p className="leading-relaxed">DP langsung menerbitkan SPK ke antrean divisi setelah tujuan dan deadline dipilih.</p>
@@ -345,9 +409,10 @@ export default function PaymentProcessModal({
               <button
                 type="button"
                 onClick={handlePaySubmit}
-                className="w-full py-3.5 rounded-lg bg-[#4CAF50] hover:bg-emerald-600 text-white font-extrabold text-lg shadow-lg shadow-emerald-500/20 transition-all cursor-pointer text-center"
+                disabled={memproses}
+                className="w-full py-3.5 rounded-lg bg-[#4CAF50] hover:bg-emerald-600 disabled:opacity-60 disabled:cursor-wait text-white font-extrabold text-lg shadow-lg shadow-emerald-500/20 transition-all cursor-pointer text-center"
               >
-                Bayar
+                {memproses ? 'Memproses...' : 'Bayar'}
               </button>
             </div>
 

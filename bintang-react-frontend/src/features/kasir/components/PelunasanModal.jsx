@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Loader2, MessageCircle, Printer, Wallet, X } from 'lucide-react';
+import { MessageCircle, Printer, Wallet, X } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import { useAuth } from '../../../context/AuthContext';
-import NumericInput from '../../../components/NumericInput';
 import OrderInvoicePrint from './OrderInvoicePrint';
 import KirimIdPesananButton from './KirimIdPesananButton';
+import PaymentProcessModal from './PaymentProcessModal';
 import {
   getPrintErrorMessage,
   jenisDokumenOtomatis,
@@ -17,16 +17,21 @@ import { selisihPembulatan } from '../../../utils/pembulatan';
 import useMetodePembayaran from '../hooks/useMetodePembayaran';
 
 /**
- * Penerimaan pelunasan untuk pesanan yang sudah siap diambil.
+ * Penerimaan pelunasan untuk pesanan yang masih ada sisa tagihan.
  *
- * Memakai POST /orders/{id}/bayar/ yang sudah ada — endpoint itu menambah
- * dp_dibayar, menghitung ulang sisa tagihan, dan mencatat ke buku besar.
- * Jadi tidak ada logika keuangan yang diduplikasi di sini.
+ * Tampilannya kalkulator pembayaran yang sama dengan terminal kasir (PaymentProcessModal, mode
+ * "pelunasan"): pilih metode, ketik nominal di numpad, kembalian dihitung otomatis. Bisa melunasi
+ * seluruh sisa atau membayar sebagian. Setelah dibayar, layar ringkas "Pembayaran Diterima" dengan
+ * cetak faktur dan kirim WhatsApp.
+ *
+ * Memakai POST /orders/{id}/bayar/ yang sudah ada — endpoint itu menambah dp_dibayar, menghitung
+ * ulang sisa tagihan, dan mencatat ke buku besar. Jadi tidak ada logika keuangan yang diduplikasi di sini.
  */
 export default function PelunasanModal({ order, onClose, onSelesai }) {
   const { businessSettings } = useAuth();
   const sisaAwal = Math.max(0, Number(order?.sisa_tagihan || 0));
 
+  // Jumlah yang dikurangkan dari tagihan (diisi saat pembayaran diproses; dipakai layar hasil & faktur).
   const [jumlah, setJumlah] = useState(sisaAwal);
   // Metode pembayaran = master Finance (Pengaturan POS > Pembayaran); cadangan bila gagal dimuat.
   const metodeMaster = useMetodePembayaran(true);
@@ -53,30 +58,37 @@ export default function PelunasanModal({ order, onClose, onSelesai }) {
       minimumFractionDigits: 0,
     }).format(v || 0);
 
-  const jumlahNum = Number(jumlah || 0);
-  const sisaSetelah = Math.max(0, sisaAwal - jumlahNum);
-  const bisaProses = jumlahNum > 0 && jumlahNum <= sisaAwal && !memproses;
   // Pembayaran dibulatkan (Pengaturan POS > Pembulatan): tagihan berkurang sebesar jumlah, uang diterima = jumlah + pembulatan.
-  const pembulatan = businessSettings?.pos_pembulatan_aktif && jumlahNum > 0
-    ? selisihPembulatan(jumlahNum, Number(businessSettings.pos_pembulatan_kelipatan || 0), businessSettings.pos_pembulatan_arah || 'atas', Number(businessSettings.pos_pembulatan_breakpoint) || 50)
-    : 0;
+  const hitungPembulatanBayar = (nilai) => (businessSettings?.pos_pembulatan_aktif && Number(nilai) > 0
+    ? selisihPembulatan(Number(nilai), Number(businessSettings.pos_pembulatan_kelipatan || 0), businessSettings.pos_pembulatan_arah || 'atas', Number(businessSettings.pos_pembulatan_breakpoint) || 50)
+    : 0);
+  const jumlahNum = Number(jumlah || 0);
+  const pembulatan = hitungPembulatanBayar(jumlahNum);
 
-  const proses = async () => {
-    if (!bisaProses) return;
+  const prosesPembayaran = async ({ method, paymentType, payAmount }) => {
+    if (memproses) return;
+    // "Lunasi sisa" melunasi seluruh sisa tagihan; "Bayar sebagian" memakai nominal yang diketik.
+    const jumlahBayar = paymentType === 'lunas' ? sisaAwal : Math.round(Number(payAmount) || 0);
+    if (jumlahBayar <= 0 || jumlahBayar > sisaAwal) {
+      setError('Jumlah pembayaran harus lebih dari 0 dan tidak melebihi sisa tagihan.');
+      return;
+    }
+    setJumlah(jumlahBayar);
+    setMetode(method);
     setMemproses(true);
     setError('');
     try {
       const res = await apiClient.post(`/orders/${order.id}/bayar/`, {
-        jumlah_bayar: Math.round(jumlahNum),
-        metode_pembayaran: metode,
+        jumlah_bayar: jumlahBayar,
+        metode_pembayaran: method,
         idempotency_key: idempotencyKey,
         kirim_wa: kirimWa,
       });
       setOrderLunas(res.data);
       if (jenisDokumenOtomatis(businessSettings).includes('invoice')) {
         // Faktur pelunasan langsung ke printer faktur PC ini; gagal tidak menggagalkan pembayaran.
-        printDokumen({ type: 'invoice', data: fakturDariOrder(res.data, metode), businessSettings })
-          .catch((error) => notifyError('Cetak faktur otomatis gagal', getPrintErrorMessage(error)));
+        printDokumen({ type: 'invoice', data: fakturDariOrder(res.data, method), businessSettings })
+          .catch((err) => notifyError('Cetak faktur otomatis gagal', getPrintErrorMessage(err)));
       }
       if (onSelesai) onSelesai(res.data);
     } catch (err) {
@@ -95,8 +107,8 @@ export default function PelunasanModal({ order, onClose, onSelesai }) {
   const cetakFaktur = async () => {
     try {
       if (await printDokumen({ type: 'invoice', data: fakturDariOrder(orderLunas, metode), businessSettings })) return;
-    } catch (error) {
-      notifyError('Cetak faktur gagal', getPrintErrorMessage(error));
+    } catch (err) {
+      notifyError('Cetak faktur gagal', getPrintErrorMessage(err));
       return;
     }
     requestBrowserPrint();
@@ -118,14 +130,28 @@ export default function PelunasanModal({ order, onClose, onSelesai }) {
     }
   };
 
-  const inputCls =
-    'w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500';
+  // Sebelum dibayar: kalkulator pembayaran seperti di terminal kasir.
+  if (!orderLunas) {
+    return (
+      <PaymentProcessModal
+        isOpen
+        mode="pelunasan"
+        onClose={onClose}
+        totalAmount={sisaAwal}
+        pembulatan={hitungPembulatanBayar(sisaAwal)}
+        hitungPembulatanBayar={hitungPembulatanBayar}
+        onConfirmPayment={prosesPembayaran}
+        infoPesanan={{ id: order.id, nama: order.nama, nomorWa: order.nomor_wa }}
+        kirimWaOpsi={order.sumber === 'staff' ? { nilai: kirimWa, onChange: setKirimWa } : null}
+        memproses={memproses}
+        errorMessage={error}
+      />
+    );
+  }
 
   return (
     <>
-      {orderLunas && (
-        <OrderInvoicePrint order={orderLunas} dibayarSekarang={jumlahNum} pembulatanSekarang={pembulatan} metode={metode} settings={businessSettings} />
-      )}
+      <OrderInvoicePrint order={orderLunas} dibayarSekarang={jumlahNum} pembulatanSekarang={pembulatan} metode={metode} settings={businessSettings} />
 
       <div className="fixed inset-0 z-[9999] flex items-center justify-center p-5 print:hidden">
         <div className="absolute inset-0 bg-slate-900/45 backdrop-blur-sm" onClick={onClose} />
@@ -134,9 +160,7 @@ export default function PelunasanModal({ order, onClose, onSelesai }) {
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
             <div className="flex items-center gap-2">
               <Wallet size={18} className="text-emerald-600" />
-              <h3 className="text-sm font-black text-slate-800">
-                {orderLunas ? 'Pembayaran Diterima' : 'Terima Pelunasan'}
-              </h3>
+              <h3 className="text-sm font-black text-slate-800">Pembayaran Diterima</h3>
             </div>
             <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 cursor-pointer">
               <X size={18} />
@@ -155,136 +179,47 @@ export default function PelunasanModal({ order, onClose, onSelesai }) {
                 </div>
                 <div className="text-right">
                   <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Sisa Tagihan</p>
-                  <p className="text-sm font-black text-rose-600">{formatCurrency(sisaAwal)}</p>
+                  <p className="text-sm font-black text-rose-600">{formatCurrency(Number(orderLunas.sisa_tagihan || 0))}</p>
                 </div>
               </div>
             </div>
 
-            {orderLunas ? (
-              <div className="text-center py-3">
-                <p className="text-xs font-semibold text-slate-600">
-                  Pembayaran {formatCurrency(jumlahNum)} tercatat.
-                </p>
-                <p className="text-sm font-black text-slate-800 mt-1">
-                  {Number(orderLunas.sisa_tagihan || 0) > 0
-                    ? `Sisa tagihan ${formatCurrency(orderLunas.sisa_tagihan)}`
-                    : 'Pesanan ini telah lunas.'}
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div>
-                  <label className="text-[11px] font-bold text-slate-500 block mb-1">Jumlah Diterima</label>
-                  <NumericInput value={jumlah} onChange={(val) => setJumlah(val)} min={0} max={sisaAwal} className={inputCls} />
-                  {jumlahNum > sisaAwal && (
-                    <p className="text-[11px] font-semibold text-amber-600 mt-1">
-                      Jumlah tidak boleh melebihi sisa tagihan.
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-bold text-slate-500 block mb-1">Metode Pembayaran</label>
-                  <select value={metode} onChange={(e) => setMetode(e.target.value)} className={inputCls}>
-                    {adaMaster ? (
-                      metodeMaster.map((m) => <option key={m.id} value={m.nama}>{m.nama}</option>)
-                    ) : (
-                      <>
-                        <option value="tunai">Tunai</option>
-                        <option value="transfer">Transfer</option>
-                        <option value="debit">Debit</option>
-                        <option value="qris">QRIS</option>
-                      </>
-                    )}
-                  </select>
-                </div>
-
-                {order.sumber === 'staff' && (
-                  <label className="flex items-start gap-2 text-xs text-slate-600 cursor-pointer">
-                    <input type="checkbox" checked={kirimWa} onChange={(e) => setKirimWa(e.target.checked)} className="mt-0.5" />
-                    <span>
-                      Kirim ID pesanan ke WhatsApp pelanggan
-                      <span className="block text-[11px] text-slate-400">Matikan bila staff sudah membuat faktur manual.</span>
-                    </span>
-                  </label>
-                )}
-
-                {pembulatan !== 0 && (
-                  <div className="flex justify-between items-center text-xs font-bold text-slate-600">
-                    <span>Pembulatan</span>
-                    <span>{pembulatan > 0 ? '+' : '-'}{formatCurrency(Math.abs(pembulatan))}</span>
-                  </div>
-                )}
-                {pembulatan !== 0 && (
-                  <div className="flex justify-between items-center text-xs font-black text-slate-800">
-                    <span>Total dibayar pelanggan</span>
-                    <span>{formatCurrency(jumlahNum + pembulatan)}</span>
-                  </div>
-                )}
-
-                <div className="flex justify-between items-center pt-1 text-xs font-bold text-slate-600">
-                  <span>Sisa setelah pembayaran</span>
-                  <span className={sisaSetelah > 0 ? 'text-rose-600 font-black' : 'text-emerald-600 font-black'}>
-                    {sisaSetelah > 0 ? formatCurrency(sisaSetelah) : 'LUNAS'}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {error && (
-              <div className="mt-3 p-2.5 rounded-xl bg-rose-50 text-rose-700 text-[11px] font-semibold">
-                {error}
-              </div>
-            )}
+            <div className="text-center py-3">
+              <p className="text-xs font-semibold text-slate-600">
+                Pembayaran {formatCurrency(jumlahNum)} tercatat.
+              </p>
+              <p className="text-sm font-black text-slate-800 mt-1">
+                {Number(orderLunas.sisa_tagihan || 0) > 0
+                  ? `Sisa tagihan ${formatCurrency(orderLunas.sisa_tagihan)}`
+                  : 'Pesanan ini telah lunas.'}
+              </p>
+            </div>
           </div>
 
           <div className="flex justify-end gap-2 px-5 py-4 border-t border-slate-100">
-            {orderLunas ? (
-              <>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl cursor-pointer"
-                >
-                  Tutup
-                </button>
-                <button
-                  type="button"
-                  onClick={cetakFaktur}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-black text-xs rounded-xl flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Printer size={14} /> Cetak Faktur
-                </button>
-                <button
-                  type="button"
-                  onClick={kirimInvoiceWa}
-                  disabled={sendingInvoice}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black text-xs rounded-xl flex items-center gap-1.5 cursor-pointer"
-                >
-                  <MessageCircle size={14} /> {sendingInvoice ? 'Mengirim...' : 'Kirim Faktur WA'}
-                </button>
-                <KirimIdPesananButton orderId={orderLunas.id} className="px-4 py-2 text-xs rounded-xl" />
-              </>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="button"
-                  onClick={proses}
-                  disabled={!bisaProses}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black text-xs rounded-xl flex items-center gap-1.5 cursor-pointer"
-                >
-                  {memproses && <Loader2 size={14} className="animate-spin" />}
-                  {memproses ? 'Memproses…' : 'Terima Pembayaran'}
-                </button>
-              </>
-            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl cursor-pointer"
+            >
+              Tutup
+            </button>
+            <button
+              type="button"
+              onClick={cetakFaktur}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-black text-xs rounded-xl flex items-center gap-1.5 cursor-pointer"
+            >
+              <Printer size={14} /> Cetak Faktur
+            </button>
+            <button
+              type="button"
+              onClick={kirimInvoiceWa}
+              disabled={sendingInvoice}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black text-xs rounded-xl flex items-center gap-1.5 cursor-pointer"
+            >
+              <MessageCircle size={14} /> {sendingInvoice ? 'Mengirim...' : 'Kirim Faktur WA'}
+            </button>
+            <KirimIdPesananButton orderId={orderLunas.id} className="px-4 py-2 text-xs rounded-xl" />
           </div>
         </div>
       </div>
