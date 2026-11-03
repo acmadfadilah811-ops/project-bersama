@@ -60,3 +60,6 @@ Dokumentasi_Bintang_ERP*.pdf
 # n8n workflow export — di luar scope deploy inti backend/frontend.
 /automation-templates/
 n8n_*.json
+
+# Kredensial OAuth Google (rahasia) -- jangan pernah di-commit.
+client_secret_*.json
