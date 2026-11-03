@@ -180,8 +180,12 @@ export default function SiapDiambilPanel({ ringkas = false }) {
     if (tampilkanSpinner) setMemuat(true);
     const u = unitKasir ? { unit_bisnis: unitKasir } : {};
     try {
-      const [resReady, resDesain, resProses, resSelesai, resPosReady, resPosProses] = await Promise.all([
+      const [resReady, resReview, resDesain, resProses, resSelesai, resPosReady, resPosProses] = await Promise.all([
         apiClient.get('/orders/', { params: { status_global: 'ready', ...u } }),
+        // Pesanan baru dari kasir berstatus 'review' (menunggu manager menerbitkan SPK). Pelunasan tetap
+        // boleh dicatat saat itu, jadi ikut tampil di sini (2026-11-03). Pesanan WA berstatus review itu
+        // draf antrean WA yang belum dikonfirmasi, bukan untuk dilunasi di sini.
+        apiClient.get('/orders/', { params: { status_global: 'review', ...u } }),
         apiClient.get('/orders/', { params: { status_global: 'desain', ...u } }),
         apiClient.get('/orders/', { params: { status_global: 'proses', ...u } }),
         apiClient.get('/orders/', { params: { status_global: 'selesai', ...u } }),
@@ -190,6 +194,7 @@ export default function SiapDiambilPanel({ ringkas = false }) {
       ]);
       setSiap([...(resReady.data || []), ...(resPosReady.data || []).map(normalisasiPosSale)]);
       setProses([
+        ...(resReview.data || []).filter((o) => o.sumber !== 'wa'),
         ...(resDesain.data || []),
         ...(resProses.data || []),
         ...(resPosProses.data || []).map(normalisasiPosSale),
@@ -664,6 +669,11 @@ export default function SiapDiambilPanel({ ringkas = false }) {
                             <span className="text-[11px] font-semibold text-slate-500 truncate">
                               {order.nama}
                             </span>
+                            {order.status_global === 'review' && (
+                              <span className="text-[9px] font-black text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded uppercase shrink-0">
+                                Menunggu review
+                              </span>
+                            )}
                           </div>
                           <span className="text-[11px] font-bold text-slate-400 shrink-0">
                             {tuntas}/{total} item selesai
