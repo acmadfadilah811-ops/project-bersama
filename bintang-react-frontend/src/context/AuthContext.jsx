@@ -17,6 +17,7 @@ const _loadCachedSettings = () => {
 
 import apiClient from '../api/apiClient';
 import authSession from '../utils/authSession';
+import useAutoRefresh from '../utils/useAutoRefresh';
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -29,13 +30,21 @@ export function AuthProvider({ children }) {
       const res = await apiClient.get('/business-settings/');
       const data = res.data;
       if (data && data.nama_bisnis) {
-        setBusinessSettings(data);
-        localStorage.setItem('business_settings', JSON.stringify(data));
+        // Hanya perbarui bila isinya berubah, supaya penyegaran berkala tidak merender ulang seluruh aplikasi.
+        const teks = JSON.stringify(data);
+        if (teks !== localStorage.getItem('business_settings')) {
+          setBusinessSettings(data);
+          localStorage.setItem('business_settings', teks);
+        }
       }
     } catch (err) {
       console.error('Gagal sinkronisasi data bisnis:', err);
     }
   };
+
+  // Pengaturan bisnis (mis. Pengaturan POS > Pembulatan) yang diubah di server sampai ke layar kasir yang
+  // sedang terbuka dalam <= 1 menit atau saat tab kembali aktif, tanpa kasir memuat ulang halaman (2026-11-03).
+  useAutoRefresh(fetchBusinessSettings, { intervalMs: 60000, enabled: !!user });
 
   useEffect(() => {
     const token = authSession.getAccessToken();
