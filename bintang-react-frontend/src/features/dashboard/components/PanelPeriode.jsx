@@ -290,7 +290,8 @@ export function GrafikPeriode({ seri, warna = AKSEN.biru, tinggi = 280, format =
               </g>
             ))}
 
-            {label.map((l, i) => (i % langkahLabel === 0 || i === n - 1) && (
+            {/* Label terakhir hanya dipaksa tampil bila tidak menempel ke label sebelumnya. */}
+            {label.map((l, i) => (i % langkahLabel === 0 || (i === n - 1 && (n - 1) % langkahLabel > langkahLabel * 0.6)) && (
               <text key={l + i} x={sx(i)} y={tinggi - 8} textAnchor="middle" className="fill-slate-400" style={{ fontSize: 11 }}>{l}</text>
             ))}
 
