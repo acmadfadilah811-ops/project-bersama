@@ -11,6 +11,7 @@ class NotifikasiKeuangan(models.Model):
         PAYROLL_FINAL = "payroll_final", "Gaji siap diposting"
         REIMBURSEMENT = "reimbursement", "Reimbursement disetujui"
         PERSETUJUAN_GAJI = "persetujuan_gaji", "Persetujuan pencairan gaji"
+        ASET_HR = "aset_hr", "Aset dari HR"
 
     # Kunci dari pengirim -- kiriman ulang dengan kunci sama tidak menggandakan.
     kunci = models.CharField(max_length=120, unique=True)

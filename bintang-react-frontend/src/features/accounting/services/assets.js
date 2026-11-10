@@ -37,3 +37,25 @@ export async function commitAssetImport(entries, config) {
   const { data } = await apiClient.post('/accounting/assets/import/commit/', { ...config, entries });
   return data;
 }
+
+// Aset dari HR & proyeksi penyusutan (2026-11-10)
+export async function fetchAsetDariHR(status = 'menunggu') {
+  const { data } = await apiClient.get('/accounting/assets/dari-hr/', { params: { status } });
+  return data;
+}
+export async function prosesAsetDariHR(id, payload) {
+  const { data } = await apiClient.post(`/accounting/assets/dari-hr/${id}/proses/`, payload);
+  return data;
+}
+export async function tolakAsetDariHR(id, alasan) {
+  const { data } = await apiClient.post(`/accounting/assets/dari-hr/${id}/tolak/`, { alasan });
+  return data;
+}
+export async function selesaiTinjauAsetDariHR(id) {
+  const { data } = await apiClient.post(`/accounting/assets/dari-hr/${id}/selesai-tinjau/`);
+  return data;
+}
+export async function fetchProyeksiPenyusutan(bulan = 12) {
+  const { data } = await apiClient.get('/accounting/assets/proyeksi/', { params: { bulan } });
+  return data;
+}

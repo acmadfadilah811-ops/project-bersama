@@ -26,6 +26,7 @@ class FixedAssetReadSerializer(serializers.ModelSerializer):
             "acquisition_journal_number", "status", "useful_life_months", "last_depreciation_date",
             "accumulated_depreciation", "book_value", "monthly_depreciation_amount",
             "disposal_date", "disposal_proceeds", "disposal_journal", "disposal_journal_number", "created_at",
+            "hr_asset_id",
         ]
         read_only_fields = [
             "acquisition_journal", "created_at", "last_depreciation_date",
@@ -71,6 +72,10 @@ class FixedAssetCreateSerializer(FixedAssetAccountConfigSerializer):
     acquisition_cost = serializers.DecimalField(max_digits=15, decimal_places=0)
     residual_value = serializers.DecimalField(max_digits=15, decimal_places=0, required=False, default=0)
     useful_life_months = serializers.IntegerField(required=False, allow_null=True, min_value=1)
+    # Aset saldo awal: akumulasi penyusutan s.d. akhir bulan sebelum Mulai Akuntansi (2026-11-10).
+    opening_accumulated_depreciation = serializers.DecimalField(
+        max_digits=15, decimal_places=0, required=False, default=0, min_value=0,
+    )
 
     def create(self, validated_data):
         return create_fixed_asset(data=validated_data, created_by=self.context["request"].user)

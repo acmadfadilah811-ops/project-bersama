@@ -6,6 +6,8 @@ import AssetDisposeModal from '../components/assets/AssetDisposeModal';
 import AssetEditModal from '../components/assets/AssetEditModal';
 import AssetActionDropdown from '../components/assets/AssetActionDropdown';
 import AssetDateModal from '../components/assets/AssetDateModal';
+import AsetDariHRPanel from '../components/assets/AsetDariHRPanel';
+import ProyeksiPenyusutanPanel from '../components/assets/ProyeksiPenyusutanPanel';
 import useAssets from '../hooks/useAssets';
 import { notify, notifyApiError } from '../../../utils/notify';
 
@@ -77,6 +79,8 @@ export default function DaftarAset() {
   const [query, setQuery] = useState('');
   const [editingAsset, setEditingAsset] = useState(null);
   const [disposingAsset, setDisposingAsset] = useState(null);
+  // Tampilan: daftar register, antrean Aset dari HR, atau Proyeksi Penyusutan (2026-11-10).
+  const [tampilan, setTampilan] = useState('daftar');
   const filtered = useMemo(
     () => assets.filter((asset) => (asset.asset_code + ' ' + asset.name).toLowerCase().includes(query.toLowerCase())),
     [assets, query],
@@ -90,7 +94,7 @@ export default function DaftarAset() {
         type: 'success',
         title: 'Penyusutan diposting',
         message: result.posted_count > 0
-          ? `${result.posted_count} jurnal penyusutan berhasil diposting untuk periode ${result.period}.`
+          ? `${result.posted_count} jurnal penyusutan berhasil diposting s.d. periode ${result.period} (termasuk bulan yang tertinggal).`
           : `Tidak ada aset yang perlu disusutkan untuk periode ${result.period} (sudah diposting, belum ada umur manfaat, atau sudah lunas tersusutkan).`,
       });
     } catch (error) {
@@ -102,6 +106,27 @@ export default function DaftarAset() {
 
   return (
     <div className="space-y-4 animate-fade-in text-xs font-semibold text-slate-700">
+      <div className="flex flex-wrap gap-2">
+        {[
+          ['daftar', 'Daftar Aset'],
+          ['hr', 'Aset dari HR'],
+          ['proyeksi', 'Proyeksi Penyusutan'],
+        ].map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setTampilan(id)}
+            className={`px-4 py-2 rounded-lg font-bold transition-colors ${tampilan === id ? 'bg-[#0088E8] text-white shadow-2xs' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tampilan === 'hr' && <AsetDariHRPanel accounts={accounts} onChanged={reload} />}
+      {tampilan === 'proyeksi' && <ProyeksiPenyusutanPanel />}
+
+      {tampilan === 'daftar' && (<>
       {/* Main Filter and Controls Header */}
       <div className="flex flex-wrap gap-4 items-center justify-between bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
         <div className="flex items-center gap-2 flex-wrap flex-1 min-w-[260px]">
@@ -127,7 +152,7 @@ export default function DaftarAset() {
 
         <div className="flex items-center gap-2">
           <button onClick={handlePostDepreciation} disabled={posting} className="px-3.5 py-1.5 border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 rounded-lg cursor-pointer transition-colors shadow-2xs font-bold disabled:opacity-60">
-            {posting ? 'Memposting...' : 'Posting Penyusutan Bulan Ini'}
+            {posting ? 'Memposting...' : 'Posting Penyusutan s.d. Bulan Ini'}
           </button>
           <button onClick={() => setShowTransfer(true)} className="px-3.5 py-1.5 border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 rounded-lg cursor-pointer transition-colors shadow-2xs font-bold flex items-center gap-1.5">
             <FileSpreadsheet size={14} />Import &amp; Export
@@ -206,6 +231,8 @@ export default function DaftarAset() {
           </div>
         )}
       </div>
+
+      </>)}
 
       {showTransfer && <AssetImportExportModal accounts={accounts} onClose={() => setShowTransfer(false)} onImported={reload} />}
       {editingAsset && <AssetEditModal asset={editingAsset} onSave={update} onClose={() => setEditingAsset(null)} />}

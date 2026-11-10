@@ -3,13 +3,17 @@ import { X } from 'lucide-react';
 import { notify, notifyApiError } from '../../../../utils/notify';
 import AssetAccountSelect from './AssetAccountSelect';
 
-const initialForm = { asset_code: '', name: '', acquisition_date: new Date().toISOString().slice(0, 10), acquisition_cost: '', residual_value: '0', useful_life_months: '', asset_account: null, depreciation_expense_account: null, accumulated_depreciation_account: null, counter_account: null, is_opening_balance: false, external_document_no: '', description: '' };
+const initialForm = { asset_code: '', name: '', acquisition_date: new Date().toISOString().slice(0, 10), acquisition_cost: '', residual_value: '0', useful_life_months: '', asset_account: null, depreciation_expense_account: null, accumulated_depreciation_account: null, counter_account: null, is_opening_balance: false, opening_accumulated_depreciation: '0', external_document_no: '', description: '' };
 
 const inputClass = 'w-full px-3 py-2 border border-slate-200 rounded-lg bg-white outline-none focus:border-[#0088E8] text-xs font-semibold shadow-3xs text-slate-650';
 const labelClass = 'text-[10px] text-slate-400 font-bold uppercase tracking-wider';
 
-export default function AssetForm({ accounts, onSave, onClose }) {
-  const [form, setForm] = useState(initialForm);
+// `initial` dipakai form "Proses Aset dari HR" (isian bawaan dari HR); `title`/`info` opsional.
+export default function AssetForm({ accounts, onSave, onClose, initial = null, title = 'Tambah Aset', info = null }) {
+  const [form, setForm] = useState(() => ({
+    ...initialForm,
+    ...Object.fromEntries(Object.entries(initial || {}).filter(([, v]) => v !== null && v !== undefined)),
+  }));
   const [saving, setSaving] = useState(false);
   const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
   const submit = async (event) => {
@@ -21,6 +25,8 @@ export default function AssetForm({ accounts, onSave, onClose }) {
         acquisition_cost: String(form.acquisition_cost),
         residual_value: String(form.residual_value),
         useful_life_months: form.useful_life_months === '' ? null : Number(form.useful_life_months),
+        opening_accumulated_depreciation: form.is_opening_balance ? String(form.opening_accumulated_depreciation || 0) : '0',
+        counter_account: form.is_opening_balance ? null : form.counter_account,
       });
       notify({ type: 'success', title: 'Aset tersimpan', message: 'Register aset dan jurnal perolehan berhasil dibuat.' });
       onClose();
@@ -33,13 +39,14 @@ export default function AssetForm({ accounts, onSave, onClose }) {
     <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-end z-[999] animate-fade-in text-xs font-semibold text-slate-700">
       <form onSubmit={submit} className="bg-white border-l border-slate-200 w-[460px] h-full flex flex-col justify-between shadow-2xl overflow-hidden animate-slide-in">
         <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-[#F8FAFC]">
-          <h3 className="text-sm font-bold text-slate-800">Tambah Aset</h3>
+          <h3 className="text-sm font-bold text-slate-800">{title}</h3>
           <button type="button" onClick={onClose} className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors cursor-pointer">
             <X size={16} />
           </button>
         </div>
 
         <div className="flex-1 p-5 overflow-y-auto space-y-4">
+          {info}
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="space-y-1.5"><span className={labelClass}>Kode Aset *</span><input required value={form.asset_code} onChange={(e) => set('asset_code', e.target.value)} className={inputClass} /></label>
             <label className="space-y-1.5"><span className={labelClass}>Nama Aset *</span><input required value={form.name} onChange={(e) => set('name', e.target.value)} className={inputClass} /></label>
@@ -64,6 +71,16 @@ export default function AssetForm({ accounts, onSave, onClose }) {
             <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer">
               <input type="checkbox" checked={form.is_opening_balance} onChange={(e) => set('is_opening_balance', e.target.checked)} /> Aset ini adalah saldo awal
             </label>
+            {form.is_opening_balance && (
+              <label className="space-y-1.5 block">
+                <span className={labelClass}>Akumulasi Penyusutan Awal</span>
+                <input min="0" type="number" value={form.opening_accumulated_depreciation} onChange={(e) => set('opening_accumulated_depreciation', e.target.value)} className={inputClass} />
+                <span className="block text-[10px] font-medium text-slate-400 leading-relaxed">
+                  Untuk aset yang dibeli sebelum Mulai Akuntansi: total penyusutan sampai akhir bulan sebelum Mulai Akuntansi.
+                  Jurnalnya bertanggal Mulai Akuntansi; penyusutan otomatis lanjut dari bulan itu.
+                </span>
+              </label>
+            )}
             {!form.is_opening_balance && <AssetAccountSelect label="Akun Kredit Perolehan" value={form.counter_account} onChange={(value) => set('counter_account', value)} accounts={accounts} filter={(a) => a.is_active} />}
           </div>
 

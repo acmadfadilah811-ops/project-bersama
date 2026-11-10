@@ -5,6 +5,10 @@ from .views.payroll_persetujuan import (
     PengajuanGajiTolakView, PengajuanGajiVerifikasiView,
 )
 from .views.notifikasi import NotifikasiKeuanganBacaView, NotifikasiKeuanganListView
+from .views.aset_hr import (
+    AsetHRMasukListView, AsetHRMasukProsesView, AsetHRMasukSelesaiTinjauView, AsetHRMasukTolakView,
+    ProyeksiPenyusutanView,
+)
 from .views.unit_bisnis import AkunUnitBisnisDetailView, AkunUnitBisnisListView
 from .views.payroll import (
     PayrollBayarView,
@@ -98,6 +102,11 @@ urlpatterns = [
     path("assets/import/preview/", FixedAssetImportPreviewView.as_view(), name="accounting-assets-import-preview"),
     path("assets/import/commit/", FixedAssetImportCommitView.as_view(), name="accounting-assets-import-commit"),
     path("assets/depreciation/post/", FixedAssetDepreciationPostView.as_view(), name="accounting-assets-depreciation-post"),
+    path("assets/proyeksi/", ProyeksiPenyusutanView.as_view(), name="accounting-assets-proyeksi"),
+    path("assets/dari-hr/", AsetHRMasukListView.as_view(), name="accounting-aset-hr"),
+    path("assets/dari-hr/<int:pk>/proses/", AsetHRMasukProsesView.as_view(), name="accounting-aset-hr-proses"),
+    path("assets/dari-hr/<int:pk>/tolak/", AsetHRMasukTolakView.as_view(), name="accounting-aset-hr-tolak"),
+    path("assets/dari-hr/<int:pk>/selesai-tinjau/", AsetHRMasukSelesaiTinjauView.as_view(), name="accounting-aset-hr-selesai-tinjau"),
     path("assets/<int:pk>/", FixedAssetDetailView.as_view(), name="accounting-asset-detail"),
     path("assets/<int:pk>/dispose/", FixedAssetDisposeView.as_view(), name="accounting-asset-dispose"),
     path("accounts/<int:pk>/", AccountDetailView.as_view(), name="accounting-account-detail"),

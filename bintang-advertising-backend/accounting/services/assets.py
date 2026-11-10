@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
@@ -37,7 +37,15 @@ def _opening_balance_account():
 
 @transaction.atomic
 def create_fixed_asset(*, data, created_by):
-    """Buat register aset dan jurnal perolehannya dalam satu transaksi atomik."""
+    """Buat register aset dan jurnal perolehannya dalam satu transaksi atomik.
+
+    Aset saldo awal (dibeli sebelum Mulai Akuntansi, 2026-11-10): jurnal perolehannya
+    bertanggal Mulai Akuntansi (jurnal sebelum tanggal itu ditolak), dan boleh membawa
+    `opening_accumulated_depreciation` = akumulasi penyusutan s.d. akhir bulan sebelum
+    Mulai Akuntansi. Jurnalnya: Dr Aset (perolehan), Cr Akumulasi (akumulasi awal),
+    Cr Saldo Awal (nilai buku). Penyusutan otomatis mulai bulan Mulai Akuntansi."""
+    data = dict(data)
+    opening_accum = Decimal(data.pop("opening_accumulated_depreciation", None) or 0)
     asset_code = data["asset_code"].strip()
     if FixedAsset.objects.select_for_update().filter(asset_code=asset_code).exists():
         raise ValidationError(f"Kode aset '{asset_code}' sudah terdaftar.")
@@ -50,6 +58,19 @@ def create_fixed_asset(*, data, created_by):
         raise ValidationError("Nilai residu harus antara 0 dan nilai perolehan.")
 
     is_opening_balance = bool(data.get("is_opening_balance"))
+    settings_row = AccountingSettings.objects.first()
+    mulai_akuntansi = settings_row.accounting_start_date if settings_row else None
+    acquisition_date = data["acquisition_date"]
+    sebelum_mulai = bool(mulai_akuntansi and acquisition_date < mulai_akuntansi)
+    if sebelum_mulai and not is_opening_balance:
+        raise ValidationError(
+            f"Aset dibeli sebelum Mulai Akuntansi ({mulai_akuntansi:%d-%m-%Y}). "
+            "Centang 'Saldo Awal' supaya dicatat sebagai aset saldo awal."
+        )
+    if opening_accum < 0 or opening_accum > cost - residual:
+        raise ValidationError("Akumulasi penyusutan awal harus antara 0 dan (nilai perolehan - nilai residu).")
+    if opening_accum and not sebelum_mulai:
+        raise ValidationError("Akumulasi penyusutan awal hanya untuk aset yang dibeli sebelum Mulai Akuntansi.")
     asset_account = data["asset_account"]
     depreciation_expense_account = data["depreciation_expense_account"]
     accumulated_depreciation_account = data["accumulated_depreciation_account"]
@@ -71,16 +92,19 @@ def create_fixed_asset(*, data, created_by):
         "created_by": created_by,
     }
     asset = FixedAsset.objects.create(**asset_data)
+    keterangan = f"Perolehan aset {asset.asset_code} - {asset.name}"
+    if sebelum_mulai:
+        keterangan += f" (saldo awal, dibeli {asset.acquisition_date:%d-%m-%Y})"
+    baris = {"description": keterangan, "external_document_no": asset.external_document_no}
+    lines = [{"account": asset.asset_account, "debit": asset.acquisition_cost, "kredit": 0, **baris}]
+    if opening_accum:
+        lines.append({"account": asset.accumulated_depreciation_account, "debit": 0, "kredit": opening_accum, **baris})
+    if asset.acquisition_cost - opening_accum > 0:
+        lines.append({"account": counter_account, "debit": 0, "kredit": asset.acquisition_cost - opening_accum, **baris})
     entry = create_journal_entry(
-        date=asset.acquisition_date,
-        lines=build_pair_lines(
-            debit_account=asset.asset_account,
-            kredit_account=counter_account,
-            amount=asset.acquisition_cost,
-            description=f"Perolehan aset {asset.asset_code} - {asset.name}",
-            external_document_no=asset.external_document_no,
-        ),
-        description=f"Perolehan aset {asset.asset_code} - {asset.name}",
+        date=mulai_akuntansi if sebelum_mulai else asset.acquisition_date,
+        lines=lines,
+        description=keterangan,
         source_type=JournalEntry.SourceType.ASSET_ACQUISITION,
         source_id=asset.id,
         created_by=created_by,
@@ -88,7 +112,13 @@ def create_fixed_asset(*, data, created_by):
         department=asset.department,
     )
     asset.acquisition_journal = entry
-    asset.save(update_fields=["acquisition_journal", "updated_at"])
+    update_fields = ["acquisition_journal", "updated_at"]
+    if sebelum_mulai:
+        # Akumulasi awal dianggap s.d. akhir bulan sebelum Mulai Akuntansi; penyusutan
+        # otomatis mulai bulan Mulai Akuntansi (bukan dari bulan pembelian bertahun lalu).
+        asset.last_depreciation_date = mulai_akuntansi.replace(day=1) - timedelta(days=1)
+        update_fields.append("last_depreciation_date")
+    asset.save(update_fields=update_fields)
     return asset
 
 
