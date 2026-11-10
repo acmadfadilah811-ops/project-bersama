@@ -11,6 +11,7 @@ Alur (lihat koordinasi/Desain Payroll ke Finance.md):
 """
 
 import calendar
+import logging
 import os
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
@@ -25,6 +26,8 @@ from ..models import (
     PayrollComponentMapping, PayrollPosting,
 )
 from .journal import create_journal_entry
+
+logger = logging.getLogger(__name__)
 from .payroll_accounts import get_payroll_account_mappings
 
 DUA_DESIMAL = Decimal("0.01")
@@ -59,6 +62,21 @@ def akhir_bulan(tahun, bulan):
 
 # --------------------------------------------------------------------------- HR
 
+def _pesan_gagal_hr(exc):
+    """Pesan ramah pengguna untuk kegagalan mengambil data dari HR (tanpa detail teknis)."""
+    if isinstance(exc, (requests.ConnectionError, requests.Timeout)):
+        return ("Sistem HR tidak bisa dihubungi saat ini (mungkin sedang diperbarui). "
+                "Coba lagi beberapa menit lagi.")
+    if isinstance(exc, requests.HTTPError):
+        kode = getattr(exc.response, "status_code", None)
+        if kode in (401, 403):
+            return "Akses ke data gaji HR ditolak. Hubungi admin sistem untuk memeriksa sambungan HR."
+        if kode == 404:
+            return "Data gaji periode ini tidak ditemukan di HR."
+        return f"Sistem HR sedang bermasalah (kode {kode}). Coba lagi nanti."
+    return "Data gaji dari HR tidak bisa dibaca. Coba lagi nanti atau hubungi admin sistem."
+
+
 def ambil_payroll_hr(tahun, bulan):
     """Tarik ringkasan slip final dari HR. Gagal apa pun -> PayrollSumberError."""
     from api.services.insights_bridge import DEFAULT_HR_INSIGHTS_URL
@@ -75,7 +93,10 @@ def ambil_payroll_hr(tahun, bulan):
         r.raise_for_status()
         data = r.json()
     except (requests.RequestException, ValueError) as exc:
-        raise PayrollSumberError(f"Tidak bisa mengambil data gaji dari HR: {exc}")
+        # Detail teknis (alamat server, port, jejak koneksi) hanya ke log -- pengguna
+        # cukup tahu penyebab umumnya dan apa yang harus dilakukan (2026-11-10).
+        logger.warning("Gagal mengambil payroll HR %s-%s: %r", tahun, bulan, exc)
+        raise PayrollSumberError(_pesan_gagal_hr(exc))
     if not isinstance(data, dict) or "slip" not in data or "potongan" not in data:
         raise PayrollSumberError("Respons HR tidak sesuai format yang diharapkan.")
     return data

@@ -1199,7 +1199,7 @@ class WhatsAppSendMediaView(APIView):
 
         except Exception as e:
             logger.error(f"Error handling WhatsApp send media upload: {e}", exc_info=True)
-            return Response({"error": str(e)}, status=500)
+            return Response({"error": "Gagal mengirim media lewat WhatsApp. Coba lagi nanti."}, status=500)
 
 
 class WAWebhookView(BaseWhatsAppWebhookView):
