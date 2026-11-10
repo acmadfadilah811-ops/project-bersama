@@ -14,7 +14,7 @@ from api.permissions import IsOwnerOrManager
 
 from . import executive_dashboard
 
-PERIODE_VALID = {'mtd', 'qtd', 'ytd', '12m'}
+PERIODE_VALID = executive_dashboard.PERIODE_VALID
 
 
 def _period(request):
@@ -29,7 +29,7 @@ def _period(request):
 
 
 class ExecutiveDashboardView(APIView):
-    """GET /api/executive-dashboard/?period=mtd|qtd|ytd|12m
+    """GET /api/executive-dashboard/?period=harian|mingguan|bulanan|tahunan&geser=0 (juga mtd|qtd|ytd|12m)
 
     Ringkasan keuangan seluruh perusahaan — dibatasi owner/manager. Staff dan
     kasir tidak boleh melihat omzet, HPP, dan piutang agregat.
@@ -41,7 +41,7 @@ class ExecutiveDashboardView(APIView):
         period, error = _period(request)
         if error:
             return error
-        return Response(executive_dashboard.build(period))
+        return Response(executive_dashboard.build(period, executive_dashboard.baca_geser(request.query_params.get('geser'))))
 
 
 class ExecutiveDashboardExportView(APIView):
@@ -58,7 +58,7 @@ class ExecutiveDashboardExportView(APIView):
         # kegagalan impor tidak ikut menjatuhkan endpoint overview.
         from openpyxl import Workbook
 
-        data = executive_dashboard.build(period)
+        data = executive_dashboard.build(period, executive_dashboard.baca_geser(request.query_params.get('geser')))
         wb = Workbook()
 
         ws = wb.active

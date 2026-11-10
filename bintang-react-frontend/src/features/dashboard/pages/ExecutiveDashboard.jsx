@@ -8,6 +8,9 @@ import ExecutiveNav from '../components/ExecutiveNav';
 import LaporanProduksiOwnerSection from '../components/LaporanProduksiOwnerSection';
 import LeaderboardStaff from '../components/LeaderboardStaff';
 import KepuasanPelangganSection from '../components/KepuasanPelangganSection';
+import {
+  AKSEN, GrafikPeriode, KartuAksen, PilihRentang, judulSeri, useRentang,
+} from '../components/PanelPeriode';
 
 /**
  * Dashboard eksekutif ("Ringkasan") — ringkasan lintas periode untuk
@@ -23,12 +26,16 @@ import KepuasanPelangganSection from '../components/KepuasanPelangganSection';
  * sama.
  */
 
-const PERIODE = [
-  { id: 'mtd', label: 'Bulan ini' },
-  { id: 'qtd', label: 'Kuartal ini' },
-  { id: 'ytd', label: 'Tahun ini' },
-  { id: '12m', label: '12 bulan' },
-];
+// Warna garis aksen per KPI + keterangan untuk metrik posisi (tanpa pembanding periode).
+const KPI_GAYA = {
+  pendapatan: { warna: AKSEN.hijau },
+  hpp: { warna: AKSEN.kuning },
+  laba_kotor: { warna: AKSEN.biru },
+  piutang: { warna: AKSEN.merah, catatan: 'Posisi saat ini, semua pesanan belum lunas' },
+  persediaan: { warna: AKSEN.biruMuda, catatan: 'Nilai stok saat ini (harga beli)' },
+  transaksi: { warna: AKSEN.ungu, catatan: 'Transaksi kasir lunas pada periode ini' },
+};
+const WARNA_UNIT = [AKSEN.hijau, AKSEN.biru, AKSEN.ungu, AKSEN.kuning, AKSEN.biruMuda, AKSEN.merah];
 
 const money = rupiah;
 const angka = (v) => new Intl.NumberFormat('id-ID').format(Number(v) || 0);
@@ -47,14 +54,16 @@ function Delta({ value }) {
 }
 
 function KpiCard({ item }) {
+  const gaya = KPI_GAYA[item.key] || { warna: AKSEN.slate };
   return (
-    <article className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{item.label}</p>
-      <p className="mt-2 text-2xl font-black text-slate-900">
-        {item.format === 'angka' ? angka(item.value) : money(item.value)}
-      </p>
-      <div className="mt-2"><Delta value={item.delta} /></div>
-    </article>
+    <KartuAksen
+      label={item.label}
+      warna={gaya.warna}
+      besar
+      nilai={item.format === 'angka' ? angka(item.value) : money(item.value)}
+      delta={gaya.catatan ? undefined : item.delta}
+      catatan={gaya.catatan ? <p>{gaya.catatan}</p> : null}
+    />
   );
 }
 
@@ -65,8 +74,9 @@ function PendapatanPerUnit({ rows }) {
     <section className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
       <h2 className="font-bold text-slate-900 mb-4">Pendapatan per Unit Bisnis</h2>
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-        {rows.map((r) => (
-          <div key={r.id ?? 'tanpa-unit'} className="rounded-xl border border-slate-200 p-4">
+        {rows.map((r, i) => (
+          <div key={r.id ?? 'tanpa-unit'} className="relative overflow-hidden rounded-xl border border-slate-200 p-4 pb-5">
+            <span className="absolute inset-x-0 bottom-0 h-1.5" style={{ background: WARNA_UNIT[i % WARNA_UNIT.length] }} aria-hidden="true" />
             <div className="flex items-start justify-between gap-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 {r.nama || 'Belum ditandai'}
@@ -75,7 +85,7 @@ function PendapatanPerUnit({ rows }) {
             </div>
             <p className="mt-2 text-xl font-black text-slate-900">{money(r.pendapatan)}</p>
             <div className="mt-3 h-1.5 rounded-full bg-slate-100">
-              <div className="h-1.5 rounded-full bg-slate-700" style={{ width: `${Math.min(100, r.porsi)}%` }} />
+              <div className="h-1.5 rounded-full" style={{ width: `${Math.min(100, r.porsi)}%`, background: WARNA_UNIT[i % WARNA_UNIT.length] }} />
             </div>
             <p className="mt-1.5 text-xs text-slate-500">
               {persen(r.porsi)} dari total · {angka(r.transaksi)} transaksi
@@ -160,7 +170,7 @@ function TidakTersedia({ sistem }) {
 }
 
 export default function ExecutiveDashboard() {
-  const [period, setPeriod] = useState('ytd');
+  const rentang = useRentang('dashboard-ringkasan-rentang', 'harian');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -170,7 +180,7 @@ export default function ExecutiveDashboard() {
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const res = await apiClient.get('/insights/combined/', { params: { period } });
+      const res = await apiClient.get('/insights/combined/', { params: { period: rentang.mode, geser: rentang.geser } });
       setData(res.data);
     } catch (err) {
       setError(err.response?.status === 403
@@ -179,7 +189,7 @@ export default function ExecutiveDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [period]);
+  }, [rentang.mode, rentang.geser]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -187,11 +197,11 @@ export default function ExecutiveDashboard() {
     setExporting(true);
     try {
       const res = await apiClient.get('/executive-dashboard/export/', {
-        params: { period }, responseType: 'blob',
+        params: { period: rentang.mode, geser: rentang.geser }, responseType: 'blob',
       });
       const url = URL.createObjectURL(res.data);
       const a = document.createElement('a');
-      a.href = url; a.download = `dashboard-eksekutif-${period}.xlsx`; a.click();
+      a.href = url; a.download = `ringkasan-${rentang.mode}-${data?.bintang?.periode?.akhir || 'periode'}.xlsx`; a.click();
       URL.revokeObjectURL(url);
     } catch {
       setError('Gagal mengunduh ekspor.');
@@ -219,40 +229,56 @@ export default function ExecutiveDashboard() {
   return (
     <div className="space-y-6 w-full max-w-7xl mx-auto px-4 pb-10">
       <ExecutiveNav />
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-black text-slate-900">Ringkasan</h1>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex bg-slate-100 rounded-lg p-1">
-            {PERIODE.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => setPeriod(p.id)}
-                className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${
-                  period === p.id ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
+      <header className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-black text-slate-900">Ringkasan</h1>
+            <p className="text-xs text-slate-500 mt-0.5">Dibandingkan dengan {bintang.periode.pembanding}</p>
           </div>
+          <div className="flex items-center gap-2 flex-wrap">
           <button type="button" onClick={load} className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Segarkan
           </button>
           <button type="button" onClick={handleExport} disabled={exporting} className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-slate-300">
             <Download size={14} /> {exporting ? 'Menyiapkan…' : 'Ekspor XLSX'}
           </button>
+          </div>
         </div>
+        <PilihRentang
+          mode={rentang.mode}
+          geser={rentang.geser}
+          label={bintang.periode.label}
+          bisaMaju={bintang.periode.bisa_maju}
+          onMode={rentang.setMode}
+          onGeser={rentang.setGeser}
+          memuat={loading}
+        />
       </header>
 
       {error && <div className="bg-rose-50 text-rose-700 rounded-xl p-3 text-sm">{error}</div>}
 
       {/* ===== Bintang (operasional & keuangan) ===== */}
-      <section className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+      <section className={`grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 transition-opacity ${loading ? 'opacity-60' : ''}`}>
         {bintang.kpi.map((item) => <KpiCard key={item.key} item={item} />)}
       </section>
+
+      {bintang.seri && (
+        <section className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+            <div>
+              <h2 className="font-bold text-slate-900">Grafik Pendapatan</h2>
+              <p className="text-xs text-slate-500 mt-0.5">{bintang.periode.label} · {judulSeri(rentang.mode)}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-[11px] font-semibold text-slate-500">Pendapatan</p>
+              <p className="text-lg font-bold text-slate-900 leading-tight tabular-nums">
+                {money(bintang.kpi.find((k) => k.key === 'pendapatan')?.value)}
+              </p>
+            </div>
+          </div>
+          <GrafikPeriode seri={bintang.seri} warna={AKSEN.biru} labelSekarang="Pendapatan" labelSebelumnya="Periode sebelumnya" />
+        </section>
+      )}
 
       <PendapatanPerUnit rows={bintang.per_unit} />
 
@@ -260,7 +286,7 @@ export default function ExecutiveDashboard() {
         <section className="lg:col-span-2 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="font-bold text-slate-900">Tren Bulanan</h2>
+              <h2 className="font-bold text-slate-900">Tren 12 Bulan</h2>
             </div>
             <div className="flex items-center gap-4">
               <Legend adaRugi={bintang.tren.some((r) => r.laba_kotor < 0)} />

@@ -178,3 +178,24 @@ class DashboardView(APIView):
         }
         cache.set(cache_key, data, timeout=300)
         return Response(data)
+
+
+class DashboardPenjualanView(APIView):
+    """GET /api/dashboard/penjualan/?mode=harian|mingguan|bulanan|tahunan&geser=0
+
+    Ringkasan penjualan dashboard operasional untuk satu rentang yang bisa digeser
+    (2026-11-10, gaya prototipe dashboard): total, terbayar, belum dibayar, rata-rata
+    per transaksi, akumulasi & proyeksi bulan, dan grafik vs periode sebelumnya.
+    """
+    permission_classes = [IsOwnerOrManager]
+
+    def get(self, request):
+        from ..executive_dashboard import MODE_RENTANG, baca_geser, ringkasan_penjualan
+
+        mode = request.query_params.get('mode') or 'harian'
+        if mode not in MODE_RENTANG:
+            return Response(
+                {'error': f"Mode '{mode}' tidak dikenal. Pilihan: {', '.join(MODE_RENTANG)}."},
+                status=400,
+            )
+        return Response(ringkasan_penjualan(mode, baca_geser(request.query_params.get('geser'))))

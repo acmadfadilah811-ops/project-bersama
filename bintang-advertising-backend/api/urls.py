@@ -20,7 +20,7 @@ from .views.starfoto_approval import (
 from .views.hr_kredensial_bridge import HRBridgeKredensialView
 from .views.hr_organisasi_bridge import HROrganisasiView
 from .views.insentif import JenisInsentifViewSet, InsentifProdukViewSet, JobInsentifView, InsentifPekerjaanDetailView
-from .views import DashboardView, LeaderboardStaffView, CreateUserView, AssignOrderView, ForwardJobView, InventoryRestockView, JobMaterialDeductView, EvolutionWebhookView, BusinessSettingsView, StaffPerformanceReportView, HealthCheckView, KomplainViewSet, ContactStatsView, ProductionCustomerLiteView
+from .views import DashboardView, DashboardPenjualanView, LeaderboardStaffView, CreateUserView, AssignOrderView, ForwardJobView, InventoryRestockView, JobMaterialDeductView, EvolutionWebhookView, BusinessSettingsView, StaffPerformanceReportView, HealthCheckView, KomplainViewSet, ContactStatsView, ProductionCustomerLiteView
 from .export_views import ExportOrdersView, ExportInventoryView, ExportJobsView, ExportContactsView, ExportAbsensiView, ExportStaffPerformanceView, ExportStockMovementView, ExportCustomersView, ExportProductsView, ExportCustomerNotesView, ExportCashTransactionsView, ExportSalesItemsByBrandView, ExportSalesDetailsView
 from . import product_views
 from . import production_views
@@ -156,6 +156,7 @@ urlpatterns = [
     path('', include(router.urls)),
     path('dashboard/', DashboardView.as_view(), name='dashboard'),
     path('dashboard/leaderboard/', LeaderboardStaffView.as_view(), name='dashboard-leaderboard'),
+    path('dashboard/penjualan/', DashboardPenjualanView.as_view(), name='dashboard-penjualan'),
     # Dashboard eksekutif (manajemen) — terpisah dari dashboard operasional di atas.
     path('executive-dashboard/', executive_dashboard_views.ExecutiveDashboardView.as_view(), name='executive-dashboard'),
     path('executive-dashboard/export/', executive_dashboard_views.ExecutiveDashboardExportView.as_view(), name='executive-dashboard-export'),

@@ -37,6 +37,7 @@ from .config import (
 )
 from .dashboard import (
     DashboardView,
+    DashboardPenjualanView,
     LeaderboardStaffView,
 )
 from .users import (

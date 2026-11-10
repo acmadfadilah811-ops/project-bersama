@@ -123,7 +123,7 @@ def get_crm_campaigns():
     return _get("CRM_INSIGHTS_URL", DEFAULT_CRM_INSIGHTS_URL, "campaigns/")
 
 
-def build_combined_insights(period="ytd"):
+def build_combined_insights(period="ytd", geser=0):
     """Gabungkan data Bintang (dashboard eksekutif yang sudah ada) + HR +
     CRM jadi satu payload terstruktur per sistem. Tiap sub-sistem yang
     gagal/timeout jadi None, BUKAN menjatuhkan seluruh response -- lihat
@@ -150,7 +150,7 @@ def build_combined_insights(period="ytd"):
     }
     with ThreadPoolExecutor(max_workers=len(sumber)) as pool:
         berjalan = {kunci: pool.submit(fungsi) for kunci, fungsi in sumber.items()}
-        hasil = {"bintang": build_bintang_dashboard(period), "hr": {}, "crm": {}}
+        hasil = {"bintang": build_bintang_dashboard(period, geser), "hr": {}, "crm": {}}
         for (sistem, nama), future in berjalan.items():
             hasil[sistem][nama] = future.result()
     return hasil
