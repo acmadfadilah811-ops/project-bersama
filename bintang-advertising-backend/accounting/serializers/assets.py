@@ -7,6 +7,12 @@ from ..services.assets import _validate_accounts, create_fixed_asset, dispose_fi
 from ..services.depreciation import calculate_monthly_depreciation_amount, get_accumulated_depreciation, get_book_value
 
 
+def _cek_metode_fiskal(kelompok, metode):
+    """Bangunan hanya boleh garis lurus (UU PPh Pasal 11 ayat 6)."""
+    if kelompok in ("bangunan_permanen", "bangunan_non_permanen") and metode == FixedAsset.MetodeFiskal.SALDO_MENURUN:
+        raise serializers.ValidationError({"metode_fiskal": "Bangunan hanya boleh disusutkan garis lurus (pajak)."})
+
+
 class FixedAssetReadSerializer(serializers.ModelSerializer):
     asset_account_code = serializers.CharField(source="asset_account.code", read_only=True)
     asset_account_name = serializers.CharField(source="asset_account.name", read_only=True)
@@ -15,6 +21,7 @@ class FixedAssetReadSerializer(serializers.ModelSerializer):
     accumulated_depreciation = serializers.SerializerMethodField()
     book_value = serializers.SerializerMethodField()
     monthly_depreciation_amount = serializers.SerializerMethodField()
+    kelompok_fiskal_label = serializers.CharField(source="get_kelompok_fiskal_display", read_only=True)
 
     class Meta:
         model = FixedAsset
@@ -26,7 +33,7 @@ class FixedAssetReadSerializer(serializers.ModelSerializer):
             "acquisition_journal_number", "status", "useful_life_months", "last_depreciation_date",
             "accumulated_depreciation", "book_value", "monthly_depreciation_amount",
             "disposal_date", "disposal_proceeds", "disposal_journal", "disposal_journal_number", "created_at",
-            "hr_asset_id",
+            "hr_asset_id", "kelompok_fiskal", "kelompok_fiskal_label", "metode_fiskal",
         ]
         read_only_fields = [
             "acquisition_journal", "created_at", "last_depreciation_date",
@@ -76,6 +83,15 @@ class FixedAssetCreateSerializer(FixedAssetAccountConfigSerializer):
     opening_accumulated_depreciation = serializers.DecimalField(
         max_digits=15, decimal_places=0, required=False, default=0, min_value=0,
     )
+    kelompok_fiskal = serializers.ChoiceField(choices=FixedAsset.KelompokFiskal.choices, required=False, default="")
+    metode_fiskal = serializers.ChoiceField(
+        choices=FixedAsset.MetodeFiskal.choices, required=False, default=FixedAsset.MetodeFiskal.GARIS_LURUS,
+    )
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        _cek_metode_fiskal(attrs.get("kelompok_fiskal"), attrs.get("metode_fiskal"))
+        return attrs
 
     def create(self, validated_data):
         return create_fixed_asset(data=validated_data, created_by=self.context["request"].user)
@@ -95,7 +111,16 @@ class FixedAssetUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = FixedAsset
-        fields = ["name", "external_document_no", "description", "department", "useful_life_months"]
+        fields = [
+            "name", "external_document_no", "description", "department", "useful_life_months",
+            "kelompok_fiskal", "metode_fiskal",
+        ]
+
+    def validate(self, attrs):
+        kelompok = attrs.get("kelompok_fiskal", getattr(self.instance, "kelompok_fiskal", ""))
+        metode = attrs.get("metode_fiskal", getattr(self.instance, "metode_fiskal", ""))
+        _cek_metode_fiskal(kelompok, metode)
+        return attrs
 
     def validate_useful_life_months(self, value):
         if value is not None and value < 1:

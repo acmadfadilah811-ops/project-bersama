@@ -8,6 +8,7 @@ import AssetActionDropdown from '../components/assets/AssetActionDropdown';
 import AssetDateModal from '../components/assets/AssetDateModal';
 import AsetDariHRPanel from '../components/assets/AsetDariHRPanel';
 import ProyeksiPenyusutanPanel from '../components/assets/ProyeksiPenyusutanPanel';
+import PenyusutanPajakPanel from '../components/assets/PenyusutanPajakPanel';
 import useAssets from '../hooks/useAssets';
 import { notify, notifyApiError } from '../../../utils/notify';
 
@@ -111,6 +112,7 @@ export default function DaftarAset() {
           ['daftar', 'Daftar Aset'],
           ['hr', 'Aset dari HR'],
           ['proyeksi', 'Proyeksi Penyusutan'],
+          ['pajak', 'Penyusutan Pajak'],
         ].map(([id, label]) => (
           <button
             key={id}
@@ -125,6 +127,7 @@ export default function DaftarAset() {
 
       {tampilan === 'hr' && <AsetDariHRPanel accounts={accounts} onChanged={reload} />}
       {tampilan === 'proyeksi' && <ProyeksiPenyusutanPanel />}
+      {tampilan === 'pajak' && <PenyusutanPajakPanel />}
 
       {tampilan === 'daftar' && (<>
       {/* Main Filter and Controls Header */}

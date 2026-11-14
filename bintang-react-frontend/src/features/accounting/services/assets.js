@@ -59,3 +59,7 @@ export async function fetchProyeksiPenyusutan(bulan = 12) {
   const { data } = await apiClient.get('/accounting/assets/proyeksi/', { params: { bulan } });
   return data;
 }
+export async function fetchPenyusutanFiskal(tahun) {
+  const { data } = await apiClient.get('/accounting/assets/penyusutan-fiskal/', { params: { tahun } });
+  return data;
+}

@@ -48,6 +48,25 @@ class FixedAsset(models.Model):
         "melewati aset yang field ini kosong atau 0.",
     )
     last_depreciation_date = models.DateField(null=True, blank=True)
+    # Penyusutan versi pajak (UU PPh Pasal 11, PMK 72/2023), 2026-11-10. Terpisah dari
+    # penyusutan komersial (useful_life_months): hanya dihitung untuk laporan/rekonsiliasi
+    # fiskal, tidak pernah dijurnal.
+    class KelompokFiskal(models.TextChoices):
+        BELUM = "", "Belum diatur"
+        KELOMPOK_1 = "k1", "Kelompok 1 (4 tahun)"
+        KELOMPOK_2 = "k2", "Kelompok 2 (8 tahun)"
+        KELOMPOK_3 = "k3", "Kelompok 3 (16 tahun)"
+        KELOMPOK_4 = "k4", "Kelompok 4 (20 tahun)"
+        BANGUNAN_PERMANEN = "bangunan_permanen", "Bangunan permanen (20 tahun)"
+        BANGUNAN_NON_PERMANEN = "bangunan_non_permanen", "Bangunan tidak permanen (10 tahun)"
+        TIDAK_DISUSUTKAN = "tidak", "Tidak disusutkan (mis. tanah)"
+
+    class MetodeFiskal(models.TextChoices):
+        GARIS_LURUS = "garis_lurus", "Garis lurus"
+        SALDO_MENURUN = "saldo_menurun", "Saldo menurun"
+
+    kelompok_fiskal = models.CharField(max_length=24, choices=KelompokFiskal.choices, blank=True, default="")
+    metode_fiskal = models.CharField(max_length=16, choices=MetodeFiskal.choices, default=MetodeFiskal.GARIS_LURUS)
     # Tautan ke aset di HR (Horilla) bila register ini dibuat dari antrean "Aset dari HR"
     # (2026-11-10). HR = data fisik (pemegang, kondisi); ERP = data akuntansi.
     hr_asset_id = models.PositiveIntegerField(null=True, blank=True, unique=True)

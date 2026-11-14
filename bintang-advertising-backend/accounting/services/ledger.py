@@ -256,6 +256,8 @@ INCOME_STATEMENT_CLASSIFICATIONS = [
     ("biaya_operasional", "Pengeluaran"),
     ("pendapatan_non_operasional", "Pendapatan Lain"),
     ("biaya_non_operasional", "Pengeluaran Lain"),
+    # 2026-11-10: dikurangkan setelah Laba Sebelum Pajak (PSAK 201 -- beban pajak baris tersendiri).
+    ("pajak_penghasilan", "Beban Pajak Penghasilan"),
 ]
 
 
@@ -288,8 +290,18 @@ def _income_statement_section(classification_name, date_from, date_to, departmen
         debit = row["total_debit"] if row else Decimal(0)
         kredit = row["total_kredit"] if row else Decimal(0)
         amount = (kredit or 0) - (debit or 0) if account.account_type == "revenue" else (debit or 0) - (kredit or 0)
-        rows.append({"id": account.id, "code": account.code, "name": account.name, "amount": amount})
+        rows.append({
+            "id": account.id, "code": account.code, "name": account.name, "amount": amount,
+            "komponen_ebitda": account.komponen_ebitda,
+        })
     return rows
+
+
+def _jumlah_komponen(sections, komponen):
+    return sum(
+        (r["amount"] for rows in sections.values() for r in rows if r.get("komponen_ebitda") == komponen),
+        Decimal(0),
+    )
 
 
 def get_income_statement(date_from, date_to, department_id=None):
@@ -318,7 +330,22 @@ def get_income_statement(date_from, date_to, department_id=None):
     )
     total_pendapatan_non_operasional = subtotal_pendapatan_non_operasional - subtotal_biaya_non_operasional
 
-    laba_bersih = total_laba_kotor - total_biaya_operasional + total_pendapatan_non_operasional
+    # Urutan PSAK 201 (2026-11-10): laba kotor -> laba usaha -> laba sebelum pajak -> beban pajak
+    # -> laba setelah pajak. `laba_bersih` tetap = laba setelah pajak (dipakai Perubahan Modal & Neraca).
+    laba_usaha = total_laba_kotor - total_biaya_operasional
+    laba_sebelum_pajak = laba_usaha + total_pendapatan_non_operasional
+    total_pajak_penghasilan = sum((r["amount"] for r in sections["pajak_penghasilan"]), Decimal(0))
+    laba_setelah_pajak = laba_sebelum_pajak - total_pajak_penghasilan
+    laba_bersih = laba_setelah_pajak
+
+    # EBITDA = laba sebelum pajak + beban bunga - pendapatan bunga (= EBIT) + penyusutan + amortisasi.
+    # Komponen dikenali dari Account.komponen_ebitda, bukan kode akun.
+    penyusutan = _jumlah_komponen(sections, "penyusutan")
+    amortisasi = _jumlah_komponen(sections, "amortisasi")
+    beban_bunga = _jumlah_komponen(sections, "beban_bunga")
+    pendapatan_bunga = _jumlah_komponen(sections, "pendapatan_bunga")
+    ebit = laba_sebelum_pajak + beban_bunga - pendapatan_bunga
+    ebitda = ebit + penyusutan + amortisasi
 
     return {
         "date_from": date_from,
@@ -335,7 +362,24 @@ def get_income_statement(date_from, date_to, department_id=None):
         "subtotal_pendapatan_non_operasional": subtotal_pendapatan_non_operasional,
         "subtotal_biaya_non_operasional": subtotal_biaya_non_operasional,
         "total_pendapatan_non_operasional": total_pendapatan_non_operasional,
+        "laba_usaha": laba_usaha,
+        "laba_sebelum_pajak": laba_sebelum_pajak,
+        "pajak_penghasilan": sections["pajak_penghasilan"],
+        "total_pajak_penghasilan": total_pajak_penghasilan,
+        "laba_setelah_pajak": laba_setelah_pajak,
         "laba_bersih": laba_bersih,
+        "ebitda": {
+            "laba_sebelum_pajak": laba_sebelum_pajak,
+            "beban_bunga": beban_bunga,
+            "pendapatan_bunga": pendapatan_bunga,
+            "ebit": ebit,
+            "penyusutan": penyusutan,
+            "amortisasi": amortisasi,
+            "ebitda": ebitda,
+            "margin_persen": (
+                round(float(ebitda / subtotal_pendapatan * 100), 1) if subtotal_pendapatan else None
+            ),
+        },
     }
 
 

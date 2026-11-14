@@ -11,6 +11,7 @@ from ..models import AsetHRMasuk
 from ..serializers.assets import FixedAssetCreateSerializer, FixedAssetReadSerializer
 from ..services import aset_hr as svc
 from ..services.depreciation import proyeksi_penyusutan
+from ..services.penyusutan_fiskal import laporan_penyusutan_fiskal
 
 
 class AsetHRMasukSerializer(serializers.ModelSerializer):
@@ -106,3 +107,18 @@ class ProyeksiPenyusutanView(APIView):
         except ValueError:
             bulan = 12
         return Response(proyeksi_penyusutan(bulan=max(1, min(bulan, 60))))
+
+
+class PenyusutanFiskalView(APIView):
+    """GET /api/accounting/assets/penyusutan-fiskal/?tahun=2026 -- penyusutan pajak vs komersial."""
+
+    permission_classes = [IsOwnerManagerOrSpvFinance]
+
+    def get(self, request):
+        from django.utils import timezone
+
+        try:
+            tahun = int(request.query_params.get("tahun") or timezone.localdate().year)
+        except ValueError:
+            tahun = timezone.localdate().year
+        return Response(laporan_penyusutan_fiskal(max(1990, min(tahun, 2100))))

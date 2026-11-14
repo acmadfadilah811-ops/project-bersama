@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { X } from 'lucide-react';
 import { notify, notifyApiError } from '../../../../utils/notify';
 import AssetAccountSelect from './AssetAccountSelect';
+import KelompokFiskalFields from './KelompokFiskalFields';
 
-const initialForm = { asset_code: '', name: '', acquisition_date: new Date().toISOString().slice(0, 10), acquisition_cost: '', residual_value: '0', useful_life_months: '', asset_account: null, depreciation_expense_account: null, accumulated_depreciation_account: null, counter_account: null, is_opening_balance: false, opening_accumulated_depreciation: '0', external_document_no: '', description: '' };
+const initialForm = { asset_code: '', name: '', acquisition_date: new Date().toISOString().slice(0, 10), acquisition_cost: '', residual_value: '0', useful_life_months: '', asset_account: null, depreciation_expense_account: null, accumulated_depreciation_account: null, counter_account: null, is_opening_balance: false, opening_accumulated_depreciation: '0', kelompok_fiskal: '', metode_fiskal: 'garis_lurus', external_document_no: '', description: '' };
 
 const inputClass = 'w-full px-3 py-2 border border-slate-200 rounded-lg bg-white outline-none focus:border-[#0088E8] text-xs font-semibold shadow-3xs text-slate-650';
 const labelClass = 'text-[10px] text-slate-400 font-bold uppercase tracking-wider';
@@ -60,6 +61,18 @@ export default function AssetForm({ accounts, onSave, onClose, initial = null, t
             <span className={labelClass}>Umur Manfaat (bulan)</span>
             <input min="1" type="number" placeholder="Kosongkan bila tidak disusutkan (mis. tanah)" value={form.useful_life_months} onChange={(e) => set('useful_life_months', e.target.value)} className={inputClass} />
           </label>
+
+          <div className="pt-2 border-t border-slate-100 space-y-2">
+            <span className="font-bold text-[#0088E8] text-xs block">Penyusutan Pajak (SPT)</span>
+            <KelompokFiskalFields
+              kelompok={form.kelompok_fiskal}
+              metode={form.metode_fiskal}
+              onChange={(v) => setForm((current) => ({ ...current, ...v }))}
+              inputClass={inputClass}
+              labelClass={labelClass}
+            />
+            <span className="block text-[10px] font-medium text-slate-400">Hanya untuk laporan pajak; penyusutan di buku tetap memakai umur manfaat di atas.</span>
+          </div>
 
           <div className="pt-2 border-t border-slate-100 space-y-4">
             <span className="font-bold text-[#0088E8] text-xs block">Akun Jurnal</span>

@@ -5,11 +5,13 @@ import { notifyApiError, notifySuccess } from '../../../utils/notify';
 
 export default function UbahAkunModal({ isOpen, onClose, account, onUpdated }) {
   const [ignoreMinusClosing, setIgnoreMinusClosing] = useState(false);
+  const [komponenEbitda, setKomponenEbitda] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !account) return;
     setIgnoreMinusClosing(account.ignore_minus_closing || false);
+    setKomponenEbitda(account.komponen_ebitda || '');
   }, [isOpen, account]);
 
   if (!isOpen || !account) return null;
@@ -19,6 +21,7 @@ export default function UbahAkunModal({ isOpen, onClose, account, onUpdated }) {
     try {
       await apiClient.patch(`/accounting/accounts/${account.id}/`, {
         ignore_minus_closing: ignoreMinusClosing,
+        ...(isKomponenVisible ? { komponen_ebitda: komponenEbitda } : {}),
       });
       notifySuccess('Berhasil', 'Informasi akun berhasil diubah.');
       onUpdated?.();
@@ -31,6 +34,11 @@ export default function UbahAkunModal({ isOpen, onClose, account, onUpdated }) {
   };
 
   const isIgnoreMinusClosingVisible = account.account_type === 'asset';
+  // Penanda EBITDA (2026-11-10) hanya untuk akun Laba Rugi.
+  const isKomponenVisible = account.account_type === 'expense' || account.account_type === 'revenue';
+  const pilihanKomponen = account.account_type === 'revenue'
+    ? [['', 'Bukan komponen EBITDA'], ['pendapatan_bunga', 'Pendapatan bunga']]
+    : [['', 'Bukan komponen EBITDA'], ['penyusutan', 'Beban penyusutan'], ['amortisasi', 'Beban amortisasi'], ['beban_bunga', 'Beban bunga']];
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
@@ -95,6 +103,21 @@ export default function UbahAkunModal({ isOpen, onClose, account, onUpdated }) {
               className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-slate-400 text-xs font-semibold cursor-not-allowed outline-none select-none"
             />
           </div>
+
+          {/* Komponen EBITDA */}
+          {isKomponenVisible && (
+            <div className="space-y-1 pt-1">
+              <label className="block text-[11px] font-bold text-slate-500">Komponen EBITDA</label>
+              <select
+                value={komponenEbitda}
+                onChange={(e) => setKomponenEbitda(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-semibold outline-none focus:border-[#0088E8]"
+              >
+                {pilihanKomponen.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+              <p className="text-[10px] text-slate-400">Akun bertanda ini ditambahkan kembali ke laba saat menghitung EBITDA di Laba Rugi.</p>
+            </div>
+          )}
 
           {/* Hiraukan minus closing */}
           {isIgnoreMinusClosingVisible && (

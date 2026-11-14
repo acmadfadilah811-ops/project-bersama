@@ -7,7 +7,7 @@ from .views.payroll_persetujuan import (
 from .views.notifikasi import NotifikasiKeuanganBacaView, NotifikasiKeuanganListView
 from .views.aset_hr import (
     AsetHRMasukListView, AsetHRMasukProsesView, AsetHRMasukSelesaiTinjauView, AsetHRMasukTolakView,
-    ProyeksiPenyusutanView,
+    PenyusutanFiskalView, ProyeksiPenyusutanView,
 )
 from .views.unit_bisnis import AkunUnitBisnisDetailView, AkunUnitBisnisListView
 from .views.payroll import (
@@ -103,6 +103,7 @@ urlpatterns = [
     path("assets/import/commit/", FixedAssetImportCommitView.as_view(), name="accounting-assets-import-commit"),
     path("assets/depreciation/post/", FixedAssetDepreciationPostView.as_view(), name="accounting-assets-depreciation-post"),
     path("assets/proyeksi/", ProyeksiPenyusutanView.as_view(), name="accounting-assets-proyeksi"),
+    path("assets/penyusutan-fiskal/", PenyusutanFiskalView.as_view(), name="accounting-assets-penyusutan-fiskal"),
     path("assets/dari-hr/", AsetHRMasukListView.as_view(), name="accounting-aset-hr"),
     path("assets/dari-hr/<int:pk>/proses/", AsetHRMasukProsesView.as_view(), name="accounting-aset-hr-proses"),
     path("assets/dari-hr/<int:pk>/tolak/", AsetHRMasukTolakView.as_view(), name="accounting-aset-hr-tolak"),

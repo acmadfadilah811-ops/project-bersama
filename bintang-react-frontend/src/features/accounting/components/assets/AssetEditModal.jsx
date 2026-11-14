@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { notify, notifyApiError } from '../../../../utils/notify';
+import KelompokFiskalFields from './KelompokFiskalFields';
 
 const inputClass = 'w-full px-3 py-2 border border-slate-200 rounded-lg bg-white outline-none focus:border-[#0088E8] text-xs font-semibold shadow-3xs text-slate-650';
 const labelClass = 'text-[10px] text-slate-400 font-bold uppercase tracking-wider';
@@ -10,6 +11,8 @@ export default function AssetEditModal({ asset, onSave, onClose }) {
     name: asset.name,
     external_document_no: asset.external_document_no || '',
     description: asset.description || '',
+    kelompok_fiskal: asset.kelompok_fiskal || '',
+    metode_fiskal: asset.metode_fiskal || 'garis_lurus',
   });
   const [saving, setSaving] = useState(false);
   const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
@@ -42,6 +45,13 @@ export default function AssetEditModal({ asset, onSave, onClose }) {
           </p>
           <label className="space-y-1.5 block"><span className={labelClass}>Nama Aset *</span><input required value={form.name} onChange={(e) => set('name', e.target.value)} className={inputClass} /></label>
           <label className="space-y-1.5 block"><span className={labelClass}>No. Dokumen</span><input value={form.external_document_no} onChange={(e) => set('external_document_no', e.target.value)} className={inputClass} /></label>
+          <KelompokFiskalFields
+            kelompok={form.kelompok_fiskal}
+            metode={form.metode_fiskal}
+            onChange={(v) => setForm((current) => ({ ...current, ...v }))}
+            inputClass={inputClass}
+            labelClass={labelClass}
+          />
           <label className="space-y-1.5 block"><span className={labelClass}>Catatan</span><textarea value={form.description} onChange={(e) => set('description', e.target.value)} className={`${inputClass} min-h-[70px]`} /></label>
         </div>
 

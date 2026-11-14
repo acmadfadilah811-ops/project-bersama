@@ -34,6 +34,7 @@ CLASSIFICATIONS = [
     (AccountType.EXPENSE, "Pengeluaran", 2, 60000, 69999),
     (AccountType.REVENUE, "Pendapatan Lain", 2, 70000, 79999),
     (AccountType.EXPENSE, "Pengeluaran Lain", 3, 80000, 89999),
+    (AccountType.EXPENSE, "Beban Pajak Penghasilan", 4, 90000, 99999),
 ]
 
 OPENING_BALANCE_ACCOUNT_CODE = "34000"
@@ -66,6 +67,8 @@ ACCOUNTS = [
     ("21000", "Hutang dagang", "Kewajiban Jangka Pendek", AccountType.LIABILITY, False, ""),
     ("21100", "Hutang gaji", "Kewajiban Jangka Pendek", AccountType.LIABILITY, False, ""),
     ("21200", "Hutang BPJS", "Kewajiban Jangka Pendek", AccountType.LIABILITY, False, ""),
+    ("21300", "Utang pajak penghasilan", "Kewajiban Jangka Pendek", AccountType.LIABILITY, False, "PPh badan/final terutang yang belum disetor."),
+    ("21400", "Utang bunga", "Kewajiban Jangka Pendek", AccountType.LIABILITY, False, "Bunga pinjaman yang sudah jatuh tempo tetapi belum dibayar."),
     ("22000", "Hutang bank", "Kewajiban Jangka Panjang", AccountType.LIABILITY, False, ""),
     ("23000", "Pendapatan di terima dimuka", "Kewajiban lain", AccountType.LIABILITY, False, ""),
     ("23500", "PPN Keluaran", "Kewajiban lain", AccountType.LIABILITY, False, ""),
@@ -93,13 +96,20 @@ ACCOUNTS = [
     ("60500", "Biaya transfer", "Pengeluaran", AccountType.EXPENSE, False, ""),
     ("60600", "Beban BPJS perusahaan", "Pengeluaran", AccountType.EXPENSE, False, ""),
     ("60700", "Biaya uang makan", "Pengeluaran", AccountType.EXPENSE, False, "Uang makan mingguan karyawan dari HR."),
+    ("60800", "Beban amortisasi", "Pengeluaran", AccountType.EXPENSE, False, "Amortisasi aset tak berwujud (software, lisensi, merek)."),
     ("70000", "Pendapatan lain lain", "Pendapatan Lain", AccountType.REVENUE, False, ""),
     ("70001", "Pembulatan", "Pendapatan Lain", AccountType.REVENUE, False, ""),
     ("70002", "Code Uniq Penjualan", "Pendapatan Lain", AccountType.REVENUE, False, ""),
     ("70003", "Layanan Penjualan", "Pendapatan Lain", AccountType.REVENUE, False, ""),
+    ("70100", "Pendapatan bunga", "Pendapatan Lain", AccountType.REVENUE, False, "Bunga/jasa giro bank dan bunga pinjaman yang diberikan."),
     ("80000", "Pengeluaran lain lain", "Pengeluaran Lain", AccountType.EXPENSE, False, ""),
     ("81000", "Penyesuaian Barang", "Pengeluaran Lain", AccountType.EXPENSE, False, ""),
+    ("82000", "Beban bunga", "Pengeluaran Lain", AccountType.EXPENSE, False, "Bunga pinjaman bank/leasing."),
+    ("91000", "Beban pajak penghasilan", "Beban Pajak Penghasilan", AccountType.EXPENSE, False, "PPh badan / PPh final atas penghasilan usaha. Dikurangkan setelah Laba Sebelum Pajak."),
 ]
+
+# Penanda komponen EBITDA untuk akun bawaan (2026-11-10) -- lihat Account.komponen_ebitda.
+KOMPONEN_EBITDA = {"60400": "penyusutan", "60800": "amortisasi", "70100": "pendapatan_bunga", "82000": "beban_bunga"}
 
 
 class Command(BaseCommand):
@@ -137,6 +147,8 @@ class Command(BaseCommand):
                 },
             )
             created_acc += created
+        for code, komponen in KOMPONEN_EBITDA.items():
+            Account.objects.filter(code=code, komponen_ebitda="").update(komponen_ebitda=komponen)
 
         self.stdout.write(self.style.SUCCESS(
             f"Selesai. Klasifikasi baru: {created_cls}/{len(CLASSIFICATIONS)}, "

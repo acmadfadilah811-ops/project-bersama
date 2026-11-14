@@ -26,6 +26,7 @@ export default function LabaRugiSatuPeriodeReport({
   listPendapatan, listHpp, listBiayaOp, listPendapatanNonOp, listBiayaNonOp,
   subTotalPendapatan, subTotalHpp, totalLabaKotor, totalBiayaOp,
   subTotalPendapatanNonOp, subTotalBiayaNonOp, totalPendapatanNonOp, labaBersih,
+  labaUsaha = 0, labaSebelumPajak = 0, listPajak = [], totalPajak = 0, ebitda = null,
   formatRupiah, onViewAccount,
 }) {
   return (
@@ -91,6 +92,10 @@ export default function LabaRugiSatuPeriodeReport({
               <span>Total Biaya Operasional</span>
               <span>{formatRupiah(totalBiayaOp)}</span>
             </div>
+            <div className="flex items-center justify-between text-xs font-black text-slate-900 bg-[#E0F2FE] p-3 mt-2">
+              <span>Laba usaha (laba kotor - biaya operasional)</span>
+              <span>{formatRupiah(labaUsaha)}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -133,18 +138,65 @@ export default function LabaRugiSatuPeriodeReport({
         </div>
       </div>
 
-      {/* SECTION 3: LABA BERSIH */}
-      <div className="border border-slate-200 rounded-lg overflow-hidden">
+      {/* SECTION 3: PAJAK & LABA BERSIH (PSAK 201: beban pajak baris tersendiri, 2026-11-10) */}
+      <div className="mb-6 border border-slate-200 rounded-lg overflow-hidden">
         <div className="bg-[#0099E6] text-white px-4 py-2.5 font-bold text-xs tracking-wide">
-          Laba bersih
+          Laba sebelum dan setelah pajak
         </div>
-        <div className="p-4">
+        <div className="p-4 space-y-3">
+          <div className="flex items-center justify-between text-xs font-bold text-slate-900 bg-slate-200/90 p-3 border-t border-dashed border-black">
+            <span>Laba sebelum pajak</span>
+            <span>{formatRupiah(labaSebelumPajak)}</span>
+          </div>
+          <div className="text-xs font-semibold text-slate-600">Beban pajak penghasilan</div>
+          <div className="space-y-1.5 pl-6">
+            {listPajak.length === 0 && <div className="text-[11px] text-slate-400">Belum ada akun di klasifikasi Beban Pajak Penghasilan.</div>}
+            {listPajak.map((item) => (
+              <AccountRow key={item.code} item={item} formatRupiah={formatRupiah} onViewAccount={onViewAccount} />
+            ))}
+          </div>
+          <div className="flex items-center justify-between text-xs font-semibold text-slate-900 bg-slate-50 p-2.5 border-t border-slate-800">
+            <span>SubTotal Beban pajak penghasilan</span>
+            <span>{formatRupiah(totalPajak)}</span>
+          </div>
           <div className="flex items-center justify-between text-xs font-black text-slate-900 bg-slate-200/90 p-3 border-t border-dashed border-black">
-            <span>Laba bersih</span>
+            <span>Laba setelah pajak (laba bersih)</span>
             <span>{formatRupiah(labaBersih)}</span>
           </div>
         </div>
       </div>
+
+      {/* SECTION 4: EBITDA */}
+      {ebitda && (
+        <div className="border border-slate-200 rounded-lg overflow-hidden">
+          <div className="bg-slate-800 text-white px-4 py-2.5 font-bold text-xs tracking-wide flex items-center justify-between">
+            <span>EBITDA</span>
+            {ebitda.margin_persen !== null && ebitda.margin_persen !== undefined && (
+              <span className="font-semibold text-slate-300">Margin {String(ebitda.margin_persen).replace('.', ',')}% dari pendapatan</span>
+            )}
+          </div>
+          <div className="p-4 space-y-1.5 text-xs">
+            {[
+              ['Laba sebelum pajak', ebitda.laba_sebelum_pajak],
+              ['+ Beban bunga', ebitda.beban_bunga],
+              ['- Pendapatan bunga', ebitda.pendapatan_bunga],
+            ].map(([label, nilai]) => (
+              <div key={label} className="flex items-center justify-between py-0.5"><span className="text-slate-700">{label}</span><span className="font-semibold text-slate-800">{formatRupiah(nilai)}</span></div>
+            ))}
+            <div className="flex items-center justify-between font-semibold text-slate-900 bg-slate-50 p-2.5 border-t border-slate-800"><span>EBIT</span><span>{formatRupiah(ebitda.ebit)}</span></div>
+            {[
+              ['+ Penyusutan', ebitda.penyusutan],
+              ['+ Amortisasi', ebitda.amortisasi],
+            ].map(([label, nilai]) => (
+              <div key={label} className="flex items-center justify-between py-0.5"><span className="text-slate-700">{label}</span><span className="font-semibold text-slate-800">{formatRupiah(nilai)}</span></div>
+            ))}
+            <div className="flex items-center justify-between font-black text-slate-900 bg-slate-200/90 p-3 border-t border-dashed border-black"><span>EBITDA</span><span>{formatRupiah(ebitda.ebitda)}</span></div>
+            <p className="pt-1 text-[11px] text-slate-400">
+              Komponen dikenali dari penanda akun (Daftar Akun &gt; Komponen EBITDA): penyusutan, amortisasi, beban bunga, pendapatan bunga.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
