@@ -8,6 +8,84 @@ export const KPI_SEGARKAN = 'kpi:segarkan';
 export const segarkanKpi = () => window.dispatchEvent(new Event(KPI_SEGARKAN));
 
 const angka = (n) => Number(n || 0).toLocaleString('id-ID');
+const BULAN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+// Warna grade mengikuti file KPI owner: >=95 Excellent, >=75 Good, >=60 Semangat Lagi, <60 Warning.
+const WARNA_GRADE = {
+  Excellent: 'bg-emerald-50 text-emerald-700',
+  Good: 'bg-sky-50 text-sky-700',
+  'Semangat Lagi': 'bg-amber-50 text-amber-700',
+  Warning: 'bg-rose-50 text-rose-700',
+};
+
+function nilaiIndikator(v, satuan) {
+  if (v === null || v === undefined) return '-';
+  if (satuan === 'rupiah') return `Rp ${angka(v)}`;
+  if (satuan === 'persen') return `${angka(v)}%`;
+  if (satuan === 'm2') return `${angka(v)} m2`;
+  return angka(v);
+}
+
+/** KPI bulanan per jabatan (2026-11-14): skor, grade, peringkat, rincian indikator, tren 6 bulan. */
+function KpiBulanan({ kpi }) {
+  const maksTren = Math.max(100, ...kpi.tren.map((t) => Number(t.total || 0)));
+  return (
+    <div className="mb-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Skor bulan ini - {kpi.jabatan}</p>
+          <p className="text-3xl font-bold tabular-nums text-slate-900">{Number(kpi.total || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 })}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {kpi.grade && <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${WARNA_GRADE[kpi.grade] || 'bg-slate-100 text-slate-700'}`}>{kpi.grade}</span>}
+          {kpi.peringkat && <span className="text-xs font-semibold text-slate-600">Peringkat {kpi.peringkat} dari {kpi.jumlah_peringkat}</span>}
+        </div>
+      </div>
+      {kpi.belum_diisi > 0 && <p className="mt-1 text-[11px] text-amber-700">{kpi.belum_diisi} indikator belum ada realisasi (diisi pemeriksa).</p>}
+
+      <div className="mt-3 space-y-2.5">
+        {kpi.items.map((i) => (
+          <div key={i.indikator_id}>
+            <div className="flex items-center justify-between gap-3 text-xs text-slate-600">
+              <span className="min-w-0 truncate">
+                <span className="mr-1.5 inline-block h-2 w-2 rounded-sm align-middle" style={{ background: i.warna }} />
+                {i.indikator}
+                {i.otomatis && <span className="ml-1 text-slate-400">(otomatis)</span>}
+              </span>
+              <span className="shrink-0 font-semibold tabular-nums">
+                {nilaiIndikator(i.realisasi, i.satuan)} / {nilaiIndikator(i.target, i.satuan)}
+              </span>
+            </div>
+            <div className="mt-1 flex items-center gap-2">
+              <div className="flex-1"><Bilah persen={i.capaian_persen} /></div>
+              <span className="w-16 shrink-0 text-right text-[11px] font-semibold tabular-nums text-slate-500">
+                {Number(i.skor || 0).toLocaleString('id-ID', { maximumFractionDigits: 1 })}/{angka(i.bobot)}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {kpi.tren?.length > 0 && (
+        <div className="mt-4">
+          <p className="mb-1.5 text-[11px] font-semibold text-slate-500">Tren 6 bulan</p>
+          <div className="flex h-16 items-end gap-2">
+            {kpi.tren.map((t) => (
+              <div key={`${t.tahun}-${t.bulan}`} className="flex flex-1 flex-col items-center gap-1" title={`${BULAN[t.bulan - 1]} ${t.tahun}: ${t.total ?? '-'}`}>
+                <div className="flex w-full flex-1 items-end">
+                  <div
+                    className="w-full rounded-t bg-slate-700"
+                    style={{ height: `${t.total ? Math.max(4, (Number(t.total) / maksTren) * 100) : 0}%` }}
+                  />
+                </div>
+                <span className="text-[10px] text-slate-400">{BULAN[t.bulan - 1]}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function Bilah({ persen, tebal = false }) {
   return (
@@ -49,6 +127,7 @@ export default function KpiSayaCard() {
   useAutoRefresh(() => muat(), { intervalMs: 30000 });
 
   const objektif = data?.objektif || [];
+  const kpi = data?.kpi_bulanan?.ada_template ? data.kpi_bulanan : null;
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm" aria-label="KPI saya">
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -63,9 +142,11 @@ export default function KpiSayaCard() {
 
       {memuat && <p className="text-xs text-slate-400">Memuat KPI...</p>}
       {!memuat && data?.pesan && <p className="text-xs text-slate-500">{data.pesan}</p>}
-      {!memuat && !data?.pesan && objektif.length === 0 && (
-        <p className="text-xs text-slate-500">Belum ada target KPI untuk Anda. Manager mengisinya di HR (menu KPI/OKR).</p>
+      {!memuat && !data?.pesan && objektif.length === 0 && !kpi && (
+        <p className="text-xs text-slate-500">Belum ada target KPI untuk Anda. HR mengaturnya di menu KPI Karyawan (template per jabatan).</p>
       )}
+
+      {kpi && <KpiBulanan kpi={kpi} />}
 
       <div className="space-y-4">
         {objektif.map((o) => (
@@ -95,7 +176,7 @@ export default function KpiSayaCard() {
           </div>
         ))}
       </div>
-      {objektif.length > 0 && <p className="mt-3 text-[11px] text-slate-400">Diperbarui otomatis. Target diatur manager di HR.</p>}
+      {(objektif.length > 0 || kpi) && <p className="mt-3 text-[11px] text-slate-400">Diperbarui otomatis. Target diatur HR per jabatan.</p>}
     </section>
   );
 }

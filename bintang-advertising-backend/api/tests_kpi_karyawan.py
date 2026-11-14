@@ -101,3 +101,51 @@ class MetrikKpiTest(APITestCase):
 
     def test_kpi_saya_butuh_login(self):
         self.assertIn(self.client.get('/api/kpi-saya/', secure=True).status_code, (401, 403))
+
+
+@override_settings(SECURE_SSL_REDIRECT=False)
+class MetrikKpiTambahanTest(APITestCase):
+    """Metrik tambahan untuk KPI Karyawan HR (2026-11-14)."""
+
+    def setUp(self):
+        from .models import UnitBisnis
+
+        self.unit = UnitBisnis.objects.create(nama='Digital Printing KPI')
+        self.divisi = Divisi.objects.create(nama='Divisi KPI 2')
+        self.tahap = TahapProses.objects.create(divisi=self.divisi, nama='Cetak KPI 2', urutan=1)
+        self.staff = CustomUser.objects.create_user(username='op.kpi', password='x', role='staff', unit_bisnis=self.unit)
+        self.kasir = CustomUser.objects.create_user(username='ksr.kpi', password='x', role='kasir', unit_bisnis=self.unit)
+        self.order = Order.objects.create(
+            id='ORD-KPI-T1', nomor_wa='0813', nama='C', dilayani_oleh=self.kasir, total_harga=400000,
+            status_global='proses', unit_bisnis=self.unit,
+        )
+        self.item = OrderItem.objects.create(order=self.order, jenis_produk='Banner', qty=2, harga_jual=400000, panjang=2, lebar=1.5)
+        OrderItem.objects.filter(pk=self.item.pk).update(luas=3.0)
+        self.hari_ini = timezone.localdate()
+
+    def test_order_produksi_kesalahan_dan_omzet(self):
+        POSSale.objects.create(nomor='POS-KPI-T1', kasir=self.kasir, total=100000, status='paid', unit_bisnis=self.unit)
+        job = JobBoard.objects.create(order_item=self.item, tahap=self.tahap, pic_staff=self.staff, status_pekerjaan='selesai')
+        JobBoard.objects.filter(pk=job.pk).update(waktu_selesai=timezone.now())
+        gagal = JobBoard.objects.create(order_item=self.item, tahap=self.tahap, pic_staff=self.staff, status_pekerjaan='gagal')
+        JobBoard.objects.filter(pk=gagal.pk).update(waktu_selesai=timezone.now())
+
+        kasir = hitung_metrik(self.kasir, self.hari_ini, self.hari_ini)
+        self.assertEqual(kasir['jumlah_order'], 2)  # 1 nota kasir + 1 pesanan
+        self.assertEqual(kasir['omzet_divisi'], 500000)
+        self.assertEqual(kasir['omzet_perusahaan'], 500000)
+        self.assertIsNone(kasir['kepuasan'])
+
+        op = hitung_metrik(self.staff, self.hari_ini, self.hari_ini)
+        self.assertEqual(op['produksi_m2'], 6.0)  # luas 3 m2 x qty 2
+        self.assertEqual(op['produksi_qty'], 2.0)
+        self.assertEqual(op['kesalahan'], 1)
+        self.assertIsNone(op['akurasi_opname'])
+
+    def test_kepuasan_dari_survei_transaksi_yang_dilayani(self):
+        from .survei_models import SurveiKepuasan
+
+        SurveiKepuasan.objects.create(order=self.order, rata_rata=4.5)
+        sale = POSSale.objects.create(nomor='POS-KPI-T2', kasir=self.kasir, total=10000, status='paid')
+        SurveiKepuasan.objects.create(pos_sale=sale, rata_rata=3.5)
+        self.assertEqual(hitung_metrik(self.kasir, self.hari_ini, self.hari_ini)['kepuasan'], 4.0)
