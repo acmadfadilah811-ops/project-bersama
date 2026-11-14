@@ -72,8 +72,8 @@ class BalanceSheetServiceTest(TestCase):
         self._post(self.modal, self.akum_penyusutan, '100000')
 
         result = get_balance_sheet(date.today() - timedelta(days=1), date.today())
-        peralatan_row = next(r for r in result['aset_lancar'] if r['code'] == '11591')
-        akum_row = next(r for r in result['aset_lancar'] if r['code'] == '11691')
+        peralatan_row = next(r for r in result['aset_tidak_lancar'] if r['code'] == '11591')
+        akum_row = next(r for r in result['aset_tidak_lancar'] if r['code'] == '11691')
         self.assertEqual(peralatan_row['amount'], Decimal('1000000'))
         self.assertEqual(akum_row['amount'], Decimal('-100000'))
 

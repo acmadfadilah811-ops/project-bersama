@@ -427,7 +427,7 @@ def get_changes_in_equity(date_from, date_to):
 
 
 CASH_CLASSIFICATION = "Kas & Bank"
-INVESTMENT_CLASSIFICATIONS = {"Aktiva Tetap", "Aset Tak Berwujud", "Investasi", "Investasi jangka panjang"}
+INVESTMENT_CLASSIFICATIONS = {"Aktiva Tetap", "Perlengkapan", "Aset Tak Berwujud", "Investasi", "Investasi jangka panjang"}
 LIABILITY_CASH_FLOW_CLASSIFICATIONS = {"Kewajiban Jangka Pendek", "Kewajiban Jangka Panjang", "Kewajiban lain"}
 
 
@@ -441,7 +441,7 @@ def _cash_flow_bucket(entry, counterpart_classifications, cash_delta):
     if source_type == JournalEntry.SourceType.ASSET_ACQUISITION or counterpart_classifications & INVESTMENT_CLASSIFICATIONS:
         if "Aset Tak Berwujud" in counterpart_classifications:
             return "aset_tidak_berwujud"
-        if "Aktiva Tetap" in counterpart_classifications:
+        if counterpart_classifications & {"Aktiva Tetap", "Perlengkapan"}:
             return "aset_tetap"
         return "investasi_lain"
     if source_type in {JournalEntry.SourceType.POS_SALE, JournalEntry.SourceType.ORDER_PAYMENT}:
@@ -590,11 +590,13 @@ def get_cash_flow_detail(date_from, date_to, category, page=1, page_size=25):
     }
 
 
+# 2026-11-15 (SAK EP): klasifikasi "Perlengkapan" berisi akun 11500 Peralatan + akumulasi
+# penyusutannya -- aset tetap yang disusutkan, jadi disajikan sebagai aset TIDAK lancar.
 CURRENT_ASSET_CLASSIFICATIONS = [
-    "Kas & Bank", "Investasi", "Piutang", "Persediaan", "Perlengkapan",
-    "Akumulasi penyusutan perlengkapan", "Harta lancar lainnya",
+    "Kas & Bank", "Investasi", "Piutang", "Persediaan", "Harta lancar lainnya",
 ]
 NONCURRENT_ASSET_CLASSIFICATIONS = [
+    "Perlengkapan", "Akumulasi penyusutan perlengkapan",
     "Aktiva Tetap", "Aset Tak Berwujud", "Akumulasi penyusutan aset tetap",
     "Akumulasi penyusutan aset tak berwujud", "Investasi jangka panjang",
 ]

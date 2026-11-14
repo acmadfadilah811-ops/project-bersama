@@ -58,3 +58,48 @@ def submit_opening_balances(*, entries, actor):
         source_type=JournalEntry.SourceType.OPENING_BALANCE,
         created_by=actor,
     )
+
+
+def saldo_akun_saldo_awal(as_of_date):
+    """(akun penyeimbang Saldo Awal, saldo sisi kredit) per tanggal; (None, 0) bila belum diatur."""
+    from .ledger import get_account_balances
+
+    settings_row = AccountingSettings.objects.select_related("opening_balance_equity_account").first()
+    akun = settings_row.opening_balance_equity_account if settings_row else None
+    if akun is None:
+        return None, Decimal("0")
+    return akun, get_account_balances([akun], as_of_date)[akun.id]
+
+
+def tutup_saldo_awal(*, target_account, tanggal, actor=None):
+    """Pindahkan saldo akun penyeimbang "Saldo Awal" ke akun ekuitas permanen (2026-11-15, SAK EP).
+
+    Akun Saldo Awal hanya penampung sementara saat migrasi saldo dari pembukuan lama; setelah
+    migrasi selesai saldonya harus nol dan dipindah ke Modal / Laba Ditahan."""
+    from ..models import Account
+
+    akun, saldo = saldo_akun_saldo_awal(tanggal)
+    if akun is None:
+        raise ValidationError("Akun penyeimbang Saldo Awal belum diatur pada Pengaturan Akuntansi.")
+    if saldo == 0:
+        raise ValidationError(f"Saldo akun {akun.code} {akun.name} per {tanggal} sudah nol.")
+    if target_account.pk == akun.pk:
+        raise ValidationError("Akun tujuan tidak boleh sama dengan akun Saldo Awal.")
+    if not target_account.is_active or target_account.account_type != Account.AccountType.EQUITY or target_account.is_contra:
+        raise ValidationError("Akun tujuan harus akun Ekuitas aktif (mis. Modal atau Laba Ditahan), bukan akun kontra.")
+    jumlah = abs(saldo)
+    keterangan = f"Penutupan akun {akun.code} {akun.name} ke {target_account.code} {target_account.name}"
+    if saldo > 0:  # saldo kredit: debit Saldo Awal, kredit tujuan
+        lines = [
+            {"account": akun, "debit": jumlah, "kredit": 0, "description": keterangan},
+            {"account": target_account, "debit": 0, "kredit": jumlah, "description": keterangan},
+        ]
+    else:
+        lines = [
+            {"account": target_account, "debit": jumlah, "kredit": 0, "description": keterangan},
+            {"account": akun, "debit": 0, "kredit": jumlah, "description": keterangan},
+        ]
+    return create_journal_entry(
+        date=tanggal, lines=lines, description=keterangan,
+        source_type=JournalEntry.SourceType.OPENING_BALANCE, created_by=actor,
+    )
