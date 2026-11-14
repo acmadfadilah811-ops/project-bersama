@@ -9,7 +9,7 @@ export const segarkanKpi = () => window.dispatchEvent(new Event(KPI_SEGARKAN));
 
 const angka = (n) => Number(n || 0).toLocaleString('id-ID');
 const BULAN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-// Warna grade mengikuti file KPI owner: >=95 Excellent, >=75 Good, >=60 Semangat Lagi, <60 Warning.
+// Cadangan bila HR belum mengirim warna_grade (grade kini diatur HR di Pengaturan Grade KPI).
 const WARNA_GRADE = {
   Excellent: 'bg-emerald-50 text-emerald-700',
   Good: 'bg-sky-50 text-sky-700',
@@ -36,7 +36,9 @@ function KpiBulanan({ kpi }) {
           <p className="text-3xl font-bold tabular-nums text-slate-900">{Number(kpi.total || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 })}</p>
         </div>
         <div className="flex items-center gap-2">
-          {kpi.grade && <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${WARNA_GRADE[kpi.grade] || 'bg-slate-100 text-slate-700'}`}>{kpi.grade}</span>}
+          {kpi.grade && (kpi.warna_grade
+            ? <span className="rounded-full px-2.5 py-1 text-xs font-bold" style={{ color: kpi.warna_grade, backgroundColor: `${kpi.warna_grade}14` }}>{kpi.grade}</span>
+            : <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${WARNA_GRADE[kpi.grade] || 'bg-slate-100 text-slate-700'}`}>{kpi.grade}</span>)}
           {kpi.peringkat && <span className="text-xs font-semibold text-slate-600">Peringkat {kpi.peringkat} dari {kpi.jumlah_peringkat}</span>}
         </div>
       </div>
