@@ -227,7 +227,10 @@ class AntreanSesiView(APIView):
     Klaim global: fotografer divisi mana pun mengambil sesi dan jadi PIC SPK-nya."""
     permission_classes = [IsAuthenticated, IsClockedIn]
 
-    def get(self, request):
+    def get(self, request, pesanan_id=None):
+        # URL klaim (…/<pesanan_id>/klaim/) hanya untuk POST; GET di sana dulu 500 (TypeError).
+        if pesanan_id is not None:
+            return Response({'detail': 'Gunakan POST untuk klaim sesi.'}, status=405)
         data = []
         for sesi, peran in svc.antrean_sesi(request.user):
             baris = SesiFotoSerializer(sesi).data
