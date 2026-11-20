@@ -94,7 +94,7 @@ export default function KordivSpvTeamBoard({ role }) {
       const matchTahap = tahapFilter === 'Semua' || j.tahap_nama === tahapFilter;
       if (!matchTahap) return false;
       if (!q) return true;
-      const haystack = `${j.nomor_sumber || ''} ${j.nama_produk || ''} ${j.pic_nama || ''}`.toLowerCase();
+      const haystack = `${j.nomor_sumber || ''} ${j.nama_produk || ''} ${j.pic_nama || ''} ${j.pelanggan_nama || ''}`.toLowerCase();
       return haystack.includes(q);
     });
   }, [jobs, tahapFilter, search]);
@@ -217,7 +217,7 @@ export default function KordivSpvTeamBoard({ role }) {
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Cari SPK/Produk/Staff..."
+                  placeholder="Cari SPK/Pelanggan/Produk/Staff..."
                   className="w-full text-xs pl-7 pr-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none"
                 />
               </div>
@@ -228,6 +228,7 @@ export default function KordivSpvTeamBoard({ role }) {
               <thead className="max-md:hidden">
                 <tr className="border-b border-slate-200 bg-slate-50/75 text-[10px] font-semibold text-slate-500 uppercase">
                   <th className="py-2 px-2.5">SPK</th>
+                  <th className="py-2 px-2.5">Pelanggan</th>
                   <th className="py-2 px-2.5">Produk</th>
                   <th className="py-2 px-2.5">Tahap</th>
                   <th className="py-2 px-2.5">Staff</th>
@@ -238,7 +239,7 @@ export default function KordivSpvTeamBoard({ role }) {
               <tbody className="divide-y divide-slate-100 max-md:block">
                 {filteredJobs.length === 0 ? (
                   <tr className="max-md:block">
-                    <td colSpan={6} className="py-8 text-center text-slate-400 text-[11px] max-md:block">
+                    <td colSpan={7} className="py-8 text-center text-slate-400 text-[11px] max-md:block">
                       Tidak ada job yang cocok.
                     </td>
                   </tr>
@@ -248,6 +249,7 @@ export default function KordivSpvTeamBoard({ role }) {
                     return (
                       <tr key={job.id} className="hover:bg-slate-50/80 max-md:grid max-md:grid-cols-2 max-md:gap-x-2 max-md:gap-y-1 max-md:py-2">
                         <td className="py-2 px-2.5 max-md:py-0 font-mono font-bold text-indigo-700 align-top max-md:col-span-2 max-md:break-all">{job.nomor_sumber || job.id}</td>
+                        <td className="py-2 px-2.5 max-md:py-0 align-top max-w-[140px] max-md:max-w-none max-md:col-span-2 truncate font-medium text-slate-700" title={job.pelanggan_nama}>{job.pelanggan_nama || '-'}</td>
                         <td className="py-2 px-2.5 max-md:py-0 align-top max-w-[160px] max-md:max-w-none max-md:col-span-2 truncate font-medium" title={job.nama_produk}>{job.nama_produk}</td>
                         <td className="py-2 px-2.5 max-md:py-0 align-top">
                           <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
