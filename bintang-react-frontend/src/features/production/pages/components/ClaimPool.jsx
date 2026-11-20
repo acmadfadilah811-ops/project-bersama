@@ -178,10 +178,12 @@ export default function ClaimPool({
                   >
                     {grup.sumber === 'pos' ? 'POS' : 'Order'}
                   </span>
-                  <span className="text-[11px] font-extrabold text-slate-800 truncate">{grup.nomorSumber}</span>
-                  {grup.pelangganNama && (
-                    <span className="text-[10px] text-slate-500 font-semibold truncate">&middot; {grup.pelangganNama}</span>
-                  )}
+                  <span className="text-[11px] font-extrabold text-slate-800 truncate min-w-0" title={grup.pelangganNama || 'Pelanggan'}>
+                    {grup.pelangganNama || 'Pelanggan'}
+                  </span>
+                  <span className="text-[9px] text-slate-400 font-mono truncate shrink-0" title={`No. ${grup.nomorSumber}`}>
+                    &middot; #{grup.nomorSumber}
+                  </span>
                 </div>
                 {grup.jobs.length > 1 && (
                   <span className="flex items-center gap-1 text-[9px] font-bold text-slate-400 shrink-0">
