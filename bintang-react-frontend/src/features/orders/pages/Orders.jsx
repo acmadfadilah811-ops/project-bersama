@@ -36,6 +36,7 @@ import VoidOrderOtpModal from '../../kasir/components/VoidOrderOtpModal';
 import { uiConfirm } from '../../../utils/dialog';
 import UnitBisnisFilter from '../../../components/UnitBisnisFilter';
 import { bolehKelompokUnit } from '../../../utils/unitBisnis';
+import { formatLuas, hitungHargaMeteran, hitungLuas } from '../../../utils/meteran';
 
 export default function Orders() {
   const { user, businessSettings } = useAuth();
@@ -223,7 +224,7 @@ export default function Orders() {
       if (isMeteran) {
         const p = parseFloat(item.panjang) || 0;
         const l = parseFloat(item.lebar) || 0;
-        item.harga_jual = Math.round(p * l * hargaUnit * qty);
+        item.harga_jual = hitungHargaMeteran(p, l, hargaUnit, qty).subtotal;
       } else {
         item.harga_jual = Math.round(hargaUnit * qty);
       }
@@ -731,6 +732,7 @@ export default function Orders() {
             <thead className="bg-white text-slate-500 border-b border-slate-200 font-bold">
               <tr>
                 <th className="px-3 py-2">Job #</th>
+                {kelompokUnit && <th className="px-3 py-2">Unit Bisnis</th>}
                 <th className="px-3 py-2">Customer</th>
                 <th className="px-3 py-2 w-48">Description</th>
                 <th className="px-3 py-2">Team</th>
@@ -745,7 +747,7 @@ export default function Orders() {
               ) : filteredOrders.length === 0 ? (
                 <tr>
                   <td
-                    colSpan="7"
+                    colSpan={kelompokUnit ? 8 : 7}
                     className="px-3 py-6 text-center text-slate-400 text-[10px] italic"
                   >
                     No jobs found matching your criteria.
@@ -765,14 +767,14 @@ export default function Orders() {
                         className={`px-3 py-2 font-bold ${isCancelled ? 'line-through text-slate-500' : 'text-slate-900'}`}
                       >
                         {order.id}
-                        {kelompokUnit && (
-                          <div>
-                            <span className="inline-block text-[9px] font-semibold text-slate-400">
-                              {order.unit_bisnis_nama || 'Belum ditandai'}
-                            </span>
-                          </div>
-                        )}
                       </td>
+                      {kelompokUnit && (
+                        <td className="px-3 py-2">
+                          <span className={`inline-block rounded px-1.5 py-0.5 text-[9px] font-semibold ${order.unit_bisnis_nama ? 'bg-slate-100 text-slate-700' : 'text-slate-400'}`}>
+                            {order.unit_bisnis_nama || 'Belum ditandai'}
+                          </span>
+                        </td>
+                      )}
                       <td className="px-3 py-2">
                         <p
                           className={`font-bold ${isCancelled ? 'text-slate-600' : 'text-slate-900'}`}
@@ -1292,7 +1294,7 @@ export default function Orders() {
                           <div className="text-[9px] font-bold text-slate-400 uppercase mb-1.5">Hasil Kalkulasi Otomatis</div>
                           <div className="text-[9.5px] text-slate-300 mb-2">
                             {item.is_meteran !== false
-                              ? <><Ruler size={12} className="inline mr-1 align-middle" />{item.panjang || 0}m × {item.lebar || 0}m = <span className="text-white font-bold">{((parseFloat(item.panjang) || 0) * (parseFloat(item.lebar) || 0)).toFixed(2)} m²</span> &nbsp;×&nbsp; {formatRupiah(item.harga_per_m2 || 0)}/m² &nbsp;×&nbsp; {item.qty || 1} pcs</>
+                              ? <><Ruler size={12} className="inline mr-1 align-middle" />{item.panjang || 0}m × {item.lebar || 0}m = <span className="text-white font-bold">{formatLuas(hitungLuas(item.panjang, item.lebar))} m²</span> &nbsp;×&nbsp; {formatRupiah(item.harga_per_m2 || 0)}/m² &nbsp;×&nbsp; {item.qty || 1} pcs</>
                               : <>{formatRupiah(item.harga_per_m2 || 0)}/pcs &nbsp;×&nbsp; {item.qty || 1} pcs</>
                             }
                           </div>

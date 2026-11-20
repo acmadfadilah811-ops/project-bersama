@@ -168,6 +168,7 @@ export default function AccountingSecondarySidebar({ activeSubMenu, onSelectMenu
         { id: 'laporan-neraca', label: 'Neraca' },
         { id: 'laporan-perubahan-modal', label: 'Perubahan Modal' },
         { id: 'laporan-arus-kas', label: 'Arus Kas' },
+        { id: 'laporan-calk', label: 'Catatan atas Laporan Keuangan' },
       ],
     },
     {

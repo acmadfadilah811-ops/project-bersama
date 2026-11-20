@@ -106,7 +106,11 @@ def post_pos_sale_journal(sale: POSSale, actor=None, manual=False) -> Optional[J
 
     total_amount = Decimal(str(sale.total or 0))
     pajak_amount = Decimal(str(sale.pajak or 0))
-    revenue_amount = total_amount - pajak_amount
+    # Pembulatan total (Pengaturan POS): selisihnya jurnal ke akun "Pembulatan penjualan" sendiri bila akunnya
+    # diatur; kalau belum, ikut pendapatan seperti sebelumnya (jurnal tetap balance).
+    pembulatan_amount = Decimal(str(getattr(sale, 'pembulatan', 0) or 0))
+    akun_pembulatan = settings_row.pos_sales_rounding_account if pembulatan_amount != 0 else None
+    revenue_amount = total_amount - pajak_amount - (pembulatan_amount if akun_pembulatan else Decimal("0"))
 
     # Akun & departemen per unit bisnis (2026-10-11): tunai masuk kas laci unit.
     from . import unit_bisnis as akun_unit
@@ -137,6 +141,15 @@ def post_pos_sale_journal(sale: POSSale, actor=None, manual=False) -> Optional[J
             "debit": Decimal("0"),
             "kredit": pajak_amount,
             "description": f"PPN Keluaran POS {sale.nomor}",
+        })
+
+    # Line Pembulatan (opsional): kredit bila pelanggan membayar lebih, debit bila dibulatkan ke bawah.
+    if akun_pembulatan and pembulatan_amount != 0:
+        lines.append({
+            "account": akun_pembulatan,
+            "debit": -pembulatan_amount if pembulatan_amount < 0 else Decimal("0"),
+            "kredit": pembulatan_amount if pembulatan_amount > 0 else Decimal("0"),
+            "description": f"Pembulatan Penjualan POS {sale.nomor}",
         })
 
     # Line 4-5 (Opsional, T-107): HPP produk berlacak inventori yang terjual.

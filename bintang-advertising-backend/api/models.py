@@ -6,6 +6,8 @@ import re
 import uuid
 import logging
 
+from .qty_format import tampil_qty
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------
@@ -272,6 +274,8 @@ class Order(models.Model):
     kupon = models.ForeignKey('DiscountCoupon', on_delete=models.SET_NULL, null=True, blank=True, related_name='orders')
     diskon_kupon = models.IntegerField(default=0, help_text="Potongan nominal dari kupon")
     diskon_otomatis = models.IntegerField(default=0, help_text="Potongan nominal dari Diskon Penjualan (Toko Online)")
+    # Diskon custom kasir (keputusan manager 2026-10-31), rupiah; persen dikonversi saat checkout.
+    diskon_manual = models.IntegerField(default=0, help_text="Potongan diskon custom kasir (Rp)")
     diskon_tipe_pelanggan = models.IntegerField(
         default=0,
         help_text="Potongan nominal otomatis dari Diskon Khusus Tipe Pelanggan (CustomerGroup), dihitung ulang tiap save().",
@@ -291,6 +295,7 @@ class Order(models.Model):
         ('tidak_ada', 'Tidak Ada'),
         ('otomatis', 'Diskon Penjualan Otomatis'),
         ('kupon', 'Kupon Diskon'),
+        ('manual', 'Diskon Custom Kasir'),
     ]
     metode_diskon = models.CharField(max_length=20, choices=METODE_DISKON_CHOICES, default='tidak_ada')
 
@@ -389,10 +394,14 @@ class Order(models.Model):
             logger.warning(f"Failed to resolve customer group discount for order {self.pk}: {e}")
             return 0
 
+    def _potongan_nota(self, subtotal):
+        """Diskon nota persen (diskon_persen) + diskon custom kasir (rupiah, tidak melebihi subtotal)."""
+        return int(subtotal * (self.diskon_persen / 100)) + min(int(self.diskon_manual or 0), int(subtotal or 0))
+
     def update_totals(self):
         """Method bantuan untuk menghitung ulang total dan sisa tagihan dari item-itemnya."""
         subtotal = sum(item.harga_jual for item in self.items.all())
-        potongan = int(subtotal * (self.diskon_persen / 100))
+        potongan = self._potongan_nota(subtotal)
         self.total_harga = subtotal - potongan
         try:
             from api.marketing_models import CouponUsage
@@ -422,7 +431,7 @@ class Order(models.Model):
             if self.pk:
                 try:
                     subtotal = sum(item.harga_jual for item in self.items.all())
-                    potongan = int(subtotal * (self.diskon_persen / 100))
+                    potongan = self._potongan_nota(subtotal)
                     self.total_harga = subtotal - potongan
                     try:
                         from api.marketing_models import CouponUsage
@@ -668,6 +677,12 @@ class OrderPayment(models.Model):
         related_name='order_payments',
     )
     jumlah = models.PositiveIntegerField()
+    # Selisih pembulatan pembayaran (Pengaturan POS > Pembulatan): positif = pelanggan membayar lebih dari `jumlah`.
+    # `jumlah` tetap nominal yang mengurangi tagihan order; uang yang diterima kasir = jumlah + pembulatan.
+    pembulatan = models.IntegerField(
+        default=0,
+        help_text='Selisih pembulatan pembayaran; positif = pelanggan membayar lebih dari `jumlah`.',
+    )
     metode_pembayaran = models.CharField(max_length=50, default='tunai')
     referensi_pembayaran = models.CharField(max_length=255, blank=True, default='')
     idempotency_key = models.CharField(max_length=64, null=True, blank=True, unique=True)
@@ -815,7 +830,8 @@ class OrderItem(models.Model):
     # Format Tabel Excel disimpan di sini dalam bentuk JSON (termasuk list Finishing)
     detail = models.JSONField(default=list, null=True, blank=True, help_text="Spesifikasi awal dari customer dalam format Tabel/JSON") 
     
-    qty = models.IntegerField(default=1)
+    # Desimal (2026-10-29): DP kasir boleh qty berkoma (produk Custom/jasa 4 angka, produk berstok 2 angka).
+    qty = models.DecimalField(max_digits=12, decimal_places=4, default=1)
     harga_jual = models.IntegerField(default=0)
     biaya_bahan = models.IntegerField(default=0)
     estimasi = models.CharField(max_length=50, default="-")
@@ -841,8 +857,8 @@ class OrderItem(models.Model):
         # inventori/akuntansi & pergerakan stok (baris penjualan/pesanan
         # kosong tapi tetap tercatat). Dicek di sini (bukan cuma serializer)
         # supaya semua jalur (form WA, order manual, admin) ikut terlindungi.
-        if self.qty is None or self.qty < 1:
-            raise ValueError(f"Qty '{self.jenis_produk or 'item'}' harus minimal 1, bukan {self.qty}.")
+        if self.qty is None or self.qty <= 0:
+            raise ValueError(f"Qty '{self.jenis_produk or 'item'}' harus lebih dari nol, bukan {self.qty}.")
         # Auto kalkulasi luas m2 dari P x L sebelum disimpan ke database
         self.luas = round(self.panjang * self.lebar, 4)
         is_new = not self.pk
@@ -893,7 +909,7 @@ class OrderItem(models.Model):
                         order=self.order,
                         user=user,
                         tindakan="ADD_ITEM",
-                        keterangan=f"Menambahkan item baru: '{self.jenis_produk}' (Bahan: {self.bahan or '-'}, Qty: {self.qty}, Harga: Rp{self.harga_jual})"
+                        keterangan=f"Menambahkan item baru: '{self.jenis_produk}' (Bahan: {self.bahan or '-'}, Qty: {tampil_qty(self.qty)}, Harga: Rp{self.harga_jual})"
                     )
                 except Exception as e:
                     logger.error(f"Failed to log item creation: {e}")
@@ -906,7 +922,7 @@ class OrderItem(models.Model):
                 from django.db.models import Sum
                 order = self.order
                 subtotal = order.items.aggregate(total=Sum('harga_jual'))['total'] or 0
-                potongan = int(subtotal * (order.diskon_persen / 100))
+                potongan = order._potongan_nota(subtotal)
                 total_harga = subtotal - potongan
                 try:
                     from api.marketing_models import CouponUsage
@@ -943,7 +959,7 @@ class OrderItem(models.Model):
                 order=order,
                 user=user,
                 tindakan="DELETE_ITEM",
-                keterangan=f"Menghapus item: '{self.jenis_produk}' (Qty: {self.qty}, Harga: Rp{self.harga_jual})"
+                keterangan=f"Menghapus item: '{self.jenis_produk}' (Qty: {tampil_qty(self.qty)}, Harga: Rp{self.harga_jual})"
             )
         except Exception as e:
             logger.error(f"Failed to log item deletion: {e}")
@@ -954,7 +970,7 @@ class OrderItem(models.Model):
             try:
                 from django.db.models import Sum
                 subtotal = order.items.aggregate(total=Sum('harga_jual'))['total'] or 0
-                potongan = int(subtotal * (order.diskon_persen / 100))
+                potongan = order._potongan_nota(subtotal)
                 total_harga = subtotal - potongan
                 # Sebelumnya blok ini TIDAK subtract diskon_otomatis maupun
                 # kupon sama sekali (beda dari OrderItem.save()/Order.save())
@@ -1524,3 +1540,5 @@ from .starfoto_models import *  # noqa: F401,F403
 from .dinas_models import *  # noqa: F401,F403
 # Order kasir dikirim ke CRM (2026-10-12).
 from .crm_push_models import *  # noqa: F401,F403
+# Langganan notifikasi Web Push per perangkat (2026-10-21).
+from .webpush_models import *  # noqa: F401,F403

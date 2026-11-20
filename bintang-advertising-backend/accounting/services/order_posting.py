@@ -145,9 +145,13 @@ def post_order_payment_journal(
     actor=None,
     jumlah_bayar: Optional[Decimal] = None,
     is_dp: bool = False,
+    pembulatan=0,
 ) -> Optional[JournalEntry]:
     """
     Posting satu pembayaran Order ke JournalEntry.
+
+    `pembulatan` (Pengaturan POS > Pembulatan): selisih uang diterima vs `jumlah_bayar`. Kas/Bank didebit
+    sebesar jumlah + pembulatan, Piutang/Uang Muka dikredit sebesar jumlah, selisihnya ke akun Pembulatan.
     """
     if jumlah_bayar is None:
         jumlah_bayar = Decimal(str(order.dp_dibayar or 0))
@@ -214,10 +218,12 @@ def post_order_payment_journal(
     transit_status = "unsettled" if (pm and not pm.is_cash) else "not_applicable"
     # Akun & departemen per unit bisnis (2026-10-11): tunai masuk kas laci unit.
     from . import unit_bisnis as akun_unit
+    akun_pembulatan = settings_row.pos_sales_rounding_account if pembulatan else None
+    selisih_bulat = Decimal(str(pembulatan or 0)) if akun_pembulatan else Decimal("0")
     lines = [
         {
             "account": akun_unit.akun_kas(pm, order.unit_bisnis_id),
-            "debit": jumlah_bayar,
+            "debit": jumlah_bayar + selisih_bulat,
             "kredit": Decimal("0"),
             "description": f"Pembayaran Order ({metode_label.upper()})",
             "settlement_status": transit_status,
@@ -230,6 +236,14 @@ def post_order_payment_journal(
             "settlement_status": "not_applicable",
         },
     ]
+    if selisih_bulat != 0:
+        lines.append({
+            "account": akun_pembulatan,
+            "debit": -selisih_bulat if selisih_bulat < 0 else Decimal("0"),
+            "kredit": selisih_bulat if selisih_bulat > 0 else Decimal("0"),
+            "description": f"Pembulatan pembayaran Order {order.id}",
+            "settlement_status": "not_applicable",
+        })
 
     # 6. Posting via create_journal_entry() (M2), retry ≤3x untuk collision entry_number
     max_retries = 3

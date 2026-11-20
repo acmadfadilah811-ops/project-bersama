@@ -12,8 +12,15 @@ export default function DiscountVoucherModal({
   isAutoDiscountActive,
   onApplyAutoDiscount,
   onRemoveAutoDiscount,
+  diskonManual,
+  isManualDiscountActive = false,
+  onApplyManualDiscount,
+  onRemoveManualDiscount,
 }) {
   const [voucherCode, setVoucherCode] = useState('');
+  // Diskon custom kasir (keputusan manager 2026-10-31): Rp atau %, menggantikan kupon / diskon otomatis.
+  const [tipeManual, setTipeManual] = useState(diskonManual?.tipe || 'persen');
+  const [nilaiManual, setNilaiManual] = useState(isManualDiscountActive ? String(diskonManual?.nilai || '') : '');
 
   if (!isOpen) return null;
 
@@ -22,6 +29,15 @@ export default function DiscountVoucherModal({
     if (!voucherCode.trim()) return;
     onApplyCoupon(voucherCode.trim());
     setVoucherCode('');
+  };
+
+  const nilaiManualAngka = Number(String(nilaiManual).replace(',', '.'));
+  const nilaiManualValid = nilaiManualAngka > 0 && (tipeManual !== 'persen' || nilaiManualAngka <= 100);
+
+  const handleApplyManual = (e) => {
+    e.preventDefault();
+    if (!nilaiManualValid || !onApplyManualDiscount) return;
+    onApplyManualDiscount(tipeManual, nilaiManualAngka);
   };
 
   const handleSelectCouponCard = (coupon) => {
@@ -175,8 +191,73 @@ export default function DiscountVoucherModal({
             </div>
           )}
 
+          {/* Diskon custom kasir: Rp atau % */}
+          {onApplyManualDiscount && (
+            <form onSubmit={handleApplyManual} className="space-y-2 pt-1 border-t border-slate-100">
+              <label className="text-[11px] font-bold text-slate-500 block pt-3">Diskon Custom</label>
+              <div className="flex items-center gap-2">
+                <div className="flex rounded-xl border border-slate-300 overflow-hidden shrink-0">
+                  {[['persen', '%'], ['nominal', 'Rp']].map(([kunci, label]) => (
+                    <button
+                      key={kunci}
+                      type="button"
+                      onClick={() => setTipeManual(kunci)}
+                      className={`px-3 py-2.5 text-xs font-bold cursor-pointer transition-all ${
+                        tipeManual === kunci ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  max={tipeManual === 'persen' ? 100 : undefined}
+                  step={tipeManual === 'persen' ? '0.01' : '1'}
+                  placeholder={tipeManual === 'persen' ? 'mis. 10' : 'mis. 15000'}
+                  value={nilaiManual}
+                  onChange={(e) => setNilaiManual(e.target.value)}
+                  className="flex-1 min-w-0 bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-extrabold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
+                />
+                <button
+                  type="submit"
+                  disabled={!nilaiManualValid}
+                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition-all cursor-pointer shrink-0"
+                >
+                  Terapkan
+                </button>
+              </div>
+              {tipeManual === 'persen' && nilaiManualAngka > 100 && (
+                <p className="text-[10px] font-semibold text-rose-600">Diskon persen maksimal 100%.</p>
+              )}
+              {isManualDiscountActive && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-emerald-800">
+                  <div className="flex items-center gap-2">
+                    <Check size={16} className="text-emerald-600 shrink-0" />
+                    <span className="font-extrabold text-xs">
+                      Diskon custom aktif:{' '}
+                      {diskonManual?.tipe === 'persen'
+                        ? `${diskonManual.nilai}%`
+                        : `Rp ${Number(diskonManual?.nilai || 0).toLocaleString('id-ID')}`}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { onRemoveManualDiscount?.(); setNilaiManual(''); }}
+                    className="p-1 text-emerald-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
+                    title="Hapus diskon custom"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              )}
+            </form>
+          )}
+
           <p className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5 text-[11px] font-semibold leading-relaxed text-blue-800">
-            Diskon hanya dapat diterapkan dari kupon atau Diskon Penjualan yang aktif di Marketing. Nominal manual tidak tersedia untuk kasir.
+            Pilih salah satu: kupon, Diskon Penjualan otomatis, atau diskon custom. Promosi dan diskon tipe pelanggan tetap berlaku otomatis.
           </p>
         </div>
 

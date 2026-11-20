@@ -5,7 +5,7 @@ from .period import AccountingPeriod
 from .journal import JournalEntry, JournalEntryLine, JournalAuditLog
 from .cashbank import CashBankAccount, PaymentMethod, PaymentMethodAuditLog
 from .bank_statement import BankStatementLine
-from .assets import FixedAsset
+from .assets import AsetHRMasuk, FixedAsset
 from .payroll import PayrollComponentMapping, PayrollPosting
 from .notifikasi import NotifikasiKeuangan
 from .payroll_persetujuan import PengajuanGaji, PengajuanGajiLog
@@ -29,6 +29,7 @@ __all__ = [
     "PaymentMethod",
     "PaymentMethodAuditLog",
     "BankStatementLine",
+    "AsetHRMasuk",
     "FixedAsset",
     "PayrollComponentMapping",
     "PayrollPosting",

@@ -175,6 +175,9 @@ export default function LabaRugiMultiPeriode() {
 
   const totalPendapatanNonOp = getTotal('total_pendapatan_non_operasional');
   const totalLabaBersih = getTotal('laba_bersih');
+  const labaSebelumPajak = getTotal('laba_sebelum_pajak');
+  const totalPajak = getTotal('total_pajak_penghasilan');
+  const ebitdaPerKolom = columns.map((_, idx) => Number(reportData?.[idx]?.ebitda?.ebitda || 0));
 
   const colWidth = `${50 / Math.max(1, columns.length)}%`;
 
@@ -498,11 +501,31 @@ export default function LabaRugiMultiPeriode() {
                 ))}
               </tr>
 
+              {/* LABA SEBELUM PAJAK, PAJAK, EBITDA (2026-11-10) */}
+              <tr className="bg-slate-200/90 font-bold border-t border-dashed border-black">
+                <td className="py-3 px-6">Laba sebelum pajak</td>
+                {labaSebelumPajak.map((v, idx) => (
+                  <td key={idx} className="py-3 px-6 text-right">{formatRupiah(v)}</td>
+                ))}
+              </tr>
+              <tr className="bg-slate-100 font-bold border-t border-slate-800">
+                <td className="py-2.5 px-6">Beban pajak penghasilan</td>
+                {totalPajak.map((v, idx) => (
+                  <td key={idx} className="py-2.5 px-6 text-right">{formatRupiah(v)}</td>
+                ))}
+              </tr>
+
               {/* TOTAL LABA BERSIH (GARIS HITAM DASHED MENEMPEL DI ATAS) */}
               <tr className="bg-slate-200/90 font-black border-t border-dashed border-black">
-                <td className="py-3 px-6 text-slate-900">Total Laba bersih</td>
+                <td className="py-3 px-6 text-slate-900">Total Laba bersih (setelah pajak)</td>
                 {totalLabaBersih.map((v, idx) => (
                   <td key={idx} className="py-3 px-6 text-right text-slate-900">{formatRupiah(v)}</td>
+                ))}
+              </tr>
+              <tr className="bg-slate-800 text-white font-black">
+                <td className="py-3 px-6">EBITDA</td>
+                {ebitdaPerKolom.map((v, idx) => (
+                  <td key={idx} className="py-3 px-6 text-right">{formatRupiah(v)}</td>
                 ))}
               </tr>
             </tbody>

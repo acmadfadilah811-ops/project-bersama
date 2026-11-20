@@ -14,6 +14,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from ..qty_format import tampil_qty
 from ..reorder_models import TanggunganReorder
 from .hr_bridge import HRBridgeThrottle, _cek_hr_bridge_api_key
 
@@ -41,7 +42,7 @@ def _baris(t):
         'order_id': order.id,
         'order_asal_id': order.reorder_dari_id,
         'pelanggan': order.nama,
-        'item': [f'{it.qty}x {it.jenis_produk}' for it in order.items.all()],
+        'item': [f'{tampil_qty(it.qty)}x {it.jenis_produk}' for it in order.items.all()],
         'staff_id': t.staff_id,
         'staff_nama': _nama(t.staff),
         'nominal': t.nominal,

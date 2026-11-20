@@ -6,7 +6,6 @@ import {
   ShoppingCart,
   TrendingUp,
   Package,
-  Users,
   MoreHorizontal,
   Clock,
   Activity,
@@ -28,10 +27,16 @@ import {
   ShieldAlert,
   KeyRound,
   History,
-  Lock,
   LineChart,
+  Wallet,
+  Receipt,
+  Hourglass,
+  Calculator,
 } from 'lucide-react';
 import { uiConfirm, uiPrompt } from '../../../utils/dialog';
+import {
+  AKSEN, GrafikPeriode, KartuAksen, PilihRentang, judulSeri, useRentang,
+} from '../components/PanelPeriode';
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -49,6 +54,13 @@ export default function Dashboard() {
   const [unlockRequests, setUnlockRequests] = useState([]);
   const [activeTab, setActiveTab] = useState('finansial');
   const [complaints, setComplaints] = useState([]);
+
+  // Ringkasan penjualan per rentang (Harian/Mingguan/Bulanan/Tahunan, bisa digeser) --
+  // gaya prototipe dashboard, 2026-11-10. Angka dari /dashboard/penjualan/, bukan taksiran.
+  const rentang = useRentang('dashboard-operasional-rentang', 'harian');
+  const [penjualan, setPenjualan] = useState(null);
+  const [muatPenjualan, setMuatPenjualan] = useState(false);
+  const [penjualanPada, setPenjualanPada] = useState(null);
 
   // Permintaan void Order dari kasir — butuh persetujuan OTP owner sebelum
   // kasir bisa membatalkan pesanan (instruksi user 2026-08-14, keamanan
@@ -314,6 +326,22 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [isPrivileged, fetchVoidRequests]);
 
+  useEffect(() => {
+    if (!isPrivileged) return undefined;
+    let batal = false;
+    setMuatPenjualan(true);
+    apiClient
+      .get('/dashboard/penjualan/', { params: { mode: rentang.mode, geser: rentang.geser } })
+      .then((res) => {
+        if (batal) return;
+        setPenjualan(res.data);
+        setPenjualanPada(new Date());
+      })
+      .catch((err) => console.error('Gagal mengambil ringkasan penjualan:', err))
+      .finally(() => { if (!batal) setMuatPenjualan(false); });
+    return () => { batal = true; };
+  }, [isPrivileged, rentang.mode, rentang.geser]);
+
   const formatRupiah = (angka) =>
     new Intl.NumberFormat('id-ID', {
       style: 'currency',
@@ -478,31 +506,6 @@ export default function Dashboard() {
 
   // ── DRAFT OWNER/MANAGER VIEW ───────────────────────────────────
   const omsetBulan = data?.omset_6_bulan || [];
-  // hitung koordinat kurva SVG line chart omset bulanan
-  const maxOmset = Math.max(...omsetBulan.map((item) => item.total), 1) * 1.1;
-  const svgWidth = 500;
-  const svgHeight = 150;
-
-  const points = omsetBulan.map((item, idx) => {
-    const x = (idx / Math.max(omsetBulan.length - 1, 1)) * (svgWidth - 40) + 20;
-    const y = svgHeight - (item.total / maxOmset) * (svgHeight - 40) - 20;
-    return { x, y };
-  });
-
-  const pathD =
-    points.length > 0
-      ? `M ${points[0].x} ${points[0].y} ` +
-        points
-          .slice(1)
-          .map((p) => `L ${p.x} ${p.y}`)
-          .join(' ')
-      : '';
-
-  const areaD =
-    points.length > 0
-      ? `${pathD} L ${points[points.length - 1].x} ${svgHeight - 15} L ${points[0].x} ${svgHeight - 15} Z`
-      : '';
-
   // Data donut chart absensi
   const staffList = onlineStaff?.staff?.filter((s) => s.role === 'staff') || [];
   const totalStaff = staffList.length || 1;
@@ -527,45 +530,6 @@ export default function Dashboard() {
     #f59e0b ${segHadirEnd}% ${segLateEnd}%,
     #ef4444 ${segLateEnd}% 100%
   )`;
-
-  const statCards = [
-    {
-      label: 'Total Omset',
-      value: formatRupiah(data?.omset_bulan_ini),
-      badge: '+12%',
-      badgeUp: true,
-      icon: TrendingUp,
-      iconBg: 'bg-indigo-50 text-indigo-600 border border-indigo-100',
-      iconColor: 'text-indigo-600',
-    },
-    {
-      label: 'Pelanggan Baru',
-      value: data?.total_pelanggan || 0,
-      badge: '+20%',
-      badgeUp: true,
-      icon: Users,
-      iconBg: 'bg-orange-50 text-orange-600 border border-orange-100',
-      iconColor: 'text-orange-500',
-    },
-    {
-      label: 'Total Order',
-      value: data?.total_order_bulan_ini || 0,
-      badge: '-5%',
-      badgeUp: false,
-      icon: ShoppingCart,
-      iconBg: 'bg-rose-50 text-rose-600 border border-rose-100',
-      iconColor: 'text-rose-500',
-    },
-    {
-      label: 'Order Hari Ini',
-      value: data?.total_order_hari_ini || 0,
-      badge: '+35%',
-      badgeUp: true,
-      icon: Package,
-      iconBg: 'bg-teal-50 text-teal-600 border border-teal-100',
-      iconColor: 'text-teal-500',
-    },
-  ];
 
   // 4 colorful cards (Review Status, Proses Produksi, Siap Diambil, Selesai)
   const statusCards = [
@@ -755,173 +719,92 @@ export default function Dashboard() {
         {/* TAB 1: RINGKASAN FINANSIAL */}
         {activeTab === 'finansial' && (
           <div className="space-y-5">
-            {/* ── WIDGET ROW 1 ────────────────────────────────── */}
-            <div className="flex flex-wrap gap-4 items-stretch">
-              {/* Omset -- kartu gelap besar */}
-              <div className="w-full sm:w-[300px] bg-slate-900 rounded-[22px] p-5 text-white flex flex-col justify-between">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Omset Bulan Ini</p>
-                    <p className="text-[10px] text-slate-500 mt-0.5">Total pendapatan tercatat</p>
-                  </div>
-                  <div className="bg-white/10 px-2.5 py-1 rounded-lg text-[9px] font-bold text-slate-200">
-                    {currentTime.toLocaleDateString('id-ID', { month: 'long' })}
-                  </div>
-                </div>
-                <div className="text-xl font-black mt-4">{formatRupiah(data?.omset_bulan_ini)}</div>
-                <div className={`text-[10px] font-bold mt-1 ${statCards[0].badgeUp ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {statCards[0].badge} dari bulan lalu
-                </div>
-              </div>
-
-              {/* Stacked: Total Order + Order Hari Ini */}
-              <div className="flex flex-col gap-4 w-full sm:w-[260px]">
-                <div className="bg-white border border-[#ECE5DB] rounded-[18px] p-4 flex-1 flex flex-col justify-center">
-                  <div className="flex items-center justify-between">
-                    <div className="w-8 h-8 rounded-full bg-[#EEF2FF] flex items-center justify-center">
-                      <ShoppingCart size={14} className="text-[#4338CA]" />
-                    </div>
-                    <span className="text-[9px] font-bold text-slate-400 uppercase">Bulan Ini</span>
-                  </div>
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mt-2.5">Total Order</p>
-                  <p className="text-lg font-black text-slate-800 leading-none mt-0.5">{data?.total_order_bulan_ini || 0} Order</p>
-                </div>
-                <div className="bg-white border border-[#ECE5DB] rounded-[18px] p-4 flex-1 flex flex-col justify-center">
-                  <div className="flex items-center justify-between">
-                    <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center">
-                      <Package size={14} className="text-emerald-600" />
-                    </div>
-                    <span className="text-[9px] font-bold text-slate-400 uppercase">Hari Ini</span>
-                  </div>
-                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mt-2.5">Order Hari Ini</p>
-                  <p className="text-lg font-black text-slate-800 leading-none mt-0.5">{data?.total_order_hari_ini || 0} Order</p>
-                </div>
-              </div>
-
-              {/* Sesi Absensi */}
-              <div className="bg-white border border-[#ECE5DB] rounded-[18px] p-4 flex flex-col items-center justify-center gap-2.5 w-[130px]">
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${sessionData?.is_active ? 'bg-slate-900' : 'bg-slate-300'}`}>
-                  <Lock size={18} className="text-white" />
-                </div>
-                <p className="text-[10px] font-bold text-slate-600 text-center leading-tight">
-                  Sesi Absensi<br />{sessionData?.is_active ? 'Aktif' : 'Tutup'}
+            {/* ── RENTANG + KARTU RINGKASAN PENJUALAN (gaya prototipe, 2026-11-10) ── */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <PilihRentang
+                mode={rentang.mode}
+                geser={rentang.geser}
+                label={penjualan?.periode?.label}
+                bisaMaju={penjualan?.periode?.bisa_maju}
+                onMode={rentang.setMode}
+                onGeser={rentang.setGeser}
+                memuat={muatPenjualan}
+              />
+              {penjualanPada && (
+                <p className="text-[11px] italic text-slate-400">
+                  Diperbarui {penjualanPada.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                 </p>
-              </div>
+              )}
+            </div>
 
-              {/* Kehadiran hari ini -- grid per staff (real, bukan kalender bulanan) */}
-              <div className="bg-white border border-[#ECE5DB] rounded-[18px] p-4 w-[220px]">
-                <div className="flex items-baseline justify-between">
-                  <span className="text-base font-black text-slate-800">{countHadir + countTerlambat}/{totalStaff}</span>
-                  <span className="text-[9.5px] text-slate-400 font-medium">hadir hari ini</span>
-                </div>
-                <div className="grid grid-cols-8 gap-1.5 mt-3">
-                  {staffList.map((s, i) => {
-                    const st = s.absensi_hari_ini?.status;
-                    const dot = st === 'hadir' ? 'bg-[#4F46E5]' : st === 'terlambat' ? 'bg-amber-400' : 'bg-slate-200';
-                    return <div key={i} title={s.username} className={`w-3.5 h-3.5 rounded-[4px] ${dot}`} />;
-                  })}
-                  {staffList.length === 0 && (
-                    <span className="text-[10px] text-slate-300 italic col-span-8">Belum ada staff</span>
-                  )}
-                </div>
-              </div>
-
-              {/* Pelanggan baru */}
-              <div className="bg-white border border-[#ECE5DB] rounded-[18px] p-4 flex-1 min-w-[140px] flex flex-col justify-center">
-                <div className="w-8 h-8 rounded-full bg-[#EEF2FF] flex items-center justify-center">
-                  <Users size={14} className="text-[#4338CA]" />
-                </div>
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mt-2.5">Pelanggan Baru</p>
-                <p className="text-lg font-black text-slate-800 leading-none mt-0.5">{data?.total_pelanggan || 0}</p>
-              </div>
+            <div className={`grid grid-cols-2 lg:grid-cols-5 gap-4 transition-opacity ${muatPenjualan ? 'opacity-60' : ''}`}>
+              <KartuAksen
+                className="col-span-2 lg:col-span-1"
+                label="Total Penjualan"
+                warna={AKSEN.hijau}
+                ikon={TrendingUp}
+                besar
+                nilai={formatRupiah(penjualan?.total)}
+                delta={penjualan ? penjualan.delta : undefined}
+                catatan={penjualan && (
+                  <>
+                    <p>Akumulasi bulan ini <b className="text-slate-700">{formatRupiah(penjualan.akumulasi_bulan)}</b></p>
+                    <p>Proyeksi bulan ini <b className="text-slate-700">{formatRupiah(penjualan.proyeksi_bulan)}</b></p>
+                  </>
+                )}
+              />
+              <KartuAksen
+                label="Penjualan Terbayar"
+                warna={AKSEN.biru}
+                ikon={Wallet}
+                nilai={formatRupiah(penjualan?.terbayar)}
+                catatan={<p>POS lunas + uang masuk pesanan</p>}
+              />
+              <KartuAksen
+                label="Belum Dibayar"
+                warna={AKSEN.kuning}
+                ikon={Hourglass}
+                nilai={formatRupiah(penjualan?.belum_dibayar)}
+                catatan={<p>Sisa tagihan pesanan periode ini</p>}
+              />
+              <KartuAksen
+                label="Transaksi"
+                warna={AKSEN.biruMuda}
+                ikon={Receipt}
+                nilai={new Intl.NumberFormat('id-ID').format((penjualan?.jumlah_order || 0) + (penjualan?.jumlah_pos || 0))}
+                catatan={<p>{penjualan?.jumlah_order || 0} pesanan · {penjualan?.jumlah_pos || 0} kasir langsung</p>}
+              />
+              <KartuAksen
+                label="Rata-rata per Transaksi"
+                warna={AKSEN.ungu}
+                ikon={Calculator}
+                nilai={formatRupiah(penjualan?.rata_rata)}
+                catatan={<p>Total penjualan dibagi transaksi</p>}
+              />
             </div>
 
             {/* Line Chart & Status Pipeline */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-              {/* Left: Line Chart */}
-              <div className="lg:col-span-8 bg-white border border-[#ECE5DB] rounded-[22px] p-5 shadow-sm relative overflow-hidden">
-                {/* Company Building watermark background */}
-                <div className="absolute right-4 bottom-10 opacity-[0.06] pointer-events-none select-none text-slate-800">
-                  <svg width="220" height="180" viewBox="0 0 220 180" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M10 170h200" />
-                    <path d="M30 170V70l40-20h60l40 20v100" />
-                    <path d="M50 170v-80h30v80" />
-                    <path d="M100 170V90h40v80" />
-                    <path d="M150 170v-60h20v60" />
-                    <path d="M30 100h40" />
-                    <path d="M100 110h45" />
-                    <path d="M30 130h140" />
-                    <circle cx="100" cy="40" r="10" />
-                    <path d="M100 30v20M90 40h20" />
-                    <rect x="38" y="76" width="6" height="10" />
-                    <rect x="52" y="76" width="6" height="10" />
-                    <rect x="114" y="96" width="6" height="10" />
-                    <rect x="128" y="96" width="6" height="10" />
-                  </svg>
-                </div>
-
-                <div className="flex justify-between items-start border-b border-slate-50 pb-3 mb-4">
+              {/* Left: Grafik penjualan periode ini vs periode sebelumnya */}
+              <div className="lg:col-span-8 bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                <div className="flex flex-wrap justify-between items-start gap-3 mb-3">
                   <div>
-                    <h2 className="text-xs font-black uppercase tracking-wider text-slate-700">Perkembangan Omset</h2>
-                    <p className="text-[10px] text-slate-400 mt-0.5">
-                      Pendapatan dan performa penjualan 6 bulan terakhir.
+                    <h2 className="text-base font-bold text-slate-900">Grafik Penjualan</h2>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {penjualan?.periode?.label || '…'} · {judulSeri(rentang.mode)}
                     </p>
                   </div>
                   <div className="text-right">
-                    <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-450">Bulan Ini</span>
-                    <div className="text-base font-black text-slate-800 leading-none mt-0.5">
-                      {formatRupiah(data?.omset_bulan_ini)}
-                    </div>
+                    <p className="text-[11px] font-semibold text-slate-500">Total Penjualan</p>
+                    <p className="text-lg font-bold text-slate-900 leading-tight tabular-nums">{formatRupiah(penjualan?.total)}</p>
                   </div>
                 </div>
-
-                {/* SVG Graph */}
-                <div className="w-full h-44 mt-2">
-                  {omsetBulan.length > 0 ? (
-                    <svg
-                      viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-                      className="w-full h-full"
-                      preserveAspectRatio="none"
-                    >
-                      <defs>
-                        <linearGradient id="omsetGradientSleek" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#4F46E5" stopOpacity="0.2" />
-                          <stop offset="100%" stopColor="#4F46E5" stopOpacity="0.0" />
-                        </linearGradient>
-                      </defs>
-                      <line x1="20" y1={svgHeight - 15} x2={svgWidth - 20} y2={svgHeight - 15} stroke="#F1EDE6" strokeWidth="1" />
-                      <line x1="20" y1={svgHeight / 2} x2={svgWidth - 20} y2={svgHeight / 2} stroke="#F1EDE6" strokeWidth="0.5" strokeDasharray="3" />
-                      <line x1="20" y1="20" x2={svgWidth - 20} y2="20" stroke="#F1EDE6" strokeWidth="0.5" strokeDasharray="3" />
-
-                      {areaD && <path d={areaD} fill="url(#omsetGradientSleek)" />}
-                      {pathD && (
-                        <path
-                          d={pathD}
-                          fill="none"
-                          stroke="#4F46E5"
-                          strokeWidth="2.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      )}
-                      {points.map((p, idx) => (
-                        <g key={idx}>
-                          <circle cx={p.x} cy={p.y} r="3" fill="#4F46E5" stroke="#FFFFFF" strokeWidth="1.5" />
-                        </g>
-                      ))}
-                    </svg>
-                  ) : (
-                    <div className="flex items-center justify-center h-full text-slate-400 text-xs">
-                      Data grafik belum tersedia
-                    </div>
-                  )}
-                </div>
-                
-                <div className="flex justify-between px-5 text-[8.5px] font-bold text-slate-400 uppercase mt-2">
-                  {omsetBulan.map((item, idx) => (
-                    <span key={idx}>{item.bulan.slice(0, 3)}</span>
-                  ))}
-                </div>
+                <GrafikPeriode
+                  seri={penjualan?.seri}
+                  warna={AKSEN.biru}
+                  labelSekarang="Total penjualan"
+                  labelSebelumnya="Periode sebelumnya"
+                />
               </div>
 
               {/* Right: Presensi Hari Ini (Replacing Status Operasional) */}

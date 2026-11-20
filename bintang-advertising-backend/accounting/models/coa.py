@@ -63,6 +63,20 @@ class Account(models.Model):
         help_text="Akun kontra (saldo normal kebalikan dari account_type) — mis. Akumulasi "
         "Penyusutan (kontra-Aset), Prive (kontra-Ekuitas), Retur/Potongan Penjualan (kontra-Pendapatan).",
     )
+    # Penanda komponen EBITDA (2026-11-10): akun beban penyusutan/amortisasi dan bunga
+    # ditambahkan kembali ke laba untuk menghitung EBITDA di Laba Rugi. Pajak penghasilan
+    # tidak memakai penanda ini -- akunnya punya klasifikasi sendiri "Beban Pajak Penghasilan".
+    class KomponenEbitda(models.TextChoices):
+        TIDAK = "", "Bukan komponen EBITDA"
+        PENYUSUTAN = "penyusutan", "Beban penyusutan"
+        AMORTISASI = "amortisasi", "Beban amortisasi"
+        BEBAN_BUNGA = "beban_bunga", "Beban bunga"
+        PENDAPATAN_BUNGA = "pendapatan_bunga", "Pendapatan bunga"
+
+    komponen_ebitda = models.CharField(
+        max_length=20, choices=KomponenEbitda.choices, blank=True, default="",
+        help_text="Dipakai Laba Rugi untuk menghitung EBITDA.",
+    )
     is_active = models.BooleanField(default=True)
     ignore_minus_closing = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)

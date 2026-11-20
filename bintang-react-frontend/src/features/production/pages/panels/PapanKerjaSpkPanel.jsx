@@ -28,7 +28,7 @@ export default function PapanKerjaSpkPanel() {
     handleModalSave,
     handleForward,
     handleExport,
-  } = useJobsData();
+  } = useJobsData({ hpp: true });
 
   // Pengelompokan per unit bisnis (owner/manager/admin); '' = semua unit. Unit sebuah SPK
   // = unit pesanan/nota asalnya (lihat JobBoardSerializer.unit_bisnis).
@@ -105,7 +105,8 @@ export default function PapanKerjaSpkPanel() {
   };
 
   const initSpreadsheetWithJobs = useCallback(() => {
-    const ROWS = 35;
+    // Baris mengikuti jumlah SPK (dulu tetap 35 baris / 25 SPK): semua SPK tampil otomatis.
+    const ROWS = Math.max(35, jobsUnit.length + 5);
     const COLS = 10;
     const grid = [];
     for (let r = 0; r < ROWS; r++) {
@@ -118,36 +119,42 @@ export default function PapanKerjaSpkPanel() {
     
     const headers = [
       'Job ID',      // A
-      'Order ID',    // B
+      'Order / Nota',// B
       'Customer',    // C
-      'Product',     // D
+      'Produk',      // D
       'Stage / Div', // E
       'PIC Operator',// F
       'Status',      // G
       'Duration (m)',// H
       'Incentive (Rp)', // I
-      'HPP Bahan'    // J
+      'HPP (Rp)'     // J = HPP produk + bahan
     ];
     headers.forEach((h, idx) => {
       grid[0][idx] = { value: h, computed: h, isHeader: true };
     });
     
-    const maxJobs = Math.min(jobsUnit.length, 25);
+    const maxJobs = jobsUnit.length;
     for (let i = 0; i < maxJobs; i++) {
       const job = jobsUnit[i];
       const r = i + 1;
       const order = orderMap[job.order_item] || {};
       
       grid[r][0] = { value: job.id || '', computed: String(job.id || '') };
-      grid[r][1] = { value: order.orderId || '', computed: String(order.orderId || '') };
-      grid[r][2] = { value: order.customerName || '', computed: order.customerName || '' };
-      grid[r][3] = { value: order.jenisProduk || '', computed: order.jenisProduk || '' };
+      // Job dari kasir POS tidak punya order_item: nomor nota, pelanggan & produk dibaca dari field
+      // turunan serializer (nomor_sumber / pelanggan_nama / nama_produk), orderMap hanya cadangan.
+      const nomor = job.nomor_sumber && job.nomor_sumber !== '-' ? job.nomor_sumber : (order.orderId || '');
+      const pelanggan = job.pelanggan_nama || order.customerName || '';
+      const produk = job.nama_produk && job.nama_produk !== '-' ? job.nama_produk : (order.jenisProduk || '');
+      grid[r][1] = { value: nomor, computed: String(nomor) };
+      grid[r][2] = { value: pelanggan, computed: pelanggan };
+      grid[r][3] = { value: produk, computed: produk };
       grid[r][4] = { value: job.tahap_nama || '', computed: job.tahap_nama || '' };
       grid[r][5] = { value: job.pic_nama || 'Belum Ada', computed: job.pic_nama || 'Belum Ada' };
       grid[r][6] = { value: job.status_pekerjaan || '', computed: job.status_pekerjaan || '' };
       grid[r][7] = { value: job.durasi_menit || 0, computed: String(job.durasi_menit || 0) };
       grid[r][8] = { value: job.insentif || 0, computed: String(job.insentif || 0) };
-      grid[r][9] = { value: job.hpp_bahan || 0, computed: String(job.hpp_bahan || 0) };
+      const hppJob = Number(job.hpp?.total) || 0;
+      grid[r][9] = { value: hppJob, computed: String(hppJob) };
     }
     
     const totalRowIdx = maxJobs + 2;
@@ -187,7 +194,7 @@ export default function PapanKerjaSpkPanel() {
       groups[key].push(job);
     });
     
-    const ROWS = 35;
+    const ROWS = Math.max(35, Object.keys(groups).length + 4);
     const COLS = 10;
     const grid = [];
     for (let r = 0; r < ROWS; r++) {
@@ -208,6 +215,7 @@ export default function PapanKerjaSpkPanel() {
       
       const getVal = (j) => {
         if (pivotConfig.valField === 'insentif') return j.insentif || 0;
+        if (pivotConfig.valField === 'hpp') return Number(j.hpp?.total) || 0;
         if (pivotConfig.valField === 'durasi') return j.durasi_menit || 0;
         if (pivotConfig.valField === 'qty') return 1;
         return 0;
@@ -322,6 +330,7 @@ export default function PapanKerjaSpkPanel() {
                       className="border border-slate-200 bg-slate-50 rounded px-2 py-0.5 text-slate-700 font-bold outline-none text-[10.5px]"
                     >
                       <option value="insentif">Insentif (Rp)</option>
+                      <option value="hpp">HPP (Rp)</option>
                       <option value="durasi">Durasi (Menit)</option>
                       <option value="qty">Banyak Pekerjaan</option>
                     </select>

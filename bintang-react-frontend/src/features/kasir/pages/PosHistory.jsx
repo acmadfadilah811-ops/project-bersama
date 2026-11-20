@@ -5,9 +5,11 @@ import { fetchAllPages } from '../../../utils/paginatedApi';
 import { notifyApiError, notifyError, notifySuccess } from '../../../utils/notify';
 import { useAuth } from '../../../context/AuthContext';
 import PosHeaderBar from '../components/PosHeaderBar';
+import useMetodePembayaran from '../hooks/useMetodePembayaran';
 import SpkPublishModal from '../components/SpkPublishModal';
 import ReceiptPrint from '../components/ReceiptPrint';
 import VoidOrderModal from '../components/VoidOrderModal';
+import PelunasanModal from '../components/PelunasanModal';
 import VoidOrderOtpModal from '../components/VoidOrderOtpModal';
 import ReturOrderOtpModal from '../components/ReturOrderOtpModal';
 import { getPrintErrorMessage, printReceipt } from '../../printing/services/printService';
@@ -48,6 +50,8 @@ function normalizePosItem(it) {
     // langsung, jangan diubah supaya cetak resi POS tidak ikut rusak.
     nama_snapshot: nama, harga_snapshot: namaSatuan, subtotal: jumlah,
     uom_kode: it.uom_kode,
+    // Pembulatan per item (Pengaturan POS): selisih baris ini; 0 pada mode per nota.
+    pembulatan: Number(it.pembulatan || 0),
   };
 }
 
@@ -86,11 +90,14 @@ export default function PosHistory({ onToggleSidebar }) {
   const [unitFilter, setUnitFilter] = useState('');
   const kelompokUnit = bolehKelompokUnit(user?.role);
   const [paymentFilter, setPaymentFilter] = useState('ALL');
+  const metodeMaster = useMetodePembayaran(true);
   const [showPaymentFilterModal, setShowPaymentFilterModal] = useState(false);
   const [selectedSale, setSelectedSale] = useState(null);
   const [showActionDropdown, setShowActionDropdown] = useState(false);
   const [voiding, setVoiding] = useState(false);
   const [showSpkModal, setShowSpkModal] = useState(false);
+  // Pelunasan dari riwayat (2026-11-03): pesanan yang masih ada sisa tagihan bisa dilunasi tanpa pindah halaman.
+  const [orderDilunasi, setOrderDilunasi] = useState(null);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [sendingWa, setSendingWa] = useState(false);
   const [showVoidModal, setShowVoidModal] = useState(false);
@@ -183,6 +190,7 @@ export default function PosHistory({ onToggleSidebar }) {
           subtotal: item.subtotal,
           diskon: item.diskon,
           pajak: item.pajak,
+          pembulatan: item.pembulatan,
           dibayar: item.dibayar,
           kembalian: item.kembalian,
           catatan: item.catatan,
@@ -236,6 +244,7 @@ export default function PosHistory({ onToggleSidebar }) {
           dibayar: dpDibayar,
           kembalian: 0,
           catatan: order.catatan_pelanggan,
+          raw: order, // data pesanan asli, dipakai PelunasanModal
         };
       });
 
@@ -492,14 +501,12 @@ export default function PosHistory({ onToggleSidebar }) {
   const totalPages = Math.max(1, Math.ceil(filteredSales.length / pageSize));
   const pagedSales = filteredSales.slice((page - 1) * pageSize, page * pageSize);
 
+  // Opsi filter = metode pembayaran master Finance (cadangan: CASH bila gagal dimuat).
   const paymentOptions = [
     { id: 'ALL', label: 'Semua Tipe Pembayaran' },
-    { id: 'CASH', label: 'CASH' },
-    { id: 'Online ShopeePay', label: 'Online ShopeePay' },
-    { id: 'Online Dana', label: 'Online Dana' },
-    { id: 'Online OVO', label: 'Online OVO' },
-    { id: 'Online Virtual Bank', label: 'Online Virtual Bank' },
-    { id: 'Online Credit Card', label: 'Online Credit Card' },
+    ...(metodeMaster && metodeMaster.length > 0
+      ? metodeMaster.map((m) => ({ id: m.nama, label: m.nama }))
+      : [{ id: 'CASH', label: 'CASH' }]),
   ];
 
   return (
@@ -759,6 +766,17 @@ export default function PosHistory({ onToggleSidebar }) {
                   <Banknote size={16} className="shrink-0" />
                   <span>{selectedSale.keterangan_bayar}</span>
                 </div>
+              )}
+              {selectedSale.tipe === 'order' && selectedSale.sisa_tagihan > 0 && !selectedSale.is_void
+                && !['draft', 'quotation'].includes(selectedSale.status_global) && (
+                <button
+                  type="button"
+                  onClick={() => setOrderDilunasi(selectedSale.raw)}
+                  className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-lg flex items-center gap-1.5 cursor-pointer shadow-sm self-start"
+                  title="Terima pelunasan walau pesanan belum selesai dikerjakan"
+                >
+                  <Banknote size={14} /> Terima Pelunasan
+                </button>
               )}
             </div>
 
@@ -1458,6 +1476,14 @@ export default function PosHistory({ onToggleSidebar }) {
             </div>
           </div>
         </div>
+      )}
+
+      {orderDilunasi && (
+        <PelunasanModal
+          order={orderDilunasi}
+          onClose={() => setOrderDilunasi(null)}
+          onSelesai={() => { fetchSales(); }}
+        />
       )}
 
       {showSpkModal && selectedSale && (

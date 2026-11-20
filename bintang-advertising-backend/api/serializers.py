@@ -14,6 +14,7 @@ from .models import (
 )
 from .product_serializers import SaleItemAddonSerializer
 from .services.order_stock import potong_stok_order_item
+from .qty_format import qty_json
 from .protected_media import protected_media_url
 
 logger = logging.getLogger(__name__)
@@ -66,7 +67,7 @@ class OrderPaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrderPayment
         fields = [
-            'id', 'jumlah', 'metode_pembayaran', 'referensi_pembayaran',
+            'id', 'jumlah', 'pembulatan', 'metode_pembayaran', 'referensi_pembayaran',
             'is_dp', 'shift', 'shift_nama', 'dibuat_oleh', 'dibuat_oleh_nama',
             'dibuat_pada',
         ]
@@ -107,6 +108,11 @@ class CustomUserSerializer(serializers.ModelSerializer):
     divisi_nama = serializers.ReadOnlyField(source='divisi.nama')
     unit_bisnis_nama = serializers.ReadOnlyField(source='unit_bisnis.nama')
     atasan_nama = serializers.ReadOnlyField(source='atasan.username')
+    # Nama lengkap untuk daftar & pengurutan karyawan (2026-10-22).
+    nama_lengkap = serializers.SerializerMethodField()
+
+    def get_nama_lengkap(self, obj):
+        return obj.get_full_name() or obj.username
 
     class Meta:
         model = CustomUser
@@ -115,7 +121,7 @@ class CustomUserSerializer(serializers.ModelSerializer):
             'negara', 'alamat', 'bio', 'foto_profil', 'last_login', 'date_joined',
             'status_karyawan', 'jenis_kontrak', 'kontrak_mulai', 'kontrak_selesai',
             'no_kpj', 'bpjs_kes', 'file_pkwt', 'nip', 'unit_bisnis', 'unit_bisnis_nama', 'posisi',
-            'atasan', 'atasan_nama', 'is_active', 'diarsipkan',
+            'atasan', 'atasan_nama', 'is_active', 'diarsipkan', 'nama_lengkap',
         ]
         # Arsip hanya lewat aksi /users/{id}/arsip/ (wajib akun nonaktif).
         # Data kontrak dikelola di HR; ERP hanya menampilkan (2026-10-17).
@@ -259,10 +265,21 @@ class JobBoardSerializer(serializers.ModelSerializer):
     # Rincian insentif per SPK (master Jenis Insentif, 2026-09-30): dibaca
     # staff di papan kerjanya, hanya Manager yang mengubah (endpoint terpisah).
     rincian_insentif = serializers.SerializerMethodField()
+    # HPP SPK (produk terjual + bahan terpakai) -- hanya terisi bila viewset menaruh `hpp_map`
+    # di context (GET /jobs/?hpp=1 oleh owner/manager/admin, lihat services/hpp_job.py).
+    hpp = serializers.SerializerMethodField()
 
     class Meta:
         model = JobBoard
         fields = '__all__'
+
+    def get_hpp(self, obj):
+        peta = self.context.get('hpp_map')
+        if not peta or obj.id not in peta:
+            return None
+        nilai = peta[obj.id]
+        produk, bahan = int(round(nilai['produk'])), int(round(nilai['bahan']))
+        return {'produk': produk, 'bahan': bahan, 'total': produk + bahan}
 
     def get_rincian_insentif(self, obj):
         return [
@@ -369,7 +386,16 @@ class JobBoardSerializer(serializers.ModelSerializer):
         return "-"
 
 # --- 4. Order Item Serializer (Detail Pecahan) ---
+class QtyPesananField(serializers.DecimalField):
+    """Qty item pesanan: kolom desimal (4 angka) tetapi API tetap mengirim bilangan (1 / 2.5), bukan string '1.0000'."""
+
+    def to_representation(self, value):
+        return qty_json(value)
+
+
 class OrderItemSerializer(serializers.ModelSerializer):
+    qty = QtyPesananField(max_digits=12, decimal_places=4, required=False)
+
     jobs = JobBoardSerializer(many=True, read_only=True) # Nested JobBoard
     addons = SaleItemAddonSerializer(many=True, read_only=True)
     insentif = serializers.SerializerMethodField()
@@ -409,10 +435,16 @@ class OrderItemSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         """Paket WA/admin tidak boleh membawa harga yang ditentukan browser."""
         qty = attrs.get('qty', getattr(self.instance, 'qty', 1))
-        if qty is None or qty < 1:
-            raise serializers.ValidationError({'qty': 'Qty harus minimal 1.'})
+        if qty is None or qty <= 0:
+            raise serializers.ValidationError({'qty': 'Qty harus lebih dari nol.'})
 
         package = attrs.get('paket') or getattr(self.instance, 'paket', None)
+        if package and Decimal(str(qty)) != Decimal(str(qty)).to_integral_value():
+            raise serializers.ValidationError({'qty': 'Qty paket harus bilangan bulat.'})
+        product = attrs.get('product') or getattr(self.instance, 'product', None)
+        if (not package and product is not None and product.lacak_inventori
+                and Decimal(str(qty)) != Decimal(str(qty)).quantize(Decimal('0.01'))):
+            raise serializers.ValidationError({'qty': 'Qty produk berstok maksimal 2 angka di belakang koma.'})
         if not package:
             return attrs
 
@@ -672,7 +704,7 @@ class OrderSerializer(serializers.ModelSerializer):
             'diskon_total',
             'dilayani_oleh', 'dilayani_oleh_nama', 'crm_sales_nama',
             'unit_bisnis', 'unit_bisnis_nama',
-            'metode_diskon', 'diskon_otomatis',
+            'metode_diskon', 'diskon_otomatis', 'diskon_manual',
             # Metadata & Pengiriman (T-209 Revisi 2)
             'email_pelanggan', 'alamat_pelanggan', 'kurir_pengiriman', 'layanan_pengiriman',
             'tanggal_pengiriman', 'toko_dropship', 'pengirim_dropship', 'telepon_dropship',
@@ -686,6 +718,7 @@ class OrderSerializer(serializers.ModelSerializer):
             'id': {'read_only': True},
             'waktu': {'required': False},
             'total_harga': {'read_only': True},  # Biarkan backend yang menjumlahkan totalnya
+            'diskon_manual': {'read_only': True},  # hanya diisi checkout-pos (diskon custom kasir)
             'sisa_tagihan': {'read_only': True}, # Backend auto kurang total dengan DP
             # Provenans order (wa/pos/manual) hanya boleh diset server saat
             # dibuat (form WA, checkout_pos, dst) — bukan dari payload klien.
@@ -1047,6 +1080,15 @@ class BusinessSettingsSerializer(serializers.Serializer):
     pos_shift_sembunyikan_setor = serializers.BooleanField(required=False, default=False)
     pos_shift_cek_pesanan_tertahan = serializers.BooleanField(required=False, default=False)
 
+    # POS Pembulatan total penjualan (kelipatan Rp; 0 = mati) & arah (terdekat/atas/bawah)
+    pos_pembulatan_aktif = serializers.BooleanField(required=False, default=False)
+    pos_pembulatan_kelipatan = serializers.IntegerField(required=False, default=0, min_value=0)
+    pos_pembulatan_arah = serializers.ChoiceField(choices=['terdekat', 'atas', 'bawah'], required=False, default='atas')
+    pos_pembulatan_arah_diskon = serializers.ChoiceField(choices=['terdekat', 'atas', 'bawah'], required=False, default='bawah')
+    pos_pembulatan_breakpoint = serializers.IntegerField(required=False, default=50, min_value=1, max_value=99)
+    # 'nota' = dibulatkan sekali untuk total nota (bawaan); 'item' = tiap baris item dibulatkan sendiri
+    pos_pembulatan_mode = serializers.ChoiceField(choices=['nota', 'item', 'keduanya'], required=False, default='nota')
+
     # POS Mode Cek Stok Settings
     pos_stok_blokir_jual_jika_kosong = serializers.BooleanField(required=False, default=True)
     pos_stok_selalu_cek_sebelum_order = serializers.BooleanField(required=False, default=False)
@@ -1123,6 +1165,14 @@ class BusinessSettingsSerializer(serializers.Serializer):
         'pos_shift_kas_awal':              'pos_shift_kas_awal',
         'pos_shift_sembunyikan_setor':      'pos_shift_sembunyikan_setor',
         'pos_shift_cek_pesanan_tertahan':  'pos_shift_cek_pesanan_tertahan',
+
+        # POS Pembulatan
+        'pos_pembulatan_aktif':            'pos_pembulatan_aktif',
+        'pos_pembulatan_kelipatan':        'pos_pembulatan_kelipatan',
+        'pos_pembulatan_arah':             'pos_pembulatan_arah',
+        'pos_pembulatan_arah_diskon':      'pos_pembulatan_arah_diskon',
+        'pos_pembulatan_breakpoint':       'pos_pembulatan_breakpoint',
+        'pos_pembulatan_mode':             'pos_pembulatan_mode',
 
         # POS Mode Cek Stok Settings
         'pos_stok_blokir_jual_jika_kosong':      'pos_stok_blokir_jual_jika_kosong',
@@ -1228,6 +1278,14 @@ class BusinessSettingsSerializer(serializers.Serializer):
             'pos_shift_sembunyikan_setor': False,
             'pos_shift_cek_pesanan_tertahan': False,
 
+            # POS Pembulatan Defaults (mati)
+            'pos_pembulatan_aktif': False,
+            'pos_pembulatan_kelipatan': 0,
+            'pos_pembulatan_arah': 'atas',
+            'pos_pembulatan_arah_diskon': 'bawah',
+            'pos_pembulatan_breakpoint': 50,
+            'pos_pembulatan_mode': 'nota',
+
             # POS Mode Cek Stok Defaults
             'pos_stok_blokir_jual_jika_kosong': True,
             'pos_stok_selalu_cek_sebelum_order': False,
@@ -1257,7 +1315,7 @@ class BusinessSettingsSerializer(serializers.Serializer):
                 if config_key not in semua_config:
                     raise SystemConfig.DoesNotExist
                 val = semua_config[config_key]
-                if field_name in ['ppn_default', 'payroll_toleransi_menit', 'biaya_potongan_terlambat', 'smtp_port', 'pos_shift_kas_awal', 'job_macet_jam_antrean', 'job_macet_jam_dikerjakan']:
+                if field_name in ['ppn_default', 'payroll_toleransi_menit', 'biaya_potongan_terlambat', 'smtp_port', 'pos_shift_kas_awal', 'pos_pembulatan_kelipatan', 'pos_pembulatan_breakpoint', 'job_macet_jam_antrean', 'job_macet_jam_dikerjakan']:
                     try:
                         result[field_name] = int(val)
                     except ValueError:
@@ -1269,7 +1327,7 @@ class BusinessSettingsSerializer(serializers.Serializer):
                     'pos_shift_aktif', 'pos_shift_sembunyikan_setor', 'pos_shift_cek_pesanan_tertahan',
                     'pos_stok_blokir_jual_jika_kosong', 'pos_stok_selalu_cek_sebelum_order',
                     'pos_stok_blokir_hapus_jika_ada', 'pos_stok_transfer_harus_proses_penerima',
-                    'pos_stok_posting_otomatis_laba_rugi', 'pos_antrian_aktif'
+                    'pos_stok_posting_otomatis_laba_rugi', 'pos_antrian_aktif', 'pos_pembulatan_aktif'
                 ]:
                     result[field_name] = (val.lower() == 'true')
                 elif field_name == 'pos_ext_settings':
@@ -1378,7 +1436,7 @@ class BusinessSettingsSerializer(serializers.Serializer):
                     'pos_shift_aktif', 'pos_shift_sembunyikan_setor', 'pos_shift_cek_pesanan_tertahan',
                     'pos_stok_blokir_jual_jika_kosong', 'pos_stok_selalu_cek_sebelum_order',
                     'pos_stok_blokir_hapus_jika_ada', 'pos_stok_transfer_harus_proses_penerima',
-                    'pos_stok_posting_otomatis_laba_rugi', 'pos_antrian_aktif'
+                    'pos_stok_posting_otomatis_laba_rugi', 'pos_antrian_aktif', 'pos_pembulatan_aktif'
                 ]:
                     val_str = 'true' if value_to_save else 'false'
                 else:

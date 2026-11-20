@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Plus, Trash2, Edit2, X, ChevronLeft, ChevronRight, AlertCircle } from 'lucide-react';
 import apiClient from '../../../../api/apiClient';
 import { PriceInput } from './VariantModal';
+import { nilaiTier } from '../../../../utils/hargaTier';
 import { uiConfirm } from '../../../../utils/dialog';
 
 export default function ProductTingkatanHargaTab({ product, onUpdated, storeName }) {
@@ -31,11 +32,19 @@ export default function ProductTingkatanHargaTab({ product, onUpdated, storeName
       .catch(err => console.error('[TingkatanHargaTab] Error fetching customer groups:', err));
   }, []);
 
+  // Pilihan khusus (2026-10-20): "Semua Tipe Pelanggan" disimpan sebagai tipe kosong
+  // (tier umum, berlaku untuk semua), "Guest" = pelanggan tanpa Tipe Pelanggan.
+  const SEMUA_TIPE = '__semua__';
+  const labelTipe = (tipe) => (tipe ? (tipe === 'Guest' ? 'Guest (tanpa tipe)' : tipe) : 'Semua Tipe Pelanggan');
+
   // Form states for ADD / EDIT
   const [formTipePelanggan, setFormTipePelanggan] = useState('');
   const [formVariant, setFormVariant] = useState('All');
   const [formQtyMulai, setFormQtyMulai] = useState('1');
   const [formHargaJual, setFormHargaJual] = useState('Rp. 0');
+  // Jenis nilai tier: 'harga' = Rp tetap, 'persen' = potongan % dari harga normal produk.
+  const [formTipeNilai, setFormTipeNilai] = useState('harga');
+  const [formPersen, setFormPersen] = useState('0');
   const [editingTierId, setEditingTierId] = useState(null);
 
   // Parse price string like "Rp. 15.000" to number
@@ -61,19 +70,23 @@ export default function ProductTingkatanHargaTab({ product, onUpdated, storeName
     setFormVariant('All');
     setFormQtyMulai('1');
     setFormHargaJual('Rp. 0');
+    setFormTipeNilai('harga');
+    setFormPersen('0');
     setFormError(null);
     setIsAddOpen(true);
   };
 
   const handleOpenEdit = (tier) => {
     setEditingTierId(tier.id);
-    setFormTipePelanggan(tier.tipe_pelanggan || '');
+    setFormTipePelanggan(tier.tipe_pelanggan || SEMUA_TIPE);
     setFormVariant(tier.variant || 'All');
     setFormQtyMulai((tier.min_qty || 1).toString());
 
     // Set price format "Rp. XXX" for PriceInput
     const priceNum = typeof tier.price === 'number' ? tier.price : parsePriceString(tier.price);
     setFormHargaJual('Rp. ' + priceNum.toLocaleString('id-ID'));
+    setFormTipeNilai(tier.tipe_nilai === 'persen' ? 'persen' : 'harga');
+    setFormPersen(String(tier.persen ?? 0));
 
     setFormError(null);
     setIsEditOpen(true);
@@ -89,11 +102,22 @@ export default function ProductTingkatanHargaTab({ product, onUpdated, storeName
       setFormError('Qty Mulai harus angka lebih besar dari 0.');
       return;
     }
-    const price = parsePriceString(formHargaJual);
+    const persen = parseFloat(String(formPersen).replace(',', '.'));
+    if (formTipeNilai === 'persen' && (isNaN(persen) || persen <= 0 || persen > 100)) {
+      setFormError('Persentase potongan harus antara 0 dan 100.');
+      return;
+    }
+    // Tier persen: `price` menyimpan hasil hitung (cuplikan untuk daftar/laporan); yang dipakai kasir
+    // selalu dihitung ulang dari `persen` terhadap harga normal produk saat transaksi.
+    const dasar = Number(product?.harga_jual_toko) || 0;
+    const price = formTipeNilai === 'persen'
+      ? nilaiTier({ tipe_nilai: 'persen', persen }, dasar)
+      : parsePriceString(formHargaJual);
     if (price < 0) {
       setFormError('Harga Jual tidak boleh negatif.');
       return;
     }
+    const nilaiTierBaru = formTipeNilai === 'persen' ? { tipe_nilai: 'persen', persen } : { tipe_nilai: 'harga', persen: 0 };
 
     setSaving(true);
     setFormError(null);
@@ -111,10 +135,11 @@ export default function ProductTingkatanHargaTab({ product, onUpdated, storeName
         if (t.id === editingTierId) {
           return {
             ...t,
-            tipe_pelanggan: formTipePelanggan.trim(),
+            tipe_pelanggan: formTipePelanggan === SEMUA_TIPE ? '' : formTipePelanggan.trim(),
             variant: formVariant,
             min_qty: qty,
-            price: price
+            price: price,
+            ...nilaiTierBaru
           };
         }
         return t;
@@ -123,10 +148,11 @@ export default function ProductTingkatanHargaTab({ product, onUpdated, storeName
       // Add new
       const newTier = {
         id: 'tier-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
-        tipe_pelanggan: formTipePelanggan.trim(),
+        tipe_pelanggan: formTipePelanggan === SEMUA_TIPE ? '' : formTipePelanggan.trim(),
         variant: formVariant,
         min_qty: qty,
-        price: price
+        price: price,
+        ...nilaiTierBaru
       };
       updatedTiers.push(newTier);
     }
@@ -264,7 +290,7 @@ export default function ProductTingkatanHargaTab({ product, onUpdated, storeName
                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                   >
                     <td style={{ padding: '12px 18px', fontWeight: 500 }}>
-                      {tier.tipe_pelanggan}
+                      {labelTipe(tier.tipe_pelanggan)}
                     </td>
                     <td style={{ padding: '12px 18px', color: '#64748b' }}>
                       {tier.variant === 'All' ? 'Semua Varian' : tier.variant}
@@ -273,7 +299,9 @@ export default function ProductTingkatanHargaTab({ product, onUpdated, storeName
                       {tier.min_qty}
                     </td>
                     <td style={{ padding: '12px 18px', fontWeight: 700, color: '#0f172a' }}>
-                      {formatPrice(tier.price)}
+                      {tier.tipe_nilai === 'persen'
+                        ? `${Number(tier.persen) || 0}% (${formatPrice(nilaiTier(tier, Number(product?.harga_jual_toko) || 0) ?? tier.price)})`
+                        : formatPrice(tier.price)}
                     </td>
                     <td style={{ padding: '12px 18px', textAlign: 'right' }}>
                       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
@@ -465,7 +493,9 @@ export default function ProductTingkatanHargaTab({ product, onUpdated, storeName
                   }}
                 >
                   <option value="">Pilih Tipe Pelanggan</option>
-                  {customerGroups.map(g => (
+                  <option value={SEMUA_TIPE}>Semua Tipe Pelanggan</option>
+                  <option value="Guest">Guest (tanpa tipe)</option>
+                  {customerGroups.filter(g => g.nama.toLowerCase() !== 'guest').map(g => (
                     <option key={g.id} value={g.nama}>{g.nama}</option>
                   ))}
                 </select>
@@ -517,14 +547,45 @@ export default function ProductTingkatanHargaTab({ product, onUpdated, storeName
                 />
               </div>
 
-              {/* Harga Jual */}
+              {/* Harga Jual: Rp tetap atau potongan % dari harga normal */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <label style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>Harga Jual</label>
-                <PriceInput
-                  value={formHargaJual}
-                  onChange={(val) => setFormHargaJual(val)}
-                  style={{ width: '100%' }}
-                />
+                <label style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>Jenis Harga</label>
+                <select
+                  value={formTipeNilai}
+                  onChange={(e) => setFormTipeNilai(e.target.value)}
+                  style={{ width: '100%', padding: '9px 12px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 13.5, outline: 'none', backgroundColor: '#fff' }}
+                >
+                  <option value="harga">Harga tetap (Rp)</option>
+                  <option value="persen">Potongan persen (%) dari harga normal</option>
+                </select>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {formTipeNilai === 'persen' ? (
+                  <>
+                    <label style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>Potongan (%)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      value={formPersen}
+                      onChange={(e) => setFormPersen(e.target.value)}
+                      style={{ width: '100%', padding: '9px 12px', border: '1px solid #cbd5e1', borderRadius: 6, fontSize: 13.5, outline: 'none' }}
+                    />
+                    <span style={{ fontSize: 12, color: '#64748b' }}>
+                      Harga normal Rp {(Number(product?.harga_jual_toko) || 0).toLocaleString('id-ID')} → jadi Rp {(nilaiTier({ tipe_nilai: 'persen', persen: parseFloat(String(formPersen).replace(',', '.')) || 0 }, Number(product?.harga_jual_toko) || 0) ?? 0).toLocaleString('id-ID')}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <label style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>Harga Jual</label>
+                    <PriceInput
+                      value={formHargaJual}
+                      onChange={(val) => setFormHargaJual(val)}
+                      style={{ width: '100%' }}
+                    />
+                  </>
+                )}
               </div>
             </div>
 

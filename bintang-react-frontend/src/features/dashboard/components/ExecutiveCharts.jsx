@@ -48,7 +48,7 @@ export const ringkas = (v) => {
  * bawah maks, sehingga batang tertinggi menembus atas area plot dan label
  * nilainya keluar dari viewBox — tidak terlihat sama sekali.
  */
-function ticks(maks, jumlah = 4) {
+export function ticks(maks, jumlah = 4) {
   if (maks <= 0) return [0];
   const kasar = maks / jumlah;
   const pangkat = 10 ** Math.floor(Math.log10(kasar));

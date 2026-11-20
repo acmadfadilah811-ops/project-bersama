@@ -54,10 +54,17 @@ def _baris_item_resi(item):
     berisi ringkasan ukuran/finishing/diskon-item (dirangkai frontend saat
     checkout, lihat itemReceiptNote di PosTerminal.jsx) — cuma belum pernah
     ikut dicetak di resi sama sekali (bug ditemukan & diperbaiki 2026-08-12)."""
-    baris = f'- {item.nama_snapshot} x{item.qty} = Rp {item.subtotal:,.0f}'
+    # Mode pembulatan per item: yang ditagih untuk baris = subtotal + pembulatan baris.
+    baris = f'- {item.nama_snapshot} x{item.qty} = Rp {item.subtotal + item.pembulatan:,.0f}'
     if item.catatan:
         baris += f'\n  _{item.catatan}_'
     return baris
+
+
+def _subtotal_resi(sale):
+    """Subtotal yang dicetak: jumlah baris sebagaimana tercetak (mode pembulatan per item menambah
+    pembulatan tiap baris; mode nota tidak punya pembulatan baris sehingga sama dengan sale.subtotal)."""
+    return sale.subtotal + sum((item.pembulatan for item in sale.items.all()), 0)
 
 
 def susun_resi(sale):
@@ -71,7 +78,7 @@ def susun_resi(sale):
         f"*{judul_dengan_nomor(cfg['judul'], sale.nomor, cfg['sembunyikan_nomor'])}*\n\n"
         f'Tanggal: {format_waktu_dokumen(sale.created_at)}\n\n'
         f'{baris_item}\n\n'
-        f'Subtotal: Rp {sale.subtotal:,.0f}\n'
+        f'Subtotal: Rp {_subtotal_resi(sale):,.0f}\n'
         f'Diskon: Rp {total_diskon:,.0f}\n'
         f'Pajak: Rp {sale.pajak:,.0f}\n'
         f'*Total: Rp {sale.total:,.0f}*\n'
@@ -184,7 +191,7 @@ def susun_resi_pdf(sale):
         item_rows.append([
             Paragraph(nama_html, cell_style),
             _fmt_qty(item.qty),
-            f'Rp{item.subtotal:,.0f}'.replace(',', '.'),
+            f'Rp{item.subtotal + item.pembulatan:,.0f}'.replace(',', '.'),
         ])
     item_table = Table(item_rows, colWidths=[44 * mm, 15 * mm, 30 * mm], repeatRows=1)
     item_table.setStyle(TableStyle([
@@ -207,7 +214,7 @@ def susun_resi_pdf(sale):
         return f'Rp{nominal:,.0f}'.replace(',', '.')
 
     summary_rows = [
-        ['Subtotal', _rp(sale.subtotal), False],
+        ['Subtotal', _rp(_subtotal_resi(sale)), False],
         ['Diskon', _rp(total_diskon), False],
         ['Pajak', _rp(sale.pajak), False],
         ['Total', _rp(sale.total), True],

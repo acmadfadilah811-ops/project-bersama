@@ -47,6 +47,7 @@ import LabaRugiSatuPeriode from './LabaRugiSatuPeriode';
 import LabaRugiMultiPeriode from './LabaRugiMultiPeriode';
 import Neraca from './Neraca';
 import PerubahanModal from './PerubahanModal';
+import Calk from './Calk';
 import ArusKas from './ArusKas';
 import TutupBukuTokoIni from './TutupBukuTokoIni';
 import TutupBukuTokoPusatCabang from './TutupBukuTokoPusatCabang';
@@ -264,6 +265,8 @@ export default function AccountingInternalApp() {
               <Neraca />
             ) : activeSubMenu === 'laporan-perubahan-modal' ? (
               <PerubahanModal />
+            ) : activeSubMenu === 'laporan-calk' ? (
+              <Calk />
             ) : activeSubMenu === 'laporan-arus-kas' ? (
               <ArusKas />
             ) : activeSubMenu === 'tutup-buku-toko-ini' || activeSubMenu === 'tutup-buku-bulanan' || activeSubMenu === 'tutupBuku' ? (

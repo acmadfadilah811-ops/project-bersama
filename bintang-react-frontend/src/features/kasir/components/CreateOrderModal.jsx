@@ -10,6 +10,9 @@ import NumericInput from '../../../components/NumericInput';
 import { useKasir } from '../context/KasirContext';
 import RiwayatPelanggan from '../../../components/RiwayatPelanggan';
 import { cariPelanggan, pakaiPelanggan } from '../../../utils/pelanggan';
+import { hitungHargaMeteran } from '../../../utils/meteran';
+import { useAuth } from '../../../context/AuthContext';
+import { bolehKelompokUnit, useDaftarUnitBisnis } from '../../../utils/unitBisnis';
 
 const emptyItem = () => ({
   id: `new-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -85,6 +88,11 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
 
   // "Dilayani oleh" — karyawan yang melayani (bukan pemroses SPK).
   const [pelayanId, setPelayanId] = useState('');
+  // Kasir tujuan (unit bisnis): hanya untuk owner/manager/admin, supaya order masuk antrean kasir yang benar.
+  const { user: penggunaLogin } = useAuth();
+  const pilihUnitTujuan = bolehKelompokUnit(penggunaLogin?.role);
+  const daftarUnit = useDaftarUnitBisnis();
+  const [unitTujuanId, setUnitTujuanId] = useState('');
   const [staffList, setStaffList] = useState([]);
   useEffect(() => {
     if (!isOpen) return;
@@ -320,7 +328,7 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
       const l = lRaw > 0 ? lRaw : 1;
       const qty = parseInt(it.qty) || 1;
       const harga = parseFloat(it.harga_jual) || 0;
-      return (isMeteran ? p * l * harga * qty : harga * qty) + getAddonsTotal(it);
+      return (isMeteran ? hitungHargaMeteran(p, l, harga, qty).subtotal : harga * qty) + getAddonsTotal(it);
     };
     const subtotal = validItems.reduce((sum, it) => sum + hitungSubtotalItem(it), 0);
     let cancelled = false;
@@ -343,6 +351,42 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, items]);
 
+  // Harga item katalog mengikuti Tingkatan Harga per Tipe Pelanggan pembeli (sama dengan kasir): dihitung ulang
+  // saat pelanggan/produk/qty berubah, kecuali harga yang diubah manual oleh pembuat order.
+  const kunciHarga = items.map((it) => `${it.id}:${it.product}:${it.qty}:${it.is_meteran ? 1 : 0}:${it.hargaManual ? 1 : 0}`).join('|');
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const wa = String(nomorWa || '').replace(/\D/g, '');
+    if (wa.length < 8) return undefined;
+    let batal = false;
+    const timer = setTimeout(async () => {
+      const hasil = {};
+      await Promise.all(items.map(async (it) => {
+        if (!it.product || it.hargaManual) return;
+        try {
+          const params = new URLSearchParams({ qty: it.qty || 1, nomor_wa: wa });
+          if (it.is_meteran) {
+            params.set('panjang', '1');
+            params.set('lebar', '1');
+            params.set('paksa_per_m2', 'true');
+          }
+          const res = await apiClient.get(`/products/${it.product}/hitung-harga/?${params.toString()}`);
+          hasil[it.id] = it.is_meteran ? res.data?.harga_per_m2 : res.data?.harga_satuan;
+        } catch {
+          // Gagal hitung: biarkan harga yang ada.
+        }
+      }));
+      if (batal) return;
+      setItems((prev) => prev.map((it) => {
+        const harga = hasil[it.id];
+        if (harga == null || it.hargaManual || Number(it.harga_jual) === Number(harga)) return it;
+        return { ...it, harga_jual: harga };
+      }));
+    }, 400);
+    return () => { batal = true; clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, nomorWa, kunciHarga]);
+
   if (!isOpen && !orderBaru) return null;
 
   const formatCurrency = (v) =>
@@ -362,7 +406,7 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
     const l = l_raw > 0 ? l_raw : 1;
     const qty = parseInt(it.qty) || 1;
     const harga = parseFloat(it.harga_jual) || 0;
-    return isMeteran ? p * l * harga * qty : harga * qty;
+    return isMeteran ? hitungHargaMeteran(p, l, harga, qty).subtotal : harga * qty;
   };
 
   // Subtotal item TERMASUK addon — dipakai untuk tampilan (kolom Subtotal,
@@ -492,6 +536,10 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
       alert('Karyawan yang melayani (Dilayani Oleh) wajib dipilih, supaya order dapat dipertanggungjawabkan.');
       return;
     }
+    if (pilihUnitTujuan && !unitTujuanId) {
+      alert('Pilih kasir tujuan (unit bisnis) supaya order masuk ke antrean kasir yang benar.');
+      return;
+    }
     const validItems = items.filter((it) => it.jenis_produk.trim());
     if (validItems.length === 0) {
       alert('Order harus memuat minimal satu item pesanan.');
@@ -512,6 +560,7 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
         // dihitung server dari item pesanan, bukan dari angka di layar (M6).
         metode_diskon: metodeDiskon === 'kupon' ? 'tidak_ada' : metodeDiskon,
         dilayani_oleh: pelayanId || null,
+        ...(pilihUnitTujuan && unitTujuanId ? { unit_bisnis: Number(unitTujuanId) } : {}),
       });
       const orderId = resOrder.data.id;
       for (const it of validItems) {
@@ -560,6 +609,7 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
     setCouponInput('');
     setSelectedCoupon(null);
     setPelayanId('');
+    setUnitTujuanId('');
     setItems([emptyItem()]);
     if (onSuccess) onSuccess();
     if (onClose) onClose();
@@ -857,6 +907,25 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
                     ))}
                   </select>
                 </div>
+
+                {/* Kasir tujuan: order hanya tampil di antrean kasir unit ini. */}
+                {pilihUnitTujuan && (
+                  <div className="mt-3">
+                    <label className="text-[11px] font-bold text-slate-500 block mb-1 flex items-center gap-1">
+                      <ShoppingCart size={12} /> Kasir tujuan (unit bisnis) <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={unitTujuanId}
+                      onChange={(e) => setUnitTujuanId(e.target.value)}
+                      className={`${inputCls} ${!unitTujuanId ? 'border-rose-300' : ''}`}
+                    >
+                      <option value="">— Pilih unit kasir tujuan —</option>
+                      {daftarUnit.map((u) => (
+                        <option key={u.id} value={u.id}>{u.nama}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
               {/* Order Items Table Card */}
@@ -994,7 +1063,7 @@ export default function CreateOrderModal({ isOpen, onClose, onSuccess, initialCu
                           <td className="px-3 py-2">
                             <NumericInput
                               value={it.harga_jual}
-                              onChange={(val) => changeItem(idx, 'harga_jual', val)}
+                              onChange={(val) => { changeItem(idx, 'harga_jual', val); updateItem(idx, { hargaManual: true }); }}
                               className="w-24 bg-slate-50 border border-slate-200 rounded-lg px-2 py-0.5 text-right text-xs font-extrabold focus:bg-white focus:outline-none"
                             />
                           </td>

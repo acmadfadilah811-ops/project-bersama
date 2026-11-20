@@ -58,3 +58,22 @@ def _jadwalkan(order_id):
     from .services.crm_order_kasir import jadwalkan_kirim_order_ke_crm
 
     jadwalkan_kirim_order_ke_crm(order_id)
+
+
+@receiver(post_save, sender='api.Customer')
+def kirim_pelanggan_baru_ke_crm(sender, instance, created, raw=False, **kwargs):
+    """Pelanggan baru (Pelanggan & Supplier > Pelanggan, atau dari kasir) otomatis masuk CRM sebagai Contact.
+
+    Dikirim setelah transaksi commit dan tidak pernah menggagalkan penyimpanan pelanggan (lihat
+    services/crm_pelanggan.py). Hanya pelanggan BARU; perubahan data pelanggan lama tidak dikirim ulang."""
+    if raw or not created:
+        return
+    pk = instance.pk
+    transaction.on_commit(lambda: _jadwalkan_pelanggan(pk))
+
+
+def _jadwalkan_pelanggan(customer_id):
+    from .services.crm_pelanggan import jadwalkan_kirim_pelanggan_ke_crm
+
+    jadwalkan_kirim_pelanggan_ke_crm(customer_id)
+

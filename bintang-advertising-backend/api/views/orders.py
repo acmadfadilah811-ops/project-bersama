@@ -3,6 +3,7 @@ import logging
 import csv
 import io
 import datetime
+from decimal import Decimal, ROUND_HALF_UP
 from rest_framework import viewsets, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -36,6 +37,10 @@ from ..pos_services import stok_kritis_warnings
 
 logger = logging.getLogger(__name__)
 
+# Presisi qty item pesanan DP: produk berstok 2 angka (stok & FIFO), produk custom/jasa tanpa pelacakan stok 4 angka.
+PRESISI_QTY_STOK = Decimal('0.01')
+PRESISI_QTY_TANPA_STOK = Decimal('0.0001')
+
 
 def _active_shift_for(user):
     """Shift terbuka kasir saat pembayaran dicatat, bila ada."""
@@ -47,7 +52,7 @@ def _active_shift_for(user):
 
 
 def _record_order_payment(*, order, activity_log, actor, jumlah, metode, referensi='',
-                          idempotency_key=None, is_dp=False):
+                          idempotency_key=None, is_dp=False, pembulatan=0):
     """Simpan peristiwa pembayaran tanpa mengubah saldo agregat pada Order."""
     return OrderPayment.objects.create(
         order=order,
@@ -58,6 +63,7 @@ def _record_order_payment(*, order, activity_log, actor, jumlah, metode, referen
         referensi_pembayaran=(referensi or '')[:255],
         idempotency_key=idempotency_key or None,
         is_dp=is_dp,
+        pembulatan=pembulatan,
         dibuat_oleh=actor,
     )
 
@@ -206,6 +212,26 @@ class OrderViewSet(viewsets.ModelViewSet):
             serializer.validated_data['diskon_persen'] = 0
             serializer.validated_data['metode_diskon'] = 'tidak_ada'
             serializer.validated_data.pop('kupon', None)
+        elif (
+            self.request.user.role == 'manager'
+            and 'sumber' not in self.request.data
+            and not serializer.validated_data.get('dp_dibayar')
+            and serializer.validated_data.get('status_global', 'review') in ('draft', 'review')
+        ):
+            # Order manager yang belum dibayar (tanpa DP) menunggu kasir seperti order staff:
+            # sumber 'staff' memasukkannya ke antrean "Antrean Online & Offline". Manager tetap
+            # boleh mengatur diskon/status; yang memakai DP atau sumber eksplisit tidak diubah.
+            serializer.validated_data['sumber'] = 'staff'
+
+        # Manager/owner/admin memilih kasir tujuan lewat unit bisnis: order hanya tampil di kasir unit itu
+        # (order tanpa unit tampil di semua kasir). Tanpa pilihan, unit diisi dari karyawan yang melayani.
+        if self.request.user.role in ('manager', 'owner', 'admin') and self.request.data.get('unit_bisnis'):
+            from ..models import UnitBisnis
+            unit_tujuan = UnitBisnis.objects.filter(pk=str(self.request.data.get('unit_bisnis')).strip()).first() \
+                if str(self.request.data.get('unit_bisnis')).strip().isdigit() else None
+            if unit_tujuan is None:
+                raise ValidationError({'error': 'Unit bisnis tujuan tidak ditemukan.'})
+            serializer.validated_data['unit_bisnis'] = unit_tujuan
 
         # ── Validasi data pelanggan & pelayan WAJIB sebelum order tersimpan ──
         # Sebelumnya order bisa dibuat dengan nomor asal-asalan (mis. bukan
@@ -227,6 +253,11 @@ class OrderViewSet(viewsets.ModelViewSet):
             raise ValidationError({'error': 'Karyawan yang melayani (Dilayani Oleh) wajib dipilih.'})
         if not dilayani_oleh_obj.is_active:
             raise ValidationError({'error': 'Karyawan yang melayani tidak aktif.'})
+
+        # Pesanan yang dibuat kasir milik unit kasir (2026-10-22), sama dengan checkout POS:
+        # pelayan dari unit lain tidak memindahkan pesanan dari layar kasir unit ini.
+        if self.request.user.role == 'kasir' and self.request.user.unit_bisnis_id and not serializer.validated_data.get('unit_bisnis'):
+            serializer.validated_data['unit_bisnis'] = self.request.user.unit_bisnis
 
         # Auto-generate ID: ORD-20260517-A3F2
         today = timezone.now().strftime('%Y%m%d')
@@ -266,10 +297,12 @@ class OrderViewSet(viewsets.ModelViewSet):
                 tindakan='PAYMENT',
                 keterangan=f'DP awal {instance.dp_dibayar} [dp-create]',
             )
+            from ..services.pembulatan import hitung_pembulatan_pembayaran
+            _bulat = hitung_pembulatan_pembayaran(instance.dp_dibayar)
             _record_order_payment(
                 order=instance, activity_log=_dp_log, actor=self.request.user,
                 jumlah=instance.dp_dibayar, metode=instance.metode_pembayaran,
-                referensi=instance.referensi_pembayaran, is_dp=True,
+                referensi=instance.referensi_pembayaran, is_dp=True, pembulatan=_bulat,
             )
             _post_order_payment(
                 order=instance,
@@ -277,6 +310,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 actor=self.request.user,
                 jumlah_bayar=_Decimal(str(instance.dp_dibayar)),
                 is_dp=True,
+                pembulatan=_bulat,
             )
 
     @action(detail=False, methods=['post'], url_path='checkout-pos',
@@ -357,12 +391,17 @@ class OrderViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_400_BAD_REQUEST)
 
         metode_diskon = str(request.data.get('metode_diskon') or 'tidak_ada').strip()
-        if metode_diskon not in ('tidak_ada', 'kupon', 'otomatis'):
+        if metode_diskon not in ('tidak_ada', 'kupon', 'otomatis', 'manual'):
             return Response({'error': 'Metode diskon tidak valid.'}, status=status.HTTP_400_BAD_REQUEST)
         kupon_kode = str(request.data.get('kupon_kode') or '').strip()
         if metode_diskon == 'kupon' and not kupon_kode:
             return Response({'error': 'Kode kupon wajib dipilih dari Diskon Pesanan.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        # Diskon custom kasir (2026-10-31): Rp atau %, menggantikan kupon/diskon otomatis (bukan ditumpuk).
+        diskon_manual = None
+        if metode_diskon == 'manual':
+            from ..services import diskon_manual as dm
+            diskon_manual = dm.baca(request.data)
 
         due_date_raw = str(request.data.get('jatuh_tempo') or '').strip()
         due_date = parse_date(due_date_raw) if due_date_raw else None
@@ -409,6 +448,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             items_data = rencana_reorder['items']
             nama, nomor_wa = reorder_dari.nama, reorder_dari.nomor_wa
             metode_diskon, kupon_kode = 'tidak_ada', ''
+            diskon_manual = None
 
         order = Order.objects.create(
             id=order_id,
@@ -427,6 +467,10 @@ class OrderViewSet(viewsets.ModelViewSet):
             dilayani_oleh=dilayani_oleh,
             dp_dibayar=0,
             reorder_dari=reorder_dari,
+            # Pesanan kasir milik unit kasir (2026-10-21): sebelumnya ikut unit karyawan
+            # "Dilayani oleh", jadi pesanan StarFoto yang dilayani staff Advertising hilang
+            # dari layar kasir StarFoto. Kasir tanpa unit (owner/admin) tetap ikut pelayan.
+            unit_bisnis_id=getattr(request.user, 'unit_bisnis_id', None) or None,
         )
         order._current_user = request.user
 
@@ -438,13 +482,15 @@ class OrderViewSet(viewsets.ModelViewSet):
         stock_owners = {}
         stock_lines = []
 
+        from ..services.product_pricing import HargaProdukError, hitung_harga as hitung_harga_produk, nama_grup_pelanggan
+        grup_pelanggan = nama_grup_pelanggan(nomor_wa)
         for raw_item in items_data:
             try:
-                qty = int(raw_item.get('qty') or 0)
+                qty = Decimal(str(raw_item.get('qty') or 0))
                 harga_satuan = int(raw_item.get('harga_satuan') or 0)
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, ArithmeticError):
                 raise ValidationError({'error': 'Qty atau harga item tidak valid.'})
-            if qty <= 0 or harga_satuan < 0:
+            if not qty.is_finite() or qty <= 0 or harga_satuan < 0:
                 raise ValidationError({'error': 'Qty harus lebih dari nol dan harga tidak boleh negatif.'})
 
             product = None
@@ -454,10 +500,12 @@ class OrderViewSet(viewsets.ModelViewSet):
             addon_total = Decimal('0')
             package_id = raw_item.get('package_id') or raw_item.get('paket_id')
             if package_id:
+                if qty != qty.to_integral_value():
+                    raise ValidationError({'error': 'Qty paket harus bilangan bulat.'})
                 package, package_qty, package_price = resolve_package_for_sale(
                     package_id, qty, channel='pos', lock=True,
                 )
-                qty = int(package_qty)
+                qty = Decimal(int(package_qty))
                 harga_satuan = int(package_price)
                 # Paket tidak punya stok sendiri — mutasi dihitung dari komponen
                 # master paket, sama seperti create_sale() di pos_services.py.
@@ -479,6 +527,10 @@ class OrderViewSet(viewsets.ModelViewSet):
                 product = Product.objects.select_for_update().filter(pk=raw_item['product_id']).first()
                 if not product:
                     raise ValidationError({'error': 'Produk pada keranjang tidak ditemukan.'})
+                # Produk berstok 2 angka di belakang koma (stok & FIFO), produk custom/jasa 4 angka -- sama dengan kasir lunas.
+                qty = qty.quantize(PRESISI_QTY_STOK if product.lacak_inventori else PRESISI_QTY_TANPA_STOK)
+                if qty <= 0:
+                    raise ValidationError({'error': f"Qty {product.nama} terlalu kecil."})
                 if raw_item.get('variant_id'):
                     variant = ProductVariant.objects.select_for_update().filter(pk=raw_item['variant_id'], product=product).first()
                     if not variant:
@@ -487,7 +539,14 @@ class OrderViewSet(viewsets.ModelViewSet):
                 # item yang memang membawa spesifikasi kalkulator cetak.
                 if not raw_item.get('is_custom_priced'):
                     harga_satuan = int(variant.harga_jual_toko if variant and variant.harga_jual_toko is not None else product.harga_jual_toko or 0)
-                qty_decimal = Decimal(str(qty))
+                    # Tingkatan Harga per Tipe Pelanggan (Rp / %) -- sama dengan kasir lunas.
+                    try:
+                        harga_satuan = int(hitung_harga_produk(
+                            product, qty=qty, variant=variant, customer_group_nama=grup_pelanggan,
+                        )['harga_satuan'])
+                    except HargaProdukError:
+                        pass  # produk per_m2 tanpa ukuran dsb: tetap harga dasar seperti sebelumnya
+                qty_decimal = qty
                 key = (product.id, variant.id if variant else None)
                 stock_requested[key] = stock_requested.get(key, Decimal('0')) + qty_decimal
                 stock_owners[key] = (product, variant)
@@ -500,6 +559,12 @@ class OrderViewSet(viewsets.ModelViewSet):
                 )
                 addon_total = sum((Decimal(str(a.harga or 0)) * q for a, q in item_addons), Decimal('0'))
 
+            if not product and not package:
+                # Item kustom tanpa produk master: tidak melacak stok, 4 angka di belakang koma.
+                qty = qty.quantize(PRESISI_QTY_TANPA_STOK)
+                if qty <= 0:
+                    raise ValidationError({'error': 'Qty item terlalu kecil.'})
+            total_baris = (Decimal(harga_satuan) * qty).quantize(Decimal('1'), rounding=ROUND_HALF_UP) + int(addon_total)
             detail = raw_item.get('detail') if isinstance(raw_item.get('detail'), dict) else {}
             item = OrderItem(
                 order=order,
@@ -513,7 +578,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 lebar=float(raw_item.get('lebar') or 0),
                 harga_per_m2=int(raw_item.get('harga_per_m2') or 0),
                 qty=qty,
-                harga_jual=harga_satuan * qty + int(addon_total),
+                harga_jual=int(total_baris),
                 detail=[detail] if detail else [],
                 keterangan_detail=str(raw_item.get('catatan') or '')[:2000],
                 # Stok item ini dipotong di blok stock_lines di bawah (produk
@@ -560,6 +625,10 @@ class OrderViewSet(viewsets.ModelViewSet):
         # Item.save menghitung subtotal; simpan header sekali agar diskon dan sisa
         # tagihan dihitung dari seluruh keranjang sebelum nominal DP divalidasi.
         order.refresh_from_db()
+        if diskon_manual is not None:
+            from ..services import diskon_manual as dm
+            subtotal_order = sum(it.harga_jual for it in order.items.all())
+            order.diskon_manual = int(dm.hitung(subtotal_order, *diskon_manual))
         order._current_user = request.user
         order.save()
         order.refresh_from_db()
@@ -604,8 +673,8 @@ class OrderViewSet(viewsets.ModelViewSet):
             jumlah_bayar = int(order.sisa_tagihan if rencana_reorder else (request.data.get('jumlah_bayar') or 0))
         except (TypeError, ValueError):
             raise ValidationError({'error': 'Nominal pembayaran tidak valid.'})
-        if jumlah_bayar <= 0 or jumlah_bayar > order.sisa_tagihan:
-            raise ValidationError({'error': 'Nominal DP harus lebih dari nol dan tidak melebihi total tagihan.'})
+        if jumlah_bayar < 0 or jumlah_bayar > order.sisa_tagihan:
+            raise ValidationError({'error': 'Nominal DP tidak boleh negatif dan tidak melebihi total tagihan.'})
 
         order.dp_dibayar = jumlah_bayar
         order._current_user = request.user
@@ -615,36 +684,42 @@ class OrderViewSet(viewsets.ModelViewSet):
             # Potong gaji bukan setoran bank -- tidak ikut antrean settlement.
             order.settlement_status = 'not_applicable'
         order.save(update_fields=['accounting_payment_method', 'settlement_status'])
-        payment_log = OrderActivityLog.objects.create(
-            order=order,
-            user=request.user,
-            tindakan='PAYMENT',
-            keterangan=f'Pembayaran POS {jumlah_bayar} [{checkout_key}]',
-        )
-        _record_order_payment(
-            order=order, activity_log=payment_log, actor=request.user,
-            jumlah=jumlah_bayar, metode=order.metode_pembayaran,
-            referensi=order.referensi_pembayaran, idempotency_key=str(checkout_key),
-            is_dp=jumlah_bayar < order.total_harga,
-        )
-        try:
-            post_order_payment_journal(
+        # DP boleh Rp 0 (pesanan dibuat dulu, dibayar belakangan -- 2026-10-27): tanpa catatan
+        # pembayaran & jurnal DP; jurnal baru terbentuk saat pembayaran pertama dicatat.
+        if jumlah_bayar > 0:
+            payment_log = OrderActivityLog.objects.create(
                 order=order,
-                activity_log=payment_log,
-                actor=request.user,
-                jumlah_bayar=Decimal(str(jumlah_bayar)),
-                is_dp=jumlah_bayar < order.total_harga,
+                user=request.user,
+                tindakan='PAYMENT',
+                keterangan=f'Pembayaran POS {jumlah_bayar} [{checkout_key}]',
             )
-        except DjangoValidationError as exc:
-            # Mis. periode akuntansi sudah ditutup: sebelumnya 500 polos.
-            # Seluruh checkout dibatalkan (atomic), tidak ada order setengah jadi.
-            pesan = '; '.join(exc.messages)
-            if 'Tutup Buku' in pesan:
-                pesan = (
-                    'Transaksi belum bisa disimpan karena periode pembukuan untuk tanggal ini '
-                    'sudah ditutup. Hubungi Owner atau Finance untuk membukanya.'
+            from ..services.pembulatan import hitung_pembulatan_pembayaran
+            _bulat = hitung_pembulatan_pembayaran(jumlah_bayar)
+            _record_order_payment(
+                order=order, activity_log=payment_log, actor=request.user,
+                jumlah=jumlah_bayar, metode=order.metode_pembayaran,
+                referensi=order.referensi_pembayaran, idempotency_key=str(checkout_key),
+                is_dp=jumlah_bayar < order.total_harga, pembulatan=_bulat,
+            )
+            try:
+                post_order_payment_journal(
+                    order=order,
+                    activity_log=payment_log,
+                    actor=request.user,
+                    jumlah_bayar=Decimal(str(jumlah_bayar)),
+                    is_dp=jumlah_bayar < order.total_harga,
+                    pembulatan=_bulat,
                 )
-            raise ValidationError({'error': pesan or 'Pembayaran ditolak.'})
+            except DjangoValidationError as exc:
+                # Mis. periode akuntansi sudah ditutup: sebelumnya 500 polos.
+                # Seluruh checkout dibatalkan (atomic), tidak ada order setengah jadi.
+                pesan = '; '.join(exc.messages)
+                if 'Tutup Buku' in pesan:
+                    pesan = (
+                        'Transaksi belum bisa disimpan karena periode pembukuan untuk tanggal ini '
+                        'sudah ditutup. Hubungi Owner atau Finance untuk membukanya.'
+                    )
+                raise ValidationError({'error': pesan or 'Pembayaran ditolak.'})
 
         spk_payload = request.data.get('spk')
         if request.data.get('starfoto'):
@@ -1074,10 +1149,12 @@ class OrderViewSet(viewsets.ModelViewSet):
         order._current_user = request.user
         order.save()
         payment_log = OrderActivityLog.objects.create(order=order, user=request.user, tindakan='PAYMENT', keterangan='Pembayaran %s [%s]' % (jumlah_bayar, idem or 'no-key'))
+        from ..services.pembulatan import hitung_pembulatan_pembayaran
+        _bulat = hitung_pembulatan_pembayaran(jumlah_bayar)
         _record_order_payment(
             order=order, activity_log=payment_log, actor=request.user,
             jumlah=jumlah_bayar, metode=metode, referensi=referensi,
-            idempotency_key=idem or None, is_dp=order.dp_dibayar < order.total_harga,
+            idempotency_key=idem or None, is_dp=order.dp_dibayar < order.total_harga, pembulatan=_bulat,
         )
 
         # T-202: satu-satunya writer jurnal pembayaran Order.
@@ -1099,6 +1176,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             actor=request.user,
             jumlah_bayar=_Decimal(str(jumlah_bayar)),
             is_dp=False,
+            pembulatan=_bulat,
         )
 
         # Update statistik Contact. Order draft (belum jadi pesanan riil) dan

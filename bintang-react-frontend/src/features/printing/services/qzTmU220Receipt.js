@@ -1,4 +1,4 @@
-import { cetakConfig, itemUntukCetak, judulDokumen, totalQtyItem } from './receiptConfig';
+import { cetakConfig, itemUntukCetak, judulDokumen, nilaiBarisCetak, pembulatanNotaCetak, subtotalCetak, totalQtyItem } from './receiptConfig';
 
 const ESC = '\x1B';
 const LF = '\x0A';
@@ -81,13 +81,15 @@ export function buildTmU220Receipt(receipt, settings) {
   items.forEach((item) => {
     lines.push(...wrap(item?.nama_snapshot || item?.nama_produk || item?.product_name || 'Item'));
     const quantity = `${toNumber(item?.qty)} ${toText(item?.uom_kode || item?.satuan || 'pcs')}`;
-    lines.push(...row(`${quantity} x ${money(item?.harga_snapshot ?? item?.harga)}`, money(item?.subtotal)));
+    lines.push(...row(`${quantity} x ${money(item?.harga_snapshot ?? item?.harga)}`, money(nilaiBarisCetak(item))));
     if (cfg.catatanItem && item?.catatan) lines.push(...wrap(`* ${item.catatan}`));
   });
 
-  lines.push(divider(), ...row('Subtotal', money(receipt?.subtotal)));
+  lines.push(divider(), ...row('Subtotal', money(subtotalCetak(receipt))));
   if (toNumber(receipt?.diskon)) lines.push(...row('Diskon', `-${money(receipt.diskon)}`));
   if (toNumber(receipt?.pajak)) lines.push(...row('Pajak', money(receipt.pajak)));
+  const pembulatanNota = pembulatanNotaCetak(receipt);
+  if (pembulatanNota) lines.push(...row('Pembulatan', `${pembulatanNota < 0 ? '-' : ''}${money(Math.abs(pembulatanNota))}`));
   lines.push(
     ESC + 'E' + '\x01',
     ...row('TOTAL', money(receipt?.total)),

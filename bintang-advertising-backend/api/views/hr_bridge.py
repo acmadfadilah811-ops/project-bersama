@@ -63,7 +63,10 @@ def _map_job_position_ke_role(job_position: str) -> str:
         return 'spv'
     if label.startswith('kordiv'):
         return 'kordiv'
-    if label in ('manager', 'ceo'):
+    # "Manajer ..." (Indonesia, mis. "Manajer Operasional") sama dengan Manager: sebelumnya hanya
+    # "manager"/"ceo" persis yang dikenal, sehingga akun manajer turun jadi 'staff' begitu HR
+    # menyimpan ulang data kerjanya (temuan 2026-11-02, akun Nasul Fikar).
+    if label in ('manager', 'ceo') or label.startswith('manajer') or label.startswith('manager '):
         return 'manager'
     if 'kasir' in label:
         return 'kasir'

@@ -147,6 +147,7 @@ class ApiTestCase(APITestCase):
         url = "/api/auth/create-user/"
         data = {
             "username": "karyawan_baru",
+            "email": "karyawan_baru@contoh.test",  # email wajib sejak login pakai email (2026-10-12)
             "password": "newpassword123",
             "role": "staff"
         }
@@ -173,6 +174,7 @@ class ApiTestCase(APITestCase):
         self.client.force_authenticate(user=self.owner)
         response = self.client.post("/api/auth/create-user/", {
             "username": "spv_baru_test",
+            "email": "spv_baru_test@contoh.test",
             "password": "newpassword123",
             "role": "spv",
             "atasan": manager_atasan.pk,

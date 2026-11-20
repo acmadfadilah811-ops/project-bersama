@@ -42,11 +42,17 @@ def _sumber_item(job):
         item, nilai = job.pos_sale_item, job.pos_sale_item.subtotal
     else:
         return None, 0, 0, 0
-    if not item.product_id:
-        return None, 0, 0, 0
+    # product_id boleh kosong (item bebas/paket): insentif persen tetap butuh nilai jualnya.
     qty = float(item.qty or 0)
     luas = float(item.panjang or 0) * float(item.lebar or 0) * qty
     return item.product_id, qty, luas, float(nilai or 0)
+
+
+def nominal_jenis(jenis, nilai_jual):
+    """Nominal baris dari Jenis Insentif umum: tetap, atau persen dari harga jual item."""
+    if jenis.cara_hitung == JenisInsentif.CARA_PERSEN:
+        return int(round(nilai_jual * float(jenis.persen) / 100))
+    return jenis.nominal_default
 
 
 def nominal_aturan_produk(aturan, qty, luas, nilai_jual=0):
@@ -92,7 +98,7 @@ def terapkan_otomatis(job):
         for jenis in jenis_qs:
             InsentifPekerjaan.objects.get_or_create(
                 job=job, jenis=jenis,
-                defaults={'nama': jenis.nama, 'nominal': jenis.nominal_default, 'otomatis': True},
+                defaults={'nama': jenis.nama, 'nominal': nominal_jenis(jenis, nilai_jual), 'otomatis': True},
             )
     return sinkron_total(job)
 
@@ -147,7 +153,7 @@ def tambah(job, user, *, jenis_id=None, nama='', nominal=None, catatan=''):
             raise ValidationError({'jenis_id': f"Jenis '{jenis.nama}' sudah ada di SPK ini."})
         nama = jenis.nama
         if nominal in (None, ''):
-            nominal = jenis.nominal_default
+            nominal = nominal_jenis(jenis, _sumber_item(job)[3])
     nama = str(nama or '').strip()
     if not nama:
         raise ValidationError({'nama': 'Nama insentif wajib diisi.'})

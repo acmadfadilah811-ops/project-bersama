@@ -15,6 +15,7 @@ from .services.product_pricing import hitung_harga as hitung_harga_produk, Harga
 
 MONEY = Decimal('0.01')
 QTY = Decimal('0.01')
+QTY_4 = Decimal('0.0001')  # produk tanpa pelacakan stok (custom/jasa) boleh qty 4 angka di belakang koma
 
 
 def _potong_bahan_baku_bom(product, variant, qty_base, sale, user):
@@ -28,7 +29,7 @@ def _potong_bahan_baku_bom(product, variant, qty_base, sale, user):
     dari `product.lacak_inventori` (jasa yang finished-good-nya tidak
     dihitung stok tetap boleh konsumsi bahan baku per transaksi)."""
     from .models import BillOfMaterials, RestockHistory, InventoryItem
-    from .views.inventory import catat_pemakaian_bahan
+    from .views.inventory import catat_pemakaian_bahan, jurnalkan_hpp_bahan
 
     bom = BillOfMaterials.objects.filter(product_id=product.id, variant_id=variant.id if variant else None).first()
     if not bom and variant:
@@ -40,6 +41,7 @@ def _potong_bahan_baku_bom(product, variant, qty_base, sale, user):
     if RestockHistory.objects.filter(keterangan__icontains=marker).exists():
         return
 
+    kumpulan = []  # satu jurnal HPP untuk semua bahan resep (lihat jurnalkan_hpp_bahan)
     for bom_item in bom.items.select_related('inventory_item'):
         item = InventoryItem.objects.select_for_update().get(pk=bom_item.inventory_item_id)
         qty_needed = round(float(qty_base) * bom_item.qty_required_per_unit, 4)
@@ -61,9 +63,12 @@ def _potong_bahan_baku_bom(product, variant, qty_base, sale, user):
         catat_pemakaian_bahan(
             item, qty_needed, user=user, ref_no=marker,
             keterangan_konteks=f"Penjualan POS {sale.nomor} - {product.nama}",
-            source_id=sale.id,
+            source_id=sale.id, kumpulan=kumpulan,
             catatan_stok=f"Pemakaian bahan resep | {marker} | {bom.nama}",
         )
+    jurnalkan_hpp_bahan(
+        kumpulan, source_id=sale.id, keterangan_konteks=f"Penjualan POS {sale.nomor} - {product.nama}",
+    )
 
 def _catat_bahan_tidak_dikembalikan(sale, user):
     """Void POS dengan produk yang sudah dicetak/dibuat: bahan resep TIDAK
@@ -167,6 +172,12 @@ def create_sale(*, user, data):
         raise ValidationError({
             'error': 'Diskon manual tidak diizinkan. Gunakan kupon atau Diskon Penjualan yang aktif di Marketing.',
         })
+    # Diskon custom kasir (keputusan manager 2026-10-31): Rp atau %, pilihan ketiga di samping kupon dan
+    # Diskon Penjualan otomatis (keduanya tidak dievaluasi bila metode ini dipilih).
+    diskon_manual = None
+    if data.get('metode_diskon') == 'manual':
+        from .services import diskon_manual as dm
+        diskon_manual = dm.baca(data)
 
     with transaction.atomic():
         shift = (SaldoKasHarian.objects.select_for_update()
@@ -296,7 +307,10 @@ def create_sale(*, user, data):
             if input_qty <= 0:
                 raise ValidationError({'error': f"Qty {product.nama} harus lebih dari nol."})
             conversion = uom.resolve(product, raw.get('uom_kode'), input_qty, None, variant)
-            qty_base = Decimal(str(conversion['qty_dasar'])).quantize(QTY)
+            # Produk berstok tetap 2 angka (stok & FIFO 2 desimal); produk custom/jasa tanpa pelacakan stok 4 angka.
+            qty_base = Decimal(str(conversion['qty_dasar'])).quantize(QTY if product.lacak_inventori else QTY_4)
+            if qty_base <= 0:
+                raise ValidationError({'error': f"Qty {product.nama} terlalu kecil."})
 
             # Produk meteran (price_type='per_m2') & Finishing — sebelumnya item
             # begini dikirim TANPA product_id sama sekali (dianggap item kustom),
@@ -372,6 +386,13 @@ def create_sale(*, user, data):
                 item_addons, float(panjang or 0), float(lebar or 0), finishing_biaya, serial_numbers_line,
             ))
             subtotal += line_total
+
+        # Pembulatan "per item" (Pengaturan POS > Pembulatan): tiap baris dibulatkan sendiri-sendiri. Nilai asli
+        # baris (`subtotal`) tidak diubah; selisihnya disimpan di baris dan dijumlah ke pembulatan nota.
+        from .services.pembulatan import hitung_pembulatan_baris
+        pembulatan_baris = [Decimal('0')] * len(prepared)
+        if pos_settings.pembulatan_per_item() and pos_settings.pembulatan_kelipatan() > 1:
+            pembulatan_baris = [money(hitung_pembulatan_baris(p[6])) for p in prepared]
 
         # Guard ini SEBELUMNYA tidak memeriksa blokir_jual_jika_stok_kosong()
         # sama sekali -- toggle di Pengaturan POS untuk mengizinkan jual
@@ -514,7 +535,11 @@ def create_sale(*, user, data):
                 )})
             loyalty_discount = loyalty_svc.compute_redemption_discount(loyalty_obj, subtotal)
 
-        discount = money(subtotal * discount_pct / Decimal('100'))
+        if diskon_manual is not None:
+            from .services import diskon_manual as dm
+            discount = money(dm.hitung(subtotal, *diskon_manual))
+        else:
+            discount = money(subtotal * discount_pct / Decimal('100'))
         # Diskon Khusus Tipe Pelanggan -- otomatis, SELALU dievaluasi &
         # menumpuk dengan diskon lain (sama seperti Promosi POS di atas),
         # karena ini hak pelanggan berdasarkan tipenya, bukan pilihan
@@ -525,6 +550,18 @@ def create_sale(*, user, data):
         taxable = max(Decimal('0'), subtotal - total_diskon)
         tax = money(taxable * tax_pct / Decimal('100'))
         total = money(max(Decimal('0'), subtotal - total_diskon + tax))
+        # Pembulatan sesuai Pengaturan POS: diskon ke bawah, total yang ditagih ke atas (bawaan); selisih gabungan masuk `pembulatan`.
+        # Mode per item: selisih tiap baris ditambahkan dulu (hanya bila masih ada yang ditagih). Pada mode 'keduanya'
+        # sisa selisih nota (karena diskon/pajak) dibulatkan lagi supaya total yang ditagih tetap bulat.
+        from .services.pembulatan import hitung_pembulatan_penjualan
+        if total <= 0:
+            pembulatan_baris = [Decimal('0')] * len(prepared)
+        pembulatan_dari_baris = sum(pembulatan_baris, Decimal('0'))
+        total = money(total + pembulatan_dari_baris)
+        # Mode 'item' saja: total tidak dibulatkan lagi (sisa selisih diskon/pajak dibiarkan apa adanya).
+        pembulatan_nota = money(hitung_pembulatan_penjualan(total, total_diskon)) if pos_settings.pembulatan_per_nota() else Decimal('0')
+        total = money(total + pembulatan_nota)
+        pembulatan = money(pembulatan_dari_baris + pembulatan_nota)
         if status_val == 'paid' and paid < total:
             raise ValidationError({'error': 'Jumlah pembayaran belum mencukupi total server.'})
         client_total = data.get('total')
@@ -540,7 +577,7 @@ def create_sale(*, user, data):
             diskon_promo=promo_discount,
             loyalty_redemption=loyalty_obj, diskon_loyalti=loyalty_discount,
             diskon_tipe_pelanggan=customer_group_discount,
-            pajak=tax, total=total,
+            pajak=tax, pembulatan=pembulatan, total=total,
             metode_bayar=str(data.get('metode_bayar') or 'Cash')[:50], dibayar=paid,
             kembalian=money(max(Decimal('0'), paid-total)),
             catatan=str(data.get('catatan') or '')[:2000], status=status_val,
@@ -554,11 +591,11 @@ def create_sale(*, user, data):
             )
             kupon_obj.penggunaan_count = CouponUsage.objects.filter(kupon=kupon_obj).count()
             kupon_obj.save(update_fields=['penggunaan_count'])
-        for (raw, product, variant, conversion, qty_base, price_base, line_total, item_nama, package,
-             item_addons, panjang, lebar, finishing_biaya, serial_numbers_line) in prepared:
+        for idx, (raw, product, variant, conversion, qty_base, price_base, line_total, item_nama, package,
+                  item_addons, panjang, lebar, finishing_biaya, serial_numbers_line) in enumerate(prepared):
             sale_item = POSSaleItem.objects.create(
                 sale=sale, product=product, variant=variant, paket=package, nama_snapshot=item_nama,
-                harga_snapshot=price_base, qty=qty_base, subtotal=line_total,
+                harga_snapshot=price_base, qty=qty_base, subtotal=line_total, pembulatan=pembulatan_baris[idx],
                 catatan=str(raw.get('catatan') or '')[:2000],
                 uom_kode=conversion['uom_kode'], uom_konverter=conversion['uom_konverter'],
                 uom_qty=conversion['uom_qty'],

@@ -1,6 +1,7 @@
 import qz from 'qz-tray';
 import apiClient from '../../../api/apiClient';
 import { buildQzReceiptHtml, getPaperWidthInches } from './qzReceiptHtml';
+import { buildQzDokumenHtml, JENIS_DOKUMEN } from './qzDokumenHtml';
 import { cetakConfig } from './receiptConfig';
 import logoBawaan from '../../../assets/logo-starfoto.png';
 import { buildTmU220Receipt, TM_U220_70_PROFILE } from './qzTmU220Receipt';
@@ -105,6 +106,29 @@ export async function printQzReceipt({ receipt, settings, printerName, paperSize
         options: { pageWidth: getPaperWidthInches(settings?.pos_ext_settings?.pos_custom_resi_windows ? 'a4' : paperSize) },
       }];
     await qz.print(config, data);
+  } catch (error) {
+    throw new QZTrayError(getErrorMessage(error));
+  }
+}
+
+// Dokumen A4 (Invoice, SPK, Surat Jalan) ke printer pilihan lewat QZ Tray, tanpa dialog (2026-11-02).
+export async function printQzDokumen({ type, data, settings, printerName }) {
+  if (!printerName) throw new QZTrayError('Pilih printer untuk dokumen ini terlebih dahulu.');
+  await connectQzTray();
+  try {
+    const config = qz.configs.create(printerName, {
+      jobName: `${JENIS_DOKUMEN[type]?.judul || 'Dokumen'} ${data?.nomor || ''}`.trim(),
+      margins: 0,
+      scaleContent: false,
+    });
+    const logoDataUrl = (await logoSebagaiDataUrl(cetakConfig(settings).logoUrl)) || (await logoSebagaiDataUrl(logoBawaan));
+    await qz.print(config, [{
+      type: 'pixel',
+      format: 'html',
+      flavor: 'plain',
+      data: buildQzDokumenHtml({ type, data, settings, logoDataUrl }),
+      options: { pageWidth: getPaperWidthInches('a4') },
+    }]);
   } catch (error) {
     throw new QZTrayError(getErrorMessage(error));
   }

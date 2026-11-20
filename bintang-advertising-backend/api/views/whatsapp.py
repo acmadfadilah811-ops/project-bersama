@@ -12,6 +12,7 @@ from django.utils import timezone
 from django.db import transaction
 from django.core.cache import cache
 
+from ..qty_format import tampil_qty
 from ..models import (
     Contact, Order, OrderItem, JobBoard, TahapProses, SystemConfig, CustomUser
 )
@@ -450,7 +451,7 @@ class BaseWhatsAppWebhookView(APIView):
             price_val = item.harga_jual or 0
             price_display = f"Rp {price_val:,}" if price_val > 0 else "Hubungi Admin"
             price_display = price_display.replace(',', '.')
-            item_lines.append(f"• *{item.jenis_produk}*{spec_str} - {item.qty}x")
+            item_lines.append(f"• *{item.jenis_produk}*{spec_str} - {tampil_qty(item.qty)}x")
             item_lines.append(f"  └─ Est. Harga: *{price_display}*")
             total_estimasi += price_val
 
@@ -1198,7 +1199,7 @@ class WhatsAppSendMediaView(APIView):
 
         except Exception as e:
             logger.error(f"Error handling WhatsApp send media upload: {e}", exc_info=True)
-            return Response({"error": str(e)}, status=500)
+            return Response({"error": "Gagal mengirim media lewat WhatsApp. Coba lagi nanti."}, status=500)
 
 
 class WAWebhookView(BaseWhatsAppWebhookView):

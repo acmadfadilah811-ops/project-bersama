@@ -31,6 +31,8 @@ import { uiConfirm } from '../../../../utils/dialog';
 import { getLogoUrl } from '../../../../utils/logo';
 import UnitBisnisFilter from '../../../../components/UnitBisnisFilter';
 import ShiftHrBacaSaja from './ShiftHrBacaSaja';
+import LaporanShiftRinci from '../../../kasir/components/LaporanShiftRinci';
+import { bulatkanContoh, selisihPembulatanPenjualan } from '../../../../utils/pembulatan';
 
 const POS_TABS = [
   { id: 'pengaturan', label: 'Pengaturan' },
@@ -54,6 +56,7 @@ const POS_MENUS = [
   { id: 'ext-settings', label: 'POS Ext. Settings', icon: Sliders },
   { id: 'shift', label: 'Shift', icon: Clock },
   { id: 'cek-stok', label: 'Mode - cek stok', icon: Search },
+  { id: 'pembulatan', label: 'Pembulatan', icon: Percent },
   { id: 'shift-timing', label: 'Shift Kerja (dari HR)', icon: Timer },
   { id: 'antrian', label: 'POS Antrian', icon: Users },
 ];
@@ -318,6 +321,17 @@ export default function PointOfSale() {
 
   // POS Shift States
   const [shiftAktif, setShiftAktif] = useState(false);
+  // Pembulatan total penjualan kasir: kelipatan Rp (0 = mati) & arah.
+  const [pembulatanAktif, setPembulatanAktif] = useState(false);
+  const [pembulatanKelipatan, setPembulatanKelipatan] = useState('100');
+  const [pembulatanSimulasi, setPembulatanSimulasi] = useState('29920');
+  const [pembulatanArah, setPembulatanArah] = useState('atas');
+  const [pembulatanArahDiskon, setPembulatanArahDiskon] = useState('bawah');
+  const [pembulatanBreakpoint, setPembulatanBreakpoint] = useState('50');
+  // 'nota' = dibulatkan sekali untuk total nota; 'item' = tiap baris item dibulatkan sendiri.
+  const [pembulatanMode, setPembulatanMode] = useState('nota');
+  const [pembulatanSimulasiBuka, setPembulatanSimulasiBuka] = useState(false);
+  const [pembulatanSimulasiDiskon, setPembulatanSimulasiDiskon] = useState('0');
   const [shiftKasAwal, setShiftKasAwal] = useState(0);
   const [shiftSembunyikanSetor, setShiftSembunyikanSetor] = useState(false);
   const [shiftCekPesananTertahan, setShiftCekPesananTertahan] = useState(false);
@@ -428,6 +442,12 @@ export default function PointOfSale() {
         setShiftKasAwal(res.data.pos_shift_kas_awal || 0);
         setShiftSembunyikanSetor(!!res.data.pos_shift_sembunyikan_setor);
         setShiftCekPesananTertahan(!!res.data.pos_shift_cek_pesanan_tertahan);
+        setPembulatanAktif(!!res.data.pos_pembulatan_aktif);
+        setPembulatanKelipatan(String(res.data.pos_pembulatan_kelipatan || 100));
+        setPembulatanArah(res.data.pos_pembulatan_arah || 'atas');
+        setPembulatanArahDiskon(res.data.pos_pembulatan_arah_diskon || 'bawah');
+        setPembulatanBreakpoint(String(res.data.pos_pembulatan_breakpoint || 50));
+        setPembulatanMode(['item', 'keduanya'].includes(res.data.pos_pembulatan_mode) ? res.data.pos_pembulatan_mode : 'nota');
 
         // Cek Stok settings
         setStokBlokirJualJikaKosong(res.data.pos_stok_blokir_jual_jika_kosong !== undefined ? !!res.data.pos_stok_blokir_jual_jika_kosong : true);
@@ -471,7 +491,7 @@ export default function PointOfSale() {
   };
 
   useEffect(() => {
-    if (activeMenu === 'catatan-resi' || activeMenu === 'email-laporan' || activeMenu === 'passkey' || activeMenu === 'ext-settings' || activeMenu === 'shift' || activeMenu === 'cek-stok' || activeMenu === 'antrian') {
+    if (activeMenu === 'catatan-resi' || activeMenu === 'email-laporan' || activeMenu === 'passkey' || activeMenu === 'ext-settings' || activeMenu === 'shift' || activeMenu === 'cek-stok' || activeMenu === 'pembulatan' || activeMenu === 'antrian') {
       fetchSettings();
       if (activeMenu === 'antrian') {
         fetchPOSAntrianDevices();
@@ -598,6 +618,27 @@ export default function PointOfSale() {
       triggerToast('Pengaturan Shift berhasil disimpan!');
     } catch (err) {
       console.error('Failed to save shift settings:', err);
+      triggerToast('Gagal menyimpan pengaturan.');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleSavePembulatan = async () => {
+    const kelipatan = Math.max(0, parseInt(pembulatanKelipatan, 10) || 0);
+    setSavingSettings(true);
+    try {
+      await apiClient.patch('/business-settings/', {
+        pos_pembulatan_aktif: pembulatanAktif && kelipatan > 1,
+        pos_pembulatan_kelipatan: kelipatan,
+        pos_pembulatan_arah: pembulatanArah,
+        pos_pembulatan_arah_diskon: pembulatanArahDiskon,
+        pos_pembulatan_breakpoint: Math.min(99, Math.max(1, parseInt(pembulatanBreakpoint, 10) || 50)),
+        pos_pembulatan_mode: pembulatanMode,
+      });
+      triggerToast('Pengaturan Pembulatan berhasil disimpan! Kasir perlu refresh halaman.');
+    } catch (err) {
+      console.error('Failed to save pembulatan settings:', err);
       triggerToast('Gagal menyimpan pengaturan.');
     } finally {
       setSavingSettings(false);
@@ -2124,6 +2165,288 @@ export default function PointOfSale() {
                     )}
                   </div>
                 </div>
+              ) : activeMenu === 'pembulatan' ? (
+                <div className="max-w-3xl w-full mx-auto space-y-4">
+                  {(() => {
+                    // Tampilan mengikuti Pengaturan > Pembulatan Pembayaran di Olsera:
+                    // saklar, Besar pembagi, Mode pembulatan (Ke Bawah | Otomatis | Ke Atas), rentang ke bawah, Simulasi, info contoh.
+                    const k = Math.max(0, parseInt(pembulatanKelipatan, 10) || 0);
+                    const bp = Math.min(99, Math.max(1, parseInt(pembulatanBreakpoint, 10) || 50));
+                    const modeLabel = { bawah: 'Ke Bawah', terdekat: 'Otomatis', atas: 'Ke Atas' };
+                    const rupiah = (n) => Number(n).toLocaleString('id-ID');
+                    const adaOtomatis = pembulatanArah === 'terdekat' || pembulatanArahDiskon === 'terdekat';
+                    const segmen = (nilai, onUbah) => (
+                      <div className="grid grid-cols-3 border border-slate-300 rounded-lg overflow-hidden">
+                        {['bawah', 'terdekat', 'atas'].map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => onUbah(m)}
+                            className={`py-2 text-xs font-bold cursor-pointer transition-colors ${nilai === m ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                          >
+                            {modeLabel[m]}
+                          </button>
+                        ))}
+                      </div>
+                    );
+                    const rentang = () => (
+                      <div>
+                        <span className="text-xs font-bold text-slate-800 block mb-1">Rentang pembulatan ke bawah</span>
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="range"
+                            min="1"
+                            max="99"
+                            step="1"
+                            value={bp}
+                            onChange={(e) => setPembulatanBreakpoint(e.target.value)}
+                            className="flex-1 accent-blue-600 cursor-pointer"
+                          />
+                          <input
+                            type="number"
+                            min="1"
+                            max="99"
+                            value={pembulatanBreakpoint}
+                            onChange={(e) => setPembulatanBreakpoint(e.target.value)}
+                            className="w-16 border border-slate-300 rounded-lg px-2 py-1 text-xs font-semibold text-slate-800 text-center focus:outline-none focus:border-blue-500"
+                          />
+                          <span className="text-[11px] text-slate-400 font-semibold">%</span>
+                        </div>
+                        <div className="flex justify-between text-[10px] text-slate-400 font-semibold mt-0.5 pr-12">
+                          <span>1</span>
+                          <span>99</span>
+                        </div>
+                      </div>
+                    );
+                    const totalSim = Math.max(0, parseInt(pembulatanSimulasi, 10) || 0);
+                    const diskonSim = Math.max(0, parseInt(pembulatanSimulasiDiskon, 10) || 0);
+                    const selisihSim = pembulatanAktif ? selisihPembulatanPenjualan(totalSim, diskonSim, k, pembulatanArah, pembulatanArahDiskon, bp) : 0;
+                    const hasilSim = totalSim + selisihSim;
+                    // Contoh info: total yang sisanya tepat di titik breakpoint.
+                    const contohTotal = 9 * k + Math.round((k * bp) / 100);
+                    const contohHasil = k > 1 ? bulatkanContoh(contohTotal, k, pembulatanArah, bp) : contohTotal;
+                    return (
+                      <>
+                        <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
+                          <div className="flex items-start justify-between gap-4 p-6 pb-4">
+                            <div>
+                              <h3 className="font-extrabold text-slate-800 text-sm">Pembulatan Pembayaran</h3>
+                              <p className="text-[11px] text-slate-400">Sementara hanya berlaku untuk POS</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setPembulatanAktif(!pembulatanAktif)}
+                              className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-all duration-300 outline-none shrink-0 ${pembulatanAktif ? 'bg-blue-600' : 'bg-slate-300'}`}
+                            >
+                              <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-all duration-300 ${pembulatanAktif ? 'translate-x-5' : 'translate-x-0'}`} />
+                            </button>
+                          </div>
+
+                          <div className={`px-6 pb-6 space-y-5 ${pembulatanAktif ? '' : 'opacity-50 pointer-events-none'}`}>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <span className="text-xs font-bold text-slate-800 block mb-1">Besar pembagi</span>
+                                <input
+                                  type="number"
+                                  min="2"
+                                  step="1"
+                                  value={pembulatanKelipatan}
+                                  onChange={(e) => setPembulatanKelipatan(e.target.value)}
+                                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500"
+                                />
+                                <div className="flex gap-1.5 mt-2">
+                                  {['50', '100', '500', '1000'].map((n) => (
+                                    <button
+                                      key={n}
+                                      type="button"
+                                      onClick={() => setPembulatanKelipatan(n)}
+                                      className={`px-2.5 py-1 rounded-md text-[11px] font-bold border cursor-pointer ${String(pembulatanKelipatan) === n ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}
+                                    >
+                                      {Number(n).toLocaleString('id-ID')}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                              <div>
+                                <span className="text-xs font-bold text-slate-800 block mb-1">Mode pembulatan (total yang dibayar)</span>
+                                {segmen(pembulatanArah, setPembulatanArah)}
+                                <span className="text-xs font-bold text-slate-800 block mt-3 mb-1">Mode pembulatan diskon</span>
+                                {segmen(pembulatanArahDiskon, setPembulatanArahDiskon)}
+                              </div>
+                            </div>
+
+                            <div>
+                              <span className="text-xs font-bold text-slate-800 block mb-1">Dibulatkan pada</span>
+                              <div className="space-y-1.5">
+                                {[
+                                  ['item', 'Tiap item', 'Harga tiap baris item dibulatkan sendiri-sendiri.'],
+                                  ['nota', 'Total nota', 'Total yang ditagih dibulatkan, termasuk sisa selisih karena diskon atau pajak.'],
+                                ].map(([bagian, label, keterangan]) => {
+                                  const aktifItem = pembulatanMode !== 'nota';
+                                  const aktifNota = pembulatanMode !== 'item';
+                                  const dicentang = bagian === 'item' ? aktifItem : aktifNota;
+                                  const ubah = (centang) => {
+                                    const item = bagian === 'item' ? centang : aktifItem;
+                                    const nota = bagian === 'nota' ? centang : aktifNota;
+                                    if (!item && !nota) return; // minimal satu bagian harus aktif; matikan pembulatan lewat saklar di atas
+                                    setPembulatanMode(item && nota ? 'keduanya' : item ? 'item' : 'nota');
+                                  };
+                                  return (
+                                    <label key={bagian} className="flex items-start gap-2 border border-slate-200 rounded-lg px-3 py-2 cursor-pointer hover:bg-slate-50">
+                                      <input type="checkbox" className="mt-0.5" checked={dicentang} onChange={(e) => ubah(e.target.checked)} />
+                                      <span>
+                                        <span className="text-xs font-bold text-slate-800 block">{label}</span>
+                                        <span className="text-[11px] text-slate-400">{keterangan}</span>
+                                      </span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                              <p className="text-[11px] text-slate-400 mt-1">
+                                Boleh dicentang keduanya: tiap item dibulatkan dulu, lalu total nota dibulatkan lagi bila masih ada selisih.
+                              </p>
+                            </div>
+
+                            {adaOtomatis && rentang()}
+
+                            <button
+                              type="button"
+                              onClick={() => setPembulatanSimulasiBuka(true)}
+                              className="w-full border border-slate-300 rounded-lg py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                            >
+                              Simulasi
+                            </button>
+
+                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-xs text-slate-600 space-y-2">
+                              <div className="flex gap-2">
+                                <Info size={14} className="shrink-0 mt-0.5 text-slate-400" />
+                                <div className="space-y-2">
+                                  <p>Sistem akan otomatis mengecek Total Ditagihkan dan menerapkan pembulatan.</p>
+                                  <p>
+                                    Sistem akan membulatkan ke atas atau ke bawah berdasarkan pengaturan <b>Mode pembulatan</b>. Diskon
+                                    dibulatkan ke bawah dan pembayaran ke atas (bawaan); selisihnya tampil sebagai baris Pembulatan di kasir dan struk.
+                                  </p>
+                                  {pembulatanMode !== 'nota' && (
+                                    <p>
+                                      Pembulatan <b>tiap item</b> dihitung per baris keranjang (setelah dikali jumlah/ukuran).
+                                      {pembulatanMode === 'keduanya'
+                                        ? ' Bila masih ada diskon atau pajak, sisa selisihnya dibulatkan lagi di total nota supaya total yang ditagih tetap bulat.'
+                                        : ' Total nota tidak dibulatkan lagi, jadi bila ada diskon atau pajak totalnya bisa tidak bulat.'}
+                                      {' '}Berlaku untuk penjualan kasir lunas langsung; pesanan DP tetap dibulatkan per pembayaran.
+                                    </p>
+                                  )}
+                                  {k > 1 && (
+                                    <>
+                                      <p>Contoh, jika pengaturan sebagai berikut:</p>
+                                      <ul className="list-disc pl-5">
+                                        <li>Besar pembagi <b>{rupiah(k)}</b></li>
+                                        <li>Mode pembulatan <b>{modeLabel[pembulatanArah]}</b></li>
+                                        {pembulatanArah === 'terdekat' && <li>Besar breakpoint <b>{rupiah((k * bp) / 100)}</b></li>}
+                                      </ul>
+                                      <p>
+                                        maka Total ditagihkan <b>{rupiah(contohTotal)}</b> akan otomatis dibulatkan{' '}
+                                        {contohHasil >= contohTotal ? 'ke atas' : 'ke bawah'} menjadi <b>{rupiah(contohHasil)}</b>.
+                                      </p>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="border-t border-slate-100 px-6 py-3 flex items-center justify-between">
+                            <span className="text-[11px] text-slate-400 font-semibold">Simpan Perubahan</span>
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={fetchSettings}
+                                disabled={savingSettings || loadingSettings}
+                                className="px-4 py-2 border border-slate-300 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer disabled:opacity-50"
+                              >
+                                Batal
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleSavePembulatan}
+                                disabled={savingSettings || loadingSettings}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm cursor-pointer flex items-center gap-1.5"
+                              >
+                                {savingSettings ? (
+                                  <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                ) : (
+                                  <CheckCircle size={14} />
+                                )}
+                                Simpan
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {pembulatanSimulasiBuka && (
+                          <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={() => setPembulatanSimulasiBuka(false)}>
+                            <div className="w-full max-w-sm h-full bg-white shadow-xl p-6 space-y-4 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex items-center justify-between">
+                                <h3 className="font-extrabold text-slate-800 text-sm">Simulasi Pembulatan</h3>
+                                <button
+                                  type="button"
+                                  onClick={() => setPembulatanSimulasiBuka(false)}
+                                  className="px-2 py-1 border border-slate-300 rounded text-[10px] font-bold text-slate-500 hover:bg-slate-50 cursor-pointer"
+                                >
+                                  ESC
+                                </button>
+                              </div>
+                              <div>
+                                <span className="text-[11px] text-slate-500 font-semibold block mb-1">Total ditagihkan</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={pembulatanSimulasi}
+                                  onChange={(e) => setPembulatanSimulasi(e.target.value)}
+                                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500"
+                                />
+                              </div>
+                              <div>
+                                <span className="text-[11px] text-slate-500 font-semibold block mb-1">Termasuk diskon</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={pembulatanSimulasiDiskon}
+                                  onChange={(e) => setPembulatanSimulasiDiskon(e.target.value)}
+                                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500"
+                                />
+                              </div>
+                              <div>
+                                <span className="text-[11px] text-slate-500 font-semibold block mb-1">Besar pembagi</span>
+                                <input
+                                  type="number"
+                                  min="2"
+                                  value={pembulatanKelipatan}
+                                  onChange={(e) => setPembulatanKelipatan(e.target.value)}
+                                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500"
+                                />
+                              </div>
+                              <div className="bg-slate-100 rounded-lg px-3 py-2.5 text-xs font-semibold text-slate-600">
+                                Nominal yang akan dibulatkan : {selisihSim < 0 ? '-' : ''}{rupiah(Math.abs(selisihSim))}
+                              </div>
+                              <div>
+                                <span className="text-[11px] text-slate-500 font-semibold block mb-1">Mode pembulatan</span>
+                                {segmen(pembulatanArah, setPembulatanArah)}
+                              </div>
+                              {pembulatanArah === 'terdekat' && rentang()}
+                              <div>
+                                <span className="text-[11px] text-slate-500 font-semibold block mb-1">Hasil pembulatan</span>
+                                <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-3 text-center text-sm font-extrabold text-slate-800">
+                                  {pembulatanAktif ? rupiah(hasilSim) : rupiah(totalSim)}
+                                </div>
+                                {!pembulatanAktif && <p className="text-[10px] text-slate-400 mt-1">Pembulatan nonaktif: total tidak berubah.</p>}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
               ) : activeMenu === 'cek-stok' ? (
                 <div className="max-w-2xl w-full mx-auto space-y-6">
                   <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
@@ -3162,138 +3485,21 @@ export default function PointOfSale() {
 
             {/* Content Body Drawer SS 2 */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs font-semibold text-slate-700">
-              <div className="bg-[#F8FAFC] p-4 rounded-lg space-y-3 border border-slate-100">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <span className="text-[10px] text-slate-400 font-bold block">Kasir</span>
-                    <span className="font-extrabold text-slate-800 text-xs">{selectedShiftDetail.kasir_nama || selectedShiftDetail.kasir || '-'}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 font-bold block">Tanggal</span>
-                    <span className="font-extrabold text-slate-800 text-xs">{selectedShiftDetail.tanggal}</span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <span className="text-[10px] text-slate-400 font-bold block">Shift Mulai</span>
-                    <span className="font-semibold text-slate-600 text-[11px]">{selectedShiftDetail.mulai_fmt || selectedShiftDetail.mulai}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 font-bold block">Shift Berakhir</span>
-                    <span className="font-semibold text-slate-600 text-[11px]">{selectedShiftDetail.berakhir_fmt || selectedShiftDetail.berakhir}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Rekap pembayaran non-kas tetap terlihat, tetapi tidak ikut
-                  mengubah Kas Diharapkan di laci. */}
-              <div className="space-y-2 bg-white p-4 rounded-lg border border-slate-200">
-                <div className="flex justify-between items-center font-extrabold text-slate-900 text-xs pb-2 border-b border-slate-100">
-                  <span>Rekap Semua Metode Pembayaran</span>
-                  <span>{(selectedShiftDetail.rincian_metode || []).length} Metode</span>
-                </div>
-                {(selectedShiftDetail.rincian_metode || []).length === 0 ? (
-                  <p className="text-[11px] text-slate-400">Belum ada snapshot metode pembayaran untuk shift ini.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {(selectedShiftDetail.rincian_metode || []).map((row) => (
-                      <div key={`${row.metode}-${row.tipe}`} className="rounded-md bg-slate-50 px-3 py-2">
-                        <div className="flex justify-between gap-3 text-slate-800">
-                          <span className="font-bold">{row.metode}</span>
-                          <span className="font-extrabold">IDR {Number(row.total || 0).toLocaleString('de-DE')}</span>
-                        </div>
-                        <div className="mt-1 flex justify-between text-[10px] text-slate-500">
-                          <span>POS: IDR {Number(row.pos || 0).toLocaleString('de-DE')}</span>
-                          <span>DP/Pelunasan: IDR {Number(row.order || 0).toLocaleString('de-DE')}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Section 1: Kas Diharapkan & Breakdown SS 2 */}
-              <div className="space-y-2 bg-gradient-to-r from-indigo-50/50 to-[#F8FAFC] p-4 rounded-lg border border-slate-100 border-l-4 border-l-indigo-300">
-                <div className="flex justify-between items-center font-extrabold text-slate-900 text-xs pb-1">
-                  <span>Kas Diharapkan</span>
-                  <span>IDR {Number(selectedShiftDetail.expected || 0).toLocaleString('de-DE')}</span>
-                </div>
-
-                <div className="pt-2 pl-2 text-slate-600 divide-y divide-slate-200">
-                  <div className="flex justify-between items-center py-2 first:pt-0">
-                    <span>Awal di Laci</span>
-                    <span className="font-bold text-slate-800">IDR {Number(selectedShiftDetail.kas_awal || 0).toLocaleString('de-DE')}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2">
-                    <span className="text-emerald-700">+ Penjualan Tunai</span>
-                    <span className="font-bold text-emerald-700">IDR {Number(selectedShiftDetail.penjualan_tunai || 0).toLocaleString('de-DE')}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2">
-                    <span>Pembayaran Kredit</span>
-                    <span className="font-bold text-slate-800">IDR {Number(selectedShiftDetail.pembayaran_kredit || 0).toLocaleString('de-DE')}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2">
-                    <span className="text-rose-700">− Pengembalian Tunai</span>
-                    <span className="font-bold text-rose-700">IDR {Number(selectedShiftDetail.pengembalian_tunai || 0).toLocaleString('de-DE')}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2">
-                    <span className="text-rose-700">− Void Tunai</span>
-                    <span className="font-bold text-rose-700">IDR {Number(selectedShiftDetail.void_tunai || 0).toLocaleString('de-DE')}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2">
-                    <span>Kas Masuk</span>
-                    <span className="font-bold text-slate-800">IDR {Number(selectedShiftDetail.kas_masuk || 0).toLocaleString('de-DE')}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2 last:pb-0">
-                    <span>Kas Keluar</span>
-                    <span className="font-bold text-slate-800">{Number(selectedShiftDetail.kas_keluar || 0) > 0 ? `IDR -${Number(selectedShiftDetail.kas_keluar).toLocaleString('de-DE')}` : 'IDR 0'}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 2: Kas Aktual SS 2 */}
-              <div className="flex justify-between items-center font-extrabold text-slate-900 bg-gradient-to-r from-blue-50/50 to-[#F8FAFC] p-4 rounded-lg border border-slate-100 border-l-4 border-l-blue-300">
-                <span>Kas Aktual</span>
-                <span>IDR {Number(selectedShiftDetail.aktual || 0).toLocaleString('de-DE')}</span>
-              </div>
-
-              {/* Section 3: Kas Selisih SS 2 -- aksen warna ikut nilai selisih
-                  (0 = cocok/hijau, selain itu perlu perhatian/amber) supaya
-                  kasir/owner langsung lihat status tanpa baca angka dulu. */}
-              <div className={`flex justify-between items-center font-extrabold text-slate-900 p-4 rounded-lg border border-slate-100 border-l-4 ${
-                Number(selectedShiftDetail.selisih || 0) === 0
-                  ? 'bg-gradient-to-r from-emerald-50/50 to-[#F8FAFC] border-l-emerald-300'
-                  : 'bg-gradient-to-r from-amber-50/50 to-[#F8FAFC] border-l-amber-300'
-              }`}>
-                <span>Kas Selisih</span>
-                <span>IDR {Number(selectedShiftDetail.selisih || 0).toLocaleString('de-DE')}</span>
-              </div>
-
-              {/* Keterangan penutupan shift (opsional, diisi kasir saat
-                  konfirmasi Akhiri Shift) */}
-              {selectedShiftDetail.keterangan && (
-                <div className="space-y-1 bg-[#F8FAFC] p-4 rounded-lg border border-slate-100">
-                  <span className="text-[10px] text-slate-400 font-bold block">Keterangan</span>
-                  <p className="text-slate-700 font-semibold text-xs whitespace-pre-wrap">{selectedShiftDetail.keterangan}</p>
-                </div>
-              )}
-
-              {/* Section 4: Summary Totals at Bottom SS 2 */}
-              <div className="pt-4 space-y-3 border-t border-slate-200 text-xs font-semibold text-slate-600">
-                <div className="flex justify-between items-center">
-                  <span>Total Diharapkan</span>
-                  <span className="font-extrabold text-slate-900">IDR {Number(selectedShiftDetail.expected || 0).toLocaleString('de-DE')}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span>Total Aktual</span>
-                  <span className="font-extrabold text-slate-900">IDR {Number(selectedShiftDetail.aktual || 0).toLocaleString('de-DE')}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span>Total Selisih</span>
-                  <span className="font-extrabold text-slate-900">IDR {Number(selectedShiftDetail.selisih || 0).toLocaleString('de-DE')}</span>
-                </div>
-              </div>
+              {/* Laporan rincian bergaya Olsera: Tunai, tiap metode non-tunai, Total Diharapkan,
+                  lalu Kas Aktual & Selisih (satu komponen dengan layar kasir). */}
+              <LaporanShiftRinci
+                kasir={selectedShiftDetail.kasir_nama || selectedShiftDetail.kasir || '-'}
+                mulai={selectedShiftDetail.mulai ? new Date(selectedShiftDetail.mulai).toLocaleString('id-ID', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
+                berakhir={selectedShiftDetail.berakhir ? new Date(selectedShiftDetail.berakhir).toLocaleString('id-ID', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
+                kasAwal={selectedShiftDetail.kas_awal}
+                penjualanTunaiSnapshot={selectedShiftDetail.penjualan_tunai}
+                metode={selectedShiftDetail.rincian_metode}
+                kasMasuk={selectedShiftDetail.kas_masuk}
+                kasKeluar={selectedShiftDetail.kas_keluar}
+                aktual={selectedShiftDetail.aktual}
+                selisih={selectedShiftDetail.selisih}
+                keterangan={selectedShiftDetail.keterangan}
+              />
             </div>
           </div>
         </div>

@@ -10,6 +10,10 @@ export default function PosOrderPanel({
   selectedPelayanId,
   onSelectStaff,
   totalAmount = 0,
+  pembulatan = 0,
+  // Pembulatan per item: nilai tagih tiap baris & jumlah selisih baris (sudah termasuk di `pembulatan`).
+  getTagihBaris = null,
+  pembulatanBarisTotal = 0,
   onOpenCustomerList,
   onOpenCustomerSelect,
   onSelectCustomerCandidate,
@@ -114,9 +118,11 @@ export default function PosOrderPanel({
               const isSelected = item.key === selectedCartItemKey;
               const hasMeteran = item.panjang > 0 && item.lebar > 0;
               const hasFinishing = item.finishingJenis && item.finishingJenis !== 'Polosan';
-              const lineTotal = item.hargaTotal != null
-                ? item.hargaTotal
-                : (Number(item.harga) * Number(item.qty));
+              const lineTotal = getTagihBaris
+                ? getTagihBaris(item)
+                : (item.hargaTotal != null
+                  ? item.hargaTotal
+                  : (Number(item.harga) * Number(item.qty)));
 
               return (
                 <div
@@ -142,7 +148,7 @@ export default function PosOrderPanel({
                     )}
                   </div>
                   <div className="w-1/4 text-center text-slate-500 font-semibold text-[11px]">
-                    {item.qty} x {Number(item.harga).toLocaleString('id-ID')}
+                    {Number(item.qty).toLocaleString('id-ID', { maximumFractionDigits: 4 })} x {Number(item.harga).toLocaleString('id-ID')}
                   </div>
                   <div className="w-1/4 text-right font-bold text-slate-900 text-xs">
                     {lineTotal.toLocaleString('id-ID')}
@@ -150,6 +156,12 @@ export default function PosOrderPanel({
                 </div>
               );
             })
+          )}
+          {cart.length > 0 && Math.round(pembulatan - pembulatanBarisTotal) !== 0 && (
+            <div className="px-2.5 pt-1 flex items-center justify-between text-xs font-semibold text-slate-600">
+              <span>Pembulatan</span>
+              <span className="font-bold text-slate-800">{pembulatan - pembulatanBarisTotal < 0 ? '-' : ''}{Math.abs(Math.round(pembulatan - pembulatanBarisTotal)).toLocaleString('id-ID')}</span>
+            </div>
           )}
         </div>
 
@@ -243,7 +255,7 @@ export default function PosOrderPanel({
         disabled={cart.length === 0}
         className="w-full bg-[#388E3C] hover:bg-[#2E7D32] text-white py-3 px-4 font-black text-lg text-center shadow-inner cursor-pointer transition-all disabled:opacity-75 shrink-0"
       >
-        Rp {Number(totalAmount).toLocaleString('id-ID')}
+        Rp {Math.round(Number(totalAmount) + Number(pembulatan || 0)).toLocaleString('id-ID')}
       </button>
     </div>
   );

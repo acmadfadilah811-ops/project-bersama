@@ -115,3 +115,61 @@ class GerbangMatiTest(APITestCase):
             )
         self.assertEqual(res.status_code, 200)
         tanya.assert_not_called()
+
+
+@override_settings(ABSENSI_HR_GATE_AKTIF=True, SECURE_SSL_REDIRECT=False)
+class GerbangKasirTutupShiftTest(APITestCase):
+    """Kasir yang sudah absen pulang tapi shiftnya terbuka hanya boleh menutup shift (2026-11-02)."""
+
+    def setUp(self):
+        from .models import SaldoKasHarian
+
+        cache.clear()
+        self.addCleanup(cache.clear)
+        self.kasir = CustomUser.objects.create_user(
+            username='kasir.absen', password='Rahasia123!', role='kasir', hr_employee_id=502, email='kasir.absen@uji.local',
+        )
+        self.shift = SaldoKasHarian.objects.create(
+            kasir=self.kasir, shift='Shift Uji', kas_awal=100000, waktu_buka=timezone.now(),
+        )
+
+    def _login(self):
+        return self.client.post('/api/auth/login/', {'email': 'kasir.absen@uji.local', 'password': 'Rahasia123!'}, secure=True)
+
+    def test_kasir_belum_absen_tetap_ditolak(self):
+        with mock.patch(TANYA, return_value=jawab('belum')):
+            self.assertEqual(self._login().status_code, 403)
+
+    def test_kasir_pulang_dengan_shift_terbuka_boleh_masuk_untuk_tutup_shift(self):
+        with mock.patch(TANYA, return_value=jawab('pulang')):
+            res = self._login()
+            self.assertEqual(res.status_code, 200, res.content)
+            auth = {'HTTP_AUTHORIZATION': f"Bearer {res.data['access']}"}
+            self.assertEqual(self.client.get('/api/users/me/', secure=True, **auth).status_code, 200)
+            # Transaksi baru ditolak dengan kode yang sama dengan gerbang biasa.
+            tolak = self.client.post('/api/saldo-kas-harian/', {'shift': 'Lagi', 'kas_awal': 1}, format='json', secure=True, **auth)
+            self.assertEqual(tolak.status_code, 403)
+            self.assertEqual(tolak.data['code'], 'belum_absen_hr')
+            tutup = self.client.post(
+                f'/api/saldo-kas-harian/{self.shift.id}/close/', {'kas_akhir': 100000}, format='json', secure=True, **auth,
+            )
+            self.assertNotEqual(tutup.status_code, 403, tutup.content)
+
+    def test_kasir_pulang_tanpa_shift_terbuka_terkunci(self):
+        from django.utils import timezone as tz
+
+        self.shift.waktu_tutup = tz.now()
+        self.shift.save()
+        with mock.patch(TANYA, return_value=jawab('pulang')):
+            self.assertEqual(self._login().status_code, 403)
+
+    def test_staff_biasa_pulang_tetap_terkunci_walau_ada_shift(self):
+        staff = CustomUser.objects.create_user(
+            username='staff.pulang', password='Rahasia123!', role='staff', hr_employee_id=503, email='staff.pulang@uji.local',
+        )
+        from .models import SaldoKasHarian
+
+        SaldoKasHarian.objects.create(kasir=staff, shift='X', kas_awal=0, waktu_buka=timezone.now())
+        with mock.patch(TANYA, return_value=jawab('pulang')):
+            res = self.client.post('/api/auth/login/', {'email': 'staff.pulang@uji.local', 'password': 'Rahasia123!'}, secure=True)
+        self.assertEqual(res.status_code, 403)

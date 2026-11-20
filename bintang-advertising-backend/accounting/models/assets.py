@@ -48,6 +48,28 @@ class FixedAsset(models.Model):
         "melewati aset yang field ini kosong atau 0.",
     )
     last_depreciation_date = models.DateField(null=True, blank=True)
+    # Penyusutan versi pajak (UU PPh Pasal 11, PMK 72/2023), 2026-11-10. Terpisah dari
+    # penyusutan komersial (useful_life_months): hanya dihitung untuk laporan/rekonsiliasi
+    # fiskal, tidak pernah dijurnal.
+    class KelompokFiskal(models.TextChoices):
+        BELUM = "", "Belum diatur"
+        KELOMPOK_1 = "k1", "Kelompok 1 (4 tahun)"
+        KELOMPOK_2 = "k2", "Kelompok 2 (8 tahun)"
+        KELOMPOK_3 = "k3", "Kelompok 3 (16 tahun)"
+        KELOMPOK_4 = "k4", "Kelompok 4 (20 tahun)"
+        BANGUNAN_PERMANEN = "bangunan_permanen", "Bangunan permanen (20 tahun)"
+        BANGUNAN_NON_PERMANEN = "bangunan_non_permanen", "Bangunan tidak permanen (10 tahun)"
+        TIDAK_DISUSUTKAN = "tidak", "Tidak disusutkan (mis. tanah)"
+
+    class MetodeFiskal(models.TextChoices):
+        GARIS_LURUS = "garis_lurus", "Garis lurus"
+        SALDO_MENURUN = "saldo_menurun", "Saldo menurun"
+
+    kelompok_fiskal = models.CharField(max_length=24, choices=KelompokFiskal.choices, blank=True, default="")
+    metode_fiskal = models.CharField(max_length=16, choices=MetodeFiskal.choices, default=MetodeFiskal.GARIS_LURUS)
+    # Tautan ke aset di HR (Horilla) bila register ini dibuat dari antrean "Aset dari HR"
+    # (2026-11-10). HR = data fisik (pemegang, kondisi); ERP = data akuntansi.
+    hr_asset_id = models.PositiveIntegerField(null=True, blank=True, unique=True)
     disposal_date = models.DateField(null=True, blank=True)
     disposal_proceeds = models.DecimalField(max_digits=15, decimal_places=0, null=True, blank=True)
     disposal_journal = models.OneToOneField(
@@ -69,3 +91,47 @@ class FixedAsset(models.Model):
 
     def __str__(self):
         return f"{self.asset_code} - {self.name}"
+
+
+class AsetHRMasuk(models.Model):
+    """Antrean aset yang dipilih HR untuk masuk akuntansi (2026-11-10).
+
+    HR mengirim lewat jembatan /api/bridge/hr-aset/; Finance melengkapi akun, umur
+    manfaat, dan akun pembayaran lalu memprosesnya menjadi FixedAsset (baru saat itu
+    jurnal perolehan dibuat -- kiriman HR sendiri tidak pernah menjurnal apa pun)."""
+
+    class Status(models.TextChoices):
+        MENUNGGU = "menunggu", "Menunggu diproses"
+        DIPROSES = "diproses", "Sudah jadi aset tetap"
+        DITOLAK = "ditolak", "Ditolak Finance"
+        DITARIK = "ditarik", "Ditarik HR"
+
+    hr_asset_id = models.PositiveIntegerField(unique=True)
+    kode = models.CharField(max_length=50)
+    nama = models.CharField(max_length=255)
+    kategori = models.CharField(max_length=100, blank=True, default="")
+    tanggal_beli = models.DateField()
+    harga = models.DecimalField(max_digits=15, decimal_places=0)
+    jumlah = models.PositiveIntegerField(default=1)
+    pemegang = models.CharField(max_length=150, blank=True, default="")
+    status_hr = models.CharField(max_length=40, blank=True, default="")
+    keterangan = models.TextField(blank=True, default="")
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.MENUNGGU)
+    fixed_asset = models.OneToOneField(
+        FixedAsset, on_delete=models.SET_NULL, null=True, blank=True, related_name="asal_hr",
+    )
+    alasan_tolak = models.TextField(blank=True, default="")
+    # HR melaporkan aset hilang/rusak/tidak tersedia padahal aset tetapnya masih aktif:
+    # Finance perlu meninjau (pelepasan aset butuh nilai jual & jurnal, tidak otomatis).
+    perlu_ditinjau = models.BooleanField(default=False)
+    diterima_pada = models.DateTimeField(auto_now_add=True)
+    diperbarui_pada = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "accounting_aset_hr_masuk"
+        ordering = ["status", "-diperbarui_pada"]
+        verbose_name = "Aset dari HR"
+        verbose_name_plural = "Aset dari HR"
+
+    def __str__(self):
+        return f"{self.kode} - {self.nama}"

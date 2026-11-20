@@ -62,6 +62,16 @@ def _kirim_aman(order_id):
         close_old_connections()
 
 
+def _rincian_item(order):
+    """Item order untuk ditampilkan di Opportunity CRM (nama, qty tanpa nol berlebih, subtotal baris)."""
+    from ..qty_format import qty_json
+
+    return [
+        {'nama': item.jenis_produk, 'qty': qty_json(item.qty), 'subtotal': int(item.harga_jual or 0)}
+        for item in order.items.all().order_by('id')
+    ]
+
+
 def _payload(order, lunas):
     from .pelanggan_nomor import cari_customer_per_nomor
 
@@ -78,6 +88,15 @@ def _payload(order, lunas):
             'tanggal': timezone.localtime(order.waktu).date().isoformat(),
             'lunas': lunas,
             'unit_bisnis': unit,
+            # Rincian untuk Opportunity CRM (nama jelas, deskripsi, langkah berikutnya).
+            'pelanggan': order.nama,
+            'status_order': order.get_status_global_display(),
+            'dp_dibayar': int(order.dp_dibayar or 0),
+            'sisa_tagihan': int(order.sisa_tagihan or 0),
+            'metode_pembayaran': order.metode_pembayaran,
+            'dilayani_oleh': penjual.get_full_name() if penjual else '',
+            'catatan': (order.catatan_pelanggan or '')[:500],
+            'items': _rincian_item(order),
         },
         'penjual_hr_employee_id': getattr(penjual, 'hr_employee_id', None),
     }
@@ -95,8 +114,11 @@ def _payload(order, lunas):
     return payload
 
 
-def kirim_order_ke_crm(order_id):
-    """Kirim/perbarui satu order kasir. Aman dipanggil berulang (CRM idempoten)."""
+def kirim_order_ke_crm(order_id, paksa=False):
+    """Kirim/perbarui satu order kasir. Aman dipanggil berulang (CRM idempoten).
+
+    `paksa=True` melewati penjaga "sudah terkirim" -- dipakai sinkron ulang rincian untuk
+    Peluang lama (lihat perintah sinkron_rincian_peluang_crm)."""
     from ..crm_order_models import OrderAsalCRM
     from ..crm_push_models import OrderKeCRM
     from ..models import Order
@@ -119,7 +141,7 @@ def kirim_order_ke_crm(order_id):
     # Penjaga idempoten: beberapa save dalam satu transaksi menjadwalkan beberapa
     # panggilan; yang sudah terkirim dengan total & status lunas sama dilewati.
     ada = OrderKeCRM.objects.filter(order_id=order.pk).first()
-    if ada and ada.terkirim_pada and ada.total_terkirim == total and (
+    if not paksa and ada and ada.terkirim_pada and ada.total_terkirim == total and (
         not lunas or ada.lunas_terkirim_pada is not None
     ):
         return
@@ -134,7 +156,7 @@ def kirim_order_ke_crm(order_id):
         data = r.json() if r.content else {}
     except Exception:  # noqa: BLE001
         logger.exception('CRM: gagal mengirim order %s ke CRM.', order_id)
-        return
+        return False
 
     sekarang = timezone.now()
     OrderKeCRM.objects.update_or_create(order_id=order.pk, defaults={
@@ -143,3 +165,4 @@ def kirim_order_ke_crm(order_id):
         'crm_opportunity_id': data.get('opportunity_id'),
         **({'lunas_terkirim_pada': sekarang} if lunas else {}),
     })
+    return True

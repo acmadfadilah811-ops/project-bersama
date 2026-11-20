@@ -229,6 +229,10 @@ export default function LabaRugiSatuPeriode() {
   const subTotalBiayaNonOp = Number(reportData?.subtotal_biaya_non_operasional || 0);
   const totalPendapatanNonOp = Number(reportData?.total_pendapatan_non_operasional || 0);
   const labaBersih = Number(reportData?.laba_bersih || 0);
+  const labaUsaha = Number(reportData?.laba_usaha || 0);
+  const labaSebelumPajak = Number(reportData?.laba_sebelum_pajak || 0);
+  const totalPajak = Number(reportData?.total_pajak_penghasilan || 0);
+  const listPajak = filterAccounts(reportData?.pajak_penghasilan || []);
 
   // Klik nominal akun -> buka Rincian Mutasi Akun (drill-down), reuse
   // komponen yang sama dipakai Buku Besar/Biaya.
@@ -297,6 +301,11 @@ export default function LabaRugiSatuPeriode() {
         subTotalBiayaNonOp={subTotalBiayaNonOp}
         totalPendapatanNonOp={totalPendapatanNonOp}
         labaBersih={labaBersih}
+        labaUsaha={labaUsaha}
+        labaSebelumPajak={labaSebelumPajak}
+        listPajak={listPajak}
+        totalPajak={totalPajak}
+        ebitda={reportData?.ebitda || null}
         formatRupiah={formatRupiah}
         onViewAccount={setViewingAccountId}
       />

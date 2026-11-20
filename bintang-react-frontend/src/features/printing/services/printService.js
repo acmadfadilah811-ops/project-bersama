@@ -1,4 +1,4 @@
-import { QZTrayError, printQzReceipt } from './qzTrayService';
+import { QZTrayError, printQzDokumen, printQzReceipt } from './qzTrayService';
 
 const LOCAL_PRINTER_SETTINGS_KEY = 'bintang_pos_printer_settings';
 
@@ -8,6 +8,9 @@ export const DEFAULT_LOCAL_PRINTER_SETTINGS = Object.freeze({
   paperSize: '80mm',
   connectionMode: 'browser',
   autoPrintReceipt: false,
+  // Dokumen A4 lain di PC ini (2026-11-02): { invoice|spk|surat_jalan: { auto, printerName } }.
+  // Dicetak lewat QZ Tray ke printer masing-masing (USB/Bluetooth yang terpasang di Windows).
+  dokumen: {},
 });
 
 export function getLocalPrinterSettings() {
@@ -31,6 +34,7 @@ export function getPrintPolicy(businessSettings) {
   const ext = businessSettings?.pos_ext_settings || {};
   return {
     autoPrintPosReceipt: ext.auto_print_pos_receipt !== false,
+    autoPrintDokumen: ext.auto_print_dokumen !== false,
     useA4ReceiptLayout: Boolean(ext.pos_custom_resi_windows),
   };
 }
@@ -38,6 +42,29 @@ export function getPrintPolicy(businessSettings) {
 export function shouldAutoPrintPosReceipt(businessSettings) {
   return getPrintPolicy(businessSettings).autoPrintPosReceipt
     && getLocalPrinterSettings().autoPrintReceipt;
+}
+
+/** Pengaturan cetak satu jenis dokumen di PC ini: { auto, printerName }. */
+export function getDokumenPrinter(type, localSettings = getLocalPrinterSettings()) {
+  const baris = localSettings?.dokumen?.[type] || {};
+  return { auto: Boolean(baris.auto), printerName: baris.printerName || '' };
+}
+
+/** Jenis dokumen yang harus dicetak otomatis begitu transaksi selesai (kebijakan global + profil PC ini). */
+export function jenisDokumenOtomatis(businessSettings, localSettings = getLocalPrinterSettings()) {
+  if (!getPrintPolicy(businessSettings).autoPrintDokumen) return [];
+  return ['invoice', 'spk', 'surat_jalan'].filter((type) => {
+    const cfg = getDokumenPrinter(type, localSettings);
+    return cfg.auto && cfg.printerName;
+  });
+}
+
+/** Cetak dokumen ke printer yang diatur di PC ini; return false bila tidak ada printer khusus (pakai dialog browser). */
+export async function printDokumen({ type, data, businessSettings, localSettings = getLocalPrinterSettings() }) {
+  const { printerName } = getDokumenPrinter(type, localSettings);
+  if (!printerName) return false;
+  await printQzDokumen({ type, data, settings: businessSettings, printerName });
+  return true;
 }
 
 export function getPrintErrorMessage(error) {

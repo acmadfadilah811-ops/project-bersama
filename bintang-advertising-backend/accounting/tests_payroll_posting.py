@@ -315,3 +315,29 @@ class AmbilHrTests(PayrollBase):
             with mock.patch("accounting.services.payroll_posting.requests.get", return_value=resp):
                 with self.assertRaises(svc.PayrollSumberError):
                     svc.ambil_payroll_hr(2026, 9)
+
+    def test_pesan_gagal_tidak_membocorkan_detail_teknis(self):
+        """2026-11-10: pengguna melihat alamat server/port mentah saat HR sedang diperbarui."""
+        import requests
+        mentah = ("HTTPConnectionPool(host='horilla-hr-web-1', port=8000): Max retries exceeded "
+                  "(Caused by NewConnectionError('[Errno 111] Connection refused'))")
+        with mock.patch.dict("os.environ", {"INSIGHTS_BRIDGE_API_KEY": "k"}):
+            with mock.patch("accounting.services.payroll_posting.requests.get",
+                            side_effect=requests.ConnectionError(mentah)):
+                with self.assertRaises(svc.PayrollSumberError) as ctx:
+                    svc.ambil_payroll_hr(2026, 11)
+        pesan = str(ctx.exception)
+        self.assertIn("tidak bisa dihubungi", pesan)
+        for bocor in ("horilla-hr-web-1", "8000", "Errno", "HTTPConnectionPool"):
+            self.assertNotIn(bocor, pesan)
+
+    def test_pesan_akses_ditolak_hr(self):
+        import requests
+        resp = mock.Mock(status_code=403)
+        resp.raise_for_status.side_effect = requests.HTTPError("403 Client Error: Forbidden for url: http://x", response=resp)
+        with mock.patch.dict("os.environ", {"INSIGHTS_BRIDGE_API_KEY": "k"}):
+            with mock.patch("accounting.services.payroll_posting.requests.get", return_value=resp):
+                with self.assertRaises(svc.PayrollSumberError) as ctx:
+                    svc.ambil_payroll_hr(2026, 11)
+        self.assertIn("Akses ke data gaji HR ditolak", str(ctx.exception))
+        self.assertNotIn("http://", str(ctx.exception))

@@ -23,13 +23,16 @@ export async function fetchActivePackages() {
 /** Harga SELALU dihitung server-side (sumber sama dgn bot WA) -- tidak
  * pernah dipercaya dari input manual. paksaPerM2 = P x L selalu jadi
  * pengali harga kalau diisi, apa pun price_type-nya. */
-export async function fetchHargaKatalog(productId, { variantId, qty, panjang, lebar, paksaPerM2 } = {}) {
+export async function fetchHargaKatalog(productId, { variantId, qty, panjang, lebar, paksaPerM2, nomorWa } = {}) {
   const params = new URLSearchParams();
   if (variantId) params.set('variant_id', variantId);
   params.set('qty', qty || 1);
   if (panjang) params.set('panjang', panjang);
   if (lebar) params.set('lebar', lebar);
   if (paksaPerM2) params.set('paksa_per_m2', 'true');
+  // Harga mengikuti Tingkatan Harga per Tipe Pelanggan pembeli (sama dengan kasir).
+  const wa = String(nomorWa || '').replace(/\D/g, '');
+  if (wa.length >= 8) params.set('nomor_wa', wa);
   const res = await apiClient.get(`/products/${productId}/hitung-harga/?${params.toString()}`);
   return res.data.harga_satuan;
 }

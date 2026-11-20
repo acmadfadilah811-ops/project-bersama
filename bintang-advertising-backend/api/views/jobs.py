@@ -22,7 +22,7 @@ from ..permissions import (
     get_subordinate_user_ids, scoped_by_unit_bisnis,
 )
 
-from .inventory import catat_pemakaian_bahan
+from .inventory import catat_pemakaian_bahan, jurnalkan_hpp_bahan
 
 logger = logging.getLogger(__name__)
 
@@ -135,16 +135,18 @@ def deduct_job_materials_if_needed(job, user):
         if RestockHistory.objects.filter(keterangan__icontains=order_item_marker).exists():
             return
         with transaction.atomic():
+            kumpulan = []  # satu jurnal HPP untuk semua bahan resep
             for bom_item in bom.items.all():
                 item = bom_item.inventory_item
                 # Lock item for update
                 item = InventoryItem.objects.select_for_update().get(pk=item.pk)
 
                 luas = order_item.luas
+                qty_item = float(order_item.qty)  # OrderItem.qty desimal; luas & qty_required_per_unit float
                 if luas > 0:
-                    qty_needed = round(luas * order_item.qty * bom_item.qty_required_per_unit, 4)
+                    qty_needed = round(luas * qty_item * bom_item.qty_required_per_unit, 4)
                 else:
-                    qty_needed = round(order_item.qty * bom_item.qty_required_per_unit, 4)
+                    qty_needed = round(qty_item * bom_item.qty_required_per_unit, 4)
 
                 if qty_needed <= 0:
                     continue
@@ -171,9 +173,12 @@ def deduct_job_materials_if_needed(job, user):
                 # Catat ke Buku Besar
                 catat_pemakaian_bahan(
                     item, qty_needed, user=user, ref_no=marker,
-                    keterangan_konteks=f"Order {order_item.order_id} - {marker}", source_id=job.id,
+                    keterangan_konteks=f"Order {order_item.order_id} - {marker}", source_id=job.id, kumpulan=kumpulan,
                     catatan_stok=f"Pemakaian bahan resep | {order_item_marker} | Job #{job.id} | {bom.nama}",
                 )
+            jurnalkan_hpp_bahan(
+                kumpulan, source_id=job.id, keterangan_konteks=f"Order {order_item.order_id} - {marker}",
+            )
         return
 
     # 2. Fallback: Gunakan pemotongan manual dari catatan_staff
@@ -190,6 +195,7 @@ def deduct_job_materials_if_needed(job, user):
     current_mats = materials_list[last_sep_idx+1:] if last_sep_idx != -1 else materials_list
     
     with transaction.atomic():
+        kumpulan = []
         for mat in current_mats:
             item_id = mat.get('item_id', '')
             if not item_id:
@@ -232,9 +238,12 @@ def deduct_job_materials_if_needed(job, user):
             # Catat ke Buku Besar
             catat_pemakaian_bahan(
                 item, qty, user=user, ref_no=marker,
-                keterangan_konteks=f"Order {order_item.order_id} - {marker}", source_id=job.id,
+                keterangan_konteks=f"Order {order_item.order_id} - {marker}", source_id=job.id, kumpulan=kumpulan,
                 catatan_stok=f"Pemakaian bahan produksi | Job #{job.id} | {catatan_mat}".strip(' |'),
             )
+        jurnalkan_hpp_bahan(
+            kumpulan, source_id=job.id, keterangan_konteks=f"Order {order_item.order_id} - {marker}",
+        )
 
 
 class JobMaterialDeductView(APIView):
@@ -264,6 +273,7 @@ class JobMaterialDeductView(APIView):
 
         deducted = []
         errors   = []
+        kumpulan = []  # satu jurnal HPP untuk semua bahan request ini
 
         with transaction.atomic():
             for mat in materials:
@@ -315,6 +325,7 @@ class JobMaterialDeductView(APIView):
                 konteks = f"Order {job.order_item.order_id} - {marker}" if job.order_item_id else marker
                 catat_pemakaian_bahan(
                     item, qty, user=request.user, ref_no=marker, keterangan_konteks=konteks, source_id=job.id,
+                    kumpulan=kumpulan,
                     catatan_stok=f"Pemakaian bahan produksi | Job #{job_id} | {catatan}".strip(' |'),
                 )
 
@@ -325,6 +336,11 @@ class JobMaterialDeductView(APIView):
                     'qty_used': qty,
                     'stok_baru': stok_akhir,
                 })
+
+            jurnalkan_hpp_bahan(
+                kumpulan, source_id=job.id,
+                keterangan_konteks=f"Order {job.order_item.order_id} - Job #{job_id}" if job.order_item_id else f"Job #{job_id}",
+            )
 
         return Response({
             'ok':       True,
@@ -337,6 +353,26 @@ class JobMaterialDeductView(APIView):
 class JobBoardViewSet(viewsets.ModelViewSet):
     serializer_class = JobBoardSerializer
     permission_classes = [IsAuthenticated, IsClockedIn]
+
+    def _minta_hpp(self):
+        return (
+            self.request.query_params.get('hpp') in ('1', 'true')
+            and getattr(self.request.user, 'role', None) in ('owner', 'manager', 'admin')
+        )
+
+    def paginate_queryset(self, queryset):
+        halaman = super().paginate_queryset(queryset)
+        # HPP per SPK (Papan Kerja SPK): dihitung sekali per halaman, bukan per baris (N+1).
+        if self.action == 'list' and self._minta_hpp():
+            from ..services.hpp_job import hitung_hpp_jobs
+            self._hpp_map = hitung_hpp_jobs(halaman if halaman is not None else list(queryset))
+        return halaman
+
+    def get_serializer_context(self):
+        konteks = super().get_serializer_context()
+        if getattr(self, '_hpp_map', None) is not None:
+            konteks['hpp_map'] = self._hpp_map
+        return konteks
 
     def get_permissions(self):
         # SPV/Kordiv TIDAK PERNAH jadi pic_staff (lihat get_queryset() di

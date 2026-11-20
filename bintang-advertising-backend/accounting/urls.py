@@ -5,6 +5,10 @@ from .views.payroll_persetujuan import (
     PengajuanGajiTolakView, PengajuanGajiVerifikasiView,
 )
 from .views.notifikasi import NotifikasiKeuanganBacaView, NotifikasiKeuanganListView
+from .views.aset_hr import (
+    AsetHRMasukListView, AsetHRMasukProsesView, AsetHRMasukSelesaiTinjauView, AsetHRMasukTolakView,
+    PenyusutanFiskalView, ProyeksiPenyusutanView,
+)
 from .views.unit_bisnis import AkunUnitBisnisDetailView, AkunUnitBisnisListView
 from .views.payroll import (
     PayrollBayarView,
@@ -40,7 +44,7 @@ from .views import (
     BalanceSheetExportView,
     CashFlowDetailView,
     CashFlowView,
-    ChangesInEquityView,
+    CalkView, ChangesInEquityView, TutupSaldoAwalView,
     IncomeStatementView,
     IncomeStatementExportView,
     JournalAuditLogListView,
@@ -98,6 +102,12 @@ urlpatterns = [
     path("assets/import/preview/", FixedAssetImportPreviewView.as_view(), name="accounting-assets-import-preview"),
     path("assets/import/commit/", FixedAssetImportCommitView.as_view(), name="accounting-assets-import-commit"),
     path("assets/depreciation/post/", FixedAssetDepreciationPostView.as_view(), name="accounting-assets-depreciation-post"),
+    path("assets/proyeksi/", ProyeksiPenyusutanView.as_view(), name="accounting-assets-proyeksi"),
+    path("assets/penyusutan-fiskal/", PenyusutanFiskalView.as_view(), name="accounting-assets-penyusutan-fiskal"),
+    path("assets/dari-hr/", AsetHRMasukListView.as_view(), name="accounting-aset-hr"),
+    path("assets/dari-hr/<int:pk>/proses/", AsetHRMasukProsesView.as_view(), name="accounting-aset-hr-proses"),
+    path("assets/dari-hr/<int:pk>/tolak/", AsetHRMasukTolakView.as_view(), name="accounting-aset-hr-tolak"),
+    path("assets/dari-hr/<int:pk>/selesai-tinjau/", AsetHRMasukSelesaiTinjauView.as_view(), name="accounting-aset-hr-selesai-tinjau"),
     path("assets/<int:pk>/", FixedAssetDetailView.as_view(), name="accounting-asset-detail"),
     path("assets/<int:pk>/dispose/", FixedAssetDisposeView.as_view(), name="accounting-asset-dispose"),
     path("accounts/<int:pk>/", AccountDetailView.as_view(), name="accounting-account-detail"),
@@ -118,6 +128,8 @@ urlpatterns = [
     path("reports/balance-sheet/", BalanceSheetView.as_view(), name="accounting-balance-sheet"),
     path("reports/balance-sheet/export/", BalanceSheetExportView.as_view(), name="accounting-balance-sheet-export"),
     path("reports/changes-in-equity/", ChangesInEquityView.as_view(), name="accounting-changes-in-equity"),
+    path("reports/calk/", CalkView.as_view(), name="accounting-calk"),
+    path("reports/tutup-saldo-awal/", TutupSaldoAwalView.as_view(), name="accounting-tutup-saldo-awal"),
     path("reports/cash-flow/", CashFlowView.as_view(), name="accounting-cash-flow"),
     path("reports/cash-flow/<str:category>/", CashFlowDetailView.as_view(), name="accounting-cash-flow-detail"),
     path("journal-templates/", JournalTemplateListView.as_view(), name="accounting-journal-templates"),

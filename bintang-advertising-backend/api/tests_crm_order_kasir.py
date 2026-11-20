@@ -33,6 +33,10 @@ def _requests_palsu(side_effect=None):
 class OrderKasirKeCrmTests(_Dasar):
     def setUp(self):
         super().setUp()
+        # Checkout membuat Customer baru -> sinyal kirim pelanggan; jangan pernah menembak CRM sungguhan.
+        patch_pelanggan = mock.patch('api.services.crm_pelanggan.requests')
+        patch_pelanggan.start()
+        self.addCleanup(patch_pelanggan.stop)
         self.kasir.hr_employee_id = 21
         self.kasir.save(update_fields=['hr_employee_id'])
 
@@ -59,6 +63,23 @@ class OrderKasirKeCrmTests(_Dasar):
         self.assertIsNotNone(ke_crm.terkirim_pada)
         self.assertIsNone(ke_crm.lunas_terkirim_pada)
         self.assertEqual((ke_crm.total_terkirim, ke_crm.crm_opportunity_id), (290000, 7))
+
+    def test_rincian_order_ikut_terkirim_untuk_peluang_yang_jelas(self):
+        """2026-11-02: CRM menyusun nama/deskripsi/langkah berikutnya Peluang dari rincian ini."""
+        with _requests_palsu() as req:
+            post = req.post
+            order = self._buat_order(bayar=145000)
+        sale = post.call_args.kwargs['json']['sale']
+        self.assertEqual(sale['pelanggan'], order.nama)
+        self.assertEqual(sale['dp_dibayar'], 145000)
+        self.assertEqual(sale['sisa_tagihan'], order.sisa_tagihan)
+        self.assertEqual(sale['status_order'], order.get_status_global_display())
+        self.assertEqual(sale['metode_pembayaran'], order.metode_pembayaran)
+        self.assertTrue(sale['items'])
+        for item in sale['items']:
+            self.assertEqual(set(item), {'nama', 'qty', 'subtotal'})
+            self.assertIsInstance(item['qty'], (int, float))
+        self.assertEqual(sum(i['subtotal'] for i in sale['items']), sum(i.harga_jual for i in order.items.all()))
 
     def test_lunas_mengabari_crm_sekali_saja(self):
         with _requests_palsu() as req:

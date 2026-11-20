@@ -73,3 +73,56 @@ class SyncPossaleKeCrmTest(TestCase):
         sync_possale_ke_crm(self.sale.id)  # tidak boleh raise
         self.sale.refresh_from_db()
         self.assertIsNone(self.sale.synced_to_crm_at)
+
+
+class RincianPossaleKeCrmTest(TestCase):
+    """2026-11-02: Peluang di CRM memakai rincian ini untuk nama, deskripsi, dan langkah berikutnya."""
+
+    def setUp(self):
+        from .pos_models import POSSaleItem
+
+        self.kontak = Contact.objects.create(nomor_wa='6281234567891', nama='Sari Dewi')
+        self.sale = POSSale.objects.create(
+            nomor='POS-TEST-0002', pelanggan=self.kontak, total=Decimal('90000'), status='paid',
+            metode_bayar='QRIS', catatan='Ambil sore',
+        )
+        POSSaleItem.objects.create(
+            sale=self.sale, nama_snapshot='Cetak Foto 4R', harga_snapshot=Decimal('5000'),
+            qty=Decimal('10'), subtotal=Decimal('50000'),
+        )
+        POSSaleItem.objects.create(
+            sale=self.sale, nama_snapshot='Kertas Foto', harga_snapshot=Decimal('20000'),
+            qty=Decimal('2.5'), subtotal=Decimal('40000'),
+        )
+
+    @mock.patch.dict('os.environ', {'CRM_BRIDGE_API_KEY': 'kunci-uji'})
+    @mock.patch('api.services.crm_bridge.requests.post')
+    def test_payload_memuat_rincian(self, mock_post):
+        mock_post.return_value = mock.Mock(status_code=201, raise_for_status=lambda: None)
+        self.assertTrue(sync_possale_ke_crm(self.sale.id))
+        sale = mock_post.call_args.kwargs['json']['sale']
+        self.assertEqual(sale['pelanggan'], 'Sari Dewi')
+        self.assertIs(sale['lunas'], True)
+        self.assertEqual(sale['metode_pembayaran'], 'QRIS')
+        self.assertEqual(sale['catatan'], 'Ambil sore')
+        self.assertEqual(sale['items'], [
+            {'nama': 'Cetak Foto 4R', 'qty': 10, 'subtotal': 50000},
+            {'nama': 'Kertas Foto', 'qty': 2.5, 'subtotal': 40000},
+        ])
+
+    @mock.patch.dict('os.environ', {'CRM_BRIDGE_API_KEY': 'kunci-uji'})
+    @mock.patch('api.services.crm_bridge.requests.post')
+    def test_paksa_mengirim_ulang_walau_sudah_synced_dan_tidak_mengubah_waktu_sync(self, mock_post):
+        from django.utils import timezone
+
+        mock_post.return_value = mock.Mock(status_code=201, raise_for_status=lambda: None)
+        pertama = timezone.now()
+        self.sale.synced_to_crm_at = pertama
+        self.sale.save(update_fields=['synced_to_crm_at'])
+
+        sync_possale_ke_crm(self.sale.id)
+        mock_post.assert_not_called()
+        self.assertTrue(sync_possale_ke_crm(self.sale.id, paksa=True))
+        self.assertEqual(mock_post.call_count, 1)
+        self.sale.refresh_from_db()
+        self.assertEqual(self.sale.synced_to_crm_at, pertama)

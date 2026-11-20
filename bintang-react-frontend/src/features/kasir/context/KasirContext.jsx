@@ -2,11 +2,14 @@ import { createContext, useContext, useState, useEffect } from 'react';
 import apiClient from '../../../api/apiClient';
 import { useAuth } from '../../../context/AuthContext';
 import { useNotifikasiSiapDiambil } from '../hooks/useNotifikasiSiapDiambil';
+import { hargaTierAtauDasar } from '../../../utils/hargaTier';
+import { hargaSatuanMeteran, hitungLuas } from '../../../utils/meteran';
+import { bulatkanContoh, selisihPembulatan, selisihPembulatanPenjualan } from '../../../utils/pembulatan';
 
 const KasirContext = createContext(null);
 
 export function KasirProvider({ children }) {
-  const { user } = useAuth();
+  const { user, businessSettings } = useAuth();
   // Notifikasi "Proses selesai -> Kasir": badge menu Pesanan + toast saat ada
   // pesanan baru siap diambil, aktif di semua halaman kasir.
   const {
@@ -35,6 +38,8 @@ export function KasirProvider({ children }) {
   // dibandingkan diam-diam) — mengurangi risiko kasir salah paham diskon mana
   // yang sebenarnya berlaku. Tebus Poin Loyalti tetap independen (bisa gabung).
   const [metodeDiskon, setMetodeDiskon] = useState('tidak_ada');
+  // Diskon custom kasir (keputusan manager 2026-10-31): dipakai bila metodeDiskon === 'manual'.
+  const [diskonManual, setDiskonManual] = useState({ tipe: 'persen', nilai: 0 });
   // Opsi penukaran poin loyalty yang diterapkan pada transaksi (atau null).
   const [selectedRedemption, setSelectedRedemption] = useState(null);
   // Karyawan yang melayani (service order) — id User, diinput kasir.
@@ -236,6 +241,7 @@ export function KasirProvider({ children }) {
     setTaxPercent(0);
     setSelectedCoupon(null);
     setMetodeDiskon('tidak_ada');
+    setDiskonManual({ tipe: 'persen', nilai: 0 });
     setSelectedRedemption(null);
   };
 
@@ -259,6 +265,32 @@ export function KasirProvider({ children }) {
     });
   };
 
+  // Harga baris keranjang mengikuti Tingkatan Harga (Detail Produk) menurut Tipe Pelanggan pembeli
+  // dan qty -- sama dengan hitungan server (utils/hargaTier.js = product_pricing.harga_tier_atau_dasar),
+  // jadi total di layar = yang ditagih. Dijalankan tiap keranjang/pelanggan berubah; tidak ada
+  // perubahan = tidak ada render ulang.
+  useEffect(() => {
+    const tipe = selectedContact?.customer_group_nama || null;
+    setCart((prev) => {
+      let berubah = false;
+      const next = prev.map((item) => {
+        if (item.paket || !item.product || item.uomKode) return item;
+        const base = Number(item.variant ? (item.variant.harga ?? 0) : (item.product.harga_jual_toko || 0));
+        const efektif = hargaTierAtauDasar(item.product, base, item.qty, tipe);
+        const meteran = Number(item.panjang) > 0 && Number(item.lebar) > 0;
+        const satuanLama = Number(item.harga) || 0;
+        const satuanBaru = meteran ? hargaSatuanMeteran(hitungLuas(item.panjang, item.lebar), efektif) : efektif;
+        if (satuanBaru === satuanLama && (!meteran || Number(item.hargaPerM2) === efektif)) return item;
+        berubah = true;
+        const patch = { harga: satuanBaru };
+        if (meteran) patch.hargaPerM2 = efektif;
+        if (item.hargaTotal != null) patch.hargaTotal = Number(item.hargaTotal) + (satuanBaru - satuanLama) * (Number(item.qty) || 1);
+        return { ...item, ...patch };
+      });
+      return berubah ? next : prev;
+    });
+  }, [cart, selectedContact?.customer_group_nama]);
+
   // Baris yang sudah dihitung PosItemDetailPanel (meteran/finishing/diskon
   // per-item) punya `hargaTotal` final — dipakai kalau ada, supaya subtotal
   // tidak diam-diam mengabaikan hasil kalkulator (harga*qty saja tidak
@@ -273,7 +305,14 @@ export function KasirProvider({ children }) {
   };
 
   const getDiscountAmount = () => {
-    return Math.round((getSubtotal() * Number(discountPercent || 0)) / 100);
+    const subtotal = getSubtotal();
+    if (metodeDiskon === 'manual') {
+      // Sama dengan api/services/diskon_manual.hitung: rupiah utuh, tidak melebihi subtotal.
+      const nilai = Number(diskonManual.nilai || 0);
+      const potongan = diskonManual.tipe === 'persen' ? Math.round((subtotal * nilai) / 100) : Math.round(nilai);
+      return Math.max(0, Math.min(potongan, subtotal));
+    }
+    return Math.round((subtotal * Number(discountPercent || 0)) / 100);
   };
 
   const getCouponDiscountAmount = () => {
@@ -409,6 +448,59 @@ export function KasirProvider({ children }) {
     );
   };
 
+  // Pembulatan total (Pengaturan POS > Pembulatan), sama dengan server (api/services/pembulatan.py).
+  // Hanya berlaku untuk penjualan lunas langsung; pesanan DP/Order dan paket foto memakai total apa adanya.
+  const kelipatanPembulatan = businessSettings?.pos_pembulatan_aktif ? Number(businessSettings?.pos_pembulatan_kelipatan || 0) : 0;
+  const arahPembulatan = businessSettings?.pos_pembulatan_arah || 'atas';
+  const breakpointPembulatan = Number(businessSettings?.pos_pembulatan_breakpoint) || 50;
+  // Mode "item"/"keduanya": tiap baris keranjang dibulatkan sendiri (cermin api/services/pembulatan.hitung_pembulatan_baris).
+  // Mode "nota"/"keduanya": total nota (termasuk sisa selisih diskon/pajak) dibulatkan. Mode lain/kosong = "nota".
+  const modePembulatan = ['item', 'keduanya'].includes(businessSettings?.pos_pembulatan_mode) ? businessSettings.pos_pembulatan_mode : 'nota';
+  const pembulatanPerItem = kelipatanPembulatan > 1 && modePembulatan !== 'nota';
+  const pembulatanPerNota = modePembulatan !== 'item';
+
+  // Nilai asli baris (2 desimal, sama dengan money() di server).
+  const getNilaiBaris = (item) => Math.round(
+    (item.hargaTotal != null ? Number(item.hargaTotal) : Number(item.harga) * Number(item.qty)) * 100,
+  ) / 100;
+
+  // Yang ditagih untuk satu baris: dibulatkan pada mode per item (selama masih ada yang ditagih), selain itu nilai asli.
+  const getTagihBaris = (item) => {
+    const nilai = getNilaiBaris(item);
+    if (!pembulatanPerItem || nilai <= 0 || getTotal() <= 0) return nilai;
+    return bulatkanContoh(nilai, kelipatanPembulatan, arahPembulatan, breakpointPembulatan);
+  };
+
+  // Jumlah selisih semua baris terhadap subtotal layar (0 pada mode per nota).
+  const getPembulatanBarisTotal = () => {
+    if (!pembulatanPerItem || getTotal() <= 0) return 0;
+    return Math.round((cart.reduce((jumlah, item) => jumlah + getTagihBaris(item), 0) - getSubtotal()) * 100) / 100;
+  };
+
+  const getPembulatan = () => {
+    const totalDiskon = getDiscountAmount() + getPromoDiscountAmount() + getPosPromotionDiscountAmount() + getLoyaltyDiscountAmount();
+    const dariBaris = getPembulatanBarisTotal();
+    // Mode "item" saja: total tidak dibulatkan lagi. Selain itu sisa selisih nota (karena diskon/pajak)
+    // dibulatkan seperti biasa supaya total yang ditagih tetap bulat.
+    if (!pembulatanPerNota) return dariBaris;
+    return dariBaris + selisihPembulatanPenjualan(
+      getTotal() + dariBaris,
+      totalDiskon,
+      kelipatanPembulatan,
+      arahPembulatan,
+      businessSettings?.pos_pembulatan_arah_diskon || 'bawah',
+      breakpointPembulatan,
+    );
+  };
+
+  // Pembulatan satu pembayaran (DP/cicilan/pelunasan order): arah pembayaran, sama dengan server.
+  const getPembulatanBayar = (jumlah) => selisihPembulatan(
+    jumlah,
+    businessSettings?.pos_pembulatan_aktif ? Number(businessSettings?.pos_pembulatan_kelipatan || 0) : 0,
+    businessSettings?.pos_pembulatan_arah || 'atas',
+    Number(businessSettings?.pos_pembulatan_breakpoint) || 50,
+  );
+
   return (
     <KasirContext.Provider
       value={{
@@ -438,6 +530,8 @@ export function KasirProvider({ children }) {
         setSelectedCoupon,
         metodeDiskon,
         setMetodeDiskon,
+        diskonManual,
+        setDiskonManual,
         selectedRedemption,
         setSelectedRedemption,
         selectedPelayanId,
@@ -454,6 +548,10 @@ export function KasirProvider({ children }) {
         getLoyaltyDiscountAmount,
         getTaxAmount,
         getTotal,
+        getPembulatan,
+        getPembulatanBayar,
+        getTagihBaris,
+        getPembulatanBarisTotal,
         cartNotes,
         setCartNotes,
         siapDiambilCount: jumlahSiap,

@@ -44,6 +44,9 @@ CACHE_DETIK = 60
 CACHE_DETIK_GAGAL = 20
 
 KODE = 'belum_absen_hr'
+# Kasir sudah absen pulang tapi shift kasirnya belum ditutup (2026-11-02): boleh masuk
+# hanya untuk menutup shift (lihat api/authentication.py), tidak untuk berjualan lagi.
+STATUS_TUTUP_SHIFT = 'pulang_tutup_shift'
 
 
 @dataclass(frozen=True)
@@ -135,6 +138,12 @@ def _dibuka_manajer(user):
     ).exists()
 
 
+def _shift_kasir_terbuka(user):
+    from ..models import SaldoKasHarian
+
+    return SaldoKasHarian.objects.filter(kasir=user, waktu_tutup__isnull=True).exists()
+
+
 def gerbang_aktif():
     """Saklar settings.ABSENSI_HR_GATE_AKTIF (env). Mati = semua boleh lewat
     gerbang ini (IsClockedIn kembali ke aturan lama). Dipakai juga sebagai
@@ -177,6 +186,11 @@ def cek_gerbang(user, pakai_cache=True):
     if status_absen == 'masuk':
         return HasilGerbang(True, 'masuk')
     if status_absen == 'pulang':
+        if getattr(user, 'role', '') == 'kasir' and _shift_kasir_terbuka(user):
+            return HasilGerbang(
+                True, STATUS_TUTUP_SHIFT,
+                'Anda sudah absen pulang. Tutup shift kasir Anda sekarang; transaksi baru tidak bisa dibuat.',
+            )
         return HasilGerbang(
             False, 'pulang',
             f"Anda sudah absen pulang di HR hari ini (pukul {(data.get('jam_pulang') or '')[:5]}). "

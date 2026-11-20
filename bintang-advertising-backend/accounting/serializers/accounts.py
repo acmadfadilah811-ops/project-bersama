@@ -9,7 +9,7 @@ class AccountListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Account
-        fields = ["id", "code", "name", "klasifikasi", "account_type", "saldo", "is_active", "is_contra", "ignore_minus_closing"]
+        fields = ["id", "code", "name", "klasifikasi", "account_type", "saldo", "is_active", "is_contra", "ignore_minus_closing", "komponen_ebitda"]
 
     def get_saldo(self, obj):
         balances = self.context.get("balances", {})
@@ -33,7 +33,7 @@ class AccountCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Account
-        fields = ["id", "code", "name", "classification", "is_contra", "account_type", "ignore_minus_closing"]
+        fields = ["id", "code", "name", "classification", "is_contra", "account_type", "ignore_minus_closing", "komponen_ebitda"]
         read_only_fields = ["id", "account_type"]
 
     def create(self, validated_data):

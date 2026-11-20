@@ -25,6 +25,7 @@ from django.utils import timezone
 from ..crm_order_models import OrderAsalCRM
 from ..models import Contact, Order
 from ..product_models import Product
+from ..qty_format import qty_json
 from .order_actions import buat_order_dari_items
 from .pelanggan_nomor import dapatkan_atau_buat_customer
 from .pos_receipt_whatsapp import normalisasi_nomor_whatsapp
@@ -179,7 +180,7 @@ def bentuk_order(order):
         'waktu': order.waktu.isoformat(),
         'pelanggan': order.nama,
         'items': [
-            {'nama': i.jenis_produk, 'qty': i.qty, 'harga_jual': i.harga_jual}
+            {'nama': i.jenis_produk, 'qty': qty_json(i.qty), 'harga_jual': i.harga_jual}
             for i in order.items.all()
         ],
     }

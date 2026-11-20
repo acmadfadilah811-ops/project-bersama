@@ -322,3 +322,54 @@ class OrderDateFilterTests(APITestCase):
         ids = {row['id'] for row in res.data}
         self.assertIn('ORD-DATEFILTER-TODAY', ids)
         self.assertIn('ORD-DATEFILTER-OLD', ids)
+
+
+class OrderManagerMasukAntreanKasirTests(APITestCase):
+    """Order manager yang belum dibayar harus muncul di antrean kasir (laporan user 2026-10-28:
+    order manager sumber 'manual' tidak masuk "Antrean Online & Offline" ?sumber=wa,staff,crm)."""
+
+    def setUp(self):
+        self.manager = User.objects.create_user(username='mgr_antrean', password='pw12345', role='manager', first_name='Nasul')
+        self.client.force_authenticate(user=self.manager)
+
+    def _buat(self, **extra):
+        res = self.client.post('/api/orders/', {'nomor_wa': '081234500077', 'nama': 'Pelanggan Manager', 'dilayani_oleh': self.manager.id, **extra})
+        self.assertEqual(res.status_code, 201, res.content)
+        return Order.objects.get(id=res.data['id'])
+
+    def test_order_manager_tanpa_dp_masuk_antrean_sumber_staff(self):
+        order = self._buat()
+        self.assertEqual(order.sumber, 'staff')
+        res = self.client.get('/api/orders/', {'sumber': 'wa,staff,crm', 'status_global': 'draft,review'})
+        ids = [r['id'] for r in (res.data if isinstance(res.data, list) else res.data['results'])]
+        self.assertIn(order.id, ids)
+
+    def test_manager_masih_bebas_atur_diskon_dan_status(self):
+        order = self._buat(diskon_persen=10, status_global='review')
+        self.assertEqual(order.sumber, 'staff')
+        self.assertEqual(order.diskon_persen, 10)
+
+    def test_order_manager_dengan_dp_atau_sumber_eksplisit_tidak_diubah(self):
+        self.assertEqual(self._buat(dp_dibayar=50000).sumber, 'manual')
+        self.assertEqual(self._buat(sumber='manual').sumber, 'manual')
+
+    def test_manager_menentukan_unit_kasir_tujuan(self):
+        from api.models import UnitBisnis
+        unit_a = UnitBisnis.objects.create(nama='Unit Tujuan A')
+        unit_b = UnitBisnis.objects.create(nama='Unit Tujuan B')
+        order = self._buat(unit_bisnis=unit_a.id)
+        self.assertEqual((order.sumber, order.unit_bisnis_id), ('staff', unit_a.id))
+
+        kasir_a = User.objects.create_user(username='kasir_unit_a', password='pw12345', role='kasir', unit_bisnis=unit_a)
+        kasir_b = User.objects.create_user(username='kasir_unit_b', password='pw12345', role='kasir', unit_bisnis=unit_b)
+        for kasir, terlihat in ((kasir_a, True), (kasir_b, False)):
+            self.client.force_authenticate(user=kasir)
+            res = self.client.get('/api/orders/', {'sumber': 'wa,staff,crm', 'status_global': 'draft,review'})
+            ids = [r['id'] for r in (res.data if isinstance(res.data, list) else res.data['results'])]
+            self.assertEqual(order.id in ids, terlihat, kasir.username)
+
+    def test_unit_tujuan_tidak_dikenal_ditolak(self):
+        res = self.client.post('/api/orders/', {
+            'nomor_wa': '081234500077', 'nama': 'Pelanggan Manager', 'dilayani_oleh': self.manager.id, 'unit_bisnis': 987654,
+        })
+        self.assertEqual(res.status_code, 400, res.content)

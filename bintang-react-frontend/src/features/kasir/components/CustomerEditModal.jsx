@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Users, X, Calendar } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
+import { PROVINSI, cocokKota, kecamatanDiKota, kotaDiProvinsi, muatKecamatan, provinsiDariKota, ubahKota, ubahProvinsi } from '../../../utils/wilayah';
 
 const DEFAULT_PROVINSI = ['DKI JAKARTA', 'Jawa Barat', 'Jawa Tengah', 'Jawa Timur', 'Banten', 'DI Yogyakarta', 'Bali', 'Sumatera Utara', 'Sumatera Selatan'];
 const DEFAULT_KOTA = ['Kota Jakarta Pusat', 'Kota Jakarta Selatan', 'Kota Jakarta Barat', 'Kota Jakarta Timur', 'Kota Jakarta Utara', 'Kota Bandung', 'Kota Surabaya', 'Kota Semarang', 'Kota Medan'];
@@ -25,6 +26,9 @@ export default function CustomerEditModal({ isOpen, contact, contacts = [], onSa
     kecamatan: 'Cempaka Putih',
   });
 
+  // Provinsi -> Kota -> Kecamatan saling menyaring (2026-10-27); data resmi menggantikan daftar contoh DKI Jakarta.
+  const [petaKecamatan, setPetaKecamatan] = useState({});
+  useEffect(() => { muatKecamatan().then(setPetaKecamatan); }, []);
   const [historyProvinsi, setHistoryProvinsi] = useState([]);
   const [historyKota, setHistoryKota] = useState([]);
   const [historyKecamatan, setHistoryKecamatan] = useState([]);
@@ -79,8 +83,8 @@ export default function CustomerEditModal({ isOpen, contact, contacts = [], onSa
         alamat: contact.alamat || '',
         kode_pos: contact.kode_pos || '',
         negara: contact.negara || '',
-        provinsi: contact.provinsi || '',
-        kota: contact.kota || '',
+        provinsi: contact.provinsi || provinsiDariKota(contact.kota) || '',
+        kota: cocokKota(contact.kota) || contact.kota || '',
         kecamatan: contact.kecamatan || '',
       });
     } else {
@@ -305,12 +309,12 @@ export default function CustomerEditModal({ isOpen, contact, contacts = [], onSa
                   list="provinsi-history-list"
                   placeholder="Ketik/Pilih Provinsi..."
                   value={formData.provinsi}
-                  onChange={(e) => handleChange('provinsi', e.target.value)}
+                  onChange={(e) => setFormData((prev) => ubahProvinsi(prev, e.target.value))}
                   className="w-full border-b border-slate-300 pb-1 text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500 bg-transparent"
                 />
                 <datalist id="provinsi-history-list">
-                  {historyProvinsi.map((prov, i) => (
-                    <option key={i} value={prov} />
+                  {PROVINSI.map((prov) => (
+                    <option key={prov} value={prov} />
                   ))}
                 </datalist>
               </div>
@@ -323,12 +327,12 @@ export default function CustomerEditModal({ isOpen, contact, contacts = [], onSa
                   list="kota-history-list"
                   placeholder="Ketik/Pilih Kota..."
                   value={formData.kota}
-                  onChange={(e) => handleChange('kota', e.target.value)}
+                  onChange={(e) => setFormData((prev) => ubahKota(prev, e.target.value, petaKecamatan))}
                   className="w-full border-b border-slate-300 pb-1 text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500 bg-transparent"
                 />
                 <datalist id="kota-history-list">
-                  {historyKota.map((kota, i) => (
-                    <option key={i} value={kota} />
+                  {kotaDiProvinsi(formData.provinsi).map((kota) => (
+                    <option key={kota} value={kota} />
                   ))}
                 </datalist>
               </div>
@@ -345,8 +349,8 @@ export default function CustomerEditModal({ isOpen, contact, contacts = [], onSa
                   className="w-full border-b border-slate-300 pb-1 text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500 bg-transparent"
                 />
                 <datalist id="kecamatan-history-list">
-                  {historyKecamatan.map((kec, i) => (
-                    <option key={i} value={kec} />
+                  {kecamatanDiKota(petaKecamatan, formData.kota).map((kec) => (
+                    <option key={kec} value={kec} />
                   ))}
                 </datalist>
               </div>

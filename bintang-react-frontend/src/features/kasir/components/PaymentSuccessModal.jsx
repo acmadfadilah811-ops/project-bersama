@@ -8,6 +8,8 @@ import ReceiptPrint from './ReceiptPrint';
 import CustomPrintDocument from './CustomPrintDocument';
 import {
   getPrintErrorMessage,
+  jenisDokumenOtomatis,
+  printDokumen,
   printReceipt,
   printReceiptAfterRender,
   requestBrowserPrintAfterRender,
@@ -73,6 +75,21 @@ export default function PaymentSuccessModal({
     });
   }, [businessSettings, isOpen, receipt, transactionData]);
 
+  // Invoice/SPK/Surat Jalan otomatis ke printer masing-masing (2026-11-02). Berlaku juga untuk order DP,
+  // tempat dokumen inilah yang paling dibutuhkan.
+  const dokumenOtomatisId = useRef(null);
+  React.useEffect(() => {
+    if (!isOpen || !transactionData?.id || dokumenOtomatisId.current === transactionData.id) return;
+    const jenis = jenisDokumenOtomatis(businessSettings);
+    if (!jenis.length) return;
+    dokumenOtomatisId.current = transactionData.id;
+    jenis.forEach((type) => {
+      void printDokumen({ type, data: receipt, businessSettings }).catch((error) => {
+        notifyError(`Cetak ${type.replace('_', ' ')} otomatis gagal`, getPrintErrorMessage(error));
+      });
+    });
+  }, [businessSettings, isOpen, receipt, transactionData]);
+
   React.useEffect(() => {
     if (!customDoc) return undefined;
     const selesai = () => setCustomDoc(null);
@@ -128,8 +145,18 @@ export default function PaymentSuccessModal({
     }
   };
 
-  const handleCustomPrint = (type) => {
+  const handleCustomPrint = async (type) => {
     setShowCustomPrintDropdown(false);
+    // Printer khusus dokumen ini diatur di PC ini -> langsung cetak tanpa dialog; kalau belum, dialog browser.
+    try {
+      if (await printDokumen({ type, data: receipt, businessSettings })) {
+        notifySuccess('Dokumen dikirim', 'Dokumen sudah dikirim ke antrean printer.');
+        return;
+      }
+    } catch (error) {
+      notifyError('Cetak dokumen gagal', getPrintErrorMessage(error));
+      return;
+    }
     setCustomDoc(type);
   };
 

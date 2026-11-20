@@ -119,6 +119,57 @@ def pos_mengurangi_stok():
     return mode_stok_pos() == 'auto'
 
 
+def pembulatan_aktif():
+    return get_bool('pos_pembulatan_aktif', False)
+
+
+def pembulatan_kelipatan():
+    """Besar pembagi pembulatan total penjualan (0 = mati / saklar Aktif dimatikan)."""
+    if not pembulatan_aktif():
+        return 0
+    try:
+        return max(0, int(str(_raw('pos_pembulatan_kelipatan') or 0).strip() or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def pembulatan_arah():
+    """Arah pembulatan pembayaran (total yang ditagih); bawaan ke atas."""
+    arah = str(_raw('pos_pembulatan_arah') or 'atas').strip().lower()
+    return arah if arah in ('terdekat', 'atas', 'bawah') else 'atas'
+
+
+def pembulatan_breakpoint():
+    """Titik pembulatan ke bawah mode Otomatis, persen dari besar pembagi (1-99, bawaan 50)."""
+    try:
+        return min(99, max(1, int(str(_raw('pos_pembulatan_breakpoint') or 50).strip() or 50)))
+    except (TypeError, ValueError):
+        return 50
+
+
+def pembulatan_mode():
+    """'nota' (total dibulatkan sekali), 'item' (tiap baris saja), atau 'keduanya' (tiap baris lalu sisa di total nota).
+    Nilai lain dianggap 'nota' (perilaku lama)."""
+    mode = str(_raw('pos_pembulatan_mode') or 'nota').strip().lower()
+    return mode if mode in ('nota', 'item', 'keduanya') else 'nota'
+
+
+def pembulatan_per_item():
+    """True bila tiap baris item dibulatkan sendiri (mode 'item' atau 'keduanya')."""
+    return pembulatan_mode() in ('item', 'keduanya')
+
+
+def pembulatan_per_nota():
+    """True bila total nota (termasuk sisa selisih diskon/pajak) dibulatkan (mode 'nota' atau 'keduanya')."""
+    return pembulatan_mode() in ('nota', 'keduanya')
+
+
+def pembulatan_arah_diskon():
+    """Arah pembulatan diskon; bawaan ke bawah."""
+    arah = str(_raw('pos_pembulatan_arah_diskon') or 'bawah').strip().lower()
+    return arah if arah in ('terdekat', 'atas', 'bawah') else 'bawah'
+
+
 def wajib_shift_aktif():
     """Menu Shift: transaksi POS hanya boleh saat ada shift terbuka."""
     return get_bool('pos_shift_aktif', False)

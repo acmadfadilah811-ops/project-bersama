@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import KpiSayaCard from '../../dashboard/components/KpiSayaCard';
 import { useNavigate } from 'react-router-dom';
 import {
   CreditCard,
@@ -187,6 +188,8 @@ export default function KasirDashboard({ onToggleSidebar }) {
             Ringkasan operasional kasir · {todayLabel}
           </p>
         </div>
+
+      <div className="mb-6"><KpiSayaCard /></div>
 
       {/* Grid Status: Absensi Staff & Warning Shift Kasir */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">

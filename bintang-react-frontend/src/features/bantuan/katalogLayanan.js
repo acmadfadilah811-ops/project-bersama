@@ -337,8 +337,8 @@ export const KATALOG_LAYANAN = [
     peran: KASIR,
     kataKunci: ['lunas', 'pelunasan', 'dp', 'uang muka', 'sisa', 'tagihan', 'piutang', 'cicil'],
     langkah: [
-      'Buka Riwayat Transaksi atau daftar Pesanan Produksi, pilih pesanan yang belum lunas.',
-      'Tekan pelunasan, isi nominal (sebagian atau penuh), pilih metode, tekan bayar.',
+      'Buka Riwayat Transaksi atau daftar Pesanan Produksi, pilih pesanan yang belum lunas. Pelunasan boleh dicatat walau pesanan masih dikerjakan (bagian Masih Proses).',
+      'Tekan Lunasi, isi nominal (sebagian atau penuh), pilih metode, tekan bayar. Pembayaran sebelum pesanan selesai masuk Uang Muka Pelanggan dan diakui jadi pendapatan saat pesanan selesai.',
       'Cetak Faktur atau kirim tagihan/nota lewat WhatsApp bila perlu.',
     ],
     halaman: '/kasir/riwayat',

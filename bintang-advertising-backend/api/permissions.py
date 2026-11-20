@@ -31,6 +31,11 @@ def filter_param_unit_bisnis(qs, request, field="unit_bisnis"):
     if mentah == "none":
         return qs.filter(**{f"{field}__isnull": True})
     if mentah.isdigit():
+        # ?termasuk_umum=1: baris unit itu + baris tanpa unit (mis. Daftar Harga di form
+        # Buat Pesanan: produk unit pesanan + produk umum), 2026-10-20.
+        if str(request.query_params.get("termasuk_umum") or "") in ("1", "true"):
+            from django.db.models import Q
+            return qs.filter(Q(**{field: int(mentah)}) | Q(**{f"{field}__isnull": True}))
         return qs.filter(**{field: int(mentah)})
     return qs
 

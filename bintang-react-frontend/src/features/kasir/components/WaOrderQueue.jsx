@@ -27,11 +27,13 @@ import WaOrderItemProductSource from './WaOrderItemProductSource';
 import WaOrderList from './WaOrderList';
 import { fetchActiveProducts, fetchActivePackages, fetchHargaKatalog } from '../utils/orderCatalogPricing';
 import { todayISO } from '../../../utils/date';
+import { selisihPembulatan } from '../../../utils/pembulatan';
+import useMetodePembayaran from '../hooks/useMetodePembayaran';
 
 export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntrean = 'Pesanan WhatsApp Otomatis' }) {
   // Kasir hanya boleh menerbitkan SPK ke antrean divisi — aturan sama dgn
   // SpkPublishModal (ditegakkan backend di api/spk.py), gate diulang di sini.
-  const { user } = useAuth();
+  const { user, businessSettings } = useAuth();
   const { muatUlangSiapDiambil } = useKasir();
   const bolehPilihStaff = (user?.role || '').toLowerCase() !== 'kasir';
 
@@ -45,7 +47,20 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
   const [editWa, setEditWa] = useState('');
   const [editDp, setEditDp] = useState(0);
   const [editDiskon, setEditDiskon] = useState(0);
+  // Voucher/Kupon & Diskon Penjualan otomatis (sama dengan Buat Order kasir): 'tidak_ada' | 'otomatis' | 'kupon'.
+  const [metodeDiskon, setMetodeDiskon] = useState('tidak_ada');
+  const [couponInput, setCouponInput] = useState('');
+  const [couponAktif, setCouponAktif] = useState(null);
+  const [evaluatingCoupon, setEvaluatingCoupon] = useState(false);
+  const [salesDiscountPreview, setSalesDiscountPreview] = useState(null);
   const [editMetode, setEditMetode] = useState('tunai');
+  // Metode DP = master Finance; nilai lama order ('tunai'/'qris'/...) yang tak cocok jatuh ke metode Tunai master.
+  const metodeMaster = useMetodePembayaran(true);
+  const adaMasterMetode = Array.isArray(metodeMaster) && metodeMaster.length > 0;
+  const metodeCocok = adaMasterMetode ? metodeMaster.find((m) => String(m.nama).toLowerCase() === String(editMetode).toLowerCase()) : null;
+  const metodePakai = adaMasterMetode
+    ? (metodeCocok || metodeMaster.find((m) => m.tipe === 'Tunai') || metodeMaster[0]).nama
+    : editMetode;
   const [editCatatan, setEditCatatan] = useState('');
   const [editPelayanId, setEditPelayanId] = useState('');
   const [editItems, setEditItems] = useState([]);
@@ -251,6 +266,29 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
     return () => clearInterval(interval);
   }, []);
 
+  // Preview Diskon Penjualan otomatis untuk nota yang sedang diverifikasi (server yang mengikat saat disimpan).
+  useEffect(() => {
+    if (!selectedOrder || metodeDiskon !== 'otomatis' || editItems.length === 0) {
+      setSalesDiscountPreview(null);
+      return undefined;
+    }
+    const subtotalItem = editItems.reduce((sum, it) => sum + (parseFloat(it.harga_satuan || 0) * parseFloat(it.qty || 1)), 0);
+    let batal = false;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await apiClient.post('/sales-discounts/preview/', {
+          subtotal: subtotalItem,
+          pelanggan: null,
+          items: editItems.map((it) => ({ product_id: it.product || null, harga: Number(it.harga_satuan) || 0, qty: Number(it.qty) || 1 })),
+        });
+        if (!batal) setSalesDiscountPreview(res.data?.diskon > 0 ? res.data : null);
+      } catch {
+        if (!batal) setSalesDiscountPreview(null);
+      }
+    }, 400);
+    return () => { batal = true; clearTimeout(timer); };
+  }, [selectedOrder?.id, metodeDiskon, editItems]);
+
   const handleSelectOrder = async (order) => {
     setSelectedOrder(order);
     setKirimWaPelanggan(true);
@@ -258,6 +296,10 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
     setEditWa(order.nomor_wa || '');
     setEditDp(order.dp_dibayar || 0);
     setEditDiskon(order.diskon_persen || 0);
+    setMetodeDiskon(order.kupon_info ? 'kupon' : order.metode_diskon === 'otomatis' ? 'otomatis' : 'tidak_ada');
+    setCouponInput('');
+    setCouponAktif(order.kupon_info ? { kode: order.kupon_info.kode, judul: order.kupon_info.judul, nilai_tersimpan: Number(order.kupon_info.nilai_diskon) || 0 } : null);
+    setSalesDiscountPreview(null);
     setEditMetode(order.metode_pembayaran || 'tunai');
     setEditCatatan(order.catatan_pelanggan || '');
     setEditPelayanId(order.dilayani_oleh ? String(order.dilayani_oleh) : '');
@@ -373,7 +415,7 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
 
     let hargaSatuan = 0;
     try {
-      hargaSatuan = await fetchHargaKatalog(product.id, { variantId: variant?.id, qty, panjang, lebar, paksaPerM2 });
+      hargaSatuan = await fetchHargaKatalog(product.id, { variantId: variant?.id, qty, panjang, lebar, paksaPerM2, nomorWa: selectedOrder?.nomor_wa });
     } catch (err) {
       console.error('[WaOrderQueue] Gagal hitung harga produk:', err);
     }
@@ -404,7 +446,7 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
     let hargaSatuan = current.harga_satuan || 0;
     try {
       hargaSatuan = await fetchHargaKatalog(product.id, {
-        variantId: variant.id, qty: current.qty, panjang: current.panjang, lebar: current.lebar, paksaPerM2,
+        variantId: variant.id, qty: current.qty, panjang: current.panjang, lebar: current.lebar, paksaPerM2, nomorWa: selectedOrder?.nomor_wa,
       });
     } catch (err) {
       console.error('[WaOrderQueue] Gagal hitung harga varian:', err);
@@ -429,11 +471,10 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
     const product = products.find((item) => String(item.id) === String(current.product));
     if (!product) return;
     const paksaPerM2 = product.price_type !== 'per_m2' && current.panjang > 0 && current.lebar > 0;
-    if (product.price_type === 'flat' && !paksaPerM2) return; // tarif tetap, tak perlu ke server
 
     try {
       const hargaSatuan = await fetchHargaKatalog(product.id, {
-        variantId: current.variant, qty: current.qty, panjang: current.panjang, lebar: current.lebar, paksaPerM2,
+        variantId: current.variant, qty: current.qty, panjang: current.panjang, lebar: current.lebar, paksaPerM2, nomorWa: selectedOrder?.nomor_wa,
       });
       setEditItems((prev) => {
         const updated = [...prev];
@@ -450,10 +491,81 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
     return editItems.reduce((sum, item) => sum + (parseFloat(item.harga_satuan || 0) * parseFloat(item.qty || 1)), 0);
   };
 
+  // Potongan Kupon/Voucher: kupon baru dihitung dari aturannya, kupon yang sudah tersimpan memakai nilai server.
+  const getKuponDiscountAmount = () => {
+    if (!couponAktif) return 0;
+    const subtotal = getSubtotal();
+    if (couponAktif.nilai_tersimpan !== undefined) return Math.min(subtotal, couponAktif.nilai_tersimpan);
+    if (couponAktif.min_total_pesanan && subtotal < Number(couponAktif.min_total_pesanan)) return 0;
+    if (couponAktif.tipe_diskon === 'percent') {
+      let val = Math.round((subtotal * Number(couponAktif.jumlah_diskon || 0)) / 100);
+      if (Number(couponAktif.maksimal_jumlah_diskon) > 0) val = Math.min(val, Number(couponAktif.maksimal_jumlah_diskon));
+      return Math.min(val, subtotal);
+    }
+    return Math.min(subtotal, Number(couponAktif.jumlah_diskon || 0));
+  };
+
+  const getPromoDiscountAmount = () => {
+    if (metodeDiskon === 'kupon') return getKuponDiscountAmount();
+    if (metodeDiskon === 'otomatis') return Number(salesDiscountPreview?.diskon || 0);
+    return 0;
+  };
+
   const getTotal = () => {
     const sub = getSubtotal();
     const disc = sub * (parseFloat(editDiskon || 0) / 100);
-    return Math.max(0, sub - disc);
+    return Math.max(0, sub - disc - getPromoDiscountAmount());
+  };
+
+  const applyCoupon = async () => {
+    const kode = couponInput.trim();
+    if (!kode) return;
+    setEvaluatingCoupon(true);
+    try {
+      const res = await apiClient.post('/discount-coupons/evaluate/', {
+        kode,
+        subtotal: getSubtotal(),
+        pelanggan: null,
+        items: editItems.map((it) => ({ product_id: it.product, harga: it.harga_satuan, qty: it.qty })),
+      });
+      if (res.data?.ok) {
+        setCouponAktif(res.data.kupon);
+        setMetodeDiskon('kupon');
+        setCouponInput('');
+      } else {
+        alert(res.data?.alasan || 'Kupon tidak dapat digunakan.');
+      }
+    } catch (err) {
+      alert(err.response?.data?.alasan || err.response?.data?.error || 'Kode kupon tidak valid atau tidak dapat digunakan.');
+    } finally {
+      setEvaluatingCoupon(false);
+    }
+  };
+
+  const getDpBaru = () => Math.max(0, Math.round(Number(editDp) || 0) - (Number(selectedOrder?.dp_dibayar) || 0));
+
+  // Pembulatan pembayaran DP baru (sama dengan server: pembayaran dibulatkan ke atas).
+  const getPembulatanDpBaru = () => {
+    const dpBaru = getDpBaru();
+    if (!businessSettings?.pos_pembulatan_aktif || dpBaru <= 0) return 0;
+    return selisihPembulatan(
+      dpBaru,
+      Number(businessSettings.pos_pembulatan_kelipatan || 0),
+      businessSettings.pos_pembulatan_arah || 'atas',
+      Number(businessSettings.pos_pembulatan_breakpoint) || 50,
+    );
+  };
+
+  // Pembulatan bila sisa tagihan dilunasi (Pengaturan POS > Pembulatan); pembayaran dibulatkan ke atas.
+  const getPembulatanSisa = () => {
+    const sisa = getSisaTagihan();
+    if (!businessSettings?.pos_pembulatan_aktif || sisa <= 0) return 0;
+    return selisihPembulatan(
+      Math.round(sisa),
+      Number(businessSettings.pos_pembulatan_kelipatan || 0),
+      businessSettings.pos_pembulatan_arah || 'atas',
+      Number(businessSettings.pos_pembulatan_breakpoint) || 50,
+    );
   };
 
   const getSisaTagihan = () => {
@@ -462,15 +574,21 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
 
   const handleSaveOrderChanges = async ({ notify = true } = {}) => {
     if (!selectedOrder) return false;
+    const dpTercatat = Number(selectedOrder.dp_dibayar) || 0;
+    if (Math.round(Number(editDp) || 0) < dpTercatat) {
+      alert(`DP yang sudah tercatat (Rp ${dpTercatat.toLocaleString('id-ID')}) tidak bisa dikurangi di sini.`);
+      return false;
+    }
     setSaving(true);
     try {
       // 1. Update Order Header
       await apiClient.patch(`/orders/${selectedOrder.id}/`, {
         nama: editNama,
         nomor_wa: editWa,
-        dp_dibayar: editDp,
         diskon_persen: editDiskon,
-        metode_pembayaran: editMetode,
+        // Kupon diterapkan setelah item tersimpan (di bawah) supaya potongannya dihitung server dari item terbaru.
+        metode_diskon: metodeDiskon === 'kupon' ? 'tidak_ada' : metodeDiskon,
+        metode_pembayaran: metodePakai,
         catatan_pelanggan: editCatatan,
         dilayani_oleh: editPelayanId || null,
       });
@@ -499,6 +617,39 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
           });
         } else {
           await apiClient.patch(`/order-items/${item.id}/`, payload);
+        }
+      }
+
+      if (metodeDiskon === 'kupon' && couponAktif?.kode) {
+        try {
+          await apiClient.patch(`/orders/${selectedOrder.id}/`, { kupon_kode: couponAktif.kode, metode_diskon: 'kupon' });
+        } catch (errKupon) {
+          alert(
+            'Nota tersimpan, tetapi kupon ditolak: ' +
+              (errKupon.response?.data?.error || errKupon.response?.data?.detail || 'syarat kupon tidak terpenuhi.')
+          );
+        }
+      }
+
+      // DP/uang muka tercatat sungguhan: selisih dari DP yang sudah tercatat dibayarkan lewat /bayar/
+      // (riwayat pembayaran, kas shift, jurnal, dan pembulatan), setelah total final dihitung server.
+      const dpBaru = Math.round(Number(editDp) || 0) - dpTercatat;
+      if (dpBaru > 0) {
+        try {
+          const resBayar = await apiClient.post(`/orders/${selectedOrder.id}/bayar/`, {
+            jumlah_bayar: dpBaru,
+            metode_pembayaran: metodePakai,
+            idempotency_key: globalThis.crypto?.randomUUID?.() || `dp-antrean-${Date.now()}-${Math.random()}`,
+            kirim_wa: kirimWaPelanggan,
+          });
+          setEditDp(resBayar.data?.dp_dibayar ?? editDp);
+        } catch (errBayar) {
+          alert(
+            'Nota tersimpan, tetapi DP belum tercatat: ' +
+              (errBayar.response?.data?.error || errBayar.response?.data?.detail || 'pembayaran gagal diproses.')
+          );
+          await fetchQueue();
+          return false;
         }
       }
 
@@ -896,6 +1047,56 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
                     />
                   </div>
 
+                  <div className="space-y-1.5">
+                    <span className="block">Diskon / Voucher</span>
+                    <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-lg">
+                      {[['tidak_ada', 'Tanpa'], ['otomatis', 'Diskon Penjualan'], ['kupon', 'Kupon / Voucher']].map(([nilai, label]) => (
+                        <button
+                          key={nilai}
+                          type="button"
+                          onClick={() => setMetodeDiskon(nilai)}
+                          className={`py-1 rounded-md text-[11px] font-bold cursor-pointer ${metodeDiskon === nilai ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    {metodeDiskon === 'kupon' && (
+                      <div className="space-y-1.5">
+                        {couponAktif && (
+                          <div className="flex justify-between text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-2 py-1">
+                            <span>{couponAktif.kode}{couponAktif.judul ? ` - ${couponAktif.judul}` : ''}</span>
+                            <span>-{formatCurrency(getKuponDiscountAmount())}</span>
+                          </div>
+                        )}
+                        <div className="flex gap-1.5">
+                          <input
+                            type="text"
+                            value={couponInput}
+                            onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                            placeholder="Kode kupon / voucher"
+                            className="flex-1 min-w-0 px-2 py-1 border border-slate-200 rounded-md font-bold text-slate-700 bg-white focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={applyCoupon}
+                            disabled={evaluatingCoupon || !couponInput.trim()}
+                            className="px-3 py-1 bg-emerald-600 text-white rounded-md font-bold disabled:opacity-50 cursor-pointer"
+                          >
+                            {evaluatingCoupon ? '...' : 'Pakai'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {metodeDiskon === 'otomatis' && (
+                      <p className="text-[11px] text-slate-500">
+                        {salesDiscountPreview?.diskon > 0
+                          ? `Diskon Penjualan aktif: -${formatCurrency(salesDiscountPreview.diskon)}`
+                          : 'Diskon Penjualan yang berlaku diterapkan otomatis saat nota disimpan.'}
+                      </p>
+                    )}
+                  </div>
+
                   <div className="flex justify-between font-black text-slate-800">
                     <span>Total Harga</span>
                     <span className="text-slate-900">{formatCurrency(getTotal())}</span>
@@ -912,17 +1113,39 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
                     />
                   </div>
 
+                  <p className="text-[11px] text-slate-500 -mt-1">
+                    Tercatat: {formatCurrency(Number(selectedOrder?.dp_dibayar) || 0)}. Kenaikan DP dicatat sebagai pembayaran baru saat nota disimpan.
+                  </p>
+                  {getDpBaru() > 0 && getPembulatanDpBaru() !== 0 && (
+                    <>
+                      <div className="flex justify-between">
+                        <span>Pembulatan DP baru ({formatCurrency(getDpBaru())})</span>
+                        <span>{getPembulatanDpBaru() > 0 ? '+' : '-'}{formatCurrency(Math.abs(getPembulatanDpBaru()))}</span>
+                      </div>
+                      <div className="flex justify-between font-black text-slate-800">
+                        <span>DP Dibayar Pelanggan</span>
+                        <span>{formatCurrency(getDpBaru() + getPembulatanDpBaru())}</span>
+                      </div>
+                    </>
+                  )}
+
                   <div className="flex items-center justify-between">
                     <span>Metode Pembayaran DP</span>
                     <select
-                      value={editMetode}
+                      value={metodePakai}
                       onChange={(e) => setEditMetode(e.target.value)}
                       className="bg-white border border-slate-200 rounded-md px-2 py-0.5 font-bold text-slate-700 focus:outline-none"
                     >
-                      <option value="tunai">Tunai / Cash</option>
-                      <option value="transfer">Transfer</option>
-                      <option value="debit">Debit</option>
-                      <option value="qris">QRIS</option>
+                      {adaMasterMetode ? (
+                        metodeMaster.map((m) => <option key={m.id} value={m.nama}>{m.nama}</option>)
+                      ) : (
+                        <>
+                          <option value="tunai">Tunai / Cash</option>
+                          <option value="transfer">Transfer</option>
+                          <option value="debit">Debit</option>
+                          <option value="qris">QRIS</option>
+                        </>
+                      )}
                     </select>
                   </div>
 
@@ -930,6 +1153,18 @@ export default function WaOrderQueue({ onToggleSidebar, sumber = 'wa', judulAntr
                     <span>Sisa Tagihan</span>
                     <span className="text-rose-600 font-extrabold text-sm">{formatCurrency(getSisaTagihan())}</span>
                   </div>
+                  {getPembulatanSisa() !== 0 && (
+                    <>
+                      <div className="flex justify-between">
+                        <span>Pembulatan (bila dilunasi)</span>
+                        <span>{getPembulatanSisa() > 0 ? '+' : '-'}{formatCurrency(Math.abs(getPembulatanSisa()))}</span>
+                      </div>
+                      <div className="flex justify-between font-black text-slate-800">
+                        <span>Dibayar Pelanggan</span>
+                        <span>{formatCurrency(Math.round(getSisaTagihan()) + getPembulatanSisa())}</span>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 

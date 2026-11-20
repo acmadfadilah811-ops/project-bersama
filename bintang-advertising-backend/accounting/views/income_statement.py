@@ -150,3 +150,44 @@ class CashFlowDetailView(APIView):
             page_size = 10
         date_from, date_to = resolve_date_range(request)
         return Response(get_cash_flow_detail(date_from, date_to, category, page=page, page_size=page_size))
+
+
+class CalkView(APIView):
+    """GET /api/accounting/reports/calk/?date_from=&date_to= -- draf Catatan atas Laporan Keuangan (SAK EP)."""
+
+    permission_classes = [IsOwnerManagerAdminOrFinanceRole]
+
+    def get(self, request):
+        from ..services.calk import susun_calk
+
+        date_from, date_to = resolve_date_range(request)
+        return Response(susun_calk(date_from, date_to))
+
+
+class TutupSaldoAwalView(APIView):
+    """POST /api/accounting/reports/tutup-saldo-awal/ {"akun_tujuan": id, "tanggal": "YYYY-MM-DD"}
+
+    Pindahkan saldo akun penyeimbang Saldo Awal ke Modal / Laba Ditahan (SAK EP, 2026-11-15)."""
+
+    def get_permissions(self):
+        from api.permissions import IsOwnerManagerOrSpvFinance
+
+        return [IsOwnerManagerOrSpvFinance()]
+
+    def post(self, request):
+        from django.core.exceptions import ValidationError
+
+        from ..models import Account
+        from ..services.opening_balance import tutup_saldo_awal
+
+        tujuan = Account.objects.filter(pk=request.data.get("akun_tujuan") or 0).first()
+        if tujuan is None:
+            return Response({"detail": ["Pilih akun ekuitas tujuan."]}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            tanggal = date.fromisoformat(str(request.data.get("tanggal") or timezone.localdate()))
+            entry = tutup_saldo_awal(target_account=tujuan, tanggal=tanggal, actor=request.user)
+        except ValueError:
+            return Response({"detail": ["Format tanggal harus YYYY-MM-DD."]}, status=status.HTTP_400_BAD_REQUEST)
+        except ValidationError as exc:
+            return Response({"detail": exc.messages}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"entry_number": entry.entry_number}, status=status.HTTP_201_CREATED)

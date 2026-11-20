@@ -8,7 +8,7 @@ import { notifySuccess, notifyApiError } from '../../../utils/notify';
 import { useUnitBisnisOptions } from '../../inventory/pages/components/UnitBisnisField';
 import InsentifProdukPanel from './InsentifProdukPanel';
 
-const FORM_KOSONG = { id: null, nama: '', nominal_default: '', unit_bisnis: '', divisi: [], keterangan: '', aktif: true };
+const FORM_KOSONG = { id: null, nama: '', cara_hitung: 'nominal', nominal_default: '', persen: '', unit_bisnis: '', divisi: [], keterangan: '', aktif: true };
 const rupiah = (n) => `Rp ${Number(n || 0).toLocaleString('id-ID')}`;
 
 /**
@@ -60,7 +60,9 @@ export default function JenisInsentif() {
     setSaving(true);
     const payload = {
       nama: form.nama.trim(),
-      nominal_default: parseInt(form.nominal_default || 0, 10),
+      cara_hitung: form.cara_hitung,
+      nominal_default: form.cara_hitung === 'persen' ? 0 : parseInt(form.nominal_default || 0, 10),
+      persen: form.cara_hitung === 'persen' ? String(form.persen || 0).replace(',', '.') : 0,
       unit_bisnis: form.unit_bisnis ? Number(form.unit_bisnis) : null,
       divisi: form.divisi,
       keterangan: form.keterangan.trim(),
@@ -159,7 +161,7 @@ export default function JenisInsentif() {
             <tr>
               <th className="text-left px-4 py-2.5">Nama</th>
               <th className="text-left px-4 py-2.5">Unit bisnis</th>
-              <th className="text-right px-4 py-2.5">Nominal standar</th>
+              <th className="text-right px-4 py-2.5">Nilai standar</th>
               <th className="text-left px-4 py-2.5">Divisi target</th>
               <th className="text-center px-4 py-2.5">Aktif</th>
               <th className="px-4 py-2.5" />
@@ -179,7 +181,11 @@ export default function JenisInsentif() {
                   {j.keterangan && <div className="text-[11px] font-normal text-slate-400">{j.keterangan}</div>}
                 </td>
                 <td className="px-4 py-3 text-xs text-slate-600">{j.unit_bisnis_nama || 'Semua unit'}</td>
-                <td className="px-4 py-3 text-right tabular-nums">{rupiah(j.nominal_default)}</td>
+                <td className="px-4 py-3 text-right tabular-nums">
+                  {j.cara_hitung === 'persen'
+                    ? <>{Number(j.persen)}%<span className="block text-[11px] text-slate-400">dari harga jual</span></>
+                    : rupiah(j.nominal_default)}
+                </td>
                 <td className="px-4 py-3">
                   {j.divisi_nama.length === 0 ? (
                     <span className="text-[11px] text-slate-400">Manual saja (tidak otomatis)</span>
@@ -198,7 +204,7 @@ export default function JenisInsentif() {
                   <div className="flex justify-end gap-1">
                     <button
                       type="button"
-                      onClick={() => setForm({ ...j, nominal_default: String(j.nominal_default), unit_bisnis: j.unit_bisnis ? String(j.unit_bisnis) : '' })}
+                      onClick={() => setForm({ ...j, nominal_default: String(j.nominal_default), persen: Number(j.persen) ? String(Number(j.persen)) : '', unit_bisnis: j.unit_bisnis ? String(j.unit_bisnis) : '' })}
                       className="p-1.5 rounded hover:bg-slate-100 text-slate-500"
                       aria-label={`Ubah ${j.nama}`}
                     >
@@ -248,17 +254,49 @@ export default function JenisInsentif() {
             </label>
 
             <label className="block space-y-1">
-              <span className="text-[11px] font-semibold text-slate-500 uppercase">Nominal standar (Rp)</span>
-              <input
-                required
-                type="number"
-                min="0"
-                value={form.nominal_default}
-                onChange={(e) => setForm({ ...form, nominal_default: e.target.value })}
-                className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-slate-500"
-              />
+              <span className="text-[11px] font-semibold text-slate-500 uppercase">Cara hitung</span>
+              <select
+                value={form.cara_hitung}
+                onChange={(e) => setForm({ ...form, cara_hitung: e.target.value })}
+                className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-slate-500 bg-white"
+              >
+                <option value="nominal">Nominal tetap (Rp)</option>
+                <option value="persen">Persen dari harga jual</option>
+              </select>
             </label>
             </div>
+
+            {form.cara_hitung === 'persen' ? (
+              <label className="block space-y-1">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase">Persen dari harga jual (%)</span>
+                <input
+                  required
+                  type="number"
+                  min="0.01"
+                  max="100"
+                  step="0.01"
+                  value={form.persen}
+                  onChange={(e) => setForm({ ...form, persen: e.target.value })}
+                  placeholder="mis. 2,5"
+                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-slate-500"
+                />
+                <span className="block text-[11px] text-slate-400">
+                  Dihitung dari harga jual baris pesanan atau kasir yang jadi SPK, saat SPK terbit.
+                </span>
+              </label>
+            ) : (
+              <label className="block space-y-1">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase">Nominal standar (Rp)</span>
+                <input
+                  required
+                  type="number"
+                  min="0"
+                  value={form.nominal_default}
+                  onChange={(e) => setForm({ ...form, nominal_default: e.target.value })}
+                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-slate-500"
+                />
+              </label>
+            )}
 
             <label className="block space-y-1">
               <span className="text-[11px] font-semibold text-slate-500 uppercase">Unit bisnis</span>

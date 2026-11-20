@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import apiClient from '../../../api/apiClient';
 import SandiChecklist from '../../auth/components/SandiChecklist';
@@ -80,7 +80,7 @@ const TABS = [
     icon: User,
     roles: ['owner', 'manager', 'admin', 'staff'],
   },
-  { id: 'karyawan', label: 'Karyawan', icon: Users, roles: ['owner', 'manager'] },
+  { id: 'karyawan', label: 'Karyawan', icon: Users, roles: ['owner', 'manager', 'admin'] },
   { id: 'bisnis', label: 'Pengaturan Bisnis', icon: Building2, roles: ['owner', 'manager'] },
   { id: 'hak-akses', label: 'Hak Akses', icon: Shield, roles: ['owner', 'manager'] },
   { id: 'keamanan', label: 'Keamanan', icon: Lock, roles: ['owner'] },
@@ -205,6 +205,40 @@ export default function Settings() {
       setEmpLoading(false);
     }
   };
+
+  // Pencarian, filter & urutan daftar Karyawan (2026-10-22).
+  const [cariKaryawan, setCariKaryawan] = useState('');
+  const [filterPeran, setFilterPeran] = useState('');
+  const [filterUnit, setFilterUnit] = useState('');
+  const [filterDivisi, setFilterDivisi] = useState('');
+  const [filterStatus, setFilterStatus] = useState('aktif');
+  const [urutKaryawan, setUrutKaryawan] = useState('peran');
+  const URUTAN_PERAN = ['owner', 'manager', 'admin', 'admin_finance', 'spv_finance', 'spv', 'kordiv', 'kasir', 'staff'];
+  const daftarPeran = useMemo(() => [...new Set(employees.map((e) => e.role).filter(Boolean))]
+    .sort((a, b) => URUTAN_PERAN.indexOf(a) - URUTAN_PERAN.indexOf(b)), [employees]); // eslint-disable-line react-hooks/exhaustive-deps
+  const daftarDivisi = useMemo(() => [...new Set(employees.map((e) => e.divisi_nama).filter(Boolean))].sort(), [employees]);
+  const karyawanTampil = useMemo(() => {
+    const kata = cariKaryawan.trim().toLowerCase();
+    const namaOf = (e) => (e.nama_lengkap || e.username || '').toLowerCase();
+    const posisiPeran = (r) => { const i = URUTAN_PERAN.indexOf(r); return i === -1 ? 99 : i; };
+    const hasil = employees.filter((e) => {
+      if (filterStatus === 'aktif' && (!e.is_active || e.diarsipkan)) return false;
+      if (filterStatus === 'nonaktif' && e.is_active && !e.diarsipkan) return false;
+      if (filterPeran && e.role !== filterPeran) return false;
+      if (filterUnit === 'none' ? e.unit_bisnis : filterUnit && String(e.unit_bisnis) !== filterUnit) return false;
+      if (filterDivisi && e.divisi_nama !== filterDivisi) return false;
+      if (!kata) return true;
+      return [e.nama_lengkap, e.username, e.email, e.no_hp, e.divisi_nama, e.posisi].some((v) => (v || '').toLowerCase().includes(kata));
+    });
+    const banding = {
+      nama: (a, b) => namaOf(a).localeCompare(namaOf(b)),
+      peran: (a, b) => posisiPeran(a.role) - posisiPeran(b.role) || namaOf(a).localeCompare(namaOf(b)),
+      unit: (a, b) => (a.unit_bisnis_nama || 'zzz').localeCompare(b.unit_bisnis_nama || 'zzz') || posisiPeran(a.role) - posisiPeran(b.role) || namaOf(a).localeCompare(namaOf(b)),
+      divisi: (a, b) => (a.divisi_nama || 'zzz').localeCompare(b.divisi_nama || 'zzz') || namaOf(a).localeCompare(namaOf(b)),
+      terbaru: (a, b) => (b.id || 0) - (a.id || 0),
+    }[urutKaryawan];
+    return [...hasil].sort(banding);
+  }, [employees, cariKaryawan, filterPeran, filterUnit, filterDivisi, filterStatus, urutKaryawan]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchUnitBisnis = async () => {
     try {
@@ -1167,21 +1201,65 @@ export default function Settings() {
             <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2">
               <Users size={16} className="text-indigo-600" />
               <h3 className="font-semibold text-slate-800">Daftar Karyawan</h3>
-              <span className="text-xs bg-indigo-100 text-indigo-600 px-2 py-0.5 rounded-full font-medium ml-1">
-                {employees.length} orang
+              <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium ml-1">
+                {karyawanTampil.length} dari {employees.length} orang
               </span>
+            </div>
+
+            {/* Pencarian, filter & urutan (2026-10-22) */}
+            <div className="px-6 py-3 border-b border-slate-100 flex flex-wrap items-center gap-2 text-xs">
+              <input
+                value={cariKaryawan}
+                onChange={(e) => setCariKaryawan(e.target.value)}
+                placeholder="Cari nama, username, email, HP…"
+                className="h-8 w-56 rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-slate-400"
+              />
+              <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="h-8 rounded-lg border border-slate-200 px-2 bg-white">
+                <option value="aktif">Status: Aktif</option>
+                <option value="nonaktif">Status: Nonaktif / Arsip</option>
+                <option value="semua">Status: Semua</option>
+              </select>
+              <select value={filterPeran} onChange={(e) => setFilterPeran(e.target.value)} className="h-8 rounded-lg border border-slate-200 px-2 bg-white capitalize">
+                <option value="">Semua peran</option>
+                {daftarPeran.map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
+              <select value={filterUnit} onChange={(e) => setFilterUnit(e.target.value)} className="h-8 rounded-lg border border-slate-200 px-2 bg-white">
+                <option value="">Semua unit</option>
+                {unitBisnisList.map((u) => <option key={u.id} value={String(u.id)}>{u.nama}</option>)}
+                <option value="none">Belum ada unit</option>
+              </select>
+              <select value={filterDivisi} onChange={(e) => setFilterDivisi(e.target.value)} className="h-8 rounded-lg border border-slate-200 px-2 bg-white">
+                <option value="">Semua divisi</option>
+                {daftarDivisi.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+              <select value={urutKaryawan} onChange={(e) => setUrutKaryawan(e.target.value)} className="h-8 rounded-lg border border-slate-200 px-2 bg-white">
+                <option value="peran">Urut: Peran</option>
+                <option value="nama">Urut: Nama A-Z</option>
+                <option value="unit">Urut: Unit bisnis</option>
+                <option value="divisi">Urut: Divisi</option>
+                <option value="terbaru">Urut: Terbaru</option>
+              </select>
+              {(cariKaryawan || filterPeran || filterUnit || filterDivisi || filterStatus !== 'aktif') && (
+                <button
+                  type="button"
+                  onClick={() => { setCariKaryawan(''); setFilterPeran(''); setFilterUnit(''); setFilterDivisi(''); setFilterStatus('aktif'); }}
+                  className="h-8 rounded-lg px-2 font-semibold text-slate-500 hover:text-slate-800"
+                >
+                  Reset
+                </button>
+              )}
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left min-w-[560px]">
                 <thead>
                   <tr className="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                    <th className="px-6 py-3">ID</th>
-                    <th className="px-6 py-3">Username</th>
+                    <th className="px-6 py-3">Nama</th>
                     <th className="px-6 py-3">Email</th>
                     <th className="px-6 py-3">Role</th>
-                    <th className="px-6 py-3">No HP</th>
+                    <th className="px-6 py-3">Unit</th>
                     <th className="px-6 py-3">Divisi</th>
+                    <th className="px-6 py-3">No HP</th>
                     <th className="px-6 py-3">Aksi</th>
                   </tr>
                 </thead>
@@ -1195,15 +1273,18 @@ export default function Settings() {
                         </div>
                       </td>
                     </tr>
-                  ) : employees.length > 0 ? (
-                    employees.map((emp) => (
+                  ) : karyawanTampil.length > 0 ? (
+                    karyawanTampil.map((emp) => (
                       <tr
                         key={emp.id}
                         className="border-t border-slate-100 hover:bg-slate-50 transition-colors"
                       >
-                        <td className="px-6 py-4 text-sm text-slate-400 font-mono">#{emp.id}</td>
-                        <td className="px-6 py-4 text-sm font-semibold text-slate-800">
-                          {emp.username}
+                        <td className="px-6 py-4 text-sm">
+                          <p className="font-semibold text-slate-800">{emp.nama_lengkap || emp.username}</p>
+                          <p className="text-xs text-slate-400">
+                            {emp.username}
+                            {(!emp.is_active || emp.diarsipkan) && <span className="ml-1 font-semibold text-rose-500">· {emp.diarsipkan ? 'arsip' : 'nonaktif'}</span>}
+                          </p>
                         </td>
                         <td className="px-6 py-4 text-sm text-slate-500">{emp.email || '–'}</td>
                         <td className="px-6 py-4 text-sm">
@@ -1214,10 +1295,11 @@ export default function Settings() {
                             {emp.role || 'staff'}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-sm text-slate-500">{emp.no_hp || '–'}</td>
+                        <td className="px-6 py-4 text-sm text-slate-500">{emp.unit_bisnis_nama || '–'}</td>
                         <td className="px-6 py-4 text-sm text-slate-500">
                           {emp.divisi_nama || '–'}
                         </td>
+                        <td className="px-6 py-4 text-sm text-slate-500">{emp.no_hp || '–'}</td>
                         <td className="px-6 py-4 text-sm">
                           <div className="flex items-center gap-2">
                             {/* Sembunyikan tombol jika target memiliki role owner/manager dan role kita bukan owner */}
@@ -1256,7 +1338,7 @@ export default function Settings() {
                   ) : (
                     <tr>
                       <td colSpan="7" className="px-6 py-12 text-center text-sm text-slate-400">
-                        Belum ada data karyawan.
+                        {employees.length ? 'Tidak ada karyawan yang cocok dengan filter.' : 'Belum ada data karyawan.'}
                       </td>
                     </tr>
                   )}

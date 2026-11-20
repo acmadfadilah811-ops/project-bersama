@@ -4,12 +4,15 @@ from . import views
 from .views.pengembalian_job import KembalikanJobView, PengembalianJobListView, KeputusanPengembalianView
 from .views.hr_hapus_bridge import HRBridgeHapusAkunView
 from .views.hr_sandi_bridge import HRBridgeSandiView
+from .views.hr_uang_makan_bridge import HRBridgeUangMakanView
+from .views.hr_aset_bridge import HRBridgeAsetView
 from .views.hr_foto_bridge import HRBridgeFotoView
 from .views.resi_digital import AspekSurveiViewSet, ResiPublikView, ResiSurveiView, SurveiKepuasanView
 from .views.starfoto import (
     AntreanSesiView, JadwalSesiView, PaketFotoViewSet, PengaturanStarfotoView, PesananFotoViewSet, SesiAksiView,
     SesiJadwalView, SesiSayaView, SesiTerlewatView, UsulanTambahanDetailView,
 )
+from .views.web_push import KunciPublikPushView, LanggananPushView
 from .views.dinas_luar import DinasLuarAktifView, DinasLuarListView, DinasLuarMulaiView, DinasLuarSelesaiView
 from .views.starfoto_approval import (
     ApprovalFotoBerkasView, ApprovalPublikView, ApprovalStaffView, ApprovalTertundaView, EditFotoAntreanView,
@@ -18,7 +21,7 @@ from .views.starfoto_approval import (
 from .views.hr_kredensial_bridge import HRBridgeKredensialView
 from .views.hr_organisasi_bridge import HROrganisasiView
 from .views.insentif import JenisInsentifViewSet, InsentifProdukViewSet, JobInsentifView, InsentifPekerjaanDetailView
-from .views import DashboardView, LeaderboardStaffView, CreateUserView, AssignOrderView, ForwardJobView, InventoryRestockView, JobMaterialDeductView, EvolutionWebhookView, BusinessSettingsView, StaffPerformanceReportView, HealthCheckView, KomplainViewSet, ContactStatsView, ProductionCustomerLiteView
+from .views import DashboardView, DashboardPenjualanView, LeaderboardStaffView, CreateUserView, AssignOrderView, ForwardJobView, InventoryRestockView, JobMaterialDeductView, EvolutionWebhookView, BusinessSettingsView, StaffPerformanceReportView, HealthCheckView, KomplainViewSet, ContactStatsView, ProductionCustomerLiteView
 from .export_views import ExportOrdersView, ExportInventoryView, ExportJobsView, ExportContactsView, ExportAbsensiView, ExportStaffPerformanceView, ExportStockMovementView, ExportCustomersView, ExportProductsView, ExportCustomerNotesView, ExportCashTransactionsView, ExportSalesItemsByBrandView, ExportSalesDetailsView
 from . import product_views
 from . import production_views
@@ -133,6 +136,7 @@ router.register(r'suppliers', customer_views.SupplierViewSet, basename='supplier
 from . import ai_business_analyst_views
 from . import executive_dashboard_views
 from .views.insights import CombinedInsightsView
+from .views.kpi import KpiSayaView, MetrikKpiBridgeView
 from .views import finance_dashboard as finance_dashboard_views
 from . import pos_views
 router.register(r'pos/sales', pos_views.POSSaleViewSet, basename='pos-sale')
@@ -153,6 +157,7 @@ urlpatterns = [
     path('', include(router.urls)),
     path('dashboard/', DashboardView.as_view(), name='dashboard'),
     path('dashboard/leaderboard/', LeaderboardStaffView.as_view(), name='dashboard-leaderboard'),
+    path('dashboard/penjualan/', DashboardPenjualanView.as_view(), name='dashboard-penjualan'),
     # Dashboard eksekutif (manajemen) — terpisah dari dashboard operasional di atas.
     path('executive-dashboard/', executive_dashboard_views.ExecutiveDashboardView.as_view(), name='executive-dashboard'),
     path('executive-dashboard/export/', executive_dashboard_views.ExecutiveDashboardExportView.as_view(), name='executive-dashboard-export'),
@@ -234,6 +239,8 @@ urlpatterns = [
     path('bridge/hr-employee-hapus/', HRBridgeHapusAkunView.as_view(), name='hr-bridge-hapus-akun'),
     path('bridge/hr-employee-kredensial/', HRBridgeKredensialView.as_view(), name='hr-bridge-kredensial'),
     path('bridge/hr-employee-sandi/', HRBridgeSandiView.as_view(), name='hr-bridge-sandi'),
+    path('bridge/hr-uang-makan/', HRBridgeUangMakanView.as_view(), name='hr-bridge-uang-makan'),
+    path('bridge/hr-aset/', HRBridgeAsetView.as_view(), name='hr-bridge-aset'),
     path('bridge/hr-employee-foto/', HRBridgeFotoView.as_view(), name='hr-bridge-foto'),
     # Struk online + survei kepuasan (publik, token bertanda tangan) -- 2026-10-06.
     path('resi/<str:token>/', ResiPublikView.as_view(), name='resi-publik'),
@@ -244,6 +251,9 @@ urlpatterns = [
     path('starfoto/usulan/<int:pk>/', UsulanTambahanDetailView.as_view(), name='starfoto-usulan'),
     path('starfoto/sesi-saya/', SesiSayaView.as_view(), name='starfoto-sesi-saya'),
     path('starfoto/sesi-terlewat/', SesiTerlewatView.as_view(), name='starfoto-sesi-terlewat'),
+    # Notifikasi Web Push per perangkat (2026-10-21).
+    path('push/kunci-publik/', KunciPublikPushView.as_view(), name='push-kunci-publik'),
+    path('push/langganan/', LanggananPushView.as_view(), name='push-langganan'),
     path('starfoto/sesi/<int:pk>/jadwal/', SesiJadwalView.as_view(), name='starfoto-sesi-jadwal'),
     path('starfoto/sesi/<int:pk>/<str:aksi>/', SesiAksiView.as_view(), name='starfoto-sesi-aksi'),
     path('starfoto/jadwal/', JadwalSesiView.as_view(), name='starfoto-jadwal'),
@@ -267,6 +277,8 @@ urlpatterns = [
     path('bridge/hr-employee-status/', HRBridgeSetStatusView.as_view(), name='hr-bridge-set-status'),
     path('bridge/absensi-status/', AbsensiStatusView.as_view(), name='hr-bridge-absensi-status'),
     path('bridge/kinerja-staff/', KinerjaStaffView.as_view(), name='hr-bridge-kinerja-staff'),
+    path('bridge/metrik-kpi/', MetrikKpiBridgeView.as_view(), name='hr-bridge-metrik-kpi'),
+    path('kpi-saya/', KpiSayaView.as_view(), name='kpi-saya'),
     path('bridge/tanggungan-reorder/', TanggunganReorderBridgeView.as_view(), name='hr-bridge-tanggungan-reorder'),
     path('bridge/tanggungan-reorder/tandai/', TanggunganReorderTandaiBridgeView.as_view(), name='hr-bridge-tanggungan-reorder-tandai'),
     path('bridge/notifikasi-keuangan/', NotifikasiKeuanganBridgeView.as_view(), name='hr-bridge-notifikasi-keuangan'),

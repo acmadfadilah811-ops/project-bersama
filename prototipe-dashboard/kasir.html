@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kasir</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com/3.4.5"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: { sans: ['Inter', '"Open Sans"', 'Arial', 'sans-serif'] },
+        colors: {
+          brand: { DEFAULT: '#04C99E', dark: '#10AF8C', soft: '#E6F9F4', bar: '#1FD5A9' },
+          ink: { DEFAULT: '#272A2A', 2: '#404545', 3: '#585F5F', 4: '#777777' },
+          line: '#EEEEEE', page: '#F6F7F7', accent: '#F5D90A', danger: '#E5333F'
+        }
+      }
+    }
+  }
+</script>
+<style>
+  /* 1rem = 16px tetap, walau ukuran font default browser diubah */
+  html { font-size: 16px; }
+  html, body { font-family: Inter, "Open Sans", Arial, sans-serif; color: #272A2A; background: #F6F7F7; height: 100%; }
+  .card { background:#fff; border-radius:8px; box-shadow: rgba(0,0,0,.07) 0 1px 1px 0, rgba(0,0,0,.05) 0 1px 3px 0; }
+  .lucide { width:20px; height:20px; stroke-width:1.75; }
+  .lucide.ic-sm { width:16px; height:16px; }
+  .dropdown { background:#fff; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,.12); }
+  .seg button { padding:7px 18px; font-size:14px; color:#272A2A; white-space:nowrap; }
+  .seg button.active { background:#04C99E; color:#fff; }
+  .chip { height:32px; padding:0 14px; border-radius:999px; border:1px solid #D6D9D9; font-size:13px; font-weight:500; background:#fff; white-space:nowrap; }
+  .chip.active { background:#E6F9F4; border-color:#04C99E; color:#10AF8C; }
+  .tbl th { font-size:12px; font-weight:600; text-transform:uppercase; text-align:left; padding:12px; border-bottom:1px solid #EEEEEE; }
+  .tbl td { font-size:14px; padding:12px; border-bottom:1px solid #EEEEEE; }
+  .fin { width:100%; min-height:40px; border:1px solid #D6D9D9; border-radius:6px; padding:0 16px; font-size:14px; background:#fff; color:#272A2A; }
+  textarea.fin { padding:10px 16px; resize:vertical; }
+  .fin:focus, .fin:focus-within { outline:none; border-color:#04C99E; }
+  .fin:disabled { background:#F2F2F2; color:#A0A6A6; }
+  .fin.ferr { border-color:#E5333F; }
+  .fmsg { color:#E5333F; font-size:12px; margin-top:6px; }
+  .fsel { appearance:none; padding-right:40px; background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M0 0h12L6 8z' fill='%23272A2A'/%3E%3C/svg%3E") no-repeat right 16px center; }
+  .sw { width:56px; height:24px; border-radius:999px; background:#D6D9D9; position:relative; color:#fff; font-size:11px; font-weight:700; }
+  .sw::before { content:''; position:absolute; top:3px; left:3px; width:18px; height:18px; border-radius:50%; background:#fff; transition:left .15s; }
+  .sw::after { content:'OFF'; position:absolute; right:8px; top:4px; }
+  .sw[data-on="1"] { background:#04C99E; }
+  .sw[data-on="1"]::before { left:35px; }
+  .sw[data-on="1"]::after { content:'ON'; left:8px; right:auto; }
+  .rcard { display:flex; align-items:center; gap:12px; border:1px solid #D6D9D9; border-radius:6px; padding:0 16px; min-height:40px; font-size:14px; cursor:pointer; }
+  .rcard:has(input:checked) { border-color:#04C99E; }
+  .kat-btn { display:block; width:100%; text-align:left; padding:10px 12px; font-size:13px; border:1px solid transparent; }
+  .kat-btn.active { border-color:#04C99E; background:#E6F9F4; font-weight:600; }
+  .pinkey { height:56px; font-size:20px; font-weight:500; border-radius:8px; }
+  .pinkey:hover { background:#F2F2F2; }
+  .struk { font-family: ui-monospace, Menlo, Consolas, monospace; font-size:12px; line-height:18px; }
+  @media print {
+    body * { visibility:hidden; }
+    #printArea, #printArea * { visibility:visible; }
+    #printArea { position:absolute; left:0; top:0; width:280px; }
+  }
+</style>
+</head>
+<body class="antialiased overflow-hidden">
+<!-- seluruh layar kasir digambar kasir.js (layar PIN, kasir, daftar order, pembayaran, laporan) -->
+<div id="app" class="h-full"></div>
+
+<script src="https://unpkg.com/lucide@0.383.0/dist/umd/lucide.min.js"></script>
+<script src="store.js"></script>
+<script src="ui.js"></script>
+<script src="kasir.js"></script>
+</body>
+</html>

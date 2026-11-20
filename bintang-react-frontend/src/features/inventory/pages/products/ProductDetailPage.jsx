@@ -11,6 +11,7 @@ import ProductSeriTab from './ProductSeriTab';
 import ProductSpesifikasiTab from './ProductSpesifikasiTab';
 import ProductSatuanTab from './ProductSatuanTab';
 import { uiConfirm } from '../../../../utils/dialog';
+import { hapusProduk } from '../../hapusProduk';
 
 const DETAIL_TABS = [
   { id: 'profil', label: 'Profil' },
@@ -908,12 +909,12 @@ export default function ProductDetailPage({ product, onBack, onUpdated, categori
   const handleDeleteProduct = async () => {
     if (!(await uiConfirm('Apakah Anda yakin ingin menghapus produk ini?'))) return;
     try {
-      await apiClient.delete(`/products/${product.id}/`);
+      await hapusProduk(product.id);
       alert('Produk berhasil dihapus!');
       onBack?.();
     } catch (err) {
       console.error('[ProductDetailPage] handleDeleteProduct error:', err);
-      alert('Gagal menghapus produk.');
+      alert(err.message || 'Gagal menghapus produk.');
     }
   };
 

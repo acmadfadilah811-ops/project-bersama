@@ -49,6 +49,7 @@ export function itemUntukCetak(items, cfg) {
     if (ada) {
       ada.qty = Number(ada.qty || 0) + Number(item.qty || 0);
       ada.subtotal = Number(ada.subtotal || 0) + Number(item.subtotal || 0);
+      ada.pembulatan = Number(ada.pembulatan || 0) + Number(item.pembulatan || 0);
       ada.addons = [...(ada.addons || []), ...(item.addons || [])];
     } else {
       gabung.set(kunci, { ...item, addons: [...(item.addons || [])] });
@@ -56,6 +57,19 @@ export function itemUntukCetak(items, cfg) {
   });
   return [...gabung.values()];
 }
+
+// Pembulatan "per item" (Pengaturan POS > Pembulatan): yang ditagih untuk satu baris = subtotal + pembulatan baris.
+// Struk lama / mode per nota tidak punya pembulatan baris (0), jadi hasilnya sama dengan sebelumnya.
+export const nilaiBarisCetak = (item) => Number(item?.subtotal ?? item?.hargaTotal ?? 0) + Number(item?.pembulatan || 0);
+
+const jumlahPembulatanBaris = (receipt) => (Array.isArray(receipt?.items) ? receipt.items : [])
+  .reduce((jumlah, item) => jumlah + Number(item?.pembulatan || 0), 0);
+
+/** Subtotal sebagaimana tercetak: jumlah baris yang sudah dibulatkan. */
+export const subtotalCetak = (receipt) => Number(receipt?.subtotal || 0) + jumlahPembulatanBaris(receipt);
+
+/** Sisa pembulatan tingkat nota (karena diskon/pajak); pembulatan baris sudah ada di tiap baris. */
+export const pembulatanNotaCetak = (receipt) => Math.round((Number(receipt?.pembulatan || 0) - jumlahPembulatanBaris(receipt)) * 100) / 100;
 
 export function totalQtyItem(items) {
   return (items || []).reduce((jumlah, item) => jumlah + Number(item.qty || 0), 0);

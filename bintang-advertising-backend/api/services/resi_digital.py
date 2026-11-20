@@ -173,7 +173,7 @@ def data_resi_order(order):
         'kembalian': 0,
         'sisa_tagihan': _angka(order.sisa_tagihan),
         'pembayaran': [
-            {'waktu': p.dibuat_pada.isoformat(), 'metode': p.metode_pembayaran, 'jumlah': p.jumlah, 'dp': p.is_dp}
+            {'waktu': p.dibuat_pada.isoformat(), 'metode': p.metode_pembayaran, 'jumlah': p.jumlah, 'pembulatan': p.pembulatan, 'dp': p.is_dp}
             for p in order.payments.order_by('dibuat_pada')
         ],
     }

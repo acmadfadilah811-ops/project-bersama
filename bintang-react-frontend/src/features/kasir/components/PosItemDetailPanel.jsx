@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, BadgePercent, Image, Calculator, Plus, PackagePlus, Trash2, PlusCircle } from 'lucide-react';
 import DeleteConfirmModal from './DeleteConfirmModal';
 import NumericInput from '../../../components/NumericInput';
+import { formatLuas, hargaSatuanMeteran, hitungLuas } from '../../../utils/meteran';
 
 // Satu produk (meteran ATAU unit biasa) bisa dibeli beberapa kali dalam satu
 // transaksi dengan detail berbeda-beda per unit — meteran butuh ukuran (P x
@@ -131,12 +132,16 @@ export default function PosItemDetailPanel({ item, addons = [], onSave, onAddMor
   const rowsComputed = rows.map((row) => {
     const p = tipeHitung === 'meteran' ? (parseFloat(row.panjang) || 0) : 0;
     const l = tipeHitung === 'meteran' ? (parseFloat(row.lebar) || 0) : 0;
-    const luas = tipeHitung === 'meteran' ? Math.round(p * l * 100) / 100 : 0;
+    // Luas TIDAK dibulatkan ke 2 desimal: server menghitung P x L persis (lihat utils/meteran.js).
+    const luas = tipeHitung === 'meteran' ? hitungLuas(p, l) : 0;
     const hargaSatuan = tipeHitung === 'meteran'
-      ? Math.round(luas * (parseFloat(hargaPerM2) || 0))
+      ? hargaSatuanMeteran(luas, hargaPerM2)
       : (parseFloat(harga) || 0);
     const rowFinishing = parseFloat(row.finishingBiaya) || 0;
-    const rowQty = Math.max(1, parseInt(row.qty || 1));
+    // Qty boleh pakai koma, mis. produk Custom: qty = nominal / harga satuan. Produk tanpa pelacakan stok 4 angka
+    // di belakang koma, produk berstok 2 angka (sama dengan server).
+    const presisiQty = item?.product?.lacak_inventori === false ? 10000 : 100;
+    const rowQty = Math.max(1 / presisiQty, Math.round((parseFloat(row.qty) || 1) * presisiQty) / presisiQty);
     return {
       p, l, luas, hargaSatuan, rowQty,
       subtotal: (hargaSatuan + rowFinishing) * rowQty,
@@ -350,8 +355,9 @@ export default function PosItemDetailPanel({ item, addons = [], onSave, onAddMor
                       <label className="text-[9px] font-bold text-slate-500 block mb-0.5">Qty</label>
                       <NumericInput
                         value={row.qty}
-                        min={1}
-                        onChange={(val) => updateRow(idx, 'qty', Math.max(1, val))}
+                        min={0.01}
+                        allowDecimal
+                        onChange={(val) => updateRow(idx, 'qty', val)}
                         className="w-full bg-white px-2 py-1.5 border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-500"
                       />
                     </div>
@@ -363,10 +369,14 @@ export default function PosItemDetailPanel({ item, addons = [], onSave, onAddMor
                     <label className="text-[9px] font-bold text-slate-500 block mb-0.5">Qty</label>
                     <NumericInput
                       value={row.qty}
-                      min={1}
-                      onChange={(val) => updateRow(idx, 'qty', Math.max(1, val))}
+                      min={0.01}
+                      allowDecimal
+                      onChange={(val) => updateRow(idx, 'qty', val)}
                       className="w-24 bg-white px-2 py-1.5 border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:border-blue-500"
                     />
+                    <span className="block text-[9px] font-semibold text-slate-400 mt-0.5">
+                      Boleh koma, mis. 2,5 (maks. {item?.product?.lacak_inventori === false ? 4 : 2} angka di belakang koma)
+                    </span>
                   </div>
                 )}
 
@@ -454,7 +464,7 @@ export default function PosItemDetailPanel({ item, addons = [], onSave, onAddMor
                 })()}
 
                 <div className="flex justify-between items-center text-[10px] text-slate-500 font-semibold pt-1 border-t border-blue-100">
-                  {tipeHitung === 'meteran' && <span>{rowsComputed[idx]?.luas || 0} m² / lembar</span>}
+                  {tipeHitung === 'meteran' && <span>{formatLuas(rowsComputed[idx]?.luas)} m² / lembar</span>}
                   <span className="font-black text-blue-700 ml-auto">
                     Rp {(rowsComputed[idx]?.subtotal || 0).toLocaleString('id-ID')}
                   </span>
@@ -474,7 +484,7 @@ export default function PosItemDetailPanel({ item, addons = [], onSave, onAddMor
           {tipeHitung === 'meteran' && (
             <div className="flex justify-between items-center bg-blue-50 p-2 rounded-lg border border-blue-200 text-xs">
               <span className="font-semibold text-slate-600">Total Luas Semua Baris:</span>
-              <span className="font-black text-blue-700">{Math.round(totalLuasSemuaBaris * 100) / 100} m²</span>
+              <span className="font-black text-blue-700">{formatLuas(totalLuasSemuaBaris)} m²</span>
             </div>
           )}
 

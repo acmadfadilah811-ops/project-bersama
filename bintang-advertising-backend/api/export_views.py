@@ -7,6 +7,7 @@ from api.permissions import IsOwnerOrManager, CanExportFinanceData
 from rest_framework.response import Response
 from rest_framework.negotiation import DefaultContentNegotiation
 from .models import Order, InventoryItem, JobBoard, Contact
+from .qty_format import qty_json, tampil_qty
 from .customer_models import Customer
 from django.utils import timezone
 
@@ -182,7 +183,7 @@ class ExportOrdersView(APIView):
             for order in orders_qs:
                 items = order.items.all()
                 products = ", ".join([it.jenis_produk for it in items])
-                quantities = ", ".join([str(it.qty) for it in items])
+                quantities = ", ".join([tampil_qty(it.qty) for it in items])
                 
                 pics = set()
                 for it in items:
@@ -455,7 +456,7 @@ class ExportStaffPerformanceView(APIView):
                     job.order_item.order.nama if job.order_item and job.order_item.order else '-',
                     job.order_item.jenis_produk if job.order_item else '-',
                     job.order_item.bahan if job.order_item else '-',
-                    job.order_item.qty if job.order_item else 1,
+                    qty_json(job.order_item.qty) if job.order_item else 1,
                     job.tahap.divisi.nama if job.tahap and job.tahap.divisi else '-',
                     job.tahap.nama if job.tahap else '-',
                     job.pic_staff.username if job.pic_staff else '-',

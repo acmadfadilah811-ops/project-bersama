@@ -105,11 +105,17 @@ export default function PosTerminal({ onToggleSidebar }) {
     setSelectedCoupon,
     metodeDiskon,
     setMetodeDiskon,
+    diskonManual,
+    setDiskonManual,
     selectedRedemption,
     setSelectedRedemption,
     taxPercent,
     cartNotes,
     getTotal,
+    getPembulatan,
+    getPembulatanBayar,
+    getTagihBaris,
+    getPembulatanBarisTotal,
     getSubtotal,
     getTaxAmount,
     setCartNotes,
@@ -570,11 +576,26 @@ export default function PosTerminal({ onToggleSidebar }) {
     setShowEditModal(true);
   };
 
-  const handleDeleteCustomerProfile = async (customer) => {
-    if ((await uiConfirm(`Hapus/lepas pelanggan ${customer?.nama || ''}?`))) {
-      if (selectedContact?.nomor_wa && selectedContact.nomor_wa === customer?.nomor_wa) {
+  // Hapus pelanggan sungguhan (2026-10-27): dulu hanya melepas pilihan di layar. Server menolak bila
+  // pelanggan sudah punya transaksi (riwayat penjualan tidak boleh yatim) dan pesannya ditampilkan.
+  const handleDeleteCustomerProfile = async (customer, kind) => {
+    if (!customer) return;
+    const nama = customer.nama || customer.nomor_wa || 'pelanggan ini';
+    if (!(await uiConfirm(`Hapus pelanggan ${nama}?`))) return;
+    try {
+      if (kind === 'contact') {
+        await apiClient.delete(`/contacts/${encodeURIComponent(customer.nomor_wa)}/`);
+      } else {
+        await apiClient.delete(`/customers/${customer.id}/`);
+      }
+      if (selectedContact?.nomor_wa && selectedContact.nomor_wa === customer.nomor_wa) {
         setSelectedContact(null);
       }
+      notifySuccess('Pelanggan dihapus', nama);
+      fetchContacts();
+      fetchCustomerPage(customerPage, customerSearch.trim());
+    } catch (err) {
+      notifyApiError(err, 'Gagal menghapus pelanggan.');
     }
   };
 
@@ -684,6 +705,7 @@ export default function PosTerminal({ onToggleSidebar }) {
 
       if (customerId) {
         await apiClient.patch(`/customers/${customerId}/`, {
+          nama: updatedData.nama,
           customer_group: updatedData.tipe_pelanggan || null,
           email: updatedData.email,
           handphone: updatedData.telepon,
@@ -769,6 +791,9 @@ export default function PosTerminal({ onToggleSidebar }) {
         dilayani_oleh_id: selectedPelayanId || null,
         metode_diskon: metodeDiskon,
         kupon_kode: selectedCoupon?.kode || undefined,
+        ...(metodeDiskon === 'manual'
+          ? { diskon_manual_tipe: diskonManual.tipe, diskon_manual_nilai: diskonManual.nilai }
+          : {}),
         loyalty_redemption_id: selectedRedemption?.id || undefined,
         spk: spkPayload,
         // Sebelumnya cuma dikirim di alur DP (/orders/checkout-pos/) --
@@ -794,11 +819,13 @@ export default function PosTerminal({ onToggleSidebar }) {
         payAmount: Number(res.data.dibayar),
         changeAmount: Number(res.data.kembalian),
         method: res.data.metode_bayar,
-        items: cart.map((item) => ({
+        items: cart.map((item, idx) => ({
           ...item,
           nama_snapshot: item.nama,
           harga_snapshot: Math.round(Number(item.hargaTotal ?? (item.harga * item.qty)) / (Number(item.qty) || 1)),
           subtotal: Number(item.hargaTotal ?? (item.harga * item.qty)),
+          // Pembulatan per item: selisih baris sebagaimana disimpan server (urutan sama dengan keranjang).
+          pembulatan: Number(res.data.items?.[idx]?.pembulatan || 0),
           catatan: itemReceiptNote(item),
         })),
       });
@@ -906,6 +933,9 @@ export default function PosTerminal({ onToggleSidebar }) {
         diskon_persen: discountPercent,
         metode_diskon: metodeDiskon,
         kupon_kode: selectedCoupon?.kode || undefined,
+        ...(metodeDiskon === 'manual'
+          ? { diskon_manual_tipe: diskonManual.tipe, diskon_manual_nilai: diskonManual.nilai }
+          : {}),
         catatan: cartNotes,
         jatuh_tempo: pembayaran.dueDate,
         dilayani_oleh_id: selectedPelayanId,
@@ -1239,6 +1269,9 @@ export default function PosTerminal({ onToggleSidebar }) {
           selectedPelayanId={selectedPelayanId}
           onSelectStaff={(staff) => setSelectedPelayanId(staff.id || staff)}
           totalAmount={getTotal()}
+          pembulatan={starfoto.item ? 0 : getPembulatan()}
+          getTagihBaris={starfoto.item ? null : getTagihBaris}
+          pembulatanBarisTotal={starfoto.item ? 0 : getPembulatanBarisTotal()}
           onOpenCustomerList={() => setRightPanelMode('customerList')}
           onOpenCustomerSelect={() => setRightPanelMode('customerList')}
           onAddNewCustomerClick={() => {
@@ -1407,6 +1440,18 @@ export default function PosTerminal({ onToggleSidebar }) {
           setSelectedCoupon(null);
           setMetodeDiskon('tidak_ada');
         }}
+        diskonManual={diskonManual}
+        isManualDiscountActive={metodeDiskon === 'manual'}
+        onApplyManualDiscount={(tipe, nilai) => {
+          // Pilihan ketiga: menggantikan kupon / Diskon Penjualan otomatis (tidak ditumpuk).
+          setSelectedCoupon(null);
+          setDiskonManual({ tipe, nilai });
+          setMetodeDiskon('manual');
+        }}
+        onRemoveManualDiscount={() => {
+          setDiskonManual({ tipe: 'persen', nilai: 0 });
+          setMetodeDiskon('tidak_ada');
+        }}
         salesDiscountPreview={salesDiscountPreview}
         isAutoDiscountActive={metodeDiskon === 'otomatis'}
         onApplyAutoDiscount={() => setMetodeDiskon('otomatis')}
@@ -1446,6 +1491,8 @@ export default function PosTerminal({ onToggleSidebar }) {
         isOpen={showPaymentModal}
         onClose={() => setShowPaymentModal(false)}
         totalAmount={getTotal()}
+        pembulatan={starfoto.item ? 0 : getPembulatan()}
+        hitungPembulatanBayar={getPembulatanBayar}
         subtotalAmount={Number(getSubtotal()) + cart.reduce((sum, item) => sum + itemDiscountTotal(item), 0)}
         discountAmount={cart.reduce((sum, item) => sum + itemDiscountTotal(item), 0) + Math.max(0, Number(getSubtotal()) + Number(getTaxAmount()) - Number(getTotal()))}
         onConfirmPayment={handleConfirmPayment}

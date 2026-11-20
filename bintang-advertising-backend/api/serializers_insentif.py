@@ -11,8 +11,8 @@ class JenisInsentifSerializer(serializers.ModelSerializer):
     class Meta:
         model = JenisInsentif
         fields = [
-            'id', 'nama', 'nominal_default', 'unit_bisnis', 'unit_bisnis_nama', 'divisi', 'divisi_nama', 'aktif',
-            'keterangan', 'dibuat_pada',
+            'id', 'nama', 'cara_hitung', 'nominal_default', 'persen', 'unit_bisnis', 'unit_bisnis_nama', 'divisi',
+            'divisi_nama', 'aktif', 'keterangan', 'dibuat_pada',
         ]
         read_only_fields = ['dibuat_pada']
         validators = []  # keunikan nama per unit dicek di validate() dengan pesan yang jelas
@@ -26,6 +26,14 @@ class JenisInsentifSerializer(serializers.ModelSerializer):
             lain = [d.nama for d in divisi or [] if d.unit_bisnis_id and d.unit_bisnis_id != unit.id]
             if lain:
                 raise serializers.ValidationError({'divisi': f"Divisi {', '.join(lain)} bukan milik unit {unit.nama}."})
+        cara = attrs.get('cara_hitung', getattr(self.instance, 'cara_hitung', JenisInsentif.CARA_NOMINAL))
+        persen = attrs.get('persen', getattr(self.instance, 'persen', 0))
+        if cara == JenisInsentif.CARA_PERSEN:
+            if not (0 < float(persen or 0) <= 100):
+                raise serializers.ValidationError({'persen': 'Persen harus lebih dari 0 dan paling besar 100.'})
+            attrs['nominal_default'] = 0
+        else:
+            attrs['persen'] = 0
         nama = attrs.get('nama', getattr(self.instance, 'nama', ''))
         bentrok = JenisInsentif.objects.filter(nama__iexact=nama, unit_bisnis=unit)
         if self.instance is not None:

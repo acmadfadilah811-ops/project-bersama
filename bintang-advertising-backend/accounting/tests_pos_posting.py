@@ -397,3 +397,244 @@ class POSHppPostingTestCase(TestCase):
         ).first()
         self.assertIsNotNone(entry)
         self.assertEqual(len(list(entry.lines.all())), 2)
+
+
+class PembulatanPenjualanPosTests(POSPostingTestCase):
+    """Pembulatan total penjualan kasir (Pengaturan POS > Pembulatan), 2026-10-27."""
+
+    def _atur(self, kelipatan, arah='atas', arah_diskon='bawah'):
+        from api.models import SystemConfig
+        SystemConfig.objects.update_or_create(key='pos_pembulatan_aktif', defaults={'value': 'true'})
+        SystemConfig.objects.update_or_create(key='pos_pembulatan_kelipatan', defaults={'value': str(kelipatan)})
+        SystemConfig.objects.update_or_create(key='pos_pembulatan_arah', defaults={'value': arah})
+        SystemConfig.objects.update_or_create(key='pos_pembulatan_arah_diskon', defaults={'value': arah_diskon})
+
+    def _jual(self, harga, pelanggan="081299900001"):
+        return create_sale(user=self.user, data={
+            "pelanggan": pelanggan, "status": "paid", "metode_bayar": "Cash",
+            "dibayar": 100000,
+            "items": [{"nama": "Cetak", "harga": harga, "qty": 1}],
+        })
+
+    def test_fungsi_bulatkan_kelipatan_dan_arah(self):
+        from api.services.pembulatan import bulatkan, hitung_pembulatan
+        self.assertEqual(bulatkan(29920, 1000), Decimal('30000'))
+        self.assertEqual(bulatkan(29920, 500), Decimal('30000'))
+        self.assertEqual(bulatkan(29920, 100), Decimal('29900'))
+        self.assertEqual(bulatkan(29920, 100, 'atas'), Decimal('30000'))
+        self.assertEqual(bulatkan(29920, 1000, 'bawah'), Decimal('29000'))
+        self.assertEqual(bulatkan(29500, 1000), Decimal('29000'))      # sisa = breakpoint 50% -> ke bawah (contoh Olsera 9.500 -> 9.000)
+        self.assertEqual(bulatkan(29501, 1000), Decimal('30000'))
+        self.assertEqual(bulatkan(25452, 100), Decimal('25500'))       # simulasi Olsera: sisa 52 > 50
+        self.assertEqual(bulatkan(25408, 100), Decimal('25400'))       # sisa 8 <= 50
+        self.assertEqual(bulatkan(25452, 100, 'terdekat', 60), Decimal('25400'))  # breakpoint 60%: sisa 52 ke bawah
+        self.assertEqual(bulatkan(29499, 1000), Decimal('29000'))
+        self.assertEqual(bulatkan(29920, 0), Decimal('29920'))         # mati
+        self.assertEqual(bulatkan(0, 1000), Decimal('0'))
+        self.assertEqual(hitung_pembulatan(29920, 1000, 'terdekat'), Decimal('80'))
+        self.assertEqual(hitung_pembulatan(29490, 1000, 'terdekat'), Decimal('-490'))
+
+    def test_aturan_diskon_ke_bawah_pembayaran_ke_atas(self):
+        from api.services.pembulatan import hitung_pembulatan_penjualan as hp
+        # Tanpa diskon: total 29.920 -> 30.000 (ke atas).
+        self.assertEqual(hp(29920, 0, 1000, 'atas', 'bawah'), Decimal('80'))
+        # Diskon 1.496 dibulatkan ke bawah jadi 1.000 (hilang 496), total 28.424 -> 28.920 -> 29.000 (ke atas).
+        self.assertEqual(hp(28424, 1496, 1000, 'atas', 'bawah'), Decimal('576'))
+        # Diskon sudah kelipatan: tidak berubah, hanya pembayaran dibulatkan.
+        self.assertEqual(hp(28920, 1000, 1000, 'atas', 'bawah'), Decimal('80'))
+        # Arah diskon ke atas (opsi): diskon jadi 2.000, total 27.920 -> 28.000.
+        self.assertEqual(hp(28424, 1496, 1000, 'atas', 'atas'), Decimal('-424'))
+        # Pembulatan mati / total nol.
+        self.assertEqual(hp(28424, 1496, 0, 'atas', 'bawah'), Decimal('0'))
+        self.assertEqual(hp(0, 0, 1000, 'atas', 'bawah'), Decimal('0'))
+
+    def test_penjualan_dengan_diskon_persen_diskon_ke_bawah_total_ke_atas(self):
+        from api.customer_models import Customer, CustomerGroup
+        rounding = Account.objects.create(code="70001", name="Pembulatan", classification=self.rev_cls)
+        self.settings.pos_sales_rounding_account = rounding
+        self.settings.save()
+        self._atur(1000)
+        grup = CustomerGroup.objects.create(nama='Diskon Bulat Uji', tipe_diskon='persen', diskon_persen=Decimal('5'), is_active=True)
+        cust = Customer.objects.create(nama='Pelanggan Diskon Bulat', customer_group=grup)
+        Contact.objects.create(nomor_wa='6281200055544', nama='Pelanggan Diskon Bulat', customer=cust)
+        sale = self._jual(29920, pelanggan='6281200055544')   # diskon tipe pelanggan 1.496 -> total 28.424
+        self.assertEqual((sale.total, sale.pembulatan), (Decimal('29000.00'), Decimal('576.00')))
+        entry = JournalEntry.objects.get(source_type=JournalEntry.SourceType.POS_SALE, source_id=sale.id)
+        per_akun = {l.account.code: (l.debit, l.kredit) for l in entry.lines.all()}
+        self.assertEqual(per_akun['11101'], (Decimal('29000'), Decimal('0')))
+        self.assertEqual(per_akun['70001'], (Decimal('0'), Decimal('576')))
+        self.assertEqual(sum(l.debit for l in entry.lines.all()), sum(l.kredit for l in entry.lines.all()))
+
+    def test_pembulatan_mati_bawaan_total_tetap(self):
+        sale = self._jual(29920)
+        self.assertEqual((sale.total, sale.pembulatan), (Decimal('29920.00'), Decimal('0.00')))
+
+    def test_total_dibulatkan_ke_atas_dan_jurnal_memuat_akun_pembulatan(self):
+        rounding = Account.objects.create(code="70001", name="Pembulatan", classification=self.rev_cls)
+        self.settings.pos_sales_rounding_account = rounding
+        self.settings.save()
+        self._atur(1000)
+        sale = self._jual(29920)
+        self.assertEqual((sale.total, sale.pembulatan), (Decimal('30000.00'), Decimal('80.00')))
+        entry = JournalEntry.objects.get(source_type=JournalEntry.SourceType.POS_SALE, source_id=sale.id)
+        per_akun = {l.account.code: (l.debit, l.kredit) for l in entry.lines.all()}
+        self.assertEqual(per_akun['11101'], (Decimal('30000'), Decimal('0')))   # kas = total dibulatkan
+        self.assertEqual(per_akun['41101'], (Decimal('0'), Decimal('29920')))   # pendapatan = harga asli
+        self.assertEqual(per_akun['70001'], (Decimal('0'), Decimal('80')))      # selisih ke Pembulatan
+        self.assertEqual(sum(l.debit for l in entry.lines.all()), sum(l.kredit for l in entry.lines.all()))
+
+    def test_dibulatkan_ke_bawah_menjadi_debit_pembulatan(self):
+        rounding = Account.objects.create(code="70001", name="Pembulatan", classification=self.rev_cls)
+        self.settings.pos_sales_rounding_account = rounding
+        self.settings.save()
+        self._atur(1000, 'bawah')
+        sale = self._jual(29920)
+        self.assertEqual((sale.total, sale.pembulatan), (Decimal('29000.00'), Decimal('-920.00')))
+        entry = JournalEntry.objects.get(source_type=JournalEntry.SourceType.POS_SALE, source_id=sale.id)
+        per_akun = {l.account.code: (l.debit, l.kredit) for l in entry.lines.all()}
+        self.assertEqual(per_akun['70001'], (Decimal('920'), Decimal('0')))
+        self.assertEqual(sum(l.debit for l in entry.lines.all()), sum(l.kredit for l in entry.lines.all()))
+
+    def test_tanpa_akun_pembulatan_selisih_ikut_pendapatan_dan_tetap_balance(self):
+        self._atur(1000)
+        sale = self._jual(29920)
+        entry = JournalEntry.objects.get(source_type=JournalEntry.SourceType.POS_SALE, source_id=sale.id)
+        per_akun = {l.account.code: (l.debit, l.kredit) for l in entry.lines.all()}
+        self.assertEqual(per_akun['41101'], (Decimal('0'), Decimal('30000')))
+        self.assertEqual(sum(l.debit for l in entry.lines.all()), sum(l.kredit for l in entry.lines.all()))
+
+    def test_pembayaran_kurang_dari_total_dibulatkan_ditolak(self):
+        from rest_framework.exceptions import ValidationError
+        self._atur(1000)
+        with self.assertRaises(ValidationError):
+            create_sale(user=self.user, data={
+                "pelanggan": "081299900001", "status": "paid", "metode_bayar": "Cash",
+                "dibayar": 29920, "items": [{"nama": "Cetak", "harga": 29920, "qty": 1}],
+            })
+
+
+class PembulatanPerItemPosTests(POSPostingTestCase):
+    """Pembulatan "per item" (Pengaturan POS > Pembulatan > mode item), 2026-11-02: tiap baris dibulatkan sendiri."""
+
+    def setUp(self):
+        super().setUp()
+        rounding = Account.objects.create(code="70001", name="Pembulatan", classification=self.rev_cls)
+        self.settings.pos_sales_rounding_account = rounding
+        self.settings.save()
+
+    def _atur(self, mode, kelipatan=1000, arah='atas'):
+        from api.models import SystemConfig
+        SystemConfig.objects.update_or_create(key='pos_pembulatan_aktif', defaults={'value': 'true'})
+        SystemConfig.objects.update_or_create(key='pos_pembulatan_kelipatan', defaults={'value': str(kelipatan)})
+        SystemConfig.objects.update_or_create(key='pos_pembulatan_arah', defaults={'value': arah})
+        SystemConfig.objects.update_or_create(key='pos_pembulatan_mode', defaults={'value': mode})
+
+    def _jual(self, status="paid", **tambahan):
+        data = {
+            "pelanggan": "081299900001", "status": status, "metode_bayar": "Cash", "dibayar": 100000 if status == "paid" else 0,
+            "items": [{"nama": "Banner", "harga": 32500, "qty": 1}, {"nama": "Stiker", "harga": 14250, "qty": 1}],
+        }
+        data.update(tambahan)
+        return create_sale(user=self.user, data=data)
+
+    def test_tiap_baris_dibulatkan_sendiri_nilai_asli_baris_tidak_berubah(self):
+        self._atur('item')
+        sale = self._jual()
+        baris = {i.nama_snapshot: (i.subtotal, i.pembulatan) for i in sale.items.all()}
+        self.assertEqual(baris['Banner'], (Decimal('32500.00'), Decimal('500.00')))     # 32.500 -> 33.000
+        self.assertEqual(baris['Stiker'], (Decimal('14250.00'), Decimal('750.00')))     # 14.250 -> 15.000
+        self.assertEqual((sale.subtotal, sale.pembulatan, sale.total), (Decimal('46750.00'), Decimal('1250.00'), Decimal('48000.00')))
+
+    def test_mode_nota_bawaan_dibulatkan_sekali_dan_baris_tidak_berselisih(self):
+        self._atur('nota')
+        sale = self._jual()
+        self.assertEqual((sale.pembulatan, sale.total), (Decimal('250.00'), Decimal('47000.00')))   # 46.750 -> 47.000
+        self.assertTrue(all(i.pembulatan == 0 for i in sale.items.all()))
+
+    def test_tanpa_pengaturan_mode_sama_dengan_nota(self):
+        from api.models import SystemConfig
+        self._atur('item')
+        SystemConfig.objects.filter(key='pos_pembulatan_mode').delete()
+        sale = self._jual()
+        self.assertEqual((sale.pembulatan, sale.total), (Decimal('250.00'), Decimal('47000.00')))
+
+    def test_jurnal_pembulatan_satu_angka_dan_seimbang(self):
+        self._atur('item')
+        sale = self._jual()
+        entry = JournalEntry.objects.get(source_type=JournalEntry.SourceType.POS_SALE, source_id=sale.id)
+        per_akun = {l.account.code: (l.debit, l.kredit) for l in entry.lines.all()}
+        self.assertEqual(per_akun['11101'], (Decimal('48000'), Decimal('0')))
+        self.assertEqual(per_akun['41101'], (Decimal('0'), Decimal('46750')))     # pendapatan = nilai asli baris
+        self.assertEqual(per_akun['70001'], (Decimal('0'), Decimal('1250')))
+        self.assertEqual(sum(l.debit for l in entry.lines.all()), sum(l.kredit for l in entry.lines.all()))
+
+    def test_dengan_diskon_sisa_selisih_nota_tetap_membuat_total_bulat(self):
+        self._atur('keduanya')
+        sale = self._jual(metode_diskon='manual', diskon_manual_tipe='nominal', diskon_manual_nilai=1500)
+        # 46.750 - 1.500 = 45.250; baris +1.250 = 46.500; diskon 1.500 dibulatkan ke bawah (1.000) -> 47.000.
+        self.assertEqual(sale.total, Decimal('47000.00'))
+        self.assertEqual(sale.pembulatan, Decimal('1750.00'))
+        self.assertEqual(sum(i.pembulatan for i in sale.items.all()), Decimal('1250.00'))
+        entry = JournalEntry.objects.get(source_type=JournalEntry.SourceType.POS_SALE, source_id=sale.id)
+        self.assertEqual(sum(l.debit for l in entry.lines.all()), sum(l.kredit for l in entry.lines.all()))
+
+    def test_diskon_penuh_total_nol_tidak_ada_pembulatan_baris(self):
+        self._atur('item')
+        sale = self._jual(status='hold', metode_diskon='manual', diskon_manual_tipe='persen', diskon_manual_nilai=100)
+        self.assertEqual((sale.total, sale.pembulatan), (Decimal('0.00'), Decimal('0.00')))
+        self.assertTrue(all(i.pembulatan == 0 for i in sale.items.all()))
+
+    def test_arah_bawah_per_baris(self):
+        self._atur('item', arah='bawah')
+        sale = self._jual()
+        baris = {i.nama_snapshot: i.pembulatan for i in sale.items.all()}
+        self.assertEqual(baris, {'Banner': Decimal('-500.00'), 'Stiker': Decimal('-250.00')})   # 32.000 dan 14.000
+        self.assertEqual(sale.total, Decimal('46000.00'))
+
+    def test_pembulatan_mati_baris_tidak_dibulatkan(self):
+        from api.models import SystemConfig
+        self._atur('item')
+        SystemConfig.objects.filter(key='pos_pembulatan_aktif').update(value='false')
+        sale = self._jual()
+        self.assertEqual((sale.pembulatan, sale.total), (Decimal('0.00'), Decimal('46750.00')))
+
+    def test_resi_teks_menampilkan_baris_dan_subtotal_yang_sudah_dibulatkan(self):
+        from api.services.pos_receipt_whatsapp import susun_resi
+        self._atur('item')
+        teks = susun_resi(self._jual())
+        self.assertIn('= Rp 33,000', teks)      # Banner 32.500 -> 33.000
+        self.assertIn('= Rp 15,000', teks)      # Stiker 14.250 -> 15.000
+        self.assertIn('Subtotal: Rp 48,000', teks)
+
+    def test_pengaturan_mode_tersimpan_lewat_business_settings(self):
+        from rest_framework.test import APIClient
+        owner = User.objects.create_user(username='owner_mode', password='x', role='owner')
+        client = APIClient()
+        client.force_authenticate(owner)
+        self.assertEqual(client.get('/api/business-settings/').json()['pos_pembulatan_mode'], 'nota')
+        self.assertEqual(client.patch('/api/business-settings/', {'pos_pembulatan_mode': 'item'}, format='json').status_code, 200)
+        self.assertEqual(client.get('/api/business-settings/').json()['pos_pembulatan_mode'], 'item')
+        self.assertEqual(client.patch('/api/business-settings/', {'pos_pembulatan_mode': 'keduanya'}, format='json').status_code, 200)
+        self.assertEqual(client.get('/api/business-settings/').json()['pos_pembulatan_mode'], 'keduanya')
+        self.assertEqual(client.patch('/api/business-settings/', {'pos_pembulatan_mode': 'acak'}, format='json').status_code, 400)
+
+    def test_mode_item_saja_total_tidak_dibulatkan_lagi_saat_ada_diskon(self):
+        self._atur('item')
+        sale = self._jual(metode_diskon='manual', diskon_manual_tipe='nominal', diskon_manual_nilai=1500)
+        # 46.750 - 1.500 = 45.250; baris +1.250 = 46.500; mode item saja: tidak ada pembulatan nota lagi.
+        self.assertEqual(sale.total, Decimal('46500.00'))
+        self.assertEqual(sale.pembulatan, Decimal('1250.00'))
+        self.assertEqual(sum(i.pembulatan for i in sale.items.all()), Decimal('1250.00'))
+
+    def test_mode_keduanya_tanpa_diskon_sama_dengan_item(self):
+        self._atur('keduanya')
+        sale = self._jual()
+        self.assertEqual((sale.subtotal, sale.pembulatan, sale.total), (Decimal('46750.00'), Decimal('1250.00'), Decimal('48000.00')))
+
+    def test_mode_tidak_dikenal_dianggap_nota(self):
+        from api.models import SystemConfig
+        self._atur('item')
+        SystemConfig.objects.filter(key='pos_pembulatan_mode').update(value='acak')
+        sale = self._jual()
+        self.assertEqual((sale.pembulatan, sale.total), (Decimal('250.00'), Decimal('47000.00')))
+        self.assertTrue(all(i.pembulatan == 0 for i in sale.items.all()))

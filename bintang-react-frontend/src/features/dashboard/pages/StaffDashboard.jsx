@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import apiClient from '../../../api/apiClient';
 import EmployeeInfoModal from '../components/EmployeeInfoModal';
+import KpiSayaCard from '../components/KpiSayaCard';
 
 export default function StaffDashboard() {
   const { user, updateUser } = useAuth();
@@ -360,6 +361,8 @@ export default function StaffDashboard() {
           </div>
         </div>
       </div>
+
+      <KpiSayaCard />
 
       {/* Grid Bawah */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">

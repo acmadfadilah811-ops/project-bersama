@@ -83,8 +83,23 @@ def build_income_statement_xlsx(data):
         row_idx += 1
 
     row_idx = _write_total(ws, row_idx, "Total Laba Kotor", data["total_laba_kotor"])
+    row_idx = _write_total(ws, row_idx, "Laba Usaha", data["laba_usaha"])
     row_idx = _write_total(ws, row_idx, "Total Pendapatan Non-Operasional", data["total_pendapatan_non_operasional"])
-    row_idx = _write_total(ws, row_idx, "LABA BERSIH", data["laba_bersih"])
+    row_idx = _write_total(ws, row_idx, "LABA SEBELUM PAJAK", data["laba_sebelum_pajak"])
+    row_idx += 1
+    row_idx = _write_section(ws, row_idx, "BEBAN PAJAK PENGHASILAN", data["pajak_penghasilan"])
+    row_idx = _write_total(ws, row_idx, "Subtotal Beban Pajak Penghasilan", data["total_pajak_penghasilan"])
+    row_idx += 1
+    row_idx = _write_total(ws, row_idx, "LABA SETELAH PAJAK", data["laba_setelah_pajak"])
+    row_idx += 1
+    e = data["ebitda"]
+    row_idx = _write_total(ws, row_idx, "EBITDA: Laba sebelum pajak", e["laba_sebelum_pajak"])
+    row_idx = _write_total(ws, row_idx, "  + Beban bunga", e["beban_bunga"])
+    row_idx = _write_total(ws, row_idx, "  - Pendapatan bunga", e["pendapatan_bunga"])
+    row_idx = _write_total(ws, row_idx, "  = EBIT", e["ebit"])
+    row_idx = _write_total(ws, row_idx, "  + Penyusutan", e["penyusutan"])
+    row_idx = _write_total(ws, row_idx, "  + Amortisasi", e["amortisasi"])
+    row_idx = _write_total(ws, row_idx, "EBITDA", e["ebitda"])
 
     buffer = io.BytesIO()
     wb.save(buffer)

@@ -10,7 +10,7 @@ import { cetakConfig } from '../../printing/services/receiptConfig';
  * pesanan punya `items[].jenis_produk` dengan dimensi P x L dan riwayat DP.
  * Memaksakan satu komponen untuk keduanya akan penuh percabangan.
  */
-export default function OrderInvoicePrint({ order, dibayarSekarang, metode, settings, isReprint }) {
+export default function OrderInvoicePrint({ order, dibayarSekarang, pembulatanSekarang = 0, metode, settings, isReprint }) {
   if (!order) return null;
 
   // Identitas toko, info pembayaran, dan syarat dibaca dari Pengaturan (receiptConfig).
@@ -143,6 +143,12 @@ export default function OrderInvoicePrint({ order, dibayarSekarang, metode, sett
             </span>
             <span>-{formatCurrency(dibayarSekarang)}</span>
           </div>
+          {Number(pembulatanSekarang) !== 0 && (
+            <div className="flex justify-between">
+              <span className="text-slate-600">Pembulatan</span>
+              <span>{pembulatanSekarang > 0 ? '+' : '-'}{formatCurrency(Math.abs(pembulatanSekarang))}</span>
+            </div>
+          )}
           <div className="flex justify-between border-t-2 border-slate-900 pt-1 text-sm">
             <span className="font-black">{sisaAkhir > 0 ? 'Sisa Tagihan' : 'LUNAS'}</span>
             <span className="font-black">{formatCurrency(sisaAkhir)}</span>
