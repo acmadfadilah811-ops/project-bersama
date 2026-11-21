@@ -170,19 +170,21 @@ export default function ClaimPool({
             >
               {/* Group Header — identitas order/transaksi asal */}
               <div className="px-3 py-2 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span
-                    className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 ${
-                      grup.sumber === 'pos' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'
-                    }`}
-                  >
-                    {grup.sumber === 'pos' ? 'POS' : 'Order'}
-                  </span>
-                  <span className="text-[11px] font-extrabold text-slate-800 truncate min-w-0" title={grup.pelangganNama || 'Pelanggan'}>
-                    {grup.pelangganNama || 'Pelanggan'}
-                  </span>
-                  <span className="text-[9px] text-slate-400 font-mono truncate shrink-0" title={`No. ${grup.nomorSumber}`}>
-                    &middot; #{grup.nomorSumber}
+                <div className="flex flex-col gap-0.5 min-w-0">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span
+                      className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 ${
+                        grup.sumber === 'pos' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'
+                      }`}
+                    >
+                      {grup.sumber === 'pos' ? 'POS' : 'Order'}
+                    </span>
+                    <span className="text-[13px] font-extrabold text-slate-800 truncate min-w-0" title={grup.pelangganNama || 'Pelanggan'}>
+                      {grup.pelangganNama || 'Pelanggan'}
+                    </span>
+                  </div>
+                  <span className="text-[9px] text-slate-400 font-mono truncate" title={`No. ${grup.nomorSumber}`}>
+                    #{grup.nomorSumber}
                   </span>
                 </div>
                 {grup.jobs.length > 1 && (
