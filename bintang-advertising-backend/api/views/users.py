@@ -76,6 +76,24 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         target.save(update_fields=['diarsipkan'])
         return Response(self.get_serializer(target).data)
 
+    @action(detail=True, methods=['post'], url_path='putar-foto')
+    def putar_foto(self, request, pk=None):
+        """Putar manual foto profil karyawan 90/180/270 derajat -- untuk
+        merapikan foto yang sudah tersimpan miring/terbalik di pixel-nya
+        sendiri (bukan cuma tag EXIF yang salah, lihat
+        services/foto_profil_orientasi.py). Body: {"derajat": 90|180|270}."""
+        target = self.get_object()
+        try:
+            derajat = int(request.data.get('derajat'))
+        except (TypeError, ValueError):
+            return Response({'error': 'Derajat putar wajib diisi (90, 180, atau 270).'}, status=status.HTTP_400_BAD_REQUEST)
+        from ..services.foto_profil_orientasi import putar_foto_profil
+        try:
+            putar_foto_profil(target, derajat)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(target).data)
+
     def get_queryset(self):
         queryset = CustomUser.objects.all()
         role = self.request.query_params.get('role')

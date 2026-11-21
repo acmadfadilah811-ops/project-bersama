@@ -145,6 +145,14 @@ class CustomUserSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Email ini sudah dipakai akun lain.')
         return value
 
+    def validate_foto_profil(self, value):
+        # Koreksi otomatis orientasi EXIF saat upload supaya foto tidak
+        # tampil terbalik/miring (2026-11-22). Lihat services/foto_profil_orientasi.py.
+        if value is None:
+            return value
+        from .services.foto_profil_orientasi import koreksi_orientasi_upload
+        return koreksi_orientasi_upload(value)
+
     def validate(self, attrs):
         # Penempatan kerja harus konsisten: divisi milik satu unit bisnis tidak boleh
         # dipasang ke akun unit bisnis lain. Hanya diperiksa saat divisi/unit_bisnis

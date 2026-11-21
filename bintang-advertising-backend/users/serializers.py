@@ -81,6 +81,15 @@ class UserMeSerializer(serializers.ModelSerializer):
             return obj.profile.is_online
         return False
 
+    def validate_foto_profil(self, value):
+        # Koreksi otomatis orientasi EXIF saat upload supaya foto tidak
+        # tampil terbalik/miring (2026-11-22). Lihat
+        # api/services/foto_profil_orientasi.py.
+        if value is None:
+            return value
+        from api.services.foto_profil_orientasi import koreksi_orientasi_upload
+        return koreksi_orientasi_upload(value)
+
 
 
 

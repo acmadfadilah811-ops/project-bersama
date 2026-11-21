@@ -17,6 +17,8 @@ import {
   Building2,
   Archive,
   ArchiveRestore,
+  RotateCcw,
+  RotateCw,
 } from 'lucide-react';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -108,6 +110,22 @@ export default function Employees() {
       unit_bisnis: emp.unit_bisnis ?? '',
       status_karyawan: emp.status_karyawan || 'aktif',
     });
+  };
+
+  // Putar foto profil karyawan (merapikan foto yang tersimpan miring/terbalik
+  // di pixel-nya sendiri, bukan cuma tag EXIF yang salah -- 2026-11-22).
+  const [isRotatingFoto, setIsRotatingFoto] = useState(false);
+  const putarFoto = async (emp, derajat) => {
+    setIsRotatingFoto(true);
+    try {
+      const res = await apiClient.post(`/users/${emp.id}/putar-foto/`, { derajat });
+      setEmployees((prev) => prev.map((e) => (e.id === emp.id ? res.data : e)));
+      setSelectedEmployee(res.data);
+    } catch (err) {
+      alert(getApiErrorMessage(err, 'Gagal memutar foto.'));
+    } finally {
+      setIsRotatingFoto(false);
+    }
   };
 
   const aturArsip = async (emp, arsip) => {
@@ -374,16 +392,40 @@ export default function Employees() {
             {/* Modal Header */}
             <div className="flex justify-between items-center p-5 border-b border-slate-100 bg-slate-50/50">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-200 border border-slate-300">
-                  {selectedEmployee.foto_profil ? (
-                    <img
-                      src={getAvatarUrl(selectedEmployee.foto_profil)}
-                      alt=""
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <User size={20} className="text-slate-500" />
+                <div className="flex flex-col items-center gap-1">
+                  <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-200 border border-slate-300">
+                    {selectedEmployee.foto_profil ? (
+                      <img
+                        src={getAvatarUrl(selectedEmployee.foto_profil)}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <User size={20} className="text-slate-500" />
+                      </div>
+                    )}
+                  </div>
+                  {selectedEmployee.foto_profil && (
+                    <div className="flex items-center gap-0.5">
+                      <button
+                        type="button"
+                        disabled={isRotatingFoto}
+                        onClick={() => putarFoto(selectedEmployee, 270)}
+                        title="Putar foto 90° ke kiri"
+                        className="p-0.5 rounded border border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-40 cursor-pointer"
+                      >
+                        <RotateCcw size={11} />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isRotatingFoto}
+                        onClick={() => putarFoto(selectedEmployee, 90)}
+                        title="Putar foto 90° ke kanan"
+                        className="p-0.5 rounded border border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-40 cursor-pointer"
+                      >
+                        <RotateCw size={11} />
+                      </button>
                     </div>
                   )}
                 </div>
