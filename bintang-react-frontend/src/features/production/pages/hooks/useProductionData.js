@@ -284,6 +284,22 @@ export default function useProductionData() {
     }
   };
 
+  // Operator sendiri membagi sisa qty job ini ke operator lain satu divisi
+  // (qty-nya kebanyakan untuk dikerjakan seorang diri, instruksi user
+  // 2026-11-24). Job ini TETAP di Pekerjaan Saya (cuma qty-nya menyusut),
+  // jadi cukup refetch aktif -- tidak pindah kolom seperti forward/complete.
+  const bagiOperatorJob = async (jobId, payload) => {
+    try {
+      const res = await apiClient.post(`/jobs/${jobId}/bagi-operator/`, payload);
+      await refetchMyActiveJobs(false);
+      addLocalLog(`Sebagian pekerjaan #${jobId} dipindahkan ke operator lain.`);
+      return { ok: true, data: res.data };
+    } catch (err) {
+      const errorMsg = err.response?.data?.error || err.response?.data?.detail || 'Gagal membagi pekerjaan.';
+      return { ok: false, error: errorMsg };
+    }
+  };
+
   const forwardJob = async (jobId, payload) => {
     try {
       const res = await apiClient.post(`/jobs/${jobId}/forward/`, payload);
@@ -348,6 +364,7 @@ export default function useProductionData() {
     startJob,
     completeJob,
     forwardJob,
+    bagiOperatorJob,
     addLocalLog,
   };
 }

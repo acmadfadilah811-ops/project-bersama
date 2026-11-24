@@ -1036,10 +1036,22 @@ class JobBoard(models.Model):
     catatan_staff = models.JSONField(default=list, null=True, blank=True, help_text="Keterangan staff berformat Tabel/Excel (JSON)")
     gdrive_output_link = models.URLField(max_length=500, null=True, blank=True, help_text="Link file hasil kerja staff di Google Drive")
     alasan_gagal = models.TextField(null=True, blank=True, help_text="Alasan kenapa pengerjaan job ini gagal atau dibatalkan")
-    
+
     # Nominal insentif ditentukan secara manual oleh Manager
     insentif = models.IntegerField(default=0, help_text="Insentif yang ditentukan oleh Manager untuk tugas ini")
     biaya_desain = models.IntegerField(default=0, help_text="Biaya tambahan desain untuk tugas ini")
+
+    # Porsi qty yang dikerjakan JOB INI (2026-11-24, lihat services/split_job.py).
+    # NULL = belum dibagi, job ini menanggung qty PENUH item sumbernya (order_item/
+    # pos_sale_item qty) -- jalur lama tetap jalan tanpa migrasi data. Terisi begitu
+    # operator membagi sisa qty ke operator lain: dua baris JobBoard menunjuk
+    # order_item/pos_sale_item YANG SAMA, masing-masing qty_dikerjakan = porsinya,
+    # dan insentif otomatis per qty/m2 (InsentifProduk) dihitung dari sini supaya
+    # prorata, bukan dobel (lihat insentif_pekerjaan._sumber_item).
+    qty_dikerjakan = models.DecimalField(
+        max_digits=12, decimal_places=4, null=True, blank=True,
+        help_text="Porsi qty yang dikerjakan job ini. Kosong = qty penuh item sumber (belum dibagi ke operator lain).",
+    )
     
     otp_code = models.CharField(max_length=10, blank=True, default="")
     otp_requested = models.BooleanField(default=False)

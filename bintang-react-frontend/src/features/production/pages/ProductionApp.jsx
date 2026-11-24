@@ -26,6 +26,7 @@ import ClaimPool from './components/ClaimPool';
 import KanbanPersonal from './components/KanbanPersonal';
 import WorkspaceSPK from './components/WorkspaceSPK';
 import ForwardJobModal from '../components/modals/ForwardJobModal';
+import SplitOperatorModal from '../components/modals/SplitOperatorModal';
 
 // Admin / Manager Panels
 import GlobalListPanel from './panels/GlobalListPanel';
@@ -185,6 +186,7 @@ export default function ProductionApp() {
     assignJobsToStaff,
     startJob,
     forwardJob,
+    bagiOperatorJob,
   } = useProductionData();
 
   // Antrean Global Divisi -- filter/paginasi (fitur redesign kanban 2026-09-07).
@@ -229,6 +231,8 @@ export default function ProductionApp() {
     setActiveTab(tabId);
   };
   const [selectedForwardJob, setSelectedForwardJob] = useState(null);
+  // Operator membagi sisa qty job ke operator lain (2026-11-24).
+  const [selectedSplitJob, setSelectedSplitJob] = useState(null);
   // Pengembalian SPK ke tahap sebelumnya (PRD-05 UAT).
   const [kembalikanJob, setKembalikanJob] = useState(null);
   const [savingAction, setSavingAction] = useState(false);
@@ -389,6 +393,18 @@ export default function ProductionApp() {
     setSelectedForwardJob(job);
   };
 
+  const handleSplit = (job) => {
+    setSelectedSplitJob(job);
+  };
+
+  const handleSplitSubmit = async (jobId, payload) => {
+    setSavingAction(true);
+    const res = await bagiOperatorJob(jobId, payload);
+    setSavingAction(false);
+    if (res.ok) setSelectedSplitJob(null);
+    return res;
+  };
+
   const handleForwardSubmit = async (jobId, data) => {
     setSavingAction(true);
     const res = await forwardJob(jobId, data);
@@ -448,6 +464,7 @@ export default function ProductionApp() {
       onSelectJob={(job) => setSelectedWorkspaceJob(job)}
       onStart={handleStart}
       onComplete={handleComplete}
+      onSplit={handleSplit}
     />
   );
 
@@ -932,12 +949,22 @@ export default function ProductionApp() {
                 <div className="shrink-0 px-1 flex flex-wrap gap-1">
                   <DeadlineBadge deadline={selectedWorkspaceJob.deadline} jam={selectedWorkspaceJob.deadline_jam} />
                   <JobMacetBadge job={selectedWorkspaceJob} ambangAntreanJam={ambangAntreanJam} ambangDikerjakanJam={ambangDikerjakanJam} />
+                  {!isAdminMode && selectedWorkspaceJob.status_pekerjaan === 'dikerjakan' && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSplitJob(selectedWorkspaceJob)}
+                      className="ml-auto inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                      title="Bagi sisa qty SPK ini ke operator lain satu divisi"
+                    >
+                      <Users size={11} /> Bagi ke Operator Lain
+                    </button>
+                  )}
                   {!isAdminMode &&
                     ['antrean', 'dikerjakan', 'kendala'].includes(selectedWorkspaceJob.status_pekerjaan) && (
                       <button
                         type="button"
                         onClick={() => setKembalikanJob(selectedWorkspaceJob)}
-                        className="ml-auto inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                        className={`inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-600 hover:bg-slate-50 cursor-pointer ${selectedWorkspaceJob.status_pekerjaan === 'dikerjakan' ? '' : 'ml-auto'}`}
                         title="Kembalikan SPK ini ke tahap sebelumnya (perlu diterima divisi tujuan)"
                       >
                         <Undo2 size={11} /> Kembalikan ke Tahap Sebelumnya
@@ -1139,6 +1166,16 @@ export default function ProductionApp() {
           saving={savingAction}
           onSubmit={handleForwardSubmit}
           onClose={() => setSelectedForwardJob(null)}
+        />
+      )}
+
+      {selectedSplitJob && (
+        <SplitOperatorModal
+          job={selectedSplitJob}
+          staffList={staffList}
+          saving={savingAction}
+          onSubmit={handleSplitSubmit}
+          onClose={() => setSelectedSplitJob(null)}
         />
       )}
     </div>

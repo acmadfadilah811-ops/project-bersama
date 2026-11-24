@@ -35,7 +35,14 @@ def _pastikan_bisa_diubah(job):
 
 def _sumber_item(job):
     """(product_id, qty, luas_m2_total, nilai_jual) dari baris pesanan/kasir SPK ini.
-    nilai_jual = harga jual baris (OrderItem.harga_jual / POSSaleItem.subtotal), dasar insentif persen."""
+    nilai_jual = harga jual baris (OrderItem.harga_jual / POSSaleItem.subtotal), dasar insentif persen.
+
+    qty & luas pakai job.qty_dikerjakan (porsi JOB INI) kalau sudah dibagi ke
+    operator lain (2026-11-24, lihat services/split_job.py) -- supaya insentif
+    "per qty"/"per m2" prorata sesuai porsi masing-masing operator, bukan dobel
+    (tiap baris JobBoard hasil split menunjuk order_item/pos_sale_item yang sama,
+    qty totalnya tetap dari sana). nilai_jual (dasar insentif persen) SENGAJA
+    tidak diprorata -- di luar scope qty/m2, tidak diminta user."""
     if job.order_item_id:
         item, nilai = job.order_item, job.order_item.harga_jual
     elif job.pos_sale_item_id:
@@ -43,7 +50,7 @@ def _sumber_item(job):
     else:
         return None, 0, 0, 0
     # product_id boleh kosong (item bebas/paket): insentif persen tetap butuh nilai jualnya.
-    qty = float(item.qty or 0)
+    qty = float(job.qty_dikerjakan) if job.qty_dikerjakan is not None else float(item.qty or 0)
     luas = float(item.panjang or 0) * float(item.lebar or 0) * qty
     return item.product_id, qty, luas, float(nilai or 0)
 
@@ -101,6 +108,32 @@ def terapkan_otomatis(job):
                 defaults={'nama': jenis.nama, 'nominal': nominal_jenis(jenis, nilai_jual), 'otomatis': True},
             )
     return sinkron_total(job)
+
+
+@transaction.atomic
+def resinkron_qty(job):
+    """Hitung ulang nominal baris otomatis yang basisnya qty/m2 (InsentifProduk
+    cara_hitung qty/m2) sesuai qty_dikerjakan job SAAT INI -- dipakai setelah
+    operator membagi sisa qty ke operator lain (services/split_job.py), karena
+    job asal yang qty-nya mengecil TIDAK otomatis menyusutkan baris yang sudah
+    dibuat (terapkan_otomatis pakai get_or_create, sengaja tidak menimpa nominal
+    yang sudah ada -- lihat docstring modul). Baris flat/persen tidak disentuh:
+    basisnya bukan qty, di luar scope permintaan split qty ini."""
+    _, qty, luas, nilai_jual = _sumber_item(job)
+    baris_qs = job.rincian_insentif.filter(
+        otomatis=True, aturan_produk__isnull=False,
+        aturan_produk__cara_hitung__in=[InsentifProduk.CARA_QTY, InsentifProduk.CARA_M2],
+    ).select_related('aturan_produk')
+    berubah = False
+    for baris in baris_qs:
+        baru = nominal_aturan_produk(baris.aturan_produk, qty, luas, nilai_jual)
+        if baris.nominal != baru:
+            baris.nominal = baru
+            baris.save(update_fields=['nominal', 'diubah_pada'])
+            berubah = True
+    if berubah:
+        sinkron_total(job)
+    return job.insentif
 
 
 @transaction.atomic

@@ -1016,6 +1016,37 @@ class JobBoardViewSet(viewsets.ModelViewSet):
             'job': JobBoardSerializer(job).data
         }, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'], url_path='bagi-operator', permission_classes=[IsAuthenticated, IsClockedIn])
+    def bagi_operator(self, request, pk=None):
+        """POST /api/jobs/{id}/bagi-operator/ — qty SPK ini kebanyakan untuk
+        dikerjakan sendiri, pindahkan sebagian ke operator lain satu divisi.
+        Body: {"operator_id": <id staff tujuan>, "qty": <qty yang dipindah>}.
+        Logika & validasi di services/split_job.py (uang-sensitif: insentif
+        otomatis per qty/m2 harus prorata, lihat docstring modul itu)."""
+        job = self.get_object()
+        user = request.user
+
+        try:
+            operator = CustomUser.objects.get(pk=request.data.get('operator_id'))
+        except (CustomUser.DoesNotExist, ValueError, TypeError):
+            return Response({'error': 'Operator tujuan tidak ditemukan.'}, status=status.HTTP_404_NOT_FOUND)
+
+        from ..services.split_job import bagi_ke_operator
+        job, job_baru = bagi_ke_operator(job, operator, request.data.get('qty'), user)
+
+        tahap_nama = job.tahap.nama if job.tahap else "Tahap Awal"
+        _catat_aktivitas_order(
+            job, user, "BAGI_OPERATOR",
+            f"Staff '{user.username}' membagi sisa qty ({job_baru.qty_dikerjakan}) item '{job.nama_produk}' "
+            f"pada tahap '{tahap_nama}' ke operator '{operator.username}'"
+        )
+
+        return Response({
+            'message': f'Sisa pekerjaan berhasil dipindahkan ke {operator.username}.',
+            'job': JobBoardSerializer(job, context={'request': request}).data,
+            'job_baru': JobBoardSerializer(job_baru, context={'request': request}).data,
+        }, status=status.HTTP_200_OK)
+
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 

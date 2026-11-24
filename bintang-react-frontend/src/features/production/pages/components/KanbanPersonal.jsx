@@ -1,4 +1,4 @@
-import { Play, CheckCircle2, Clock, FileText, Layers, Calendar } from 'lucide-react';
+import { Play, CheckCircle2, Clock, FileText, Layers, Calendar, Users } from 'lucide-react';
 import DeadlineBadge from '../../components/DeadlineBadge';
 import { todayISO } from '../../../../utils/date';
 
@@ -46,7 +46,7 @@ export default function KanbanPersonal({
   activeJobs = [], doneJobs = [], doneJobsCount = 0,
   donePage = 1, donePageSize = 20, doneDateFrom, doneDateTo,
   onDonePageChange, onDoneDateFromChange, onDoneDateToChange,
-  onSelectJob, onStart, onComplete,
+  onSelectJob, onStart, onComplete, onSplit,
 }) {
   const rentangLabel = formatRentangTanggal(doneDateFrom || todayISO(), doneDateTo || todayISO());
   const doneTotalPages = Math.max(1, Math.ceil(doneJobsCount / donePageSize));
@@ -187,7 +187,10 @@ export default function KanbanPersonal({
                           {/* Kanan: Qty & Biaya Desain */}
                           <div className="flex items-center gap-1.5 shrink-0 text-[10px] text-slate-500 font-bold">
                             <span>
-                              Qty: <strong className="text-slate-700">{item.qty || 1}</strong>
+                              Qty: <strong className="text-slate-700">{job.qty_dikerjakan ?? item.qty ?? 1}</strong>
+                              {job.qty_dikerjakan != null && (
+                                <span className="text-slate-400 font-semibold"> / {item.qty}</span>
+                              )}
                             </span>
                             {job.biaya_desain > 0 && (
                               <>
@@ -256,16 +259,29 @@ export default function KanbanPersonal({
                           )}
 
                           {colKey === 'progress' && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onComplete(job); // Pass whole job to open Forward modal directly
-                              }}
-                              className="flex items-center gap-0.5 px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[9px] font-extrabold shadow-sm"
-                            >
-                              <CheckCircle2 size={10} />
-                              Selesai
-                            </button>
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onSplit(job);
+                                }}
+                                title="Bagi sisa qty ke operator lain"
+                                className="flex items-center gap-0.5 px-2 py-1 rounded bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 text-[9px] font-extrabold shadow-sm"
+                              >
+                                <Users size={10} />
+                                Bagi
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onComplete(job); // Pass whole job to open Forward modal directly
+                                }}
+                                className="flex items-center gap-0.5 px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[9px] font-extrabold shadow-sm"
+                              >
+                                <CheckCircle2 size={10} />
+                                Selesai
+                              </button>
+                            </div>
                           )}
 
                           {colKey === 'failed' && (
