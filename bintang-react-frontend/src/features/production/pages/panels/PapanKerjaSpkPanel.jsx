@@ -40,6 +40,22 @@ export default function PapanKerjaSpkPanel() {
     [jobs, kelompokUnit, unitFilter]
   );
 
+  // Filter tahap/divisi (2026-11-24): cari sampai tahap mana SPK sebuah divisi
+  // sudah berjalan, mis. "Operator Banner". Divisi SPK = divisi tahap saat ini
+  // (tahap_divisi_nama), fallback ke divisi PIC bila tahap belum ditandai --
+  // pola yang sama dipakai SiapDiambilPanel.jsx & utils/posisiProduksi.js.
+  const [divisiFilter, setDivisiFilter] = useState('');
+  const namaDivisiJob = (job) => job.tahap_divisi_nama || job.pic_divisi_nama || null;
+  const jumlahPerDivisi = useMemo(() => hitungPerUnit(jobsUnit, namaDivisiJob), [jobsUnit]);
+  const daftarDivisi = useMemo(
+    () => jumlahPerDivisi.filter((d) => d.id).sort((a, b) => a.id.localeCompare(b.id)),
+    [jumlahPerDivisi]
+  );
+  const jobsFiltered = useMemo(
+    () => (divisiFilter ? jobsUnit.filter((j) => namaDivisiJob(j) === divisiFilter) : jobsUnit),
+    [jobsUnit, divisiFilter]
+  );
+
   // State Modal
   const [editJob, setEditJob] = useState(null);
   const [forwardJob, setForwardJob] = useState(null);
@@ -106,7 +122,7 @@ export default function PapanKerjaSpkPanel() {
 
   const initSpreadsheetWithJobs = useCallback(() => {
     // Baris mengikuti jumlah SPK (dulu tetap 35 baris / 25 SPK): semua SPK tampil otomatis.
-    const ROWS = Math.max(35, jobsUnit.length + 5);
+    const ROWS = Math.max(35, jobsFiltered.length + 5);
     const COLS = 10;
     const grid = [];
     for (let r = 0; r < ROWS; r++) {
@@ -133,9 +149,9 @@ export default function PapanKerjaSpkPanel() {
       grid[0][idx] = { value: h, computed: h, isHeader: true };
     });
     
-    const maxJobs = jobsUnit.length;
+    const maxJobs = jobsFiltered.length;
     for (let i = 0; i < maxJobs; i++) {
-      const job = jobsUnit[i];
+      const job = jobsFiltered[i];
       const r = i + 1;
       const order = orderMap[job.order_item] || {};
       
@@ -170,7 +186,7 @@ export default function PapanKerjaSpkPanel() {
     }
     
     setSpreadsheetGrid(recalculateGrid(grid));
-  }, [jobsUnit, orderMap]);
+  }, [jobsFiltered, orderMap]);
 
   useEffect(() => {
     if (jobs.length > 0) {
@@ -180,7 +196,7 @@ export default function PapanKerjaSpkPanel() {
 
   const generatePivotTable = () => {
     const groups = {};
-    jobsUnit.forEach((job) => {
+    jobsFiltered.forEach((job) => {
       let key = 'Lainnya';
       if (pivotConfig.rowField === 'staff') key = job.pic_nama || 'Tanpa PIC';
       else if (pivotConfig.rowField === 'divisi') key = job.tahap_nama || 'Tanpa Tahap';
@@ -286,6 +302,23 @@ export default function PapanKerjaSpkPanel() {
           {kelompokUnit && (
             <UnitBisnisFilter value={unitFilter} onChange={setUnitFilter} jumlah={jumlahPerUnit} />
           )}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide whitespace-nowrap">
+              Divisi
+            </span>
+            <select
+              value={divisiFilter}
+              onChange={(e) => setDivisiFilter(e.target.value)}
+              className="border border-slate-200 bg-white rounded-lg px-2 py-1.5 text-slate-700 font-bold outline-none text-[10.5px] shadow-3xs cursor-pointer"
+            >
+              <option value="">Semua Divisi ({jobsUnit.length})</option>
+              {daftarDivisi.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.id} ({d.jumlah})
+                </option>
+              ))}
+            </select>
+          </div>
           <button
             onClick={handleExport}
             disabled={exporting}
