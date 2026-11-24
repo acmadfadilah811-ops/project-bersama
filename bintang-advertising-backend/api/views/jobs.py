@@ -1016,6 +1016,24 @@ class JobBoardViewSet(viewsets.ModelViewSet):
             'job': JobBoardSerializer(job).data
         }, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['get'], url_path='rekan-divisi', permission_classes=[IsAuthenticated, IsClockedIn])
+    def rekan_divisi(self, request, pk=None):
+        """GET /api/jobs/{id}/rekan-divisi/ — daftar staff SATU DIVISI dengan
+        tahap SPK ini, untuk dropdown "Operator Tujuan" di modal Bagi Operator
+        (SplitOperatorModal.jsx). Endpoint ini SENGAJA dibuat sempit (cuma id
+        + username, discoped ke satu divisi lewat get_object() yang sudah
+        dibatasi per role di get_queryset()) -- BUKAN membuka /api/users/ untuk
+        staff, yang memang dikunci read-only utk owner/manager/admin/spv/kordiv
+        (lihat IsOwnerManagerAdminOrSupervisorReadOnly) supaya staff tidak bisa
+        membaca seluruh data karyawan lain."""
+        job = self.get_object()
+        if not job.tahap_id:
+            return Response([])
+        rekan = CustomUser.objects.filter(
+            role='staff', divisi_id=job.tahap.divisi_id,
+        ).exclude(pk=job.pic_staff_id).order_by('username')
+        return Response([{'id': u.id, 'username': u.username} for u in rekan])
+
     @action(detail=True, methods=['post'], url_path='bagi-operator', permission_classes=[IsAuthenticated, IsClockedIn])
     def bagi_operator(self, request, pk=None):
         """POST /api/jobs/{id}/bagi-operator/ — qty SPK ini kebanyakan untuk

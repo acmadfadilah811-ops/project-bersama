@@ -1172,7 +1172,6 @@ export default function ProductionApp() {
       {selectedSplitJob && (
         <SplitOperatorModal
           job={selectedSplitJob}
-          staffList={staffList}
           saving={savingAction}
           onSubmit={handleSplitSubmit}
           onClose={() => setSelectedSplitJob(null)}

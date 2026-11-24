@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X, Loader2, Users } from 'lucide-react';
+import apiClient from '../../../../api/apiClient';
 
 /**
  * SplitOperatorModal — operator yang sedang mengerjakan job (status
@@ -7,20 +8,36 @@ import { X, Loader2, Users } from 'lucide-react';
  * kebanyakan untuk dikerjakan sendiri (instruksi user 2026-11-24). Server
  * (POST /api/jobs/{id}/bagi-operator/) membuat SPK baru untuk operator
  * tujuan dan menyusutkan qty job ini -- lihat services/split_job.py.
+ *
+ * Daftar operator tujuan diambil dari GET /api/jobs/{id}/rekan-divisi/ --
+ * BUKAN dari staffList/`/api/users/` biasa, yang sengaja dikunci (403) untuk
+ * role staff (lihat IsOwnerManagerAdminOrSupervisorReadOnly). Pemicu split
+ * ini selalu staff (instruksi user: hanya operator sendiri yang boleh
+ * membagi), jadi staffList dari parent selalu kosong untuknya -- endpoint
+ * sempit ini baru benar-benar menampilkan rekan divisi sesuai data di ERP.
  */
-export default function SplitOperatorModal({ job, staffList, saving, onSubmit, onClose }) {
+export default function SplitOperatorModal({ job, saving, onSubmit, onClose }) {
   const [operatorId, setOperatorId] = useState('');
   const [qty, setQty] = useState('');
   const [error, setError] = useState('');
+  const [rekanDivisi, setRekanDivisi] = useState([]);
+  const [loadingRekan, setLoadingRekan] = useState(true);
+
+  useEffect(() => {
+    if (!job) return;
+    let aktif = true;
+    setLoadingRekan(true);
+    apiClient
+      .get(`/jobs/${job.id}/rekan-divisi/`)
+      .then((res) => { if (aktif) setRekanDivisi(res.data || []); })
+      .catch(() => { if (aktif) setError('Gagal memuat daftar operator satu divisi.'); })
+      .finally(() => { if (aktif) setLoadingRekan(false); });
+    return () => { aktif = false; };
+  }, [job?.id]);
 
   if (!job) return null;
 
   const qtySaatIni = Number(job.qty_dikerjakan ?? job.order_item_detail?.qty ?? 0);
-  // Operator tujuan harus satu divisi dengan tahap SPK ini (ditegakkan lagi
-  // di server) -- staffList sudah difilter role=staff dari fetchMetadata.
-  const rekanDivisi = staffList.filter(
-    (s) => s.id !== job.pic_staff && s.divisi_nama === job.tahap_divisi_nama,
-  );
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -73,16 +90,17 @@ export default function SplitOperatorModal({ job, staffList, saving, onSubmit, o
               value={operatorId}
               onChange={(e) => setOperatorId(e.target.value)}
               required
+              disabled={loadingRekan}
               className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
-              <option value="">-- Pilih Operator --</option>
+              <option value="">{loadingRekan ? 'Memuat operator...' : '-- Pilih Operator --'}</option>
               {rekanDivisi.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.username}
                 </option>
               ))}
             </select>
-            {rekanDivisi.length === 0 && (
+            {!loadingRekan && rekanDivisi.length === 0 && (
               <p className="mt-1 text-[11px] font-semibold text-amber-600">
                 Tidak ada operator lain di divisi yang sama untuk dipilih.
               </p>
@@ -118,7 +136,7 @@ export default function SplitOperatorModal({ job, staffList, saving, onSubmit, o
             </button>
             <button
               type="submit"
-              disabled={saving || rekanDivisi.length === 0}
+              disabled={saving || loadingRekan || rekanDivisi.length === 0}
               className="px-5 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg disabled:opacity-50 flex items-center gap-2 cursor-pointer"
             >
               {saving && <Loader2 size={14} className="animate-spin" />}

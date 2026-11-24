@@ -58,6 +58,18 @@ class BagiOperatorTests(APITestCase):
     def _login(self, user):
         self.client.force_authenticate(user=user)
 
+    def test_rekan_divisi_hanya_satu_divisi_tanpa_diri_sendiri(self):
+        """GET rekan-divisi dipakai dropdown operator tujuan -- staff TIDAK
+        boleh baca /api/users/ biasa (403, lihat permissions.py), jadi
+        endpoint sempit ini harus tetap mengembalikan data ERP yang benar."""
+        self._login(self.operator1)
+        res = self.client.get(f'/api/jobs/{self.job.id}/rekan-divisi/')
+        self.assertEqual(res.status_code, 200, res.data)
+        ids = [r['id'] for r in res.data]
+        self.assertIn(self.operator2.id, ids)
+        self.assertNotIn(self.operator1.id, ids)  # bukan diri sendiri
+        self.assertNotIn(self.operator_divisi_lain.id, ids)  # beda divisi
+
     def test_bagi_sisa_qty_ke_operator_lain(self):
         self.assertEqual(self.job.insentif, 500 * 100)  # otomatis saat job dibuat: qty penuh 500.
 
